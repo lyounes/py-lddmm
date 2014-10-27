@@ -48,7 +48,7 @@ def compute():
     f1[0].computeCentersAreas()
 
     sm = SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, KparDiffOut=K2, sigmaDist=2.5, sigmaError=1, errorType='varifold')
-    f = (SurfaceMatching(Template=f0, Target=f1, outputDir=outputDir,param=sm, mu=.01,regWeightOut=1., testGradient=True,
+    f = (SurfaceMatching(Template=f0, Target=f1, outputDir=outputDir,param=sm, mu=.01,regWeightOut=1., testGradient=False,
                          typeConstraint='slidingV2', maxIter_cg=1000, maxIter_al=100, affine='none', rotWeight=0.1))
     f.optimizeMatching()
 

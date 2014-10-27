@@ -289,12 +289,16 @@ class Morphing:public ImageMatching
     Target.img().write_imagesc(file) ;
     sprintf(file, "%s/binaryTemplate", path) ;
     Template.img().write(file) ;
+    cout << "images are written" << endl ;
     if (_kern.initialized() == false) {
       _kern.setParam(param) ;
+      cout << imageDim ;
       _kern.initFFT(imageDim, FFTW_MEASURE) ;
+      cout << "done fft" << endl ;
     }
     sprintf(file, "%s/kernel", path) ;
     _kern.kern.write_imagesc(file) ;
+    cout << "done writing" << endl ;
   }
 
   void Print(char* path)
@@ -821,7 +825,7 @@ class Morphing:public ImageMatching
     int it = 1 ;
       
     while (test <  1 && it < param.nb_iter) {
-      cout << "iteration " << it << flush ;
+      cout << endl << "iteration " << it << endl ;
 	
       for (int cnt=0; cnt < 1; cnt++) {
 	gradientStepC() ;

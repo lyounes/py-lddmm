@@ -191,6 +191,12 @@ void param_matching::read(char * fname)
     if (line.length() > 0 && line[0] != '#') {
       //      istringstream str(line) ;
       strcpy(lstr, line.c_str()) ;
+      pch = strstr(lstr, "\\ ") ;
+      while (pch != 0) {
+	*(pch+1) = '_' ;
+	pch = strstr(lstr, "\\ ") ;
+      }
+  
       //      while(!str.eof()) {
       pch = strtok(lstr, " \t\n\r") ;
       while(pch != NULL) {
@@ -231,6 +237,7 @@ void param_matching::read(int argc, char ** argv)
 void param_matching::read(std::vector<string> &input)
 {
   int nb ;
+  char * pch ;
   string keyword ;
   Ivector im, iM ;
   string affKey, kernelKey ;
@@ -246,7 +253,7 @@ void param_matching::read(std::vector<string> &input)
   while (k<input.size()) {
     keyword = input[k++] ;
     //    if (k<input.size()) {
-    // cout << "keyword = " << keyword << "   " << k  << "  " << input.size()<< endl ;
+    //cout << "keyword = " << keyword << "   " << k  << "  " << input.size()<< endl ;
       map<string, int>::iterator I = paramMap.find(keyword);
       map<string, int>::iterator IA ;
       if (I == paramMap.end()) {
@@ -256,6 +263,11 @@ void param_matching::read(std::vector<string> &input)
       switch (I->second) {
       case TEMPLATE:
 	strcpy(fileTemp, input[k++].c_str()) ;
+	pch = strstr(fileTemp, "\\_") ;
+	while (pch != 0) {
+	  *(pch+1) = ' ' ;
+	  pch = strstr(fileTemp, "\\_") ;
+	}
 	foundTemplate = true ;
 	break ;
       case RESULT:

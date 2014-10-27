@@ -91,6 +91,7 @@ class Vector: public _Vector<_real>
       loadAnalyze(file) ;
       //      AnalyzeImage<_real> AI0(file) ;
       //      copy(*(AI0.getAnalyzeImage())) ;
+      cout << "MM" << " " << min() << " " << max() << endl ;
     }
     else {
       cerr << "get_image: unsupported input dimensions" << endl ;
@@ -170,14 +171,18 @@ class Vector: public _Vector<_real>
       //      for (int k=0; k<nbVox; k++) 
 	//	(*this)[k] = (double) data[k] ;
       int k= 0;
-     for (int k0=MIN[2]; k0 <= MAX[2] ; k0++) 
-      for (int k1=MIN[1]; k1 <= MAX[1] ; k1++) 
-	for (int k2=MIN[0]; k2 <= MAX[0] ; k2++) {
+      double mm = 0 ;
+      for (int k0=MIN[2]; k0 <= MAX[2] ; k0++) 
+	for (int k1=MIN[1]; k1 <= MAX[1] ; k1++) 
+	  for (int k2=MIN[0]; k2 <= MAX[0] ; k2++) {
 	    II[2] = k0 ;
 	    II[1] = k1;
 	    II[0] = k2 ;
+	    if (data[k] > mm)
+	      mm = data[k] ;
 	    (*this)[II] = data[k++] ;
-	}
+	  }
+      //      cout << "max read" << mm << " " << (*this).max() << endl ;
       delete[] data ;
       //      delete[] data ;
     } else if (datatype == 4) {
@@ -267,7 +272,7 @@ class Vector: public _Vector<_real>
 
     
 
-    // cout << min() << " " << max() << endl ;
+    //cout << min() << " " << max() << endl ;
     ifs.close() ;
   }
 
@@ -1662,7 +1667,8 @@ public:
       int c10 = d.getCum(0), c01 = d.getCum(1), c11 = c10 + c01 ;
       for(unsigned int k=0; k<2; k++) {
 	c_iterator src0 = src[k].begin(), srcI ;
-	c_iterator i0 =(*this)[0].begin(), i1 =(*this)[1].begin() ;
+	//c_iterator i0 =(*this)[0].begin();
+	//c_iterator i1 =(*this)[1].begin() ;
 	I = res[k].begin() ;
 #ifdef _PARALLEL_
 	int nb_chunks = 1 ; // omp_get_max_threads() ;

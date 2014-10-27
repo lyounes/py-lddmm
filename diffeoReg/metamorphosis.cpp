@@ -19,7 +19,8 @@
 //#include "morphing2.h"
 #include "morphingNew.h"
 #ifdef _PARALLEL_
-#include "mkl.h"
+#include <omp.h>
+//#include "mkl.h"
 #endif
 
 int main(int argc, char** argv)
@@ -41,6 +42,7 @@ int main(int argc, char** argv)
    mkl_set_dynamic(false) ;
 #endif
 
+   cout << "max Template: " << mo.Template.img().max() << endl;
   if (mo.param.matchDensities) {
     double s1, s2 ;
     s1 = mo.Template.img().sum() ;
@@ -49,6 +51,7 @@ int main(int argc, char** argv)
     cout << mo.Template.img().sum() << " " <<  mo.Target.img().sum() << endl ;
   }
   mo.initialPrint() ;  
+  cout << "done initial print" << endl ;
 
   // minitest
   // VectorMap phi, v, dv, w, GI1 ;

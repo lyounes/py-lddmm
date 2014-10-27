@@ -22,9 +22,9 @@ LPATH = $(GSL_LPATH) $(FFTW3_LPATH) $(IMAGICK_LPATH)
 CFLAGS =  -O3 -ffast-math -Wall 
 #-arch x86_64 
 #COMPILE.cpp = $(CC) $(IPATH)  $(CFLAGS) -c
-COMPILE.cpp = $(CC) $(ARRAY_IPATH) `pkg-config --cflags fftw3 Magick++ gsl` -c
+COMPILE.cpp = $(CC) $(ARRAY_IPATH) `pkg-config --cflags fftw3 Magick++ gsl` $(CFLAGS) -c
 LIBPATH = -lfftw3 -lMagick++ -lstdc++ -lgsl -lgslcblas
-LIBS = `pkg-config --cflags --libs fftw3 Magick++ gsl`
+LIBS = `pkg-config --libs fftw3 Magick++ gsl` 
 COMPILE.o = $(CC)  $(LIBS) 
 #COMPILE.o = $(CC) $(IPATH)  $(CFLAGS) 
 

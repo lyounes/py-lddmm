@@ -5,13 +5,13 @@ import surfaces
 from surfaces import *
 from kernelFunctions import *
 import surfaceMatching
-#import surfaceTimeSeries as match
-import secondOrderMatching as match
+import surfaceTimeSeries as match
+#import secondOrderMatching as match
 
 def compute():
 
     #outputDir = '/Users/younes/Development/Results/biocardTS/spline'
-    outputDir = '/Users/younes/Development/Results/biocardTS/geodesic'
+    outputDir = '/Users/younes/Development/Results/biocardTS/piecewise'
     #outputDir = '/cis/home/younes/MorphingData/twoBallsStitched'
     #outputDir = '/Users/younes/Development/Results/tight_stitched_rigid2_10'
     if __name__ == "__main__":
@@ -39,8 +39,8 @@ def compute():
 
     sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=2.5, sigmaError=1., errorType='varifold')
     f = (match.SurfaceMatching(Template=fv1, Targets=(fv2,fv3,fv4), outputDir=outputDir, param=sm,
-                               typeRegression='geodesic',
-                          affine='euclidean', testGradient=False, affineWeight=.1,  maxIter=1000, controlWeight=1.))
+                               #typeRegression='all', controlWeight=1.,
+                          affine='euclidean', testGradient=False, affineWeight=.1,  maxIter=1000))
     #, affine='none', rotWeight=0.1))
     f.optimizeMatching()
 

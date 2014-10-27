@@ -157,7 +157,7 @@ template<class OBJECT_TYPE, class TAN_TYPE, class _scalProd, class _optimFun> cl
     double  enerTry, enerTry2, ener0, ener=0, ener2, eps2, b, oldGrad2,
       grad2, grad12, gradTry ;
     // _real gs_ener[3], gs_eps[3] ;
-    unsigned int CG_RATE = 200 ;
+    //unsigned int CG_RATE = 200 ;
     int smallVarCount = 0 , svcMAX = 2 ;
     bool cg = true ;
     //    _optimFun opt ;
@@ -170,15 +170,16 @@ template<class OBJECT_TYPE, class TAN_TYPE, class _scalProd, class _optimFun> cl
     if (verb>0)
       cout << "initial energy = " << ener << endl ;
 
-    bool stopLoop, noupdate ;
-    int cg_count = 0;
+    //bool stopLoop ;
+    bool noupdate ;
+    //int cg_count = 0;
 
     for(int iter=0; iter < nb_iter; iter++) {
       noupdate = false ;
       opt.startOfIteration(x) ;
       if (verb>1)
 	cout <<"Iteration " << iter+1 << endl ;
-      stopLoop = false;
+      //stopLoop = false;
 
       opt.gradNorm = opt.computeGrad(x, grad) ;
       if (iter == 0) {
@@ -262,7 +263,7 @@ template<class OBJECT_TYPE, class TAN_TYPE, class _scalProd, class _optimFun> cl
 	    ener2 << " old ener = " << ener << " eps = " << epsTest << endl ;
 	    //	ener2 = opt.update(x, grad, 0,  xtry2) ;
 	    //cout << ener2 << endl ;
-	    stopLoop = true ;
+	    //stopLoop = true ;
 	  }
 	  else {
 	    cg = false ;

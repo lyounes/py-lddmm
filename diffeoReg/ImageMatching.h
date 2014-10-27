@@ -90,8 +90,8 @@ public:
   //  void convImage(const deformableImage & in, deformableImage& out) {convImage(in.img(), out.img(), param.sigmaGauss, param.sizeGauss);}
   void convImage(const deformableImage & in, deformableImage& out) {convImage(in.img(), out.img());}
   void revertIntensities(deformableImage &tmp){tmp.revertIntensities();}
-  void crop1(deformableImage &src, deformableImage & dest) {src.crop(param.cropD1, dest) ;}
-  void crop2(deformableImage &src, deformableImage & dest) {src.crop(param.cropD2, dest) ;}
+  void crop1(const deformableImage &src, deformableImage & dest) {src.crop(param.cropD1, dest) ;}
+  void crop2(const deformableImage &src, deformableImage & dest) {src.crop(param.cropD2, dest) ;}
   void expandBoundary(deformableImage &img){
     if (param.expand_value > -0.000000001)
       img.expandBoundary(param.expand_margin, param.expand_value) ;
@@ -202,6 +202,7 @@ public:
 
   void convImage(const Vector &in, Vector &out) {
     // padding the in image ;
+    cout << "??? " << in.max() << endl ;
     if (param.sigmaGauss <0) {
       //    cout << "Not smoothing image" << endl ;
       out.copy(in) ;
