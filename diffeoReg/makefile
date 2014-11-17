@@ -97,17 +97,17 @@ SOURCES.o = $(SOURCES.cpp:%.cpp=%.o)
 #%.d: %.cpp
 #	$(SHELL) -ec '$(CC) -M  $(IPATH)  $(CFLAGS) $< | sed '\"s/$*.o/& $@/g'\" > $@'
 %.d: %.cpp $(SOURCES.h)
-	$(SHELL) -ec '$(CC) -M  $(IPATH)  $(CFLAGS) $< > $@'
+	$(SHELL) -ec '$(CC) -M  $(ARRAY_IPATH) `pkg-config --cflags fftw3 Magick++ gsl`  $(CFLAGS) $< > $@'
 
-included: 
-	include $(SOURCES.cpp:.cpp=.d)
-	include $(MAINS.cpp:.cpp=.d)
+-include $(SOURCES.cpp:.cpp=.d)
+-include $(MAINS.cpp:.cpp=.d)
 
 
 %.o: %.cpp 
 	$(COMPILE.cpp) $<
 
 all: metamorphosis affine_registration initialMomentumMatching initialMomentumMatchingSYM initialMomentumSegmentation velocityMatching parallelTranslation procrusteanAverage momentumAverage shoot momentumCovMatrix initialMomentumLandmarkMatching printDefaultParam
+
 
 preinstall:
 	mkdir -p $(PROJECT)/include  

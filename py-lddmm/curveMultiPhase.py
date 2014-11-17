@@ -334,14 +334,14 @@ class CurveMatching(curveMatching.CurveMatching):
         for u in Afft:
             dAffcval.append(np.zeros(u.shape))
         for t in range(self.Tsize+1):
-            zB = np.squeeze(xt[self.ncurve][t, :, :])
+            zB = np.squeeze(xt[self.ncurve][t,...])
             npt = 0
             for k in range(self.ncurve):
-                z = np.squeeze(xt[k][t, :, :]) 
+                z = np.squeeze(xt[k][t,...]) 
                 npt1 = npt + self.npt[k]
-                lmb[t, npt:npt1] = self.lmb[t, npt:npt1] - self.derCstrFun((z - zB[npt:npt1, :])/self.mu)/self.mu
-                dxcval[k][t] = lmb[t, npt:npt1]
-                dxcval[-1][t, npt:npt1] = -lmb[t, npt:npt1]
+                lmb[t, npt:npt1,...] = self.lmb[t, npt:npt1,...] - self.derCstrFun((z - zB[npt:npt1,...])/self.mu)/self.mu
+                dxcval[k][t,...] = lmb[t, npt:npt1,...]
+                dxcval[-1][t, npt:npt1,...] = -lmb[t, npt:npt1,...]
                 npt = npt1
 
         return lmb, dxcval, dacval, dAffcval

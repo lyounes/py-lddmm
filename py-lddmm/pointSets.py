@@ -119,6 +119,22 @@ def savePoints(fileName, x, vector=None):
 
         fvtkout.write('\n')
 
+# Saves in .vtk format
+def saveTrajectories(fileName, xt):
+    with open(fileName, 'w') as fvtkout:
+        fvtkout.write('# vtk DataFile Version 3.0\nCurves \nASCII\nDATASET POLYDATA\n') 
+        fvtkout.write('\nPOINTS {0: d} float'.format(xt.shape[0]*xt.shape[1]))
+        for t in range(xt.shape[0]):
+            for ll in range(xt.shape[1]):
+                fvtkout.write('\n{0: f} {1: f} {2: f}'.format(xt[t,ll,0], xt[t,ll,1], xt[t,ll,2]))
+        nlines = (xt.shape[0]-1)*xt.shape[1]
+        fvtkout.write('\nLINES {0:d} {1:d}'.format(nlines, 3*nlines))
+        for t in range(xt.shape[0]-1):
+            for ll in range(xt.shape[1]):
+                fvtkout.write('\n2 {0: d} {1: d}'.format(t*xt.shape[1]+ll, (t+1)*xt.shape[1]+ll))
+
+        fvtkout.write('\n')
+
 
 
 def epsilonNet(x, rate):

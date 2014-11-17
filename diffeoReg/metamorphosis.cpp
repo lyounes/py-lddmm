@@ -27,7 +27,7 @@ int main(int argc, char** argv)
 {
   if (argc < 2)
     {
-      cout << "syntax: match_im param_file" << endl ;
+      cout << "syntax: metamorphosis param_file" << endl ;
       exit(1) ;
     }
 

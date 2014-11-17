@@ -255,7 +255,7 @@ template<class OBJECT_TYPE, class TAN_TYPE, class _scalProd, class _optimFun> cl
 
       if (enerTry > ener) {
 	// test if correct direction of descent
-	double	epsTest = 1e-6/gradTry ;
+	double	epsTest = 1e-3/gradTry ;
 	ener2 = opt.update(x, dir0, epsTest,  xtry2) ;
 	if (ener2 > ener) {
 	  if (cg == false){
@@ -264,8 +264,12 @@ template<class OBJECT_TYPE, class TAN_TYPE, class _scalProd, class _optimFun> cl
 	    //	ener2 = opt.update(x, grad, 0,  xtry2) ;
 	    //cout << ener2 << endl ;
 	    //stopLoop = true ;
+	    noupdate = true ;
+	    break ;
 	  }
 	  else {
+	    if (verb > 1)
+	      cout << "Using gradient direction" << endl;
 	    cg = false ;
 	    noupdate = true ;
 	  }
@@ -274,11 +278,13 @@ template<class OBJECT_TYPE, class TAN_TYPE, class _scalProd, class _optimFun> cl
 	  while ((enerTry > ener) && (eps > epsMin)) {
 	      eps /= 2 ;
 	      enerTry = opt.update(x, dir0, eps, xtry) ;
+	      if (verb > 1)
+		cout << "ener = " << enerTry << " old ener = " << ener << " eps = " << eps << endl ;
 	    }
 	}
       }
 
-      if (~noupdate) {
+      if (noupdate==false) {
 	bool contt = true ;
 	while (contt) {
 	  enerTry2 = opt.update(x, dir0, 0.5*eps, xtry2);

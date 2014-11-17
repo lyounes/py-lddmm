@@ -13,7 +13,6 @@ from affineRegistration import *
 
 def main():
 
-    loggingUtils.setup_default_logging()
 
     parser = argparse.ArgumentParser(description='runs surface matching registration over directories (relative to the template)')
     parser.add_argument('template', metavar='template', type = str, help='template')
@@ -32,6 +31,7 @@ def main():
                         default = 1, help='scale factor for all surfaces') 
     parser.add_argument('--atrophy', action = 'store_true', dest = 'atrophy', default = False, help='force atrophy')
     parser.add_argument('--symmetric', action = 'store_true', dest = 'symmetric', default = False, help='Use error term on both template and target')
+    parser.add_argument('--flipTarget', action = 'store_true', dest = 'flipTarget', default = False, help='Flip target orientation')
     args = parser.parse_args()
 
     if args.dirOut == '':
@@ -43,7 +43,7 @@ def main():
         os.makedirs(args.dirOut)
     if not os.path.exists(args.tmpOut):
         os.makedirs(args.tmpOut)
-    loggingUtils.setup_default_logging(fileName=args.tmpOut+'/'+args.logFile, stdOutput = args.stdOutput)
+    loggingUtils.setup_default_logging(args.tmpOut, fileName=args.logFile, stdOutput = args.stdOutput)
 
     if args.atrophy:
         import surfaceMatchingAtrophy as smt
@@ -56,6 +56,11 @@ def main():
     sm = smt.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=args.sigmaDist, sigmaError=args.sigmaError, errorType=args.typeError)
     fv = surfaces.Surface(filename=args.target)
     fv.vertices *= args.scaleFactor
+    if args.flipTarget:
+        logging.info('Flipping Target Orientation')
+        print surfaces.currentNormDef(tmpl, fv, sm.KparDist)
+        fv.flipFaces()
+        print surfaces.currentNormDef(tmpl, fv, sm.KparDist)
     #print fv.vertices
 
     if args.rigid:
@@ -68,13 +73,15 @@ def main():
         f = smt.SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, mu = 0.001, symmetric=args.symmetric,
                             maxIter_cg=1000, affine= 'euclidean', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)
     else:
-        f = smt.SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, symmetric=args.symmetric,
-                            maxIter=1000, affine= 'euclidean', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)
+        f = smt.SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, symmetric=args.symmetric, saveTrajectories = True,
+                            maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)
 
     f.optimizeMatching()
     u = path.split(args.target)
     [nm,ext] = path.splitext(u[1])
     f.fvDef.savebyu(args.dirOut+'/'+nm+'Def.byu')
+    #if args.saveTrajectories:
+        
 
 if __name__=="__main__":
     main()
