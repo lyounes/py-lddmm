@@ -48,25 +48,31 @@ class SurfaceMatchingParam(surfaceMatching.SurfaceMatchingParam):
 
 class SurfaceMatching(surfaceMatching.SurfaceMatching):
     def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, verb=True, regWeight=1.0, affineWeight = 1.0,
-                  testGradient=False, mu = 0.1, outputDir='.', saveFile = 'evolution', affine='none',
+                  testGradient=False, mu = 0.1, outputDir='.', saveFile = 'evolution', affine='none', volumeOnly=False,
                   rotWeight = None, scaleWeight = None, transWeight = None, symmetric=False, maxIter_cg=1000, maxIter_al=100):
         super(SurfaceMatching, self).__init__(Template, Target, fileTempl, fileTarg, param, maxIter_cg, regWeight, affineWeight,
                                                               verb, -1, rotWeight, scaleWeight, transWeight, symmetric, testGradient,
-                                                              saveFile, affine, outputDir)
+                                                              saveFile, false, affine, outputDir)
 
 
         self.maxIter_cg = maxIter_cg
         self.maxIter_al = maxIter_al
         self.iter = 0
-        
-        self.cval = np.zeros([self.Tsize+1, self.npt])
-        self.cstr = np.zeros([self.Tsize+1, self.npt])
-        self.lmb = np.zeros([self.Tsize+1, self.npt])
+
+        if self.volumeOnly:
+            self.cval = np.zeros(self.Tsize+1)
+            self.cstr = np.zeros(self.Tsize+1)
+            self.lmb = np.zeros(self.Tsize+1)
+        else:
+            self.cval = np.zeros([self.Tsize+1, self.npt])
+            self.cstr = np.zeros([self.Tsize+1, self.npt])
+            self.lmb = np.zeros([self.Tsize+1, self.npt])
         self.nu = np.zeros([self.Tsize+1, self.npt, self.dim])
         
         self.mu = mu
         self.useKernelDotProduct = True
         self.dotProduct = self.kernelDotProduct
+        self.volumeOnly = volumeOnly
         #self.useKernelDotProduct = False
         #self.dotProduct = self.standardDotProduct
 
@@ -98,7 +104,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 nu[j, :] += nf[kk,:]
             for kk,j in enumerate(fk[:,2]):
                 nu[j, :] += nf[kk,:]
-            nu /= np.sqrt((nu**2).sum(axis=1)).reshape([nu.shape[0], 1])
+            if not self.volumeOnly:
+                nu /= np.sqrt((nu**2).sum(axis=1)).reshape([nu.shape[0], 1])
             nu *= self.fv0ori
 
 
@@ -106,10 +113,14 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             r = self.param.KparDiff.applyK(x, a) 
             self.nu[t,...] = nu
             self.v[t,...] = r
-            self.cstr[t,:] = np.maximum(np.squeeze((nu*r).sum(axis=1)), 0)
-            cval[t,:] = np.maximum(np.squeeze((nu*r).sum(axis=1)) - self.lmb[t,:]*self.mu, 0)
+            if self.volumeOnly:
+                cstr = (nu*r).sum()
+            else:
+                cstr = np.squeeze((nu*r).sum(axis=1))
+            self.cstr[t,...] = np.maximum(cstr, 0)
+            cval[t,...] = np.maximum(cstr - self.lmb[t,...]*self.mu, 0)
+            obj += 0.5*timeStep * (cval[t,...].sum()**2)/self.mu
 
-            obj += 0.5*timeStep * (cval[t, :]**2).sum()/self.mu
         #print 'cstr', obj
         return obj,cval
 
@@ -142,15 +153,20 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             for kk,j in enumerate(fk[:,2]):
                 nu[j, :] += nf[kk,:]
             normNu = np.sqrt((nu**2).sum(axis=1))
-            nu /= normNu.reshape([nu.shape[0], 1])
+            if not self.volumeOnly:
+                nu /= normNu.reshape([nu.shape[0], 1])
             nu *= self.fv0ori
             #r2 = self.param.KparDiffOut.applyK(zB, aB)
 
             #dv = self.param.KparDiff.applyK(x, a) + np.dot(x, A.T) + b
-            dv = self.param.KparDiff.applyK(x, a) 
-            lmb[t, :] = -np.maximum(np.multiply(nu, dv).sum(axis=1) -self.lmb[t,:]*self.mu, 0)/self.mu
+            dv = self.param.KparDiff.applyK(x, a)
+            if self.volumeOnly:
+                lmb[t] = -np.maximum((nu*dv).sum() -self.lmb[t,:]*self.mu, 0)/self.mu
+                lnu = lmb[t]*nu
+            else:
+                lmb[t, :] = -np.maximum(np.multiply(nu, dv).sum(axis=1) -self.lmb[t,:]*self.mu, 0)/self.mu
+                lnu = np.multiply(nu, lmb[t, :].reshape([self.npt, 1]))
             #lnu = np.multiply(nu, np.mat(lmb[t, npt:npt1]).T)
-            lnu = np.multiply(nu, lmb[t, :].reshape([self.npt, 1]))
             #print lnu.shape
             dxcval[t] = self.param.KparDiff.applyDiffKT(x, a[np.newaxis,...], lnu[np.newaxis,...])
             dxcval[t] += self.param.KparDiff.applyDiffKT(x, lnu[np.newaxis,...], a[np.newaxis,...])
@@ -163,8 +179,9 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             # if self.affineDim > 0:
             #     dAffcval[t, :] = (np.dot(self.affineBasis.T, np.vstack([np.dot(lnu.T, x).reshape([dim2,1]), lnu.sum(axis=0).reshape([self.dim,1])]))).flatten()
             lv = np.multiply(dv, lmb[t, :].reshape([self.npt,1]))
-            lv /= normNu.reshape([nu.shape[0], 1])
-            lv -= np.multiply(nu, np.multiply(nu, lv).sum(axis=1).reshape([nu.shape[0], 1]))
+            if not self.volumeOnly:
+                lv /= normNu.reshape([nu.shape[0], 1])
+                lv -= np.multiply(nu, np.multiply(nu, lv).sum(axis=1).reshape([nu.shape[0], 1]))
             lvf = lv[fk[:,0]] + lv[fk[:,1]] + lv[fk[:,2]]
             dnu = np.zeros(x.shape)
             foo = np.cross(xDef2-xDef1, lvf)
@@ -176,7 +193,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             foo = np.cross(xDef1-xDef0, lvf)
             for kk,j in enumerate(fk[:,2]):
                 dnu[j, :] += foo[kk,:]
-            dxcval[t] -= self.fv0ori*dnu 
+            dxcval[t] -= self.fv0ori*dnu
+
 
         #print 'testg', (lmb**2).sum() 
         return lmb, dxcval, dacval, dAffcval
@@ -519,7 +537,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             cg.cg(self, verb = self.verb, maxIter = self.maxIter_cg, TestGradient = self.testGradient, epsInit=0.1)
             self.coeffAff = self.coeffAff2
             for t in range(self.Tsize+1):
-                self.lmb[t, :] = -self.cval[t, :]/self.mu
+                self.lmb[t, ...] = -self.cval[t, ...]/self.mu
             logging.info('mean lambdas %f' %(np.fabs(self.lmb).sum() / self.lmb.size))
             if self.converged:
                 self.gradEps *= .75

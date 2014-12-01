@@ -75,10 +75,11 @@ class Direction:
 class SurfaceMatching(object):
 
     def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000,
-                 regWeight = 1.0, affineWeight = 1.0, verb=True, saveTrajectories = False,
+                 regWeight = 1.0, affineWeight = 1.0, verb=True,
                  subsampleTargetSize=-1,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
-                 testGradient=True, saveFile = 'evolution', affine = 'none', outputDir = '.'):
+                 testGradient=True, saveFile = 'evolution', ,
+                 saveTrajectories = False, affine = 'none', outputDir = '.'):
         if Template==None:
             if fileTempl==None:
                 logging.error('Please provide a template surface')
