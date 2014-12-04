@@ -30,8 +30,10 @@ def main():
     parser.add_argument('--scaleFactor', metavar='scaleFactor', type=float, dest='scaleFactor',
                         default = 1, help='scale factor for all surfaces') 
     parser.add_argument('--atrophy', action = 'store_true', dest = 'atrophy', default = False, help='force atrophy')
+    parser.add_argument('--atrophyVolume', action = 'store_true', dest = 'atrophyVolume', default = False, help='force atrophy')
     parser.add_argument('--symmetric', action = 'store_true', dest = 'symmetric', default = False, help='Use error term on both template and target')
     parser.add_argument('--flipTarget', action = 'store_true', dest = 'flipTarget', default = False, help='Flip target orientation')
+    parser.add_argument('--mu', metavar='mu', type=float, dest='mu', default = 0.001, help='mu for augmented lagrangian') 
     args = parser.parse_args()
 
     if args.dirOut == '':
@@ -45,7 +47,7 @@ def main():
         os.makedirs(args.tmpOut)
     loggingUtils.setup_default_logging(args.tmpOut, fileName=args.logFile, stdOutput = args.stdOutput)
 
-    if args.atrophy:
+    if args.atrophy or args.atrophyVolume:
         import surfaceMatchingAtrophy as smt
     else:
         import surfaceMatching as smt
@@ -69,9 +71,9 @@ def main():
 
         #print fv.vertices
 
-    if args.atrophy:
-        f = smt.SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, mu = 0.001, symmetric=args.symmetric,
-                            maxIter_cg=1000, affine= 'euclidean', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)
+    if args.atrophy or args.atrophyVolume:
+        f = smt.SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, mu = args.mu, symmetric=args.symmetric,
+                            maxIter_cg=1000, affine= 'none', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100., volumeOnly=args.atrophyVolume)
     else:
         f = smt.SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, symmetric=args.symmetric, saveTrajectories = True,
                             maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)

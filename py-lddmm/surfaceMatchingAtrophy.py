@@ -52,9 +52,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                   rotWeight = None, scaleWeight = None, transWeight = None, symmetric=False, maxIter_cg=1000, maxIter_al=100):
         super(SurfaceMatching, self).__init__(Template, Target, fileTempl, fileTarg, param, maxIter_cg, regWeight, affineWeight,
                                                               verb, -1, rotWeight, scaleWeight, transWeight, symmetric, testGradient,
-                                                              saveFile, false, affine, outputDir)
+                                                              saveFile, False, affine, outputDir)
 
 
+        self.volumeOnly = volumeOnly
         self.maxIter_cg = maxIter_cg
         self.maxIter_al = maxIter_al
         self.iter = 0
@@ -72,7 +73,6 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         self.mu = mu
         self.useKernelDotProduct = True
         self.dotProduct = self.kernelDotProduct
-        self.volumeOnly = volumeOnly
         #self.useKernelDotProduct = False
         #self.dotProduct = self.standardDotProduct
 
@@ -119,7 +119,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 cstr = np.squeeze((nu*r).sum(axis=1))
             self.cstr[t,...] = np.maximum(cstr, 0)
             cval[t,...] = np.maximum(cstr - self.lmb[t,...]*self.mu, 0)
-            obj += 0.5*timeStep * (cval[t,...].sum()**2)/self.mu
+            obj += 0.5*timeStep * (cval[t,...]**2).sum()/self.mu
 
         #print 'cstr', obj
         return obj,cval
@@ -159,13 +159,15 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             #r2 = self.param.KparDiffOut.applyK(zB, aB)
 
             #dv = self.param.KparDiff.applyK(x, a) + np.dot(x, A.T) + b
-            dv = self.param.KparDiff.applyK(x, a)
+            vt = self.param.KparDiff.applyK(x, a)
             if self.volumeOnly:
-                lmb[t] = -np.maximum((nu*dv).sum() -self.lmb[t,:]*self.mu, 0)/self.mu
+                lmb[t] = -np.maximum((nu*vt).sum() -self.lmb[t]*self.mu, 0)/self.mu
                 lnu = lmb[t]*nu
+                lv = vt * lmb[t]
             else:
-                lmb[t, :] = -np.maximum(np.multiply(nu, dv).sum(axis=1) -self.lmb[t,:]*self.mu, 0)/self.mu
+                lmb[t, :] = -np.maximum(np.multiply(nu, vt).sum(axis=1) -self.lmb[t,:]*self.mu, 0)/self.mu
                 lnu = np.multiply(nu, lmb[t, :].reshape([self.npt, 1]))
+                lv = vt * lmb[t,:,np.newaxis]
             #lnu = np.multiply(nu, np.mat(lmb[t, npt:npt1]).T)
             #print lnu.shape
             dxcval[t] = self.param.KparDiff.applyDiffKT(x, a[np.newaxis,...], lnu[np.newaxis,...])
@@ -178,7 +180,6 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             dAffcval = []
             # if self.affineDim > 0:
             #     dAffcval[t, :] = (np.dot(self.affineBasis.T, np.vstack([np.dot(lnu.T, x).reshape([dim2,1]), lnu.sum(axis=0).reshape([self.dim,1])]))).flatten()
-            lv = np.multiply(dv, lmb[t, :].reshape([self.npt,1]))
             if not self.volumeOnly:
                 lv /= normNu.reshape([nu.shape[0], 1])
                 lv -= np.multiply(nu, np.multiply(nu, lv).sum(axis=1).reshape([nu.shape[0], 1]))
@@ -454,7 +455,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         if self.iter >= self.affBurnIn:
             self.coeffAff = self.coeffAff2
         (obj1, self.xt, Jt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withJacobian=True)
-        logging.info('mean constraint %f %f' %(np.sqrt((self.cstr**2).sum()/self.cval.size), np.fabs(self.cstr).sum() / self.cval.size))
+        logging.info('mean constraint %f max constraint %f' %(np.sqrt((self.cstr**2).sum()/self.cval.size), np.fabs(self.cstr).max()))
         self.fvInit.updateVertices(self.x0)
 
         if self.affine=='euclidean' or self.affine=='translation':
@@ -480,6 +481,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 displ += dt * (vt*nu).sum(axis=1)
                 f.saveVTK2(self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.vtk', vf)
             f = surfaces.Surface(surf=self.fv1)
+            logging.info('rotation?: %f' %(np.fabs(np.dot(U, U.T)- np.eye(3)).sum()))
             yt = np.dot(f.vertices - X[1][-1, ...], U.T)
             f.updateVertices(yt)
             f.saveVTK(self.outputDir +'/TargetCorrected.vtk')
@@ -513,8 +515,9 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 kkm = kk
             else:
                 kkm = kk-1
-            vf.scalars.append('constraint') ;
-            vf.scalars.append(self.cstr[kkm,:])
+            if not self.volumeOnly:
+                vf.scalars.append('constraint') ;
+                vf.scalars.append(self.cstr[kkm,:])
             vf.vectors.append('velocity') ;
             vf.vectors.append(self.v[kkm,:])
             vf.vectors.append('normals') ;

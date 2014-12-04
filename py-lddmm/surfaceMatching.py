@@ -78,7 +78,7 @@ class SurfaceMatching(object):
                  regWeight = 1.0, affineWeight = 1.0, verb=True,
                  subsampleTargetSize=-1,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
-                 testGradient=True, saveFile = 'evolution', ,
+                 testGradient=True, saveFile = 'evolution',
                  saveTrajectories = False, affine = 'none', outputDir = '.'):
         if Template==None:
             if fileTempl==None:
