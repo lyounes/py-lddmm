@@ -78,6 +78,35 @@ class AffineBasis:
             #     A[1][t] = AB[dim2:dim2+self.dim]
         return A
 
+    def getExponential(self, A)
+        if self.dim==3 and self.affCode==3:
+            t = np.sqrt(A[0,1]**2+A[0,2]**2 + A[1,2]**2)
+            R = np.eye(3)
+            if t > 1e-10:
+                R += ((1-np.cos(t))/(t**2)) * (np.dot(A,A)) + (np.sin(t)/t)*A
+        else:
+            R = np.eye(self.dim) + A
+        return R
+
+    def gradExponential(self, A, p, x):
+        dR = np.dot(p.T, x)
+        if self.dim==3 and self.affCode==3:
+            t = np.sqrt(A[0,1]**2+A[0,2]**2 + A[1,2]**2)
+            if t > 1e-10:
+                st = np.sin(t)
+                ct = np.cos(t)
+                a1 = st/t
+                a2 = (1-ct)/(t**2)
+                da1 = (t*ct-st)/(8*t**3)
+                da2 = (t*st -2*(1-ct))/(8*t**4)
+                dR = (a1*dR + (da1 * (p*np.dot(x,A)).sum() + da2 * (p*np.dot(x,np.dot(A,A))).sum())*A
+                      - a2 * (np.dot(np.dot(p,A.T).T,x) + np.dot(p.T,np.dot(x,A))))
+        return dR
+
+                
+
+            
+            
     def integrateFlow(self, Afft):
         Tsize = Afft.shape[0]
         dim2 = self.dim**2
@@ -87,9 +116,9 @@ class AffineBasis:
         eye = np.eye(self.dim)
         X[0][0,...] = eye
         for t in range(Tsize):
-            B = eye + dt * A[0][t,...]
+            B = self.getExponential(dt*A[0][t,...])
             X[0][t+1,...] = np.dot(B,X[0][t,...])
-            X[1][t+1,...] = np.dot(B,X[1][t,...]) + dt * A[1][t,...]
+            X[1][t+1,...] = np.dot(B,X[1][t,...] + dt * A[1][t,...])
             #X[1][t+1] = X[1][t,...] + dt * A[1][t]
         return X
             
@@ -101,3 +130,29 @@ class AffineBasis:
         A1 = A1/coeff[0:linDim]
         AB = (A1[np.newaxis, :] * self.basis[0:dim2, 0:linDim]).sum(axis=1)
         return AB.reshape([dim, dim])
+
+def getExponential(A):
+    if (A.shape[0]==3) and (np.fabs(A.T+A).max() < e-8):
+        t = np.sqrt(A[0,1]**2+A[0,2]**2 + A[1,2]**2)
+        R = np.eye(3)
+        if t > 1e-10:
+            R += ((1-np.cos(t))/(t**2)) * (np.dot(A,A)) + (np.sin(t)/t)*A
+    else:
+        R = np.eye(self.dim) + A
+    return R
+
+def gradExponential(A, p, x):
+    dR = np.dot(p.T, x)
+    if (A.shape[0]==3) and (np.fabs(A.T+A).max() < e-8):
+        t = np.sqrt(A[0,1]**2+A[0,2]**2 + A[1,2]**2)
+        if t > 1e-10:
+            st = np.sin(t)
+            ct = np.cos(t)
+            a1 = st/t
+            a2 = (1-ct)/(t**2)
+            da1 = (t*ct-st)/(8*t**3)
+            da2 = (t*st -2*(1-ct))/(8*t**4)
+            dR = (a1*dR + (da1 * (p*np.dot(x,A)).sum() + da2 * (p*np.dot(x,np.dot(A,A))).sum())*A
+                  - a2 * (np.dot(np.dot(p,A.T).T,x) + np.dot(p.T,np.dot(x,A))))
+    return dR
+
