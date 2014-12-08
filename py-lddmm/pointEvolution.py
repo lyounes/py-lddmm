@@ -694,14 +694,21 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=F
     for k in range(M-1):
         z = np.squeeze(xt[k, ...])
         a = np.squeeze(at[k, ...])
-        xt[k+1, ...] = z + timeStep * KparDiff.applyK(z, a)
-        if not (affine == None):
-            xt[k+1, :, :] += timeStep * (np.dot(z, A[k].T) + b[k])
+        if not(affine == None):
+            Rk = affineBasis.getExponential(timeStep*A[k])
+            xt[k+1, ...] = np.dot(z, Rk.T) + timeStep * (KparDiff.applyK(z, a) + b[k])
+        else:
+            xt[k+1, ...] = z + timeStep * KparDiff.applyK(z, a)
+        # if not (affine == None):
+        #     xt[k+1, :, :] += timeStep * (np.dot(z, A[k].T) + b[k])
         if not (withPointSet == None):
             zy = np.squeeze(yt[k, :, :])
-            yt[k+1, :, :] = zy + timeStep * KparDiff.applyK(z, a, firstVar=zy)
-            if not (affine == None):
-                yt[k+1, :, :] += timeStep * (np.dot(zy, A[k].T) + b[k])
+            if not(affine == None):
+                yt[k+1, ...] = np.dot(zy, Rk.T) + timeStep * (KparDiff.applyK(z, a, firstVar=zy) + b[k])
+            else:
+                yt[k+1, :, :] = zy + timeStep * KparDiff.applyK(z, a, firstVar=zy)
+            # if not (affine == None):
+            #     yt[k+1, :, :] += timeStep * (np.dot(zy, A[k].T) + b[k])
             if withJacobian:
                 Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(z, a, firstVar=zy)
                 if not (affine == None):
@@ -716,7 +723,7 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=F
             zn = np.squeeze(nt[k, :, :])        
             nt[k+1, :, :] = zn - timeStep * KparDiff.applyDiffKT(z, zn[np.newaxis,...], a[np.newaxis,...]) 
             if not (affine == None):
-                nt[k+1, :, :] += timeStep * np.dot(zn, A[k])
+                nt[k+1, :, :] -= timeStep * np.dot(zn, A[k])
     if simpleOutput:
         return xt
     else:
@@ -757,11 +764,12 @@ def landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine = None)
         #a2 = [a, px, a]
         #print 'test', px.sum()
         zpx = KparDiff.applyDiffKT(z, a1, a2)
-        pxt[M-t-1, :, :] = px + timeStep * zpx
         #print 'zpx', np.fabs(zpx).sum(), np.fabs(px).sum(), z.sum()
         #print 'pxt', np.fabs((pxt)[M-t-2]).sum()
         if not (affine == None):
-            pxt[M-t-1, :, :] += timeStep * np.dot(px, A[M-t-1])
+            pxt[M-t-1, :, :] = np.dot(px, affineBasis.getExponential(timeStep*A[M-t-1])) + timeStep * zpx
+        else:
+            pxt[M-t-1, :, :] = px + timeStep * zpx
     return pxt, xt
 
 # Same, adding adjoint evolution for normals
@@ -793,7 +801,9 @@ def landmarkAndNormalsCovector(x0, n0, at, px1, pn1, KparDiff, regweight):
 def landmarkHamiltonianGradient(x0, at, px1, KparDiff, regweight, getCovector = False, affine = None):
     (pxt, xt) = landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine=affine)
     dat = np.zeros(at.shape)
+    timeStep = 1.0/at.shape[0]
     if not (affine == None):
+        A = affine[0]
         dA = np.zeros(affine[0].shape)
         db = np.zeros(affine[1].shape)
     for k in range(at.shape[0]):
@@ -802,8 +812,8 @@ def landmarkHamiltonianGradient(x0, at, px1, KparDiff, regweight, getCovector = 
         #print 'testgr', (2*a-px).sum()
         dat[k, :, :] = (2*regweight*a-px)
         if not (affine == None):
-            dA[k] = np.dot(pxt[k+1].T, xt[k])
-            db[k] = pxt[k+1].sum(axis=0)
+            dA[k] = affineBasis.gradExponential(A[k]*timeStep, pxt[k+1], xt[k]) #.reshape([self.dim**2, 1])/timeStep
+            db[k] = pxt[k+1].sum(axis=0) #.reshape([self.dim,1]) 
 
     if affine == None:
         if getCovector == False:
@@ -843,9 +853,13 @@ def timeSeriesCovector(x0, at, px1, KparDiff, regweight, affine = None):
         #a2 = [a, px, a]
         #print 'test', px.sum()
         zpx = KparDiff.applyDiffKT(z, a1, a2)
+        # if not (affine == None):
+        #     zpx += np.dot(px, A[M-t-1])
+        # pxt[M-t-1, :, :] = px + timeStep * zpx
         if not (affine == None):
-            zpx += np.dot(px, A[M-t-1])
-        pxt[M-t-1, :, :] = px + timeStep * zpx
+            pxt[M-t-1, :, :] = np.dot(px, affineBasis.getExponential(timeStep*A[M-t-1])) + timeStep * zpx
+        else:
+            pxt[M-t-1, :, :] = px + timeStep * zpx
         if (t<M-1) and ((M-1-t)%Tsize1 == 0):
             pxt[M-t-1, :, :] += px1[(M-t-1)/Tsize1 - 1]
         #print 'zpx', np.fabs(zpx).sum(), np.fabs(px).sum(), z.sum()
@@ -857,6 +871,7 @@ def timeSeriesGradient(x0, at, px1, KparDiff, regweight, getCovector = False, af
     (pxt, xt) = timeSeriesCovector(x0, at, px1, KparDiff, regweight, affine=affine)
     dat = np.zeros(at.shape)
     if not (affine == None):
+        A = affine[0]
         dA = np.zeros(affine[0].shape)
         db = np.zeros(affine[1].shape)
     for k in range(at.shape[0]):
@@ -865,8 +880,11 @@ def timeSeriesGradient(x0, at, px1, KparDiff, regweight, getCovector = False, af
         #print 'testgr', (2*a-px).sum()
         dat[k, :, :] = (2*regweight*a-px)
         if not (affine == None):
-            dA[k] = np.dot(pxt[k+1].T, xt[k])
-            db[k] = pxt[k+1].sum(axis=0)
+            dA[k] = affineBasis.gradExponential(A[k]*timeStep, pxt[k+1], xt[k]) #.reshape([self.dim**2, 1])/timeStep
+            db[k] = pxt[k+1].sum(axis=0) #.reshape([self.dim,1]) 
+        # if not (affine == None):
+        #     dA[k] = np.dot(pxt[k+1].T, xt[k])
+        #     db[k] = pxt[k+1].sum(axis=0)
 
     if affine == None:
         if getCovector == False:

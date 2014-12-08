@@ -331,8 +331,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
             zpx += self.param.KparDiff.applyDiffKT(z, a1, a2)
             if self.affineDim > 0:
-                zpx += np.dot(px, A[0][M-t-1])
-            pxt[M-t-1, :, :] = px + timeStep * zpx
+                pxt[M-t-1, :, :] = np.dot(px, self.affB.getExponential(timeStep*A[0][M-t-1])) + timeStep * zpx
+                #zpx += np.dot(px, A[0][M-t-1])
+            else:
+                pxt[M-t-1, :, :] = px + timeStep * zpx
             
 
         return pxt, xt, dacval, dAffcval
@@ -348,10 +350,15 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             for t in range(self.Tsize):
                 dat[t] += self.param.KparDiff.applyK(xt[t], 2*self.regweight*at[t] - pxt[t+1])
         if self.affineDim > 0:
+            timeStep = 1.0/self.Tsize
             dAfft = 2*np.multiply(self.affineWeight.reshape([1, self.affineDim]), Afft) 
             #dAfft = 2*np.multiply(self.affineWeight, Afft) - dAffcval
             for t in range(self.Tsize):
-                dA = np.dot(pxt[t+1].T, xt[t]).reshape([self.dim**2, 1])
+                AB = np.dot(self.affineBasis, Afft[t]) 
+                A = AB[0:self.dim**2].reshape([self.dim, self.dim])
+                #A[1][t] = AB[dim2:dim2+self.dim]
+                #dA = np.dot(pxt[t+1].T, xt[t]).reshape([self.dim**2, 1])
+                dA = self.affB.gradExponential(timeStep*A, pxt[t+1], xt[t]).reshape([self.dim**2, 1])
                 db = pxt[t+1].sum(axis=0).reshape([self.dim,1]) 
                 dAff = np.dot(self.affineBasis.T, np.vstack([dA, db]))
                 dAfft[t] -=  dAff.reshape(dAfft[t].shape)
@@ -477,9 +484,9 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 vf.scalars.append(displ)
                 vf.vectors.append('velocity') ;
                 vf.vectors.append(vt)
+                f.saveVTK2(self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.vtk', vf)
                 nu = self.fv0ori*f.computeVertexNormals()
                 displ += dt * (vt*nu).sum(axis=1)
-                f.saveVTK2(self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.vtk', vf)
             f = surfaces.Surface(surf=self.fv1)
             logging.info('rotation?: %f' %(np.fabs(np.dot(U, U.T)- np.eye(3)).sum()))
             yt = np.dot(f.vertices - X[1][-1, ...], U.T)
@@ -508,7 +515,6 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             vf.scalars.append(np.exp(Jt[kk, :])/(AV[:,0]+1)-1)
             vf.scalars.append('displacement')
             vf.scalars.append(displ)
-            displ += dt * (v*nu).sum(axis=1)
             if kk < self.Tsize:
                 nu = self.fv0ori*self.fvDef.computeVertexNormals()
                 v = self.v[kk,...]
@@ -523,6 +529,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             vf.vectors.append('normals') ;
             vf.vectors.append(self.nu[kkm,:])
             self.fvDef.saveVTK2(self.outputDir +'/'+self.saveFile+str(kk)+'.vtk', vf)
+            displ += dt * (v*nu).sum(axis=1)
 
     def optimizeMatching(self):
 	self.coeffZ = 10.
