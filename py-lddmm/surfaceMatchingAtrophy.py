@@ -455,7 +455,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         if self.iter >= self.affBurnIn:
             self.coeffAff = self.coeffAff2
         (obj1, self.xt, Jt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withJacobian=True)
-        logging.info('mean constraint %f max constraint %f' %(np.sqrt((self.cstr**2).sum()/self.cval.size), np.fabs(self.cstr).max()))
+        logging.info('mean constraint %f max constraint %f '   %(np.sqrt((self.cstr**2).sum()/self.cval.size), np.fabs(self.cstr).max()))
         self.fvInit.updateVertices(self.x0)
 
         if self.affine=='euclidean' or self.affine=='translation':
