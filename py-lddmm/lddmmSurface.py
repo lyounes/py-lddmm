@@ -73,10 +73,10 @@ def main():
 
     if args.atrophy or args.atrophyVolume:
         f = smt.SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, mu = args.mu, symmetric=args.symmetric,
-                            maxIter_cg=1000, affine= 'none', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100., volumeOnly=args.atrophyVolume)
+                            maxIter_cg=1000, affine= 'euclidean', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100., volumeOnly=args.atrophyVolume)
     else:
         f = smt.SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, symmetric=args.symmetric, saveTrajectories = True,
-                            maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)
+                            maxIter=2000, affine= 'euclidean', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)
 
     f.optimizeMatching()
     u = path.split(args.target)

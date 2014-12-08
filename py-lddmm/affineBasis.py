@@ -29,6 +29,7 @@ class AffineBasis:
         if affCode <= 4:
             self.basis = np.zeros([2 * (dimSym + dim), self.affineDim])
 
+        self.affCode = affCode
         k = 0 ;
         if affCode <= 1:
             for i in range(dimSym):
@@ -78,7 +79,7 @@ class AffineBasis:
             #     A[1][t] = AB[dim2:dim2+self.dim]
         return A
 
-    def getExponential(self, A)
+    def getExponential(self, A):
         if self.dim==3 and self.affCode==3:
             t = np.sqrt(A[0,1]**2+A[0,2]**2 + A[1,2]**2)
             R = np.eye(3)
@@ -132,7 +133,7 @@ class AffineBasis:
         return AB.reshape([dim, dim])
 
 def getExponential(A):
-    if (A.shape[0]==3) and (np.fabs(A.T+A).max() < e-8):
+    if (A.shape[0]==3) and (np.fabs(A.T+A).max() < 1e-8):
         t = np.sqrt(A[0,1]**2+A[0,2]**2 + A[1,2]**2)
         R = np.eye(3)
         if t > 1e-10:
@@ -143,7 +144,7 @@ def getExponential(A):
 
 def gradExponential(A, p, x):
     dR = np.dot(p.T, x)
-    if (A.shape[0]==3) and (np.fabs(A.T+A).max() < e-8):
+    if (A.shape[0]==3) and (np.fabs(A.T+A).max() < 1e-8):
         t = np.sqrt(A[0,1]**2+A[0,2]**2 + A[1,2]**2)
         if t > 1e-10:
             st = np.sin(t)

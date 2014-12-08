@@ -801,7 +801,7 @@ def landmarkAndNormalsCovector(x0, n0, at, px1, pn1, KparDiff, regweight):
 def landmarkHamiltonianGradient(x0, at, px1, KparDiff, regweight, getCovector = False, affine = None):
     (pxt, xt) = landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine=affine)
     dat = np.zeros(at.shape)
-    timeStep = 1.0/self.Tsize
+    timeStep = 1.0/at.shape[0]
     if not (affine == None):
         A = affine[0]
         dA = np.zeros(affine[0].shape)

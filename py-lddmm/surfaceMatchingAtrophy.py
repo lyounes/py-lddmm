@@ -331,7 +331,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
             zpx += self.param.KparDiff.applyDiffKT(z, a1, a2)
             if self.affineDim > 0:
-                pxt[M-t-1, :, :] = np.dot(px, self.affB.getExponential(dt*A[0][M-t-1])) + timeStep * zpx
+                pxt[M-t-1, :, :] = np.dot(px, self.affB.getExponential(timeStep*A[0][M-t-1])) + timeStep * zpx
                 #zpx += np.dot(px, A[0][M-t-1])
             else:
                 pxt[M-t-1, :, :] = px + timeStep * zpx
@@ -355,7 +355,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             #dAfft = 2*np.multiply(self.affineWeight, Afft) - dAffcval
             for t in range(self.Tsize):
                 AB = np.dot(self.affineBasis, Afft[t]) 
-                A = AB[0:dim2].reshape([self.dim, self.dim])
+                A = AB[0:self.dim**2].reshape([self.dim, self.dim])
                 #A[1][t] = AB[dim2:dim2+self.dim]
                 #dA = np.dot(pxt[t+1].T, xt[t]).reshape([self.dim**2, 1])
                 dA = self.affB.gradExponential(timeStep*A, pxt[t+1], xt[t]).reshape([self.dim**2, 1])
