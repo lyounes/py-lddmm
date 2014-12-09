@@ -461,75 +461,82 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         self.iter += 1
         if self.iter >= self.affBurnIn:
             self.coeffAff = self.coeffAff2
-        (obj1, self.xt, Jt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withJacobian=True)
-        logging.info('mean constraint %f max constraint %f' %(np.sqrt((self.cstr**2).sum()/self.cval.size), np.fabs(self.cstr).max()))
-        self.fvInit.updateVertices(self.x0)
+        if (self.iter % self.saveRate == 0) :
+            (obj1, self.xt, Jt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withJacobian=True)
+            logging.info('mean constraint %f max constraint %f' %(np.sqrt((self.cstr**2).sum()/self.cval.size), np.fabs(self.cstr).max()))
+            logging.info('saving data')
+            self.fvInit.updateVertices(self.x0)
 
-        if self.affine=='euclidean' or self.affine=='translation':
-            f = surfaces.Surface(surf=self.fvInit)
-            X = self.affB.integrateFlow(self.Afft)
+            if self.affine=='euclidean' or self.affine=='translation':
+                f = surfaces.Surface(surf=self.fvInit)
+                X = self.affB.integrateFlow(self.Afft)
+                displ = np.zeros(self.npt)
+                dt = 1.0 /self.Tsize ;
+                for t in range(self.Tsize+1):
+                    U = la.inv(X[0][t])
+                    yt = np.dot(self.xt[t,...] - X[1][t, ...], U.T)
+                    if t < self.Tsize:
+                        at = np.dot(self.at[t,...], U.T)
+                        vt = self.param.KparDiff.applyK(yt, at)
+                    f.updateVertices(yt)
+                    vf = surfaces.vtkFields() ;
+                    vf.scalars.append('Jacobian') ;
+                    vf.scalars.append(np.exp(Jt[t, :])-1)
+                    vf.scalars.append('displacement')
+                    vf.scalars.append(displ)
+                    vf.vectors.append('velocity') ;
+                    vf.vectors.append(vt)
+                    f.saveVTK2(self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.vtk', vf)
+                    nu = self.fv0ori*f.computeVertexNormals()
+                    displ += dt * (vt*nu).sum(axis=1)
+                f = surfaces.Surface(surf=self.fv1)
+                #logging.info('rotation?: %f' %(np.fabs(np.dot(U, U.T)- np.eye(3)).sum()))
+                yt = np.dot(f.vertices - X[1][-1, ...], U.T)
+                f.updateVertices(yt)
+                f.saveVTK(self.outputDir +'/TargetCorrected.vtk')
+                
+                
+            #self.testConstraintTerm(self.xt, self.at, self.Afft)
+            nn = 0 ;
+            AV0 = self.fvInit.computeVertexArea()
+            nu = self.fv0ori*self.fvInit.computeVertexNormals()
+            v = self.v[0,...]
             displ = np.zeros(self.npt)
             dt = 1.0 /self.Tsize ;
-            for t in range(self.Tsize+1):
-                U = la.inv(X[0][t])
-                yt = np.dot(self.xt[t,...] - X[1][t, ...], U.T)
-                if t < self.Tsize:
-                    at = np.dot(self.at[t,...], U.T)
-                    vt = self.param.KparDiff.applyK(yt, at)
-                f.updateVertices(yt)
+            n1 = self.xt.shape[1] ;
+            for kk in range(self.Tsize+1):
+                self.fvDef.updateVertices(np.squeeze(self.xt[kk, :, :]))
+                AV = self.fvDef.computeVertexArea()
+                AV = (AV[0]/AV0[0])-1
                 vf = surfaces.vtkFields() ;
                 vf.scalars.append('Jacobian') ;
-                vf.scalars.append(np.exp(Jt[t, :])-1)
+                vf.scalars.append(np.exp(Jt[kk, :])-1)
+                vf.scalars.append('Jacobian_T') ;
+                vf.scalars.append(AV[:,0])
+                vf.scalars.append('Jacobian_N') ;
+                vf.scalars.append(np.exp(Jt[kk, :])/(AV[:,0]+1)-1)
                 vf.scalars.append('displacement')
                 vf.scalars.append(displ)
+                if kk < self.Tsize:
+                    nu = self.fv0ori*self.fvDef.computeVertexNormals()
+                    v = self.v[kk,...]
+                    kkm = kk
+                else:
+                    kkm = kk-1
+                if not self.volumeOnly:
+                    vf.scalars.append('constraint') ;
+                    vf.scalars.append(self.cstr[kkm,:])
                 vf.vectors.append('velocity') ;
-                vf.vectors.append(vt)
-                f.saveVTK2(self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.vtk', vf)
-                nu = self.fv0ori*f.computeVertexNormals()
-                displ += dt * (vt*nu).sum(axis=1)
-            f = surfaces.Surface(surf=self.fv1)
-            logging.info('rotation?: %f' %(np.fabs(np.dot(U, U.T)- np.eye(3)).sum()))
-            yt = np.dot(f.vertices - X[1][-1, ...], U.T)
-            f.updateVertices(yt)
-            f.saveVTK(self.outputDir +'/TargetCorrected.vtk')
-                
-                
-        #self.testConstraintTerm(self.xt, self.at, self.Afft)
-        nn = 0 ;
-        AV0 = self.fvInit.computeVertexArea()
-        nu = self.fv0ori*self.fvInit.computeVertexNormals()
-        v = self.v[0,...]
-        displ = np.zeros(self.npt)
-        dt = 1.0 /self.Tsize ;
-        n1 = self.xt.shape[1] ;
-        for kk in range(self.Tsize+1):
-            self.fvDef.updateVertices(np.squeeze(self.xt[kk, :, :]))
-            AV = self.fvDef.computeVertexArea()
-            AV = (AV[0]/AV0[0])-1
-            vf = surfaces.vtkFields() ;
-            vf.scalars.append('Jacobian') ;
-            vf.scalars.append(np.exp(Jt[kk, :])-1)
-            vf.scalars.append('Jacobian_T') ;
-            vf.scalars.append(AV[:,0])
-            vf.scalars.append('Jacobian_N') ;
-            vf.scalars.append(np.exp(Jt[kk, :])/(AV[:,0]+1)-1)
-            vf.scalars.append('displacement')
-            vf.scalars.append(displ)
-            if kk < self.Tsize:
-                nu = self.fv0ori*self.fvDef.computeVertexNormals()
-                v = self.v[kk,...]
-                kkm = kk
-            else:
-                kkm = kk-1
-            if not self.volumeOnly:
-                vf.scalars.append('constraint') ;
-                vf.scalars.append(self.cstr[kkm,:])
-            vf.vectors.append('velocity') ;
-            vf.vectors.append(self.v[kkm,:])
-            vf.vectors.append('normals') ;
-            vf.vectors.append(self.nu[kkm,:])
-            self.fvDef.saveVTK2(self.outputDir +'/'+self.saveFile+str(kk)+'.vtk', vf)
-            displ += dt * (v*nu).sum(axis=1)
+                vf.vectors.append(self.v[kkm,:])
+                vf.vectors.append('normals') ;
+                vf.vectors.append(self.nu[kkm,:])
+                self.fvDef.saveVTK2(self.outputDir +'/'+self.saveFile+str(kk)+'.vtk', vf)
+                displ += dt * (v*nu).sum(axis=1)
+        else:
+            (obj1, self.xt, Jt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withJacobian=True)
+            logging.info('mean constraint %f max constraint %f' %(np.sqrt((self.cstr**2).sum()/self.cval.size), np.fabs(self.cstr).max()))
+            self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
+            self.fvInit.updateVertices(self.x0)
 
     def optimizeMatching(self):
 	self.coeffZ = 10.

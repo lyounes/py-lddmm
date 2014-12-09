@@ -443,8 +443,8 @@ class SurfaceMatching(object):
                     vf.vectors.append('velocity') ;
                     vf.vectors.append(vt)
                     nu = self.fv0ori*f.computeVertexNormals()
-                    displ += dt * (vt*nu).sum(axis=1)
                     f.saveVTK2(self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.vtk', vf)
+                    displ += dt * (vt*nu).sum(axis=1)
                 f = surfaces.Surface(surf=self.fv1)
                 yyt = np.dot(f.vertices - X[1][-1, ...], U.T)
                 f.updateVertices(yyt)
@@ -468,7 +468,6 @@ class SurfaceMatching(object):
                 vf.scalars.append(np.exp(Jt[kk, :])/(AV[:,0]))
                 vf.scalars.append('displacement')
                 vf.scalars.append(displ)
-                displ += dt * (v*nu).sum(axis=1)
                 if kk < self.Tsize:
                     nu = self.fv0ori*self.fvDef.computeVertexNormals()
                     v = self.v[kk,...]
@@ -478,6 +477,7 @@ class SurfaceMatching(object):
                 vf.vectors.append('velocity') ;
                 vf.vectors.append(self.v[kkm,:])
                 fvDef.saveVTK2(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', vf)
+                displ += dt * (v*nu).sum(axis=1)
                 #self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = self.idx, scal_name='Labels')
         else:
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
