@@ -958,7 +958,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             if self.converged:
                 self.gradEps *= .75
                 if (((self.cval**2).sum()/self.cval.size) > self.muEps**2):
-                    self.mu *= 0.5
+                    self.mu *= 0.01
                 else:
                     self.muEps = self.muEps /2
             else:

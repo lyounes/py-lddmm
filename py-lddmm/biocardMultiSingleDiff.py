@@ -4,12 +4,12 @@ import loggingUtils
 import surfaces
 from surfaces import *
 from kernelFunctions import *
-from surfaceMultiPhase import *
+from surfaceMatching import *
 
 def compute():
 
-    #outputDir = '/Users/younes/Development/Results/biocardSliding5'
-    outputDir = '/cis/home/younes/MorphingData/twoBallsStitched5'
+    outputDir = '/Users/younes/Development/Results/biocardSingle'
+    #outputDir = '/cis/home/younes/MorphingData/twoBallsStitched'
     #outputDir = '/Users/younes/Development/Results/tight_stitched_rigid2_10'
     if __name__ == "__main__":
         loggingUtils.setup_default_logging(outputDir, fileName='info')
@@ -27,32 +27,21 @@ def compute():
     f0.append(surfaces.Surface(filename = path+'Atlas_hippo_L_separate.byu'))
     f0.append(surfaces.Surface(filename = path+'Atlas_amyg_L_separate.byu'))
     f0.append(surfaces.Surface(filename = path+'Atlas_ent_L_up_separate.byu'))
+    fv0 = Surface()
+    fv0.concatenate(f0)
     f1 = []
     f1.append(surfaces.Surface(filename = path+'danielData/0186193_1_6_hippo_L_qc_pass1_daniel2_reg.vtk'))
     f1.append(surfaces.Surface(filename = path+'danielData/0186193_1_6_amyg_L_qc_pass1_daniel2_reg.vtk'))
     f1.append(surfaces.Surface(filename = path+'danielData/0186193_1_6_ec_L_qc_pass1_daniel2_reg.vtk'))
-
-    #f0[0].smooth()
-    #f0[1].smooth()
-    #f1[0].smooth()
-    #f1[1].smooth()
+    fv1 = Surface()
+    fv1.concatenate(f1)
 
 
-    ## Object kernel
     K1 = Kernel(name='laplacian', sigma = 5.)
-    ## Background kernel
-    K2 = Kernel(name='laplacian', sigma = 1.)
-    # f0[0].vertices[:,1] += 2. ;
-    # f1[0].vertices[:,1] += 1. ;
-    # f0[0].vertices[:,2] += 2.0 ;
-    # f1[0].vertices[:,2] += 1.0 ;
-
-    f0[0].computeCentersAreas()
-    f1[0].computeCentersAreas()
-
-    sm = SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, KparDiffOut=K2, sigmaDist=2.5, sigmaError=1, errorType='measure')
-    f = (SurfaceMatching(Template=f0, Target=f1, outputDir=outputDir,param=sm, mu=1,regWeightOut=1., testGradient=False,
-                         typeConstraint='stitched', maxIter_cg=1000, maxIter_al=100, affine='none', rotWeight=0.1))
+    
+    sm = SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=2.5, sigmaError=1, errorType='measure')
+    f = (SurfaceMatching(Template=fv0, Target=fv1, outputDir=outputDir,param=sm, testGradient=False,
+                         maxIter=2000, affine='none', rotWeight=0.1))
     f.optimizeMatching()
 
 

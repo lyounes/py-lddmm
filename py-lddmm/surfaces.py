@@ -31,21 +31,13 @@ class Surface:
                     self.faces = np.empty(0)
                     self.surfel = np.empty(0)
                 else:
-                    (mainPart, ext) = os.path.splitext(filename)
-                    if ext == '.byu':
-                        self.readbyu(filename)
-                    elif ext=='.off':
-                        self.readOFF(filename)
-                    elif ext=='.vtk':
-                        self.readVTK(filename)
-                    elif ext=='.obj':
-                        self.readOBJ(filename)
+                    if type(filename) is list:
+                        fvl = []
+                        for name in filename:
+                            fvl.append(Surface(name))
+                        self.concatenate(fvl)
                     else:
-                        print 'Unknown Surface Extension:', ext
-                        self.vertices = np.empty(0)
-                        self.centers = np.empty(0)
-                        self.faces = np.empty(0)
-                        self.surfel = np.empty(0)
+                        self.read(filename)
             else:
                 self.vertices = np.copy(FV[1])
                 self.faces = np.int_(FV[0])
@@ -57,6 +49,23 @@ class Surface:
             self.centers = np.copy(surf.centers)
             self.computeCentersAreas()
 
+    def read(self, filename):
+        (mainPart, ext) = os.path.splitext(filename)
+        if ext == '.byu':
+            self.readbyu(filename)
+        elif ext=='.off':
+            self.readOFF(filename)
+        elif ext=='.vtk':
+            self.readVTK(filename)
+        elif ext=='.obj':
+            self.readOBJ(filename)
+        else:
+            print 'Unknown Surface Extension:', ext
+            self.vertices = np.empty(0)
+            self.centers = np.empty(0)
+            self.faces = np.empty(0)
+            self.surfel = np.empty(0)
+            
     # face centers and area weighted normal
     def computeCentersAreas(self):
         xDef1 = self.vertices[self.faces[:, 0], :]
@@ -999,6 +1008,28 @@ class Surface:
             self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)
         else:
             raise Exception('Cannot run readOBJ without VTK')
+
+    def concatenate(self, fvl):
+        nv = 0
+        nf = 0
+        for fv in fvl:
+            nv += fv.vertices.shape[0]
+            nf += fv.faces.shape[0]
+        self.vertices = np.zeros([nv,3])
+        self.faces = np.zeros([nf,3], dtype='int')
+
+        nv0 = 0
+        nf0 = 0        
+        for fv in fvl:
+            nv = nv0 + fv.vertices.shape[0]
+            nf = nf0 + fv.faces.shape[0]
+            self.vertices[nv0:nv, :] = fv.vertices
+            self.faces[nf0:nf, :] = fv.faces + nv0
+            nv0 = nv
+            nf0 = nf
+        self.computeCentersAreas()
+
+        
     
 # Reads several .byu files
 def readMultipleByu(regexp, Nmax = 0):
