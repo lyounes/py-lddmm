@@ -15,8 +15,10 @@ def main():
 
 
     parser = argparse.ArgumentParser(description='runs surface matching registration over directories (relative to the template)')
-    parser.add_argument('template', metavar='template', type = str, help='template')
-    parser.add_argument('target', metavar='target', type = str, help='target')
+    parser.add_argument('template', metavar='template', nargs='+', type = str, help='template (list)')
+    parser.add_argument('target', metavar='target', nargs='+', type = str, help='target (list)')
+    #parser.add_argument('template', metavar='template', type = str, help='template')
+    #parser.add_argument('target', metavar='target', type = str, help='target')
     parser.add_argument('--typeKernel', metavar='typeKernel', type=str, dest='typeKernel', default = 'gauss', help='kernel type') 
     parser.add_argument('--sigmaKernel', metavar='sigmaKernel', type=float, dest='sigmaKernel', default = 6.5, help='kernel width') 
     parser.add_argument('--sigmaDist', metavar='sigmaDist', type=float, dest='sigmaDist', default = 2.5, help='kernel width (error term); (default = 2.5)') 
@@ -52,11 +54,11 @@ def main():
     else:
         import surfaceMatching as smt
 
-    tmpl = surfaces.Surface(filename=args.template)
+    tmpl = surfaces.Surface(filelist=args.template)
     tmpl.vertices *= args.scaleFactor
     K1 = Kernel(name=args.typeKernel, sigma = args.sigmaKernel)
     sm = smt.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=args.sigmaDist, sigmaError=args.sigmaError, errorType=args.typeError)
-    fv = surfaces.Surface(filename=args.target)
+    fv = surfaces.Surface(filelist=args.target)
     fv.vertices *= args.scaleFactor
     if args.flipTarget:
         logging.info('Flipping Target Orientation')
