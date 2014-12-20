@@ -5,6 +5,7 @@ import surfaces
 from surfaces import *
 from kernelFunctions import *
 from surfaceMatching import *
+import pointEvolution as evol
 
 def compute():
 
@@ -44,6 +45,45 @@ def compute():
                          maxIter=2000, affine='none', rotWeight=0.1))
     f.optimizeMatching()
 
+    if len(f0) > 1:
+        A = [np.zeros([f.Tsize, f.dim, f.dim]), np.zeros([f.Tsize, f.dim])]
+        (xt, Jt)  = evol.landmarkDirectEvolutionEuler(f.x0, f.at, f.param.KparDiff, affine=A,
+                                                          withJacobian=True)
+        nu = f.fv0ori*f.fvInit.computeVertexNormals()
+        v = f.v[0,...]
+        displ = np.zeros(f.npt)
+        dt = 1.0 /f.Tsize ;
+        fvDef = surfaces.Surface(f.fvInit)
+        AV0 = fvDef.computeVertexArea()
+        for kk in range(f.Tsize+1):
+            nv0 = 0
+            for (ll,fv) in enumerate(f0):
+                nv = nv0 + fv.vertices.shape[0]
+                fvDef = surfaces.Surface(fv)
+                fvDef.updateVertices(np.squeeze(xt[kk, nv0:nv, :]))
+                AV = fvDef.computeVertexArea()
+                AV = (AV[0]/AV0[0][nv0:nv,:])
+                vf = surfaces.vtkFields() ;
+                vf.scalars.append('Jacobian') ;
+                vf.scalars.append(np.exp(Jt[kk, nv0:nv]))
+                vf.scalars.append('Jacobian_T') ;
+                vf.scalars.append(AV[:,0])
+                vf.scalars.append('Jacobian_N') ;
+                vf.scalars.append(np.exp(Jt[kk, nv0:nv])/(AV[:,0]))
+                vf.scalars.append('displacement')
+                vf.scalars.append(displ[nv0:nv])
+                if kk < f.Tsize:
+                    kkm = kk
+                else:
+                    kkm = kk-1
+                vf.vectors.append('velocity') ;
+                vf.vectors.append(f.v[kkm,nv0:nv])
+                fvDef.saveVTK2(f.outputDir +'/'+ f.saveFile+str(ll)+'_'+str(kk)+'.vtk', vf)
+                nv0 = nv
+            if kk < f.Tsize:
+                nu = f.fv0ori*f.fvDef.computeVertexNormals()
+                v = f.v[kk,...]
+                displ += dt * (v*nu).sum(axis=1)
 
     return f
 
