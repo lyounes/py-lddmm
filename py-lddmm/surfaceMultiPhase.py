@@ -127,6 +127,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         self.nu00 = []
         self.nsurf = len(self.fv0)
         self.npt = np.zeros(self.nsurf)
+        self.nf = np.zeros(self.nsurf)
         k=0
         for fv in self.fv0:
             x0 = fv.vertices
@@ -158,6 +159,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             self.nu00.append(np.copy(nu0))
             nu0 /= np.sqrt((nu0**2).sum(axis=1)).reshape([x0.shape[0], 1])
             self.npt[k] = x0.shape[0]
+            self.nf[k] = fv.faces.shape[0]
             self.x0.append(x0)
             self.nu0.append(nu0)
             self.at.append(np.zeros([self.Tsize, x0.shape[0], x0.shape[1]]))
@@ -170,6 +172,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             k=k+1
 
         self.npoints = self.npt.sum()
+        self.nfaces = self.nf.sum()
         self.at.append(np.zeros([self.Tsize, self.npoints, self.dim]))
         self.atTry.append(np.zeros([self.Tsize, self.npoints, self.dim]))
         self.x0.append(np.zeros([self.npoints, self.dim]))
@@ -197,8 +200,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             self.useKernelDotProduct = False
             self.dotProduct = self.standardDotProduct
         elif typeConstraint == 'sliding':
-            self.cval = np.zeros([self.Tsize+1, self.npoints])
-            self.lmb = np.zeros([self.Tsize+1, self.npoints])
+            self.cval = np.zeros([self.Tsize+1, self.nfaces])
+            self.lmb = np.zeros([self.Tsize+1, self.nfaces])
             self.constraintTerm = self.constraintTermSliding
             self.constraintTermGrad = self.constraintTermGradSliding
             self.useKernelDotProduct = False
@@ -318,9 +321,11 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         for t in range(self.Tsize):
             zB = np.squeeze(xt[self.nsurf][t, ...])
             aB = np.squeeze(at[self.nsurf][t, ...])
+            nf = 0
             npt = 0
             r2 = self.param.KparDiffOut.applyK(zB, aB)
             for k in range(self.nsurf):
+                nf1 = nf + self.nf[k]
                 npt1 = npt + self.npt[k]
                 a = at[k][t]
                 x = xt[k][t]
@@ -332,24 +337,19 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                     A = np.zeros([self.dim, self.dim])
                     b = np.zeros(self.dim)
                 z = zB[npt:npt1, :]
-                nu = np.zeros(x.shape)
+                r = (self.param.KparDiff.applyK(x, a, firstVar=z) + np.dot(z, A.T) + b
+                    - r2[npt:npt1, :])
                 fk = self.fv0[k].faces
+                rf = r[fk[:, 0], :] + r[fk[:, 1], :] + r[fk[:, 2], :]
                 xDef0 = z[fk[:, 0], :]
                 xDef1 = z[fk[:, 1], :]
                 xDef2 = z[fk[:, 2], :]
-                nf =  np.cross(xDef1-xDef0, xDef2-xDef0)
-                for kk,j in enumerate(fk[:,0]):
-                    nu[j, :] += nf[kk,:]
-                for kk,j in enumerate(fk[:,1]):
-                    nu[j, :] += nf[kk,:]
-                for kk,j in enumerate(fk[:,2]):
-                    nu[j, :] += nf[kk,:]
+                nu =  np.cross(xDef1-xDef0, xDef2-xDef0)
                 nu /= np.sqrt((nu**2).sum(axis=1)).reshape([nu.shape[0], 1])
 
-
-                r = self.param.KparDiff.applyK(x, a, firstVar=z) + np.dot(z, A.T) + b
-                cval[t,npt:npt1] = np.squeeze(np.multiply(nu, r - r2[npt:npt1, :]).sum(axis=1))
+                cval[t,nf:nf1] = np.squeeze(np.multiply(nu, rf).sum(axis=1))
                 npt = npt1
+                nf = nf1
 
             obj += timeStep * (- np.multiply(self.lmb[t, ...], cval[t,...]).sum() + (cval[t, ...]**2).sum()/(2*self.mu))
             #print 'slidingV2', obj
@@ -375,8 +375,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             aB = at[self.nsurf][t]
             r2 = self.param.KparDiffOut.applyK(zB, aB)
             npt = 0
+            nf = 0
             for k in range(self.nsurf):
                 npt1 = npt + self.npt[k]
+                nf1 = nf + self.nf[k]
                 a = at[k][t]
                 x = xt[k][t]
                 if self.affineDim > 0:
@@ -392,20 +394,22 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 xDef0 = z[fk[:, 0], :]
                 xDef1 = z[fk[:, 1], :]
                 xDef2 = z[fk[:, 2], :]
-                nf =  np.cross(xDef1-xDef0, xDef2-xDef0)
-                for kk,j in enumerate(fk[:,0]):
-                    nu[j, :] += nf[kk,:]
-                for kk,j in enumerate(fk[:,1]):
-                    nu[j, :] += nf[kk,:]
-                for kk,j in enumerate(fk[:,2]):
-                    nu[j, :] += nf[kk,:]
+                nu =  np.cross(xDef1-xDef0, xDef2-xDef0)
                 normNu = np.sqrt((nu**2).sum(axis=1))
                 nu /= normNu.reshape([nu.shape[0], 1])
 
                 dv = self.param.KparDiff.applyK(x, a, firstVar=z) + np.dot(z, A.T) + b - r2[npt:npt1, :]
-                lmb[t, npt:npt1] = self.lmb[t, npt:npt1] - np.multiply(nu, dv).sum(axis=1)/self.mu
+                dvf = dv[fk[:, 0], :] + dv[fk[:, 1], :] + dv[fk[:, 2], :]
+                lmb[t, nf:nf1] = self.lmb[t, nf:nf1] - np.multiply(nu, dvf).sum(axis=1)/self.mu
                 #lnu = np.multiply(nu, np.mat(lmb[t, npt:npt1]).T)
-                lnu = np.multiply(nu, lmb[t, npt:npt1].reshape([self.npt[k], 1]))
+                lnu0 = np.multiply(nu, lmb[t, nf:nf1].reshape([self.nf[k], 1]))
+                lnu = np.zeros([self.npt[k], self.dim])
+                for kk,j in enumerate(fk[:,0]):
+                    lnu[j, :] += lnu0[kk,:]
+                for kk,j in enumerate(fk[:,1]):
+                    lnu[j, :] += lnu0[kk,:]
+                for kk,j in enumerate(fk[:,2]):
+                    lnu[j, :] += lnu0[kk,:]
                 #print lnu.shape
                 dxcval[k][t] = self.param.KparDiff.applyDiffKT(z, a[np.newaxis,...], lnu[np.newaxis,...], firstVar=x)
                 dxcval[self.nsurf][t][npt:npt1, :] += (self.param.KparDiff.applyDiffKT(x, lnu[np.newaxis,...], a[np.newaxis,...], firstVar=z)
@@ -416,10 +420,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 if self.affineDim > 0:
                     dAffcval[k][t, :] = (np.dot(self.affineBasis.T, np.vstack([np.dot(lnu.T, z).reshape([dim2,1]), lnu.sum(axis=0).reshape([self.dim,1])]))).flatten()
                 dacval[self.nsurf][t] -= self.param.KparDiffOut.applyK(z, lnu, firstVar=zB)
-                lv = np.multiply(dv, lmb[t, npt:npt1].reshape([self.npt[k],1]))
-                lv /= normNu.reshape([nu.shape[0], 1])
-                lv -= np.multiply(nu, np.multiply(nu, lv).sum(axis=1).reshape([nu.shape[0], 1]))
-                lvf = lv[fk[:,0]] + lv[fk[:,1]] + lv[fk[:,2]]
+                lvf = np.multiply(dvf, lmb[t, nf:nf1].reshape([self.nf[k],1]))
+                lvf /= normNu.reshape([nu.shape[0], 1])
+                lvf -= np.multiply(nu, np.multiply(nu, lvf).sum(axis=1).reshape([nu.shape[0], 1]))
+                #lvf = lv[fk[:,0]] + lv[fk[:,1]] + lv[fk[:,2]]
                 dnu = np.zeros(x.shape)
                 foo = np.cross(xDef2-xDef1, lvf)
                 for kk,j in enumerate(fk[:,0]):
@@ -437,6 +441,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 #     dxcval[kk][t][npt+f[1]] = dxcval[kk][t][npt+f[1]] - np.cross(z[f[0]].T - z[f[2]].T, lvf)
                 #     dxcval[kk][t][npt+f[2]] = dxcval[kk][t][npt+f[2]] - np.cross(z[f[1]].T - z[f[0]].T, lvf)
                 npt = npt1
+                nf = nf1
 
                 #obj += timeStep * (- np.multiply(self.lmb[t, :], cval[t,:]).sum() + np.multiply(cval[t, :], cval[t, :]).sum()/(2*self.mu))
         return lmb, dxcval, dnucval, dacval, dAffcval

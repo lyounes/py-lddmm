@@ -8,15 +8,14 @@ from surfaceMultiPhase import *
 
 def compute():
 
-    #outputDir = '/Users/younes/Development/Results/biocardSliding5'
-    outputDir = '/cis/home/younes/Development/Results/biocardStitched10var'
-    #outputDir = '/Users/younes/Development/Results/tight_stitched_rigid2_10'
+    outputDir = '/cis/home/younes/Development/Results/biocardSliding10'
+    #outputDir = '/cis/home/younes/Development/Results/biocardStitched10'
     if __name__ == "__main__":
         loggingUtils.setup_default_logging(outputDir, fileName='info')
     else:
         loggingUtils.setup_default_logging()
     #path = '/Volumes/project/biocard/data/phase_1_surface_mapping_new_structure/'
-    path = '/Users/younes/Development/Data/multishape/biocard/'
+    path = '/cis/home/younes/MorphingData/biocard/'
     #path = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/6_mappings_baseline_template_all/0_template_to_all/' ;
     #path2 = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/amygdala/6_mappings_baseline_template_all/0_template_to_all/' ;
     #path = '/cis/home/younes/MorphingData/Biocard/'
@@ -50,9 +49,9 @@ def compute():
     f0[0].computeCentersAreas()
     f1[0].computeCentersAreas()
 
-    sm = SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, KparDiffOut=K2, sigmaDist=2.5, sigmaError=1, errorType='varifold')
+    sm = SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, KparDiffOut=K2, sigmaDist=2.5, sigmaError=1, errorType='measure')
     f = (SurfaceMatching(Template=f0, Target=f1, outputDir=outputDir,param=sm, mu=1,regWeightOut=1., testGradient=False,
-                         typeConstraint='stitched', maxIter_cg=1000, maxIter_al=100, affine='none', rotWeight=0.1))
+                         typeConstraint='sliding', maxIter_cg=1000, maxIter_al=100, affine='none', rotWeight=0.1))
     f.optimizeMatching()
 
 
