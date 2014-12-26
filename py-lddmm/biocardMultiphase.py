@@ -9,14 +9,14 @@ from surfaceMultiPhase import *
 def compute():
 
     #outputDir = '/Users/younes/Development/Results/biocardSliding5'
-    outputDir = '/cis/home/younes/MorphingData/twoBallsStitched5'
+    outputDir = '/cis/home/younes/Development/Results/biocardStitched10'
     #outputDir = '/Users/younes/Development/Results/tight_stitched_rigid2_10'
     if __name__ == "__main__":
         loggingUtils.setup_default_logging(outputDir, fileName='info')
     else:
         loggingUtils.setup_default_logging()
     #path = '/Volumes/project/biocard/data/phase_1_surface_mapping_new_structure/'
-    path = '/Users/younes/Development/Data/multishape/biocard/'
+    path = '/cis/home/younes/MorphingData/biocard/'
     #path = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/6_mappings_baseline_template_all/0_template_to_all/' ;
     #path2 = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/amygdala/6_mappings_baseline_template_all/0_template_to_all/' ;
     #path = '/cis/home/younes/MorphingData/Biocard/'
@@ -39,7 +39,7 @@ def compute():
 
 
     ## Object kernel
-    K1 = Kernel(name='laplacian', sigma = 5.)
+    K1 = Kernel(name='laplacian', sigma = 10.)
     ## Background kernel
     K2 = Kernel(name='laplacian', sigma = 1.)
     # f0[0].vertices[:,1] += 2. ;
