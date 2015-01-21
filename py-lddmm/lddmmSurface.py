@@ -37,6 +37,15 @@ def main():
     parser.add_argument('--flipTarget', action = 'store_true', dest = 'flipTarget', default = False, help='Flip target orientation')
     parser.add_argument('--mu', metavar='mu', type=float, dest='mu', default = 0.001, help='mu for augmented lagrangian') 
     args = parser.parse_args()
+    
+    if len(args.template) > 1:
+        l1 = len(args.template)
+        ns = (l1 + 1)/2
+        for k in range(0,l1-ns):
+            args.target = [args.template[l1 - 1 - k]] + args.target
+        args.template = args.template[0:ns]
+            
+    print args.template, args.target
 
     if args.dirOut == '':
         args.dirOut = '.'
