@@ -34,7 +34,7 @@ class Surface:
                     if type(filename) is list:
                         fvl = []
                         for name in filename:
-                            fvl.append(Surface(name))
+                            fvl.append(Surface(filename=name))
                         self.concatenate(fvl)
                     else:
                         self.read(filename)
