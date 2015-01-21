@@ -83,6 +83,11 @@ class SurfaceMatching:
         self.testGradient = testGradient
         self.regweight = regWeight
         self.affine = affine
+        if self.affine=='euclidean' or self.affine=='translation':
+            self.saveCorrected = True
+        else:
+            self.saveCorrected = False
+
         self.affB = AffineBasis(self.dim, affine)
         self.affineDim = self.affB.affineDim
         self.affineBasis = self.affB.basis
@@ -131,7 +136,7 @@ class SurfaceMatching:
         self.fv0.saveVTK(self.outputDir+'/Template.vtk')
         for k,s in enumerate(self.fv1):
             s.saveVTK(self.outputDir+'/Target'+str(k)+'.vtk')
-        self.affBurnIn = 20
+        self.affBurnIn = 50
         self.coeffAff1 = 1.
         self.coeffAff2 = 100.
         self.coeffAff = self.coeffAff1
@@ -282,7 +287,7 @@ class SurfaceMatching:
         grd = Direction()
         grd.at = foo[0] / coeff
         grd.aff = np.zeros(self.Afft.shape)
-        if self.affineDim > 0:
+        if self.affineDim > 0 and self.iter < self.affBurnIn:
             dA = foo[1]
             db = foo[2]
             grd.aff = 2*np.multiply(self.affineWeight.reshape([1, self.affineDim]), self.Afft)
@@ -313,7 +318,10 @@ class SurfaceMatching:
     def randomDir(self):
         dirfoo = Direction()
         dirfoo.at = np.random.randn(self.Tsize, self.npt, self.dim)
-        dirfoo.aff = np.random.randn(self.Tsize, self.affineDim)
+        if self.iter < self.affBurnIn:
+            dirfoo.aff = np.random.randn(self.Tsize, self.affineDim)
+        else:
+            dirfoo.aff = np.zeros([self.Tsize, self.affineDim])
         return dirfoo
 
     def dotProduct(self, g1, g2):
@@ -341,6 +349,7 @@ class SurfaceMatching:
     def endOfIteration(self):
         self.iter += 1
         if self.iter >= self.affBurnIn:
+            self.affine = 'none'
             self.coeffAff = self.coeffAff2
         if (self.iter % self.saveRate == 0):
             logging.info('Saving surfaces...')
@@ -358,7 +367,7 @@ class SurfaceMatching:
             (xt, ft, Jt)  = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
                                                            withPointSet = self.fv0Fine.vertices, withJacobian=True)
 
-            if self.affine=='euclidean' or self.affine=='translation':
+            if self.saveCorrected:
                 f = surfaces.Surface(surf=self.fv0Fine)
                 X = self.affB.integrateFlow(self.Afft)
                 displ = np.zeros(self.x0.shape[0])
@@ -436,6 +445,7 @@ class SurfaceMatching:
         print 'Gradient lower bound:', self.gradEps
         #print 'x0:', self.x0
         #print 'y0:', self.y0
+        self.cgBurnIn = self.affBurnIn
         
         cg.cg(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
         #return self.at, self.xt

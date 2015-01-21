@@ -31,21 +31,13 @@ class Surface:
                     self.faces = np.empty(0)
                     self.surfel = np.empty(0)
                 else:
-                    (mainPart, ext) = os.path.splitext(filename)
-                    if ext == '.byu':
-                        self.readbyu(filename)
-                    elif ext=='.off':
-                        self.readOFF(filename)
-                    elif ext=='.vtk':
-                        self.readVTK(filename)
-                    elif ext=='.obj':
-                        self.readOBJ(filename)
+                    if type(filename) is list:
+                        fvl = []
+                        for name in filename:
+                            fvl.append(Surface(filename=name))
+                        self.concatenate(fvl)
                     else:
-                        print 'Unknown Surface Extension:', ext
-                        self.vertices = np.empty(0)
-                        self.centers = np.empty(0)
-                        self.faces = np.empty(0)
-                        self.surfel = np.empty(0)
+                        self.read(filename)
             else:
                 self.vertices = np.copy(FV[1])
                 self.faces = np.int_(FV[0])
@@ -57,6 +49,23 @@ class Surface:
             self.centers = np.copy(surf.centers)
             self.computeCentersAreas()
 
+    def read(self, filename):
+        (mainPart, ext) = os.path.splitext(filename)
+        if ext == '.byu':
+            self.readbyu(filename)
+        elif ext=='.off':
+            self.readOFF(filename)
+        elif ext=='.vtk':
+            self.readVTK(filename)
+        elif ext=='.obj':
+            self.readOBJ(filename)
+        else:
+            print 'Unknown Surface Extension:', ext
+            self.vertices = np.empty(0)
+            self.centers = np.empty(0)
+            self.faces = np.empty(0)
+            self.surfel = np.empty(0)
+            
     # face centers and area weighted normal
     def computeCentersAreas(self):
         xDef1 = self.vertices[self.faces[:, 0], :]
@@ -134,6 +143,7 @@ class Surface:
             normals[F[k,1]] += self.surfel[k]
             normals[F[k,2]] += self.surfel[k]
         af = np.sqrt( (normals**2).sum(axis=1))
+        #logging.info('min area = %.4f'%(af.min()))
         normals /=af.reshape([self.vertices.shape[0],1])
 
         return normals
@@ -147,7 +157,6 @@ class Surface:
                 u = [self.faces[k, kj], self.faces[k, (kj+1)%3]]
                 if (u not in self.edges) & (u.reverse() not in self.edges):
                     self.edges.append(u)
-
         self.edgeFaces = []
         for u in self.edges:
             self.edgeFaces.append([])
@@ -160,6 +169,11 @@ class Surface:
                     u.reverse()
                     kk = self.edges.index(u)
                 self.edgeFaces[kk].append(k)
+        self.edges = np.int_(np.array(self.edges))
+        self.bdry = np.int_(np.zeros(self.edges.shape[0]))
+        for k in range(self.edges.shape[0]):
+            if len(self.edgeFaces[k]) < 2:
+                self.bdry[k] = 1
 
     # computes the signed distance function in a small neighborhood of a shape 
     def LocalSignedDistance(self, data, value):
@@ -438,12 +452,10 @@ class Surface:
             edg[c[2],c[0]] += 1
 
 
-        print edg.sum(axis=0), edg.sum(axis=1)
         for kv in range(nv):
             I2 = np.nonzero(edg0[kv,:])
             for kkv in I2[0].tolist():
                 edgF[edg0[kkv,kv]-1,edg0[kv,kkv]-1] = kv+1
-        print (edgF > 0).sum(axis=0)
 
         isOriented = np.int_(np.zeros(f.shape[0]))
         isActive = np.int_(np.zeros(f.shape[0]))
@@ -493,6 +505,19 @@ class Surface:
         if (z > 0):
             self.flipFaces()
 
+    def removeIsolated(self):
+        N = self.vertices.shape[0]
+        inFace = np.int_(np.zeros(N))
+        for k in range(3):
+            inFace[self.faces[:,k]] = 1
+        J = np.nonzero(inFace)
+        self.vertices = self.vertices[J[0], :]
+        logging.info('Found %d isolated vertices'%(J[0].shape[0]))
+        Q = -np.ones(N)
+        for k,j in enumerate(J[0]):
+            Q[j] = k
+        self.faces = np.int_(Q[self.faces])
+        
 
 
     def laplacianMatrix(self):
@@ -983,6 +1008,28 @@ class Surface:
             self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)
         else:
             raise Exception('Cannot run readOBJ without VTK')
+
+    def concatenate(self, fvl):
+        nv = 0
+        nf = 0
+        for fv in fvl:
+            nv += fv.vertices.shape[0]
+            nf += fv.faces.shape[0]
+        self.vertices = np.zeros([nv,3])
+        self.faces = np.zeros([nf,3], dtype='int')
+
+        nv0 = 0
+        nf0 = 0        
+        for fv in fvl:
+            nv = nv0 + fv.vertices.shape[0]
+            nf = nf0 + fv.faces.shape[0]
+            self.vertices[nv0:nv, :] = fv.vertices
+            self.faces[nf0:nf, :] = fv.faces + nv0
+            nv0 = nv
+            nf0 = nf
+        self.computeCentersAreas()
+
+        
     
 # Reads several .byu files
 def readMultipleByu(regexp, Nmax = 0):

@@ -1,11 +1,13 @@
 import os
 import numpy as np
 import scipy as sp
+import scipy.linalg as spLA
 import logging
+import time
 import surfaces
 import kernelFunctions as kfun
 import pointEvolution as evol
-import pointEvolution_fort as evol_omp
+#import pointEvolution_fort as evol_omp
 import conjugateGradient as cg
 import surfaceMatching
 from affineBasis import *
@@ -41,7 +43,7 @@ class SurfaceMatchingParam(surfaceMatching.SurfaceMatchingParam):
 #        mu: initial value for quadratic penalty normalization
 #        outputDir: where results are saved
 #        saveFile: generic name for saved surfaces
-#        typeConstraint: 'stitched', 'sliding', 'slidingV2'
+#        typeConstraint: 'stitched', 'slidingNormal', 'sliding'
 #        affine: 'affine', 'euclidean' or 'none'
 #        maxIter_cg: max iterations in conjugate gradient
 #        maxIter_al: max interation for augmented lagrangian
@@ -126,6 +128,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         self.nu00 = []
         self.nsurf = len(self.fv0)
         self.npt = np.zeros(self.nsurf)
+        self.nf = np.zeros(self.nsurf)
         k=0
         for fv in self.fv0:
             x0 = fv.vertices
@@ -157,6 +160,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             self.nu00.append(np.copy(nu0))
             nu0 /= np.sqrt((nu0**2).sum(axis=1)).reshape([x0.shape[0], 1])
             self.npt[k] = x0.shape[0]
+            self.nf[k] = fv.faces.shape[0]
             self.x0.append(x0)
             self.nu0.append(nu0)
             self.at.append(np.zeros([self.Tsize, x0.shape[0], x0.shape[1]]))
@@ -169,6 +173,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             k=k+1
 
         self.npoints = self.npt.sum()
+        self.nfaces = self.nf.sum()
         self.at.append(np.zeros([self.Tsize, self.npoints, self.dim]))
         self.atTry.append(np.zeros([self.Tsize, self.npoints, self.dim]))
         self.x0.append(np.zeros([self.npoints, self.dim]))
@@ -188,18 +193,18 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             self.constraintTermGrad = self.constraintTermGradStitched
             self.useKernelDotProduct = True
             self.dotProduct = self.kernelDotProduct
-        elif typeConstraint == 'sliding':
+        elif typeConstraint == 'slidingNormal':
             self.cval = np.zeros([self.Tsize+1, self.npoints])
             self.lmb = np.zeros([self.Tsize+1, self.npoints])
-            self.constraintTerm = self.constraintTermSliding
-            self.constraintTermGrad = self.constraintTermGradSliding
+            self.constraintTerm = self.constraintTermSlidingNormal
+            self.constraintTermGrad = self.constraintTermGradSlidingNormal
             self.useKernelDotProduct = False
             self.dotProduct = self.standardDotProduct
-        elif typeConstraint == 'slidingV2':
-            self.cval = np.zeros([self.Tsize+1, self.npoints])
-            self.lmb = np.zeros([self.Tsize+1, self.npoints])
-            self.constraintTerm = self.constraintTermSlidingV2
-            self.constraintTermGrad = self.constraintTermGradSlidingV2
+        elif typeConstraint == 'sliding':
+            self.cval = np.zeros([self.Tsize+1, self.nfaces])
+            self.lmb = np.zeros([self.Tsize+1, self.nfaces])
+            self.constraintTerm = self.constraintTermSliding
+            self.constraintTermGrad = self.constraintTermGradSliding
             self.useKernelDotProduct = False
             self.dotProduct = self.standardDotProduct            
             # if self.param.KparDiff.name == 'none':
@@ -227,25 +232,25 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         obj=0
         cval = np.zeros(self.cval.shape)
         for t in range(self.Tsize+1):
-            zB = np.squeeze(xt[self.nsurf][t, :, :])
+            zB = np.squeeze(xt[self.nsurf][t,...])
             npt = 0
             for k in range(self.nsurf):
-                z = np.squeeze(xt[k][t, :, :]) 
+                z = np.squeeze(xt[k][t, ...]) 
                 npt1 = npt + self.npt[k]
-                cval[t,npt:npt1, :] = z - zB[npt:npt1, :]
+                cval[t,npt:npt1, ...] = z - zB[npt:npt1, ...]
                 npt = npt1
 
-            obj += timeStep * (- np.multiply(self.lmb[t, :], cval[t,:]).sum() + cval[t, :]**2/(2*self.mu)).sum())
+            obj += timeStep * (- np.multiply(self.lmb[t, ...], cval[t,...]).sum() + (cval[t, ...]**2).sum()/(2*self.mu))
         return obj,cval
 
-    def constraintTermSliding(self, xt, nut, at, Afft):
+    def constraintTermSlidingNormal(self, xt, nut, at, Afft):
         timeStep = 1.0/self.Tsize
         obj=0
         cval = np.zeros(self.cval.shape)
         dim2 = self.dim**2
         for t in range(self.Tsize):
-            zB = np.squeeze(xt[self.nsurf][t, :, :])
-            aB = np.squeeze(at[self.nsurf][t, :, :])
+            zB = np.squeeze(xt[self.nsurf][t, ...])
+            aB = np.squeeze(at[self.nsurf][t, ...])
             npt = 0
             for k in range(self.nsurf):
                 a = at[k][t]
@@ -256,20 +261,20 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 else:
                     A = np.zeros([self.dim, self.dim])
                     b = np.zeros(self.dim)
-                x = np.squeeze(xt[k][t, :, :])
-                nu = np.squeeze(nut[k][t, :, :])
+                x = np.squeeze(xt[k][t, ...])
+                nu = np.squeeze(nut[k][t, ...])
                 npt1 = npt + self.npt[k]
-                r = evol_omp.applyK(x, x, a, self.param.KparDiff.sigma, self.param.KparDiff.order,
-                                    x.shape[0], x.shape[0], x.shape[1]) + np.dot(x, A.T) + b
-                r2 = evol_omp.applyK(x, zB, a, self.param.KparDiffOut.sigma, self.param.KparDiffOut.order,
-                                    x.shape[0], zB.shape[0], zB.shape[1]) + np.dot(x, A.T) + b
-                #r = self.param.KparDiff.applyK(x, a) + np.dot(x, A.T) + b
-                #r2 = self.param.KparDiffOut.applyK(zB, aB, firstVar=x)
+                # r = evol_omp.applyK(x, x, a, self.param.KparDiff.sigma, self.param.KparDiff.order,
+                #                     x.shape[0], x.shape[0], x.shape[1]) + np.dot(x, A.T) + b
+                # r2 = evol_omp.applyK(x, zB, a, self.param.KparDiffOut.sigma, self.param.KparDiffOut.order,
+                #                     x.shape[0], zB.shape[0], zB.shape[1]) + np.dot(x, A.T) + b
+                r = self.param.KparDiff.applyK(x, a) + np.dot(x, A.T) + b
+                r2 = self.param.KparDiffOut.applyK(zB, aB, firstVar=x)
                 #print nu.shape, r.shape, r2.shape, cval[t,npt:npt1].shape, npt, npt1
                 cval[t,npt:npt1] = np.squeeze(np.multiply(nu, r-r2).sum(axis=1))
                 npt = npt1
 
-            obj += timeStep * (- np.multiply(self.lmb[t, :], cval[t,:]).sum() + cval[t, :]**2/(2*self.mu)).sum())
+            obj += timeStep * (- np.multiply(self.lmb[t, ...], cval[t,...]).sum() + (cval[t, ...]**2).sum()/(2*self.mu))
         return obj,cval
 
     def cstrFun(self, x):
@@ -297,29 +302,31 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         for u in nut:
             dnucval.append(np.zeros(u.shape))
         for t in range(self.Tsize+1):
-            zB = np.squeeze(xt[self.nsurf][t, :, :])
+            zB = np.squeeze(xt[self.nsurf][t,...])
             npt = 0
             for k in range(self.nsurf):
-                z = np.squeeze(xt[k][t, :, :]) 
+                z = np.squeeze(xt[k][t,...]) 
                 npt1 = npt + self.npt[k]
-                lmb[t, npt:npt1] = self.lmb[t, npt:npt1] - (z - zB[npt:npt1, :])/self.mu
-                dxcval[k][t] = lmb[t, npt:npt1]
-                dxcval[-1][t, npt:npt1] = -lmb[t, npt:npt1]
+                lmb[t, npt:npt1,...] = self.lmb[t, npt:npt1,...] - (z - zB[npt:npt1,...])/self.mu
+                dxcval[k][t,...] = lmb[t, npt:npt1,...]
+                dxcval[-1][t, npt:npt1,...] = -lmb[t, npt:npt1,...]
                 npt = npt1
 
         return lmb, dxcval, dnucval, dacval, dAffcval
 
-    def constraintTermSlidingV2(self, xt, nut, at, Afft):
+    def constraintTermSliding(self, xt, nut, at, Afft):
         timeStep = 1.0/self.Tsize
         obj=0
         cval = np.zeros(self.cval.shape)
         dim2 = self.dim**2
         for t in range(self.Tsize):
-            zB = np.squeeze(xt[self.nsurf][t, :, :])
-            aB = np.squeeze(at[self.nsurf][t, :, :])
+            zB = np.squeeze(xt[self.nsurf][t, ...])
+            aB = np.squeeze(at[self.nsurf][t, ...])
+            nf = 0
             npt = 0
             r2 = self.param.KparDiffOut.applyK(zB, aB)
             for k in range(self.nsurf):
+                nf1 = nf + self.nf[k]
                 npt1 = npt + self.npt[k]
                 a = at[k][t]
                 x = xt[k][t]
@@ -331,30 +338,25 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                     A = np.zeros([self.dim, self.dim])
                     b = np.zeros(self.dim)
                 z = zB[npt:npt1, :]
-                nu = np.zeros(x.shape)
+                r = (self.param.KparDiff.applyK(x, a, firstVar=z) + np.dot(z, A.T) + b
+                    - r2[npt:npt1, :])
                 fk = self.fv0[k].faces
+                rf = r[fk[:, 0], :] + r[fk[:, 1], :] + r[fk[:, 2], :]
                 xDef0 = z[fk[:, 0], :]
                 xDef1 = z[fk[:, 1], :]
                 xDef2 = z[fk[:, 2], :]
-                nf =  np.cross(xDef1-xDef0, xDef2-xDef0)
-                for kk,j in enumerate(fk[:,0]):
-                    nu[j, :] += nf[kk,:]
-                for kk,j in enumerate(fk[:,1]):
-                    nu[j, :] += nf[kk,:]
-                for kk,j in enumerate(fk[:,2]):
-                    nu[j, :] += nf[kk,:]
+                nu =  np.cross(xDef1-xDef0, xDef2-xDef0)
                 nu /= np.sqrt((nu**2).sum(axis=1)).reshape([nu.shape[0], 1])
 
-
-                r = self.param.KparDiff.applyK(x, a, firstVar=z) + np.dot(z, A.T) + b
-                cval[t,npt:npt1] = np.squeeze(np.multiply(nu, r - r2[npt:npt1, :]).sum(axis=1))
+                cval[t,nf:nf1] = np.squeeze(np.multiply(nu, rf).sum(axis=1))
                 npt = npt1
+                nf = nf1
 
-            obj += timeStep * (- np.multiply(self.lmb[t, :], cval[t,:]).sum() + (cval[t, :]**2/(2*self.mu)).sum())
+            obj += timeStep * (- np.multiply(self.lmb[t, ...], cval[t,...]).sum() + (cval[t, ...]**2).sum()/(2*self.mu))
             #print 'slidingV2', obj
         return obj,cval
 
-    def constraintTermGradSlidingV2(self, xt, nut, at, Afft):
+    def constraintTermGradSliding(self, xt, nut, at, Afft):
         lmb = np.zeros(self.cval.shape)
         dxcval = []
         dnucval = []
@@ -374,8 +376,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             aB = at[self.nsurf][t]
             r2 = self.param.KparDiffOut.applyK(zB, aB)
             npt = 0
+            nf = 0
             for k in range(self.nsurf):
                 npt1 = npt + self.npt[k]
+                nf1 = nf + self.nf[k]
                 a = at[k][t]
                 x = xt[k][t]
                 if self.affineDim > 0:
@@ -391,34 +395,43 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 xDef0 = z[fk[:, 0], :]
                 xDef1 = z[fk[:, 1], :]
                 xDef2 = z[fk[:, 2], :]
-                nf =  np.cross(xDef1-xDef0, xDef2-xDef0)
-                for kk,j in enumerate(fk[:,0]):
-                    nu[j, :] += nf[kk,:]
-                for kk,j in enumerate(fk[:,1]):
-                    nu[j, :] += nf[kk,:]
-                for kk,j in enumerate(fk[:,2]):
-                    nu[j, :] += nf[kk,:]
+                nu =  np.cross(xDef1-xDef0, xDef2-xDef0)
                 normNu = np.sqrt((nu**2).sum(axis=1))
                 nu /= normNu.reshape([nu.shape[0], 1])
 
                 dv = self.param.KparDiff.applyK(x, a, firstVar=z) + np.dot(z, A.T) + b - r2[npt:npt1, :]
-                lmb[t, npt:npt1] = self.lmb[t, npt:npt1] - np.multiply(nu, dv).sum(axis=1)/self.mu
+                dvf = dv[fk[:, 0], :] + dv[fk[:, 1], :] + dv[fk[:, 2], :]
+                lmb[t, nf:nf1] = self.lmb[t, nf:nf1] - np.multiply(nu, dvf).sum(axis=1)/self.mu
                 #lnu = np.multiply(nu, np.mat(lmb[t, npt:npt1]).T)
-                lnu = np.multiply(nu, lmb[t, npt:npt1].reshape([self.npt[k], 1]))
+                lnu0 = np.multiply(nu, lmb[t, nf:nf1].reshape([self.nf[k], 1]))
+                lnu = np.zeros([self.npt[k], self.dim])
+                for kk,j in enumerate(fk[:,0]):
+                    lnu[j, :] += lnu0[kk,:]
+                for kk,j in enumerate(fk[:,1]):
+                    lnu[j, :] += lnu0[kk,:]
+                for kk,j in enumerate(fk[:,2]):
+                    lnu[j, :] += lnu0[kk,:]
                 #print lnu.shape
                 dxcval[k][t] = self.param.KparDiff.applyDiffKT(z, a[np.newaxis,...], lnu[np.newaxis,...], firstVar=x)
                 dxcval[self.nsurf][t][npt:npt1, :] += (self.param.KparDiff.applyDiffKT(x, lnu[np.newaxis,...], a[np.newaxis,...], firstVar=z)
                                          - self.param.KparDiffOut.applyDiffKT(zB, lnu[np.newaxis,...], aB[np.newaxis,...], firstVar=z))
                 dxcval[self.nsurf][t] -= self.param.KparDiffOut.applyDiffKT(z, aB[np.newaxis,...], lnu[np.newaxis,...], firstVar=zB)
                 dxcval[self.nsurf][t][npt:npt1, :] += np.dot(lnu, A)
-                dacval[k][t] = self.param.KparDiff.applyK(z, lnu, firstVar=x)
+                if self.useKernelDotProduct:
+                    Kxx = self.param.KparDiff.getK(x)
+                    dacval[k][t] = scila.solve(Kxx, self.param.KparDiff.applyK(z, lnu, firstVar=x))
+                else:
+                    dacval[k][t] = self.param.KparDiff.applyK(z, lnu, firstVar=x)
                 if self.affineDim > 0:
                     dAffcval[k][t, :] = (np.dot(self.affineBasis.T, np.vstack([np.dot(lnu.T, z).reshape([dim2,1]), lnu.sum(axis=0).reshape([self.dim,1])]))).flatten()
-                dacval[self.nsurf][t] -= self.param.KparDiffOut.applyK(z, lnu, firstVar=zB)
-                lv = np.multiply(dv, lmb[t, npt:npt1].reshape([self.npt[k],1]))
-                lv /= normNu.reshape([nu.shape[0], 1])
-                lv -= np.multiply(nu, np.multiply(nu, lv).sum(axis=1).reshape([nu.shape[0], 1]))
-                lvf = lv[fk[:,0]] + lv[fk[:,1]] + lv[fk[:,2]]
+                if self.useKernelDotProduct:
+                    dacval[self.nsurf][t][npt:npt1] = -lnu #self.param.KparDiffOut.applyK(z, lnu, firstVar=zB)
+                else:
+                    dacval[self.nsurf][t] -= self.param.KparDiffOut.applyK(z, lnu, firstVar=zB)
+                lvf = np.multiply(dvf, lmb[t, nf:nf1].reshape([self.nf[k],1]))
+                lvf /= normNu.reshape([nu.shape[0], 1])
+                lvf -= np.multiply(nu, np.multiply(nu, lvf).sum(axis=1).reshape([nu.shape[0], 1]))
+                #lvf = lv[fk[:,0]] + lv[fk[:,1]] + lv[fk[:,2]]
                 dnu = np.zeros(x.shape)
                 foo = np.cross(xDef2-xDef1, lvf)
                 for kk,j in enumerate(fk[:,0]):
@@ -436,11 +449,12 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 #     dxcval[kk][t][npt+f[1]] = dxcval[kk][t][npt+f[1]] - np.cross(z[f[0]].T - z[f[2]].T, lvf)
                 #     dxcval[kk][t][npt+f[2]] = dxcval[kk][t][npt+f[2]] - np.cross(z[f[1]].T - z[f[0]].T, lvf)
                 npt = npt1
+                nf = nf1
 
                 #obj += timeStep * (- np.multiply(self.lmb[t, :], cval[t,:]).sum() + np.multiply(cval[t, :], cval[t, :]).sum()/(2*self.mu))
         return lmb, dxcval, dnucval, dacval, dAffcval
 
-    def constraintTermGradSliding(self, xt, nut, at, Afft):
+    def constraintTermGradSlidingNormal(self, xt, nut, at, Afft):
         lmb = np.zeros(self.cval.shape)
         dxcval = []
         dnucval = []
@@ -694,14 +708,14 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         foo = self.constraintTermGrad(xt, nut, at, Afft)
         lmb = foo[0]
         dxcval = foo[1]
-        if self.typeConstraint == 'sliding':
+        if self.typeConstraint == 'slidingNormal':
             dnucval = foo[2]
         dacval = foo[3]
         dAffcval = foo[4]
         
         for k in range(self.nsurf):
             pxt[k][M-1, :, :] += timeStep * dxcval[k][M]
-            if self.typeConstraint == 'sliding':
+            if self.typeConstraint == 'slidingNormal':
                 pnut[k][M-1, :, :] += timeStep * dnucval[k][M]
         pxt[self.nsurf][M-1, :, :] += timeStep * dxcval[self.nsurf][M]
         
@@ -719,7 +733,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 zpx += self.param.KparDiff.applyDiffKT(z, a1, a2)
                 if self.affineDim > 0:
                     zpx += np.dot(px, A[k][0][M-t-1])
-                if self.typeConstraint == 'sliding':
+                if self.typeConstraint == 'slidingNormal':
                     pnu = np.squeeze(pnut[k][M-t-1, :, :])
                     nu = np.squeeze(nut[k][M-t-1, :, :])
                     zpx -= (self.param.KparDiff.applyDDiffK11(z, nu, a, pnu) +
@@ -760,7 +774,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                     npt1 = npt + self.npt[k]
                     #print k, at[k][t].shape, pxt[k][t].shape, npt, npt1, dat[k][t].shape
                     dat[k][t] += self.param.KparDiff.applyK(xt[k][t], 2*self.regweight*at[k][t] - pxt[k][t])
-                    if self.typeConstraint == 'sliding':
+                    if self.typeConstraint == 'slidingNormal':
                         dat[k][t] -= self.param.KparDiff.applyDiffK2(xt[k][t], nut[k][t], pnut[k][t])
                     npt=npt1
                 dat[self.nsurf][t] += self.param.KparDiffOut.applyK(xt[self.nsurf][t], 2*self.regweightOut*at[self.nsurf][t] - pxt[self.nsurf][t])
@@ -901,7 +915,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
     def endOfIteration(self):
         (obj1, self.xt, Jt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withJacobian=True)
-        logging.info('mean constraint %f %f' %(np.sqrt((self.cval**2).sum()/self.cval.size), np.fabs(self.cval).sum() / self.cval.size))
+        logging.info('Time: %f (CPU: %f)  mean constraint %f %f' %(time.time() - self.startTime, time.clock() - self.startTimeClock, np.sqrt((self.cval**2).sum()/self.cval.size), np.fabs(self.cval).sum() / self.cval.size))
         #self.testConstraintTerm(self.xt, self.nut, self.at, self.Afft)
         nn = 0 ;
         for k in range(self.nsurf):
@@ -910,55 +924,54 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             for kk in range(self.Tsize+1):
                 self.fvDefB[k].updateVertices(np.squeeze(self.xt[-1][kk, nn:nn+n1, :]))
                 AV = self.fvDefB[k].computeVertexArea()
-                AV = (AV[0]/AV0[0])-1
+                AV = (AV[0]/AV0[0])
                 #self.fvDefB[k].saveVTK(self.outputDir +'/'+ self.saveFile+str(k)+'Out'+str(kk)+'.vtk', scalars = Jt[-1][kk, nn:nn+n1], scal_name='Jacobian')
                 vf = surfaces.vtkFields() ;
                 vf.scalars.append('Jacobian') ;
-                vf.scalars.append(np.exp(Jt[-1][kk, nn:nn+n1])-1)
+                vf.scalars.append(np.exp(Jt[-1][kk, nn:nn+n1]))
                 vf.scalars.append('Jacobian_T') ;
                 vf.scalars.append(AV[:,0])
                 vf.scalars.append('Jacobian_N') ;
-                vf.scalars.append(np.exp(Jt[-1][kk, nn:nn+n1])/(AV[:,0]+1)-1)
+                vf.scalars.append(np.exp(Jt[-1][kk, nn:nn+n1])/(AV[:,0]))
                 #self.fvDefB[k].saveVTK(self.outputDir +'/'+ self.saveFile+str(k)+'Out'+str(kk)+'.vtk', scalars = AV[:,0], scal_name='Jacobian')
                 self.fvDefB[k].saveVTK2(self.outputDir +'/'+ self.saveFile+str(k)+'Out'+str(kk)+'.vtk', vf)
                 self.fvDef[k].updateVertices(np.squeeze(self.xt[k][kk, :, :]))
                 AV = self.fvDef[k].computeVertexArea()
-                AV = (AV[0]/AV0[0])-1
+                AV = (AV[0]/AV0[0])
                 vf = surfaces.vtkFields() ;
                 vf.scalars.append('Jacobian') ;
-                vf.scalars.append(np.exp(Jt[k][kk, :])-1)
+                vf.scalars.append(np.exp(Jt[k][kk, :]))
                 vf.scalars.append('Jacobian_T') ;
                 vf.scalars.append(AV[:,0])
                 vf.scalars.append('Jacobian_N') ;
-                vf.scalars.append(np.exp(Jt[k][kk, :])/(AV[:,0]+1)-1)
+                vf.scalars.append(np.exp(Jt[k][kk, :])/(AV[:,0]))
                 #self.fvDef[k].saveVTK(self.outputDir +'/'+self.saveFile+str(k)+'In'+str(kk)+'.vtk', scalars = Jt[k][kk, :], scal_name='Jacobian')
                 #self.fvDef[k].saveVTK(self.outputDir +'/'+self.saveFile+str(k)+'In'+str(kk)+'.vtk', scalars = AV[:,0], scal_name='Jacobian')
                 self.fvDef[k].saveVTK2(self.outputDir +'/'+self.saveFile+str(k)+'In'+str(kk)+'.vtk', vf)
             nn += n1
 
     def optimizeMatching(self):
-	self.coeffZ = 1.
-	grd = self.getGradient(self.gradCoeff)
-	[grd2] = self.dotProduct(grd, [grd])
+        self.coeffZ = 1.
+        grd = self.getGradient(self.gradCoeff)
+        [grd2] = self.dotProduct(grd, [grd])
 
         self.gradEps = np.sqrt(grd2) / 100
         self.muEps = 1.0
         self.restartRate = 100 ;
         it = 0
-        while (self.muEps > 0.05) & (it<self.maxIter_al)  :
+        self.startTimeClock = time.clock()
+        self.startTime = time.time()
+        while (self.muEps > 0.05) & (it<self.maxIter_al):
             logging.info('Starting Minimization: gradEps = %f muEps = %f mu = %f' %(self.gradEps, self.muEps,self.mu))
             #self.coeffZ = max(1.0, self.mu)
             cg.cg(self, verb = self.verb, maxIter = self.maxIter_cg, TestGradient = self.testGradient, epsInit=0.1)
             for t in range(self.Tsize+1):
-                if self.typeConstraint=='stitched':
-                    self.lmb[t, :, :] -= self.cval[t, :, :]/self.mu
-                else:
-                    self.lmb[t, :] -= self.cval[t, :]/self.mu
+                self.lmb[t, ...] -= self.cval[t, ...]/self.mu
             logging.info('mean lambdas %f' %(np.fabs(self.lmb).sum() / self.lmb.size))
             if self.converged:
                 self.gradEps *= .75
                 if (((self.cval**2).sum()/self.cval.size) > self.muEps**2):
-                    self.mu *= 0.5
+                    self.mu *= 0.01
                 else:
                     self.muEps = self.muEps /2
             else:

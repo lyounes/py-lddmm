@@ -188,6 +188,8 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
                     logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, beta = {3:.5f}, gradient: {4:.5f}'.format(it+1, obj, eps, beta, np.sqrt(grd2)))
                     logging.info('Stopping Gradient Descent: small variation')
                     opt.converged = True
+                    if hasattr(opt, 'endOfIteration'):
+                        opt.endOfIteration()
                     break
                 else:
                     if verb:
@@ -205,6 +207,8 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
             if np.sqrt(grd2) <gradEps:
                 logging.info('Stopping Gradient Descent: small gradient')
                 opt.converged = True 
+                if hasattr(opt, 'endOfIteration'):
+                    opt.endOfIteration()
                 break
             eps = 100*eps
 

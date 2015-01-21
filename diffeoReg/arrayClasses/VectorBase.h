@@ -22,7 +22,7 @@
 
 #ifdef _PARALLEL_
 #include <omp.h>
-#include <mkl.h>
+//#include <mkl.h>
 #endif
 #include "Ivector.h"
 #include <algorithm>
@@ -207,6 +207,7 @@ public:
       dest[i] = (*this)[I] ;
       D.inc(I) ;
     }
+    cout << "cropped" << D << endl ;
   }
 
   void crop (const Domain &D)

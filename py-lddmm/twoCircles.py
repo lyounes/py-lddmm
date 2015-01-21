@@ -1,11 +1,20 @@
 import numpy as np
 import curves
+import logging
+import loggingUtils
 from curves import *
 from kernelFunctions import *
 from curveMultiPhase import *
 
 def compute():
 
+    outputDir='/Users/younes/Development/Results/curveMatching2'
+    
+    if __name__ == "__main__":
+        loggingUtils.setup_default_logging(outputDir, fileName='info')
+    else:
+        loggingUtils.setup_default_logging()
+    
     ## Build Two colliding ellipses
     [x,y] = np.mgrid[0:200, 0:200]/100.
     y = y-1
@@ -27,6 +36,8 @@ def compute():
     I1 = 0.16 - ((x-1.3)**2 + (y-0.25)**2) 
     fv4 = Curve() ;
     fv4.Isocontour(I1, value=0, target=750, scales=[1, 1])
+
+    #print fv1.vertices.shape[0], fv2.vertices.shape[0], fv3.vertices.shape[0], fv4.vertices.shape[0] 
 
     ## Object kernel
     K1 = Kernel(name='gauss', sigma = 100.0)

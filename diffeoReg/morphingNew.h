@@ -36,13 +36,15 @@ class Morphing:public ImageMatching
   TimeVector J ;
   TimeVectorMap w ;
   std::vector<double> step ;
-  double _epsBound ;
+  double _epsBound, bweight, fweight ;
 
-  Morphing(){} ;
+  void initWeights() { fweight=1; bweight = 1 ;}
 
-  Morphing(param_matching &par){ init(par) ;}
-  Morphing(char *file, int argc, char** argv) {init(file, argc, argv);}
-  Morphing(char *file, int k) {init(file, k);}
+  Morphing(){initWeights();}
+
+  Morphing(param_matching &par){initWeights(); init(par) ;}
+  Morphing(char *file, int argc, char** argv) {initWeights(); init(file, argc, argv);}
+  Morphing(char *file, int k) {initWeights() ; init(file, k);}
 
 
   void affineReg(){
@@ -289,12 +291,16 @@ class Morphing:public ImageMatching
     Target.img().write_imagesc(file) ;
     sprintf(file, "%s/binaryTemplate", path) ;
     Template.img().write(file) ;
+    cout << "images are written" << endl ;
     if (_kern.initialized() == false) {
       _kern.setParam(param) ;
+      cout << imageDim ;
       _kern.initFFT(imageDim, FFTW_MEASURE) ;
+      cout << "done fft" << endl ;
     }
     sprintf(file, "%s/kernel", path) ;
     _kern.kern.write_imagesc(file) ;
+    cout << "done writing" << endl ;
   }
 
   void Print(char* path)
@@ -314,8 +320,8 @@ class Morphing:public ImageMatching
       Vector foo ;
       sprintf(file, "%s/image%03d", path, t) ;
       foo.copy(J[t]) ;
-      //      cout << foo.sum() << " " << foo.max() << endl ;
-      foo *=255/(mx +0.0001) ;
+      // cout << foo.sum() << " " << foo.max() << endl ;
+      //foo *=255/(mx +0.0001) ;
       foo.write_image(file) ;
     }
     if (param.doDefor == 0)
@@ -508,7 +514,7 @@ class Morphing:public ImageMatching
      Morphing energy: image part
   */
   _real energyM() 
-  {
+  { 
     VectorMap Id, y1, y2, ft ;
     Vector It1, It2, divf1, divf2 ;
     Id.idMesh(w.d) ;
@@ -540,26 +546,14 @@ class Morphing:public ImageMatching
 
       It1 /= dt ;
       It2 /= dt ;
-      en += (It1.norm2() + It2.norm2())/2;
+      en += fweight*It1.norm2() + bweight*It2.norm2();
+      //en += It1.norm2() ;
     }  
     en /= w.length() ;
 
     return en ;
   }
 
-  // void get_increment_forward(const VectorMap &y, const Vector &Jcur, const Vector & Jnext, Vector &It) {
-  //   double dt = 1.0/w.size() ;
-  //   y.multilinInterp(Jnext, It) ;
-  //   It -= Jcur ;
-  //   It /= dt ;
-  // }
-
-  // void get_increment_backward(const VectorMap &y, const Vector &Jcur, const Vector & Jnext, Vector &It) {
-  //   double dt = 1.0/w.size() ;
-  //   y.multilinInterp(Jcur, It) ;
-  //   It -= Jnext ;
-  //   It /= -dt ;
-  // }
 
   double norm_increment_forward(const VectorMap &v, const Vector &Jcur, const Vector & Jnext) {
     Vector It ;
@@ -688,6 +682,8 @@ class Morphing:public ImageMatching
 	GI1 *= It1 ;
 	GI2 *= It2 ;
       }
+      GI1 *= _sh->fweight ;
+      GI2 *= _sh->bweight ;
       grad.copy(GI1) ;
       grad += GI2 ;
     
@@ -705,23 +701,25 @@ class Morphing:public ImageMatching
     
       //grad.copy(tmp) ;
       if (_sh->param.matchDensities) 
-	grad *= -_sh->param.lambda/2 ;
+	grad *= -_sh->param.lambda ;
       else
-	grad *= _sh->param.lambda/2 ;
+	grad *= _sh->param.lambda ;
       grad += w ;
       return _sh->kernelNorm(grad) ;
     }
 
 
     double objectiveFun(VectorMap &w) {
-      double res ;
+      double res1, res2, res ;
       Vector It1, It2 ;
       VectorMap ft;
       _sh->kernel(w, ft) ;
       //cout << "computing norm" << endl ; 
-      res = _sh->norm_increment_forward(ft, *_Jcur, *_Jnext) ;
-      res += _sh->norm_increment_backward(ft, *_Jcur, *_Jnext) ;
-      res = (w.scalProd(ft) + (_sh->param.lambda/2) * res)/w.length() ;    
+      res1 = _sh->fweight * _sh->norm_increment_forward(ft, *_Jcur, *_Jnext) ;
+      //res2 = 0 ;
+      res2 = _sh->bweight * _sh->norm_increment_backward(ft, *_Jcur, *_Jnext) ;
+      //cout << res1/w.length() << " " << res2/w.length() << endl ;
+      res = (w.scalProd(ft) + (_sh->param.lambda) * (res1+res2))/w.length() ;    
       return res ;
     }
 
@@ -792,7 +790,8 @@ class Morphing:public ImageMatching
       J[t] += tmp ;
     }
       
-    smoothIConj(200, 0.001) ;
+    if (w.size()>1)
+      smoothIConj(200, 0.001) ;
   }
     
     
@@ -821,7 +820,7 @@ class Morphing:public ImageMatching
     int it = 1 ;
       
     while (test <  1 && it < param.nb_iter) {
-      cout << "iteration " << it << flush ;
+      cout << endl << "iteration " << it << endl ;
 	
       for (int cnt=0; cnt < 1; cnt++) {
 	gradientStepC() ;
@@ -830,8 +829,10 @@ class Morphing:public ImageMatching
       } 
 	
       if (param.verb)
-	cout << "energy after gradient: " << enerw() << endl ; ; 
-      smoothIConj(20, -1) ;
+	cout << "energy after gradient: " << enerw() << endl ;
+
+      if (w.size() > 1)
+	smoothIConj(20, -1) ;
       if (param.verb)
 	cout << "energy after CG: " << enerw() << endl ; ; 
 	
@@ -885,49 +886,21 @@ class Morphing:public ImageMatching
     }
 
     void operator() (const TimeVector &It, TimeVector &gI) {
-      unsigned int T = _sh->w.size() ;
-      //cout << T << " " << It.size() << endl ;
-      //double dt = 1.0/T ;
-      Vector foo1, foo2 ;
-      // TimeVector dI1, dI2 ;
-      // dI1.resize(T-2, It.d) ;
-      // dI2.resize(T-2, It.d) ;
-      // //cout << " operator" << endl ;
-      // for (unsigned int t=1; t<T-1; t++) {
-      // 	y1[t].multilinInterp(It[t], dI1[t-1]) ;
-      // 	if (_sh->param.matchDensities)
-      // 	  dI1[t-1] *= div1[t] ;
-      // 	dI1[t-1] -= It[t-1] ;
-      // 	y2[t].multilinInterp(It[t-1], dI2[t-1]) ;
-      // 	if (_sh->param.matchDensities)
-      // 	  dI2[t-1] *= div2[t] ;
-      // 	dI2[t-1] -= It[t] ;
-      // 	dI2[t-1] *= -1 ;
-      // }
+      int T = _sh->w.size() ;
+      Vector foo1, foo2, foo3 ;
 
-      //cout << "GI" << endl ;
+      // cout << "T= " << T << endl;
   
       gI.resize(T-1, It.d) ;
-      // gI[0].zero() ;
-      // for (unsigned int t=1; t<T-1; t++) {
-      // 	y1[t].multilinInterpDual(dI1[t-1], gI[t]) ;
-      // 	if (_sh->param.matchDensities)
-      // 	  gI[t] *= div1[t] ;
-      // 	gI[t] += dI2[t-1] ;
-      // }
       for (unsigned int t=0; t<T-1; t++) {
-	// y2[t].multilinInterpDual(dI2[t], foo1) ;
-	// if (_sh->param.matchDensities)
-	//   foo1 *= div2[t] ;
-	// gI[t] -= foo1 ;
-	// gI[t] -= dI1[t] ;
 	gI[t].copy(It[t]) ;
-	gI[t] *= 2 ;
+	gI[t] *= _sh->fweight + _sh->bweight ;
       }
+      //cout << "::1 " << gI[0].norm2() << endl ; 
 
 
       /* //Id.idMesh(_sh->w.d) ; */
-      for (unsigned int t=0; t<T; t++) {
+      for (int t=0; t<T; t++) {
       	if (t<T-1) {
       	  if (_sh->param.matchDensities) {
 	    y2[t].multilinInterpDual(It[t], foo1) ;
@@ -935,18 +908,22 @@ class Morphing:public ImageMatching
 	  }
 	  else {
 	    y1[t].multilinInterp(It[t], foo1) ;
-	    y1[t].multilinInterpDual(foo1, foo2) ;
+ 	    y1[t].multilinInterpDual(foo1, foo2) ;
 	  }
+	  foo2 *= _sh->fweight ;
 	  gI[t] += foo2 ;
 	  if (t>0) {
+	    foo1 *= _sh->fweight ;
 	    gI[t-1] -= foo1 ;
       	    if (_sh->param.matchDensities)
 	      y2[t].multilinInterp(It[t-1], foo1) ;
 	    else 
 	      y1[t].multilinInterpDual(It[t-1], foo1) ;
+	    foo1 *= _sh->fweight ;
       	    gI[t] -= foo1 ;
       	  }
       	}
+	//cout << "::2 " << gI[0].norm2() << endl ; 
 
       	if (t >0) {
       	  //y2.multilinInterpDual(It[t-1], foo1) ;
@@ -958,13 +935,16 @@ class Morphing:public ImageMatching
 	    y2[t].multilinInterp(It[t-1], foo1) ;
 	    y2[t].multilinInterpDual(foo1, foo2) ;
 	  }
+	  foo2 *= _sh->bweight ;
       	  gI[t-1] += foo2 ;
       	  if (t < T-1) {
+	    foo1 *= _sh->bweight ;
       	    gI[t] -= foo1 ;
 	    if (_sh->param.matchDensities)
 	      y1[t].multilinInterp(It[t], foo1) ;
 	    else
 	      y2[t].multilinInterpDual(It[t], foo1) ;
+	    foo1 *= _sh->bweight ;
 	    gI[t-1] -= foo1 ;
       	  }
       	}
@@ -988,7 +968,7 @@ class Morphing:public ImageMatching
     double dt = 1.0/T, offset ;
     VectorMap f, y1, y2, Id ;
     Vector foo, divf1, divf2 ;
-    // cout << "Initial Image Energy " << 2* energyM()*w.length() / (T*T) << endl ;
+    //cout << "Initial Image Energy " << 2* energyM()*w.length() / (T*T) << endl ;
 
 
     b.zeros(T-1, J.d) ;
@@ -1002,35 +982,43 @@ class Morphing:public ImageMatching
     addProduct(Id, dt, f, y1) ; 
     addProduct(Id, -dt, f, y2) ; 
 
+    offset = 0 ;
+    //cout << fweight << " " << bweight << endl ;
+
     if (param.matchDensities)
-      y2.multilinInterp(J[0], b[0]) ;
+      y2.multilinInterp(J[0], foo) ;
     else 
-      y1.multilinInterpDual(J[0], b[0]) ;
-    offset = J[0].norm2() ;
+      y1.multilinInterpDual(J[0], foo) ;
+    offset = fweight*J[0].norm2() ;
+    foo *= fweight ;
+    b[0] += foo ;
 
     //b[0] *= -1 ;
     if (param.matchDensities)
       y1.multilinInterpDual(J[0], foo) ;
     else
       y2.multilinInterp(J[0], foo) ;
+    offset += bweight*foo.norm2() ;
+    foo *= bweight ;
     b[0] += foo ;
-    offset += foo.norm2() ;
       
     kernel(w[T-1], f) ;
     addProduct(Id, dt, f, y1) ; 
     addProduct(Id, -dt, f, y2) ; 
 
     if (param.matchDensities)
-      y2.multilinInterpDual(J[T], b[T-2]) ;
+      y2.multilinInterpDual(J[T], foo) ;
     else
-      y1.multilinInterp(J[T], b[T-2]) ;
-    offset += b[T-2].norm2() ;
-    //b[T-2] *= -1 ;
+      y1.multilinInterp(J[T], foo) ;
+    offset += fweight * foo.norm2() ;
+    foo *= fweight ;
+    b[T-2] += foo ;
     if (param.matchDensities)
       y1.multilinInterp(J[T], foo) ;
     else
       y2.multilinInterpDual(J[T], foo) ;
-    offset += J[T].norm2() ;
+    offset += bweight*J[T].norm2() ;
+    foo *= bweight ;
     b[T-2] += foo ;
     //cout << "Starting lcg" << endl;
     imv.computeLocalMaps() ;
@@ -1039,14 +1027,14 @@ class Morphing:public ImageMatching
     imv(JJ0, gg) ;
     initEn = gg.sumScalProd(JJ0) - 2*b.sumScalProd(JJ0) + offset ;
     if (param.verb)
-      cout << "Initial Energy: " << T*T*initEn/(2*w.length()) << " " << energyM() << endl ;
+      cout << "Initial Energy: " << T*T*initEn/(w.length()) << " " << energyM() << endl ;
     lcg(JJ0, JJ, b, 20, 1e-2, param.verb, imv, scp) ;
     for (unsigned int t=1; t<T; t++)
       J[t].copy(JJ[t-1]) ; 
     imv(JJ, gg) ;
     initEn = gg.sumScalProd(JJ) - 2*b.sumScalProd(JJ) + offset ;
     if (param.verb)
-      cout << "Final Energy: " << T*T*initEn/(2*w.length()) << " " << energyM() << endl ;
+      cout << "Final Energy: " << T*T*initEn/(w.length()) << " " << energyM() << endl ;
     // cout << "Final Image Energy " << 2* energyM()*w.length() / (T*T) << endl ;
   }
     

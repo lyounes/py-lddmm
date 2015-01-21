@@ -157,7 +157,7 @@ template<class OBJECT_TYPE, class TAN_TYPE, class _scalProd, class _optimFun> cl
     double  enerTry, enerTry2, ener0, ener=0, ener2, eps2, b, oldGrad2,
       grad2, grad12, gradTry ;
     // _real gs_ener[3], gs_eps[3] ;
-    unsigned int CG_RATE = 200 ;
+    //unsigned int CG_RATE = 200 ;
     int smallVarCount = 0 , svcMAX = 2 ;
     bool cg = true ;
     //    _optimFun opt ;
@@ -170,15 +170,16 @@ template<class OBJECT_TYPE, class TAN_TYPE, class _scalProd, class _optimFun> cl
     if (verb>0)
       cout << "initial energy = " << ener << endl ;
 
-    bool stopLoop, noupdate ;
-    int cg_count = 0;
+    //bool stopLoop ;
+    bool noupdate ;
+    //int cg_count = 0;
 
     for(int iter=0; iter < nb_iter; iter++) {
       noupdate = false ;
       opt.startOfIteration(x) ;
       if (verb>1)
 	cout <<"Iteration " << iter+1 << endl ;
-      stopLoop = false;
+      //stopLoop = false;
 
       opt.gradNorm = opt.computeGrad(x, grad) ;
       if (iter == 0) {
@@ -254,7 +255,7 @@ template<class OBJECT_TYPE, class TAN_TYPE, class _scalProd, class _optimFun> cl
 
       if (enerTry > ener) {
 	// test if correct direction of descent
-	double	epsTest = 1e-6/gradTry ;
+	double	epsTest = 1e-3/gradTry ;
 	ener2 = opt.update(x, dir0, epsTest,  xtry2) ;
 	if (ener2 > ener) {
 	  if (cg == false){
@@ -262,9 +263,13 @@ template<class OBJECT_TYPE, class TAN_TYPE, class _scalProd, class _optimFun> cl
 	    ener2 << " old ener = " << ener << " eps = " << epsTest << endl ;
 	    //	ener2 = opt.update(x, grad, 0,  xtry2) ;
 	    //cout << ener2 << endl ;
-	    stopLoop = true ;
+	    //stopLoop = true ;
+	    noupdate = true ;
+	    break ;
 	  }
 	  else {
+	    if (verb > 1)
+	      cout << "Using gradient direction" << endl;
 	    cg = false ;
 	    noupdate = true ;
 	  }
@@ -273,11 +278,13 @@ template<class OBJECT_TYPE, class TAN_TYPE, class _scalProd, class _optimFun> cl
 	  while ((enerTry > ener) && (eps > epsMin)) {
 	      eps /= 2 ;
 	      enerTry = opt.update(x, dir0, eps, xtry) ;
+	      if (verb > 1)
+		cout << "ener = " << enerTry << " old ener = " << ener << " eps = " << eps << endl ;
 	    }
 	}
       }
 
-      if (~noupdate) {
+      if (noupdate==false) {
 	bool contt = true ;
 	while (contt) {
 	  enerTry2 = opt.update(x, dir0, 0.5*eps, xtry2);

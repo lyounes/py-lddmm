@@ -58,8 +58,9 @@ public:
     Max.resize(dim.size()) ;
     Min.resize(dim.size()) ;
 #ifdef _PARALLEL_
+    cout << "parallel?" << endl ;
     fftw_init_threads() ;
-    fftw_plan_with_nthreads(param.nb_threads) ;
+    fftw_plan_with_nthreads(omp_get_max_threads()) ;
     //#else
     //  fftw_plan_with_nthreads(1) ;
 #endif
@@ -87,6 +88,7 @@ public:
       }
     }
 
+    //cout << "padded" << Min << Max << endl ;
 
     paddedMap.al(Min, Max) ;
     _inMap = (_real *) fftw_malloc(sizeof(_real) * paddedMap.length()) ;
@@ -94,7 +96,9 @@ public:
     _inMapc = (fftw_complex *) fftw_malloc(sizeof(fftw_complex) * paddedMap.length()) ;
     _fMapKernel = (fftw_complex *) fftw_malloc(sizeof(fftw_complex) * paddedMap.length()) ;
     _outMapc = (fftw_complex *) fftw_malloc(sizeof(fftw_complex) * paddedMap.length()) ;
+    //cout << "padded2" << endl ;
     paddedMap.zero() ;
+    //cout << "padded2" << endl ;
     paddedMap.symCopy(kern) ;
 
     //cout << "pto " << _nM[0] << " " << _nM[1] << endl ;
@@ -102,7 +106,7 @@ public:
     for (unsigned int i=0; i<paddedMap.length(); i++) {
       (_inMap)[i] = paddedMap[i] ;
     }
-    //cout << "execute" << endl ;
+    cout << "execute" << endl ;
     fftw_execute(_ptoMap) ;
     double test1 =0, test2 =0 ;
     for (unsigned int i=0; i<paddedMap.length(); i++) {
@@ -112,9 +116,9 @@ public:
       (_fMapKernel)[i][1] = 0 ;
     }
 
-    //cout << "pfrom" << endl ;
+    cout << "pfrom" << endl ;
     _pfromMap = fftw_plan_dft_c2r(dim.size(), _nM, _inMapc, _outMap,  TYPEINIT) ;
-    //cout << "end init kernel" << endl ;
+    cout << "end init kernel" << endl ;
     FFT_INITIALIZED = true ;
   }
 

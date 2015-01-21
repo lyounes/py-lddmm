@@ -4,6 +4,7 @@ import numpy.linalg as la
 import scipy as sp
 import logging
 import surfaces
+import pointSets
 import kernelFunctions as kfun
 import pointEvolution as evol
 import conjugateGradient as cg
@@ -77,7 +78,8 @@ class SurfaceMatching(object):
                  regWeight = 1.0, affineWeight = 1.0, verb=True,
                  subsampleTargetSize=-1,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
-                 testGradient=True, saveFile = 'evolution', affine = 'none', outputDir = '.'):
+                 testGradient=True, saveFile = 'evolution',
+                 saveTrajectories = False, affine = 'none', outputDir = '.'):
         if Template==None:
             if fileTempl==None:
                 logging.error('Please provide a template surface')
@@ -103,6 +105,7 @@ class SurfaceMatching(object):
         self.dim = self.fv0.vertices.shape[1]
         self.maxIter = maxIter
         self.verb = verb
+        self.saveTrajectories = saveTrajectories
         self.symmetric = symmetric
         self.testGradient = testGradient
         self.regweight = regWeight
@@ -123,10 +126,14 @@ class SurfaceMatching(object):
         else:
             self.param = param
 
-        v0 = self.fv0.surfVolume()
-        v1 = self.fv1.surfVolume()
-        if (v0*v1 < 0):
-            self.fv1.flipFaces()
+        self.fv0.getEdges()
+        self.fv1.getEdges()
+        self.closed = self.fv0.bdry.max() == 0 and self.fv1.bdry.max() == 0
+        if self.closed:
+            v0 = self.fv0.surfVolume()
+            v1 = self.fv1.surfVolume()
+            if (v0*v1 < 0):
+                self.fv1.flipFaces()
         #self.fv0Fine = surfaces.Surface(surf=self.fv0)
         self.fvInit = surfaces.Surface(surf=self.fv0)
         if (subsampleTargetSize > 0):
@@ -137,16 +144,20 @@ class SurfaceMatching(object):
         self.fvDef = surfaces.Surface(surf=self.fvInit)
         self.npt = self.fvInit.vertices.shape[0]
 
-        z= self.fvInit.surfVolume()
-        if (z < 0):
-            self.fv0ori = -1
+        if self.closed:
+            z= self.fvInit.surfVolume()
+            if (z < 0):
+                self.fv0ori = -1
+            else:
+                self.fv0ori = 1
+
+            z= self.fv1.surfVolume()
+            if (z < 0):
+                self.fv1ori = -1
+            else:
+                self.fv1ori = 1
         else:
             self.fv0ori = 1
-
-        z= self.fv1.surfVolume()
-        if (z < 0):
-            self.fv1ori = -1
-        else:
             self.fv1ori = 1
 
         self.Tsize = int(round(1.0/self.param.timeStep))
@@ -397,6 +408,9 @@ class SurfaceMatching(object):
                 self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+'EPDiff.vtk')
                 logging.info('EPDiff difference %f' %(np.fabs(self.xt[-1,:,:] - xtEPDiff[-1,:,:]).sum()) )
 
+            if self.saveTrajectories:
+                pointSets.saveTrajectories(self.outputDir +'/'+ self.saveFile+'curves.vtk', self.xt)
+
             self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
             self.fvInit.updateVertices(self.x0)
             dim2 = self.dim**2
@@ -423,14 +437,14 @@ class SurfaceMatching(object):
                     f.updateVertices(yyt)
                     vf = surfaces.vtkFields() ;
                     vf.scalars.append('Jacobian') ;
-                    vf.scalars.append(np.exp(Jt[t, :])-1)
+                    vf.scalars.append(np.exp(Jt[t, :]))
                     vf.scalars.append('displacement')
                     vf.scalars.append(displ)
                     vf.vectors.append('velocity') ;
                     vf.vectors.append(vt)
                     nu = self.fv0ori*f.computeVertexNormals()
-                    displ += dt * (vt*nu).sum(axis=1)
                     f.saveVTK2(self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.vtk', vf)
+                    displ += dt * (vt*nu).sum(axis=1)
                 f = surfaces.Surface(surf=self.fv1)
                 yyt = np.dot(f.vertices - X[1][-1, ...], U.T)
                 f.updateVertices(yyt)
@@ -444,17 +458,16 @@ class SurfaceMatching(object):
             for kk in range(self.Tsize+1):
                 fvDef.updateVertices(np.squeeze(xt[kk, :, :]))
                 AV = fvDef.computeVertexArea()
-                AV = (AV[0]/AV0[0])-1
+                AV = (AV[0]/AV0[0])
                 vf = surfaces.vtkFields() ;
                 vf.scalars.append('Jacobian') ;
-                vf.scalars.append(np.exp(Jt[kk, :])-1)
+                vf.scalars.append(np.exp(Jt[kk, :]))
                 vf.scalars.append('Jacobian_T') ;
                 vf.scalars.append(AV[:,0])
                 vf.scalars.append('Jacobian_N') ;
-                vf.scalars.append(np.exp(Jt[kk, :])/(AV[:,0]+1)-1)
+                vf.scalars.append(np.exp(Jt[kk, :])/(AV[:,0]))
                 vf.scalars.append('displacement')
                 vf.scalars.append(displ)
-                displ += dt * (v*nu).sum(axis=1)
                 if kk < self.Tsize:
                     nu = self.fv0ori*self.fvDef.computeVertexNormals()
                     v = self.v[kk,...]
@@ -464,6 +477,7 @@ class SurfaceMatching(object):
                 vf.vectors.append('velocity') ;
                 vf.vectors.append(self.v[kkm,:])
                 fvDef.saveVTK2(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', vf)
+                displ += dt * (v*nu).sum(axis=1)
                 #self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = self.idx, scal_name='Labels')
         else:
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
