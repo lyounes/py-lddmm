@@ -6,7 +6,7 @@ import logging
 import surfaces
 import kernelFunctions as kfun
 import pointEvolution as evol
-import pointEvolution_fort as evol_omp
+#import pointEvolution_fort as evol_omp
 import conjugateGradient as cg
 import surfaceMatching
 from affineBasis import *
