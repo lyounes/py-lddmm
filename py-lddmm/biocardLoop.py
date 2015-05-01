@@ -73,7 +73,7 @@ def runLongitudinalSurface(minL=3, atrophy=False):
                     print e
   
 
-        outputDir = '/Users/younes/Development/Results/biocardTS/piecewise_'+str(k)
+        outputDir = '/cis/home/younes/Results/biocardTS/piecewise_'+str(k)
 
         try:
             if atrophy:
