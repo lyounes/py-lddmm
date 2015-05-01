@@ -34,7 +34,7 @@ class Surface:
                     if type(filename) is list:
                         fvl = []
                         for name in filename:
-                            fvl.append(Surface(name))
+                            fvl.append(Surface(filename=name))
                         self.concatenate(fvl)
                     else:
                         self.read(filename)
@@ -60,7 +60,7 @@ class Surface:
         elif ext=='.obj':
             self.readOBJ(filename)
         else:
-            print 'Unknown Surface Extension:', ext
+            raise NameError('Unknown Surface Extension: '+filename) 
             self.vertices = np.empty(0)
             self.centers = np.empty(0)
             self.faces = np.empty(0)
@@ -82,6 +82,11 @@ class Surface:
         xDef3 = self.vertices[self.faces[:, 2], :]
         self.centers = (xDef1 + xDef2 + xDef3) / 3
         self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)
+
+    def computeSparseMatrices(self):
+        self.v2f0 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]), (range(self.faces.shape[0]), self.faces[:,0]))).transpose(copy=False)
+        self.v2f1 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]), (range(self.faces.shape[0]), self.faces[:,1]))).transpose(copy=False)
+        self.v2f2 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]), (range(self.faces.shape[0]), self.faces[:,2]))).transpose(copy=False)
 
     def computeVertexArea(self):
         # compute areas of faces and vertices

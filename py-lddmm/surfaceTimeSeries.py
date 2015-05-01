@@ -20,8 +20,7 @@ from affineBasis import *
 
 class Direction:
     def __init__(self):
-        self.at = []
-        self.rhot = []
+        self.diff = []
         self.aff = []
 
 
@@ -40,10 +39,10 @@ class Direction:
 #        saveFile: generic name for saved surfaces
 #        affine: 'affine', 'similitude', 'euclidean', 'translation' or 'none'
 #        maxIter: max iterations in conjugate gradient
-class SurfaceMatching:
+class SurfaceMatching(object):
     def __init__(self, Template=None, Targets=None, fileTempl=None, fileTarg=None, param=None,
-                 maxIter=1000, regWeight = 1.0, verb=True, affine = 'none',
-                 affineWeight = 1.0, rotWeight = None, scaleWeight = None, transWeight = None,
+                 maxIter=1000, regWeight = 1.0, affineWeight = 1.0, verb=True, affine = 'none',
+                  rotWeight = None, scaleWeight = None, transWeight = None,
                  subsampleTargetSize=-1, testGradient=True, saveFile = 'evolution', outputDir = '.'):
         if Template==None:
             if fileTempl==None:
@@ -81,7 +80,7 @@ class SurfaceMatching:
         self.maxIter = maxIter
         self.verb = verb
         self.testGradient = testGradient
-        self.regweight = regWeight
+        
         self.affine = affine
         if self.affine=='euclidean' or self.affine=='translation':
             self.saveCorrected = True
@@ -123,6 +122,9 @@ class SurfaceMatching:
         self.xt = np.tile(self.x0, [self.Tsize+1, 1, 1])
         self.a0 = np.zeros([self.x0.shape[0], self.x0.shape[1]])
         self.at = np.tile(self.a0, [self.Tsize, 1, 1])
+
+        self.regweight = np.ones(self.Tsize)
+        self.regweight[range(self.Tsize1)] = regWeight
 
         self.v = np.zeros([self.Tsize+1, self.npt, self.dim])
         self.atTry = np.zeros([self.x0.shape[0], self.x0.shape[1]])
@@ -195,7 +197,7 @@ class SurfaceMatching:
             #rzz = kfun.kernelMatrix(param.KparDiff, z)
             ra = param.KparDiff.applyK(z, a)
             self.v[t, :] = ra
-            obj = obj + self.regweight*timeStep*np.multiply(a, (ra)).sum()
+            obj = obj + self.regweight[t]*timeStep*np.multiply(a, (ra)).sum()
             if self.affineDim > 0:
                 obj +=  timeStep * np.multiply(self.affineWeight.reshape(Afft[t].shape), Afft[t]**2).sum()
             #print xt.sum(), at.sum(), obj
@@ -235,7 +237,7 @@ class SurfaceMatching:
     
     def updateTry(self, dir, eps, objRef=None):
         objTry = self.obj0
-        atTry = self.at - eps * dir.at
+        atTry = self.at - eps * dir.diff
         if self.affineDim > 0:
             AfftTry = self.Afft - eps * dir.aff
         else:
@@ -285,7 +287,7 @@ class SurfaceMatching:
                                         self.regweight, affine=A)
         # times = (1+np.array(range(self.nTarg)))*self.Tsize1)
         grd = Direction()
-        grd.at = foo[0] / coeff
+        grd.diff = foo[0] / coeff
         grd.aff = np.zeros(self.Afft.shape)
         if self.affineDim > 0 and self.iter < self.affBurnIn:
             dA = foo[1]
@@ -303,13 +305,13 @@ class SurfaceMatching:
 
     def addProd(self, dir1, dir2, beta):
         dir = Direction()
-        dir.at = dir1.at + beta * dir2.at
+        dir.diff = dir1.diff + beta * dir2.diff
         dir.aff = dir1.aff + beta * dir2.aff
         return dir
 
     def copyDir(self, dir0):
         dir = Direction()
-        dir.at = np.copy(dir0.at)
+        dir.diff = np.copy(dir0.diff)
         dir.aff = np.copy(dir0.aff)
 
         return dir
@@ -317,7 +319,7 @@ class SurfaceMatching:
 
     def randomDir(self):
         dirfoo = Direction()
-        dirfoo.at = np.random.randn(self.Tsize, self.npt, self.dim)
+        dirfoo.diff = np.random.randn(self.Tsize, self.npt, self.dim)
         if self.iter < self.affBurnIn:
             dirfoo.aff = np.random.randn(self.Tsize, self.affineDim)
         else:
@@ -329,10 +331,10 @@ class SurfaceMatching:
         #gg = g1.at
         uu = g1.aff
         for t in range(self.Tsize):
-            gg = self.param.KparDiff.applyK(self.xt[t,...], g1.at[t,...])
+            gg = self.param.KparDiff.applyK(self.xt[t,...], g1.diff[t,...])
             ll = 0
             for ll,gr in enumerate(g2):
-                ggOld = gr.at[t,...]
+                ggOld = gr.diff[t,...]
                 res[ll]  += (ggOld*gg).sum()/self.Tsize
         
         for ll,gr in enumerate(g2):
@@ -349,7 +351,6 @@ class SurfaceMatching:
     def endOfIteration(self):
         self.iter += 1
         if self.iter >= self.affBurnIn:
-            self.affine = 'none'
             self.coeffAff = self.coeffAff2
         if (self.iter % self.saveRate == 0):
             logging.info('Saving surfaces...')

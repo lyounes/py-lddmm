@@ -847,7 +847,7 @@ def timeSeriesCovector(x0, at, px1, KparDiff, regweight, affine = None):
         # if (isfield(KparDiff, 'zs') && size(z, 2) == 3)
         #     z(:,3) = z(:,3) / KparDiff.zs ;
         # end
-        a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*regweight*a[np.newaxis,...]))
+        a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*regweight[M-t-1]*a[np.newaxis,...]))
         a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
         #a1 = [px, a, -2*regweight*a]
         #a2 = [a, px, a]
@@ -878,9 +878,9 @@ def timeSeriesGradient(x0, at, px1, KparDiff, regweight, getCovector = False, af
         a = np.squeeze(at[k, :, :])
         px = np.squeeze(pxt[k+1, :, :])
         #print 'testgr', (2*a-px).sum()
-        dat[k, :, :] = (2*regweight*a-px)
+        dat[k, :, :] = (2*regweight[k]*a-px)
         if not (affine == None):
-            dA[k] = affineBasis.gradExponential(A[k]*timeStep, pxt[k+1], xt[k]) #.reshape([self.dim**2, 1])/timeStep
+            dA[k] = affineBasis.gradExponential(A[k]/at.shape[0], pxt[k+1], xt[k]) #.reshape([self.dim**2, 1])/timeStep
             db[k] = pxt[k+1].sum(axis=0) #.reshape([self.dim,1]) 
         # if not (affine == None):
         #     dA[k] = np.dot(pxt[k+1].T, xt[k])
