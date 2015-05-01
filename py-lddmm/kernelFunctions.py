@@ -306,6 +306,16 @@ class Kernel(KernelSpec):
     def reset(self):
         self._hold=self._state
 
+
+    def getK(self, x, firstVar = None):
+        if not (self.kernelMatrix == None):
+            if firstVar == None:
+                z = kff.kernelmatrix(x, x, self.sigma, self.order, x.shape[0], x.shape[0], x.shape[1])
+            else:
+                z = kff.kernelmatrix(x, y, self.sigma, self.order, x.shape[0], y.shape[0], x.shape[1])
+        return z
+
+        
     # Computes K(x,x)a or K(x,y)a
     def applyK(self, x, a, firstVar = None, grid=None,matrixWeights=False):
         if not (self.kernelMatrix == None):
