@@ -22,9 +22,9 @@ LPATH = $(GSL_LPATH) $(FFTW3_LPATH) $(IMAGICK_LPATH)
 CFLAGS =  -O3 -ffast-math -Wall 
 #-arch x86_64 
 #COMPILE.cpp = $(CC) $(IPATH)  $(CFLAGS) -c
-COMPILE.cpp = $(CC) $(ARRAY_IPATH) `pkg-config --cflags fftw3 Magick++ gsl` $(CFLAGS) -c
-LIBPATH = -lfftw3 -lMagick++ -lstdc++ -lgsl -lgslcblas
-LIBS = `pkg-config --libs fftw3 Magick++ gsl` 
+COMPILE.cpp = $(CC) $(ARRAY_IPATH) `pkg-config --cflags fftw3 GraphicsMagick++ gsl` $(CFLAGS) -c
+#LIBPATH = -lfftw3 -lMagick++ -lstdc++ -lgsl -lgslcblas
+LIBS = `pkg-config --libs fftw3 GraphicsMagick++ gsl` 
 COMPILE.o = $(CC)  $(LIBS) 
 #COMPILE.o = $(CC) $(IPATH)  $(CFLAGS) 
 
@@ -97,7 +97,7 @@ SOURCES.o = $(SOURCES.cpp:%.cpp=%.o)
 #%.d: %.cpp
 #	$(SHELL) -ec '$(CC) -M  $(IPATH)  $(CFLAGS) $< | sed '\"s/$*.o/& $@/g'\" > $@'
 %.d: %.cpp $(SOURCES.h)
-	$(SHELL) -ec '$(CC) -M  $(ARRAY_IPATH) `pkg-config --cflags fftw3 Magick++ gsl`  $(CFLAGS) $< > $@'
+	$(SHELL) -ec '$(CC) -M  $(ARRAY_IPATH) `pkg-config --cflags fftw3 GraphicsMagick gsl`  $(CFLAGS) $< > $@'
 
 -include $(SOURCES.cpp:.cpp=.d)
 -include $(MAINS.cpp:.cpp=.d)

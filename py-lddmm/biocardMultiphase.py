@@ -8,8 +8,8 @@ from surfaceMultiPhase import *
 
 def compute():
 
-    outputDir = '/cis/home/younes/Development/Results/biocardSliding10'
-    #outputDir = '/cis/home/younes/Development/Results/biocardStitched10'
+    #outputDir = '/cis/home/younes/Development/Results/biocardSliding10'
+    outputDir = '/cis/home/younes/Development/Results/biocardStitched10test'
     if __name__ == "__main__":
         loggingUtils.setup_default_logging(outputDir, fileName='info')
     else:
@@ -50,8 +50,8 @@ def compute():
     f1[0].computeCentersAreas()
 
     sm = SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, KparDiffOut=K2, sigmaDist=2.5, sigmaError=1, errorType='measure')
-    f = (SurfaceMatching(Template=f0, Target=f1, outputDir=outputDir,param=sm, mu=1,regWeightOut=1., testGradient=False,
-                         typeConstraint='sliding', maxIter_cg=1000, maxIter_al=100, affine='none', rotWeight=0.1))
+    f = (SurfaceMatching(Template=f0, Target=f1, outputDir=outputDir,param=sm, mu=.01,regWeightOut=1., testGradient=False,
+                         typeConstraint='stitched', maxIter_cg=1000, maxIter_al=100, affine='none', rotWeight=0.1))
     f.optimizeMatching()
 
 
