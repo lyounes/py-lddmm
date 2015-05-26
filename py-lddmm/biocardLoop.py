@@ -50,7 +50,7 @@ def runLongitudinalSurface(minL=3, atrophy=False):
                     currentFile = [] ;
                 previousLab = int(row['lab'])
                 
-    outputDir = '/Users/younes/Development/Results/biocardTS/piecewise'
+    outputDir = '/cis/home/younes/MorphingData/Results/biocardTS/piecewise'
     #outputDir = '/cis/home/younes/MorphingData/twoBallsStitched'
     #outputDir = '/Users/younes/Development/Results/tight_stitched_rigid2_10'
     if __name__ == "__main__":
@@ -88,7 +88,7 @@ def runLongitudinalSurface(minL=3, atrophy=False):
         #, affine='none', rotWeight=0.1))
         q.put(f)
 
-    for k in range(10):
+    for k in range(4):
         w = threading.Thread(target=threadfun, args=(q,))
         w.setDaemon(True)
         w.start()
