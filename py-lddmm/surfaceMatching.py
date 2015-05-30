@@ -196,7 +196,7 @@ class SurfaceMatching(object):
         return obj
 
     def  objectiveFunDef(self, at, Afft, withTrajectory = False, withJacobian=False, x0 = None):
-        if x0 == None:
+        if x0 is None:
             x0 = self.x0
         param = self.param
         timeStep = 1.0/self.Tsize

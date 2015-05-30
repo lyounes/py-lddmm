@@ -439,3 +439,42 @@ def inho(sim):
             tr[j,k] = ims[1].getpixel((j,k)) / 255.
     sim.template_in = tp.ravel(order='F')
     sim.target_in = tr.ravel(order='F')
+
+def faces(sim):
+    sim.dim = 2
+    sim.sigma = 0.2
+    sim.sfactor = 1./numpy.power(sim.sigma, 2)
+    sim.num_points = (112,92)
+    #sim.domain_max = (1., 1.)
+    sim.domain_max = None
+    sim.dx = (1.,1.)
+    sim.num_times = 11
+    sim.time_min = 0.
+    sim.time_max = 1.
+    sim.cg_init_eps = 1e-4
+    sim.write_iter = file_write_iter
+
+    sim.kvn = 'laplacian'
+    sim.khn = 'laplacian'
+    sim.kvs = 3.
+    sim.khs = .5
+    sim.kvo = 4
+    sim.kho = 2
+    logging.info("KV params: name=%s, sigma=%f, order=%f" \
+                        % (sim.kvn,sim.kvs,sim.kvo))
+    logging.info("KH params: name=%s, sigma=%f, order=%f" \
+                        % (sim.khn,sim.khs,sim.kho))
+    size = sim.num_points
+    im1 = Image.open("/cis/home/younes/IMAGES/orl_faces/s1/1.pgm").rotate(-90).resize(size)
+    im2 = Image.open("/cis/home/younes/IMAGES/orl_faces/s1/2.pgm").rotate(-90).resize(size)
+    print 'im1', im1
+    #im1.save("/cis/home/younes/IMAGES/orl_faces/s1/1.png")
+    ims = [im1, im2]
+    tp = numpy.zeros(size)
+    tr = numpy.zeros(size)
+    for j in range(size[0]):
+        for k in range(size[1]):
+            tp[j,k] = ims[0].getpixel((j,k)) #/ 255.
+            tr[j,k] = ims[1].getpixel((j,k)) #/ 255.
+    sim.template_in = tp.ravel(order='F')
+    sim.target_in = tr.ravel(order='F')

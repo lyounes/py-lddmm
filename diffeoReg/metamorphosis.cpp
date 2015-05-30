@@ -31,6 +31,7 @@ int main(int argc, char** argv)
       exit(1) ;
     }
 
+  InitializeMagick(NULL) ;
   Morphing mo(argv[1], argc, argv) ;
   //  mo.param.verb= 1 ;
 

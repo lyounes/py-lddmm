@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import scipy as sp
+import scipy.linalg as spLA
 import logging
 import time
 import surfaces
@@ -204,8 +205,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             self.lmb = np.zeros([self.Tsize+1, self.nfaces])
             self.constraintTerm = self.constraintTermSliding
             self.constraintTermGrad = self.constraintTermGradSliding
-            self.useKernelDotProduct = False
-            self.dotProduct = self.standardDotProduct            
+            self.useKernelDotProduct = True
+            self.dotProduct = self.kernelDotProduct
+            #self.useKernelDotProduct = False
+            #self.dotProduct = self.standardDotProduct            
             # if self.param.KparDiff.name == 'none':
             #     self.dotProduct = self.normalizedDotProduct
             #     self.weightDot = 1.
@@ -416,10 +419,17 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                                          - self.param.KparDiffOut.applyDiffKT(zB, lnu[np.newaxis,...], aB[np.newaxis,...], firstVar=z))
                 dxcval[self.nsurf][t] -= self.param.KparDiffOut.applyDiffKT(z, aB[np.newaxis,...], lnu[np.newaxis,...], firstVar=zB)
                 dxcval[self.nsurf][t][npt:npt1, :] += np.dot(lnu, A)
-                dacval[k][t] = self.param.KparDiff.applyK(z, lnu, firstVar=x)
+                if self.useKernelDotProduct:
+                    Kxx = self.param.KparDiff.getK(x)
+                    dacval[k][t] = spLA.solve(Kxx, self.param.KparDiff.applyK(z, lnu, firstVar=x))
+                else:
+                    dacval[k][t] = self.param.KparDiff.applyK(z, lnu, firstVar=x)
                 if self.affineDim > 0:
                     dAffcval[k][t, :] = (np.dot(self.affineBasis.T, np.vstack([np.dot(lnu.T, z).reshape([dim2,1]), lnu.sum(axis=0).reshape([self.dim,1])]))).flatten()
-                dacval[self.nsurf][t] -= self.param.KparDiffOut.applyK(z, lnu, firstVar=zB)
+                if self.useKernelDotProduct:
+                    dacval[self.nsurf][t][npt:npt1] = -lnu #self.param.KparDiffOut.applyK(z, lnu, firstVar=zB)
+                else:
+                    dacval[self.nsurf][t] -= self.param.KparDiffOut.applyK(z, lnu, firstVar=zB)
                 lvf = np.multiply(dvf, lmb[t, nf:nf1].reshape([self.nf[k],1]))
                 lvf /= normNu.reshape([nu.shape[0], 1])
                 lvf -= np.multiply(nu, np.multiply(nu, lvf).sum(axis=1).reshape([nu.shape[0], 1]))

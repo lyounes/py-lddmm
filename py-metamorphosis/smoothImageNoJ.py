@@ -201,7 +201,7 @@ class SmoothImageMeta(object):
         self.dual_template /= tmpMax
         self.target /= tarMax
         self.dual_target /= tarMax
-        self.z0weight[:] = numpy.sqrt(1e-6 + (self.D_template**2).sum(axis=1)[..., numpy.newaxis])
+        #self.z0weight[:] = numpy.sqrt(1e-6 + (self.D_template**2).sum(axis=1)[..., numpy.newaxis])
 
 
 
@@ -429,7 +429,8 @@ class SmoothImageMeta(object):
             return [dx, dm, dJ]
 
     def startOptim(self):
-        self.z0_state = self.z0.copy()
+        if self.unconstrained:
+            self.z0_state = self.z0.copy()
         self.alpha_state = self.alpha.copy()
 
     def endOfIteration(self):
