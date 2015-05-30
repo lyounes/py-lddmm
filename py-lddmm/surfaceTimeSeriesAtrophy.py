@@ -30,12 +30,12 @@ from affineBasis import *
 #        maxIter_al: max interation for augmented lagrangian
 
 class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
-    def __init__(self, Template=None, Targets=None, fileTempl=None, fileTarg=None, param=None,
+    def __init__(self, Template=None, Targets=None, fileTempl=None, fileTarg=None, param=None, times = None,
                 maxIter_cg=1000, regWeight=1.0, affineWeight = 1.0, verb=True, affine='none', 
                 rotWeight = None, scaleWeight = None, transWeight = None,
                 subsampleTargetSize=-1, testGradient=True, saveFile = 'evolution', outputDir = '.',
                 mu = 0.1, volumeOnly=False, maxIter_al=100):
-        super(SurfaceMatching, self).__init__(Template, Targets, fileTempl, fileTarg, param, maxIter_cg, regWeight, affineWeight,
+        super(SurfaceMatching, self).__init__(Template, Targets, fileTempl, fileTarg, param, times, maxIter_cg, regWeight, affineWeight,
                                                 verb, affine, rotWeight, scaleWeight, transWeight, subsampleTargetSize, testGradient,
                                                 saveFile, outputDir)
 
@@ -68,7 +68,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         obj=0
         cval = np.zeros(self.cval.shape)
         dim2 = self.dim**2
-        for t in range(self.Tsize1, self.Tsize):
+        for t in range(self.jumpIndex[0], self.Tsize):
             a = at[t]
             x = xt[t]
             # if self.affineDim > 0:
@@ -116,7 +116,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         dacval = np.zeros(at.shape)
         dAffcval = np.zeros(Afft.shape)
         dim2 = self.dim**2
-        for t in range(self.Tsize1, self.Tsize):
+        for t in range(self.jumpIndex[0], self.Tsize):
             a = at[t]
             x = xt[t]
             # if self.affineDim > 0:
@@ -228,13 +228,13 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
             return obj
 
     def objectiveFun(self):
-        if self.obj == None:
+        if self.obj is None:
             (self.obj, self.xt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             self.obj0 = 0
             for k in range(self.nTarg):
                 self.obj0 += self.param.fun_obj0(self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
                 foo = surfaces.Surface(surf=self.fvDef[k])
-                self.fvDef[k].updateVertices(np.squeeze(self.xt[(k+1)*self.Tsize1, :, :]))
+                self.fvDef[k].updateVertices(np.squeeze(self.xt[self.jumpIndex[k], :, :]))
                 foo.computeCentersAreas()
             self.obj += self.obj0 + self.dataTerm(self.fvDef)
         return self.obj
@@ -254,7 +254,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         ff = [] 
         for k in range(self.nTarg):
             ff.append(surfaces.Surface(surf=self.fvDef[k]))
-            ff[k].updateVertices(np.squeeze(foo[1][(k+1)*self.Tsize1, :, :]))
+            ff[k].updateVertices(np.squeeze(foo[1][self.jumpIndex[k], :, :]))
         objTry += self.dataTerm(ff)
         
         if np.isnan(objTry):
@@ -262,7 +262,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
             return 1e500
 
 
-        if (objRef == None) | (objTry < objRef):
+        if (objRef is None) | (objTry < objRef):
             self.atTry = atTry
             self.AfftTry = AfftTry
             self.objTry = objTry
@@ -284,6 +284,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
         pxt = np.zeros([M+1, self.npt, self.dim])
         pxt[M, :, :] = px1[self.nTarg-1]
+        kj = self.nTarg - 2
 
         foo = self.constraintTermGrad(xt, at, Afft)
         lmb = foo[0]
@@ -313,8 +314,9 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
                 pxt[M-t-1, :, :] = np.dot(px, self.affB.getExponential(timeStep*A[0][M-t-1])) + timeStep * zpx
             else:
                 pxt[M-t-1, :, :] = px + timeStep * zpx
-            if (t<M-1) and ((M-1-t)%self.Tsize1 == 0):
-                pxt[M-t-1, :, :] += px1[(M-t-1)/self.Tsize1 - 1]
+            if (t<M-1) and self.isjump[M-1-t]:
+                pxt[M-t-1, :, :] += px1[kj]
+                kj -= 1
             #print 'zpx', np.fabs(zpx).sum(), np.fabs(px).sum(), z.sum()
             #print 'pxt', np.fabs((pxt)[M-t-2]).sum()
         
@@ -440,7 +442,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
             logging.info('Saving surfaces...')
             print self.nTarg
             for k in range(self.nTarg):
-                self.fvDef[k].updateVertices(np.squeeze(self.xt[(k+1)*self.Tsize1, :, :]))
+                self.fvDef[k].updateVertices(np.squeeze(self.xt[self.jumpIndex[k], :, :]))
             dim2 = self.dim**2
             A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
             if self.affineDim > 0:
@@ -473,14 +475,14 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
                     vf.vectors.append('velocity') ;
                     vf.vectors.append(vt)
                     nu = self.fv0ori*f.computeVertexNormals()
-                    if t >= self.Tsize1:
+                    if t >= self.jumpIndex[0]:
                         displ += dt * (vt*nu).sum(axis=1)
                     f.saveVTK2(self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.vtk', vf)
 
                 for k,fv in enumerate(self.fv1):
                     f = surfaces.Surface(surf=fv)
-                    U = la.inv(X[0][(k+1)*self.Tsize1])
-                    yyt = np.dot(f.vertices - X[1][(k+1)*self.Tsize1, ...], U.T)
+                    U = la.inv(X[0][self.jumpIndex[k]])
+                    yyt = np.dot(f.vertices - X[1][self.jumpIndex[k], ...], U.T)
                     f.updateVertices(yyt)
                     f.saveVTK(self.outputDir +'/Target'+str(k)+'Corrected.vtk')
             
@@ -504,7 +506,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
                 vf.scalars.append(np.exp(Jt[kk, :])/(AV[:,0]+1)-1)
                 vf.scalars.append('displacement')
                 vf.scalars.append(displ)
-                if t >= self.Tsize1:
+                if t >= self.jumpIndex[0]:
                     displ += dt * (v*nu).sum(axis=1)
                 if kk < self.Tsize:
                     nu = self.fv0ori*fvDef.computeVertexNormals()
@@ -521,7 +523,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
             self.meanc = np.sqrt((self.cstr**2).sum()/self.cval.size)
             logging.info('mean constraint %f max constraint %f' %(np.sqrt((self.cstr**2).sum()/self.cval.size), np.fabs(self.cstr).max()))
             for k in range(self.nTarg):
-                self.fvDef[k].updateVertices(np.squeeze(self.xt[(k+1)*self.Tsize1, :, :]))
+                self.fvDef[k].updateVertices(np.squeeze(self.xt[self.jumpIndex[k], :, :]))
 
     
     def optimizeMatching(self):
