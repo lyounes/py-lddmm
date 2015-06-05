@@ -53,10 +53,6 @@ def runLongitudinalSurface(minL=3, atrophy=False):
     outputDir = '/cis/home/younes/MorphingData/Results/biocardTS/piecewise'
     #outputDir = '/cis/home/younes/MorphingData/twoBallsStitched'
     #outputDir = '/Users/younes/Development/Results/tight_stitched_rigid2_10'
-    if __name__ == "__main__":
-        loggingUtils.setup_default_logging(outputDir, fileName='info')
-    else:
-        loggingUtils.setup_default_logging(fileName='info')
 
     rdir = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/6_mappings_baseline_template_all/0_template_to_all/' ;
     fv0 = surfaces.Surface(filename='/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/4_create_population_based_template/newTemplate.byu')
@@ -64,8 +60,10 @@ def runLongitudinalSurface(minL=3, atrophy=False):
     sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=2.5, sigmaError=1., errorType='varifold')
 
     q = Queue.Queue()
+    files = [files[1],files[5],files[8]]
     for k,s in enumerate(files):
         fv = []
+        print s
         for fn in s:
                 try:
                     fv += [surfaces.Surface(filename=fn+'.byu')]
@@ -73,11 +71,15 @@ def runLongitudinalSurface(minL=3, atrophy=False):
                     print e
   
 
-        outputDir = '/cis/home/younes/Results/biocardTS/piecewise_'+str(k)
+        outputDir = '/cis/home/younes/Results/biocardTS/piecewise_NA_'+str(k)
+        if __name__ == "__main__":
+            loggingUtils.setup_default_logging(outputDir, fileName='info')
+        else:
+            loggingUtils.setup_default_logging(fileName='info')
 
         try:
             if atrophy:
-                    f = match.SurfaceMatching(Template=fv0, Targets=fv, outputDir=outputDir, param=sm, regWeight=.1,
+                f = match.SurfaceMatching(Template=fv0, Targets=fv, outputDir=outputDir, param=sm, regWeight=.1,
                                             affine='euclidean', testGradient=False, affineWeight=.1,  maxIter_cg=1000, mu=0.0001)
             else:
                 f = match.SurfaceMatching(Template=fv0, Targets=fv, outputDir=outputDir, param=sm, regWeight=.1,
@@ -88,7 +90,7 @@ def runLongitudinalSurface(minL=3, atrophy=False):
         #, affine='none', rotWeight=0.1))
         q.put(f)
 
-    for k in range(4):
+    for k in range(1):
         w = threading.Thread(target=threadfun, args=(q,))
         w.setDaemon(True)
         w.start()
@@ -98,4 +100,4 @@ def runLongitudinalSurface(minL=3, atrophy=False):
 
 
 if __name__=="__main__":
-    runLongitudinalSurface(atrophy=True)
+    runLongitudinalSurface(atrophy=False)

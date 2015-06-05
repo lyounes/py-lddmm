@@ -40,7 +40,7 @@ class Direction:
 #        affine: 'affine', 'similitude', 'euclidean', 'translation' or 'none'
 #        maxIter: max iterations in conjugate gradient
 class SurfaceMatching(object):
-    def __init__(self, Template=None, Targets=None, fileTempl=None, fileTarg=None, param=None,
+    def __init__(self, Template=None, Targets=None, fileTempl=None, fileTarg=None, param=None, times = None,
                  maxIter=1000, regWeight = 1.0, affineWeight = 1.0, verb=True, affine = 'none',
                   rotWeight = None, scaleWeight = None, transWeight = None,
                  subsampleTargetSize=-1, testGradient=True, saveFile = 'evolution', outputDir = '.'):
@@ -117,14 +117,19 @@ class SurfaceMatching(object):
         for k in range(self.nTarg):
             self.fvDef.append(surfaces.Surface(surf=self.fv0))
         self.npt = self.x0.shape[0]
-        self.Tsize1 = int(round(1.0/self.param.timeStep))
-        self.Tsize = self.nTarg*self.Tsize1
+        if times is None:
+            times = 1+np.array(range(self.nTarg))
+        self.Tsize = int(round(times[-1]/self.param.timeStep))        
+        self.jumpIndex = np.int_(np.round(times/self.param.timeStep))
+        self.isjump = np.zeros(self.Tsize+1, dtype=bool)
+        for k in self.jumpIndex:
+            self.isjump[k] = True
         self.xt = np.tile(self.x0, [self.Tsize+1, 1, 1])
         self.a0 = np.zeros([self.x0.shape[0], self.x0.shape[1]])
         self.at = np.tile(self.a0, [self.Tsize, 1, 1])
 
         self.regweight = np.ones(self.Tsize)
-        self.regweight[range(self.Tsize1)] = regWeight
+        self.regweight[range(self.jumpIndex[0])] = regWeight
 
         self.v = np.zeros([self.Tsize+1, self.npt, self.dim])
         self.atTry = np.zeros([self.x0.shape[0], self.x0.shape[1]])
@@ -220,13 +225,13 @@ class SurfaceMatching(object):
     #         return obj+obj0
 
     def objectiveFun(self):
-        if self.obj == None:
+        if self.obj is None:
             (self.obj, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             self.obj0 = 0
             for k in range(self.nTarg):
                 self.obj0 += self.param.fun_obj0(self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
                 foo = surfaces.Surface(surf=self.fvDef[k])
-                self.fvDef[k].updateVertices(np.squeeze(self.xt[(k+1)*self.Tsize1, :, :]))
+                self.fvDef[k].updateVertices(np.squeeze(self.xt[self.jumpIndex[k], :, :]))
                 foo.computeCentersAreas()
             self.obj += self.obj0 + self.dataTerm(self.fvDef)
             #print self.obj0,  self.dataTerm(self.fvDef)
@@ -248,13 +253,13 @@ class SurfaceMatching(object):
         ff = [] 
         for k in range(self.nTarg):
             ff.append(surfaces.Surface(surf=self.fvDef[k]))
-            ff[k].updateVertices(np.squeeze(foo[1][(k+1)*self.Tsize1, :, :]))
+            ff[k].updateVertices(np.squeeze(foo[1][self.jumpIndex[k], :, :]))
         objTry += self.dataTerm(ff)
         if np.isnan(objTry):
             print 'Warning: nan in updateTry'
             return 1e500
 
-        if (objRef == None) | (objTry < objRef):
+        if (objRef is None) | (objTry < objRef):
             self.atTry = atTry
             self.AfftTry = AfftTry
             self.objTry = objTry
@@ -284,7 +289,7 @@ class SurfaceMatching(object):
 
         foo = evol.timeSeriesGradient(self.x0, self.at, px1,
                                         self.param.KparDiff,
-                                        self.regweight, affine=A)
+                                        self.regweight, affine=A, isjump = self.isjump)
         # times = (1+np.array(range(self.nTarg)))*self.Tsize1)
         grd = Direction()
         grd.diff = foo[0] / coeff
@@ -356,7 +361,7 @@ class SurfaceMatching(object):
             logging.info('Saving surfaces...')
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             for k in range(self.nTarg):
-                self.fvDef[k].updateVertices(np.squeeze(self.xt[(k+1)*self.Tsize1, :, :]))
+                self.fvDef[k].updateVertices(np.squeeze(self.xt[self.jumpIndex[k], :, :]))
             dim2 = self.dim**2
             A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
             if self.affineDim > 0:
@@ -394,8 +399,8 @@ class SurfaceMatching(object):
 
                 for k,fv in enumerate(self.fv1):
                     f = surfaces.Surface(surf=fv)
-                    U = la.inv(X[0][(k+1)*self.Tsize1])
-                    yyt = np.dot(f.vertices - X[1][(k+1)*self.Tsize1, ...], U.T)
+                    U = la.inv(X[0][self.jumpIndex[k]])
+                    yyt = np.dot(f.vertices - X[1][self.jumpIndex[k], ...], U.T)
                     f.updateVertices(yyt)
                     f.saveVTK(self.outputDir +'/Target'+str(k)+'Corrected.vtk')
             
@@ -433,7 +438,7 @@ class SurfaceMatching(object):
         else:
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             for k in range(self.nTarg):
-                self.fvDef[k].updateVertices(np.squeeze(self.xt[(k+1)*self.Tsize1, :, :]))
+                self.fvDef[k].updateVertices(np.squeeze(self.xt[self.jumpIndex[k], :, :]))
 
 
     def optimizeMatching(self):

@@ -201,7 +201,7 @@ class SmoothImageMeta(object):
         self.dual_template /= tmpMax
         self.target /= tarMax
         self.dual_target /= tarMax
-        self.z0weight[:] = numpy.sqrt(1e-6 + (self.D_template**2).sum(axis=1)[..., numpy.newaxis])
+        #self.z0weight[:] = numpy.sqrt(1e-6 + (self.D_template**2).sum(axis=1)[..., numpy.newaxis])
 
 
 
@@ -429,7 +429,8 @@ class SmoothImageMeta(object):
             return [dx, dm, dJ]
 
     def startOptim(self):
-        self.z0_state = self.z0.copy()
+        if self.unconstrained:
+            self.z0_state = self.z0.copy()
         self.alpha_state = self.alpha.copy()
 
     def endOfIteration(self):
@@ -747,24 +748,14 @@ class SmoothImageMeta(object):
 
     def computeMatching(self):
 
-        if  False:
-            self.sigma *= 4
-            self.sfactor /= 16
-            self.khSmooth *= 1.44
-            conjugateGradient.cg(self, True, maxIter=10, TestGradient=False, \
-                                     epsInit=self.cg_init_eps)
-            self.sigma /= 2
-            self.sfactor *= 4
-            self.khSmooth /= 1.2 
-            self.z0 /= 4  
-            #self.z0_state = self.z0.copy()  
-            #print 'z0', (self.z0**2).sum()
-            conjugateGradient.cg(self, True, maxIter=10, TestGradient=False, \
-                                     epsInit=self.cg_init_eps)
-            self.sigma /= 2
-            self.sfactor *= 4
-            self.khSmooth /= 1.2
-            self.z0 /= 4 
+        if  self.nscale > 1:
+            for k in range(self.nscale-1):
+                self.template_in = self.template_in0[k] 
+                self.target_in = self.target_in0[k]
+                self.dx = self.dx0[k]
+                self.num_points = self.num_point0[k]
+                conjugateGradient.cg(self, True, maxIter=10, TestGradient=False, \
+                                         epsInit=self.cg_init_eps)
             #self.z0_state = self.z0.copy()  
         conjugateGradient.cg(self, True, maxIter=10000, TestGradient=False, \
                             epsInit=self.cg_init_eps)
@@ -773,12 +764,16 @@ class SmoothImageMeta(object):
     def writeData(self, name):
         rg, N, T = self.getSimData()
         psit = numpy.zeros((rg.num_nodes,3, self.num_times))
+        metat = numpy.zeros((rg.num_nodes, self.num_times))
         #psit_y = numpy.zeros((rg.num_nodes,3, self.num_times))
         psit[:,:,0] = rg.nodes.copy()
+        metat[...,0] = rg.grid_interpolate(self.m[:,0], psit[...,0]).real
         for t in range(1, self.num_times):
             ft = rg.nodes - self.dt * self.v[...,t-1]
             psit[:, 0, t] = rg.grid_interpolate(psit[:,0,t-1], ft).real
             psit[:, 1, t] = rg.grid_interpolate(psit[:,1,t-1], ft).real
+            metat[...,t] = rg.grid_interpolate(self.m[:,t], psit[...,t]).real
+        res = self.target - metat[...,self.num_times-1]
             
         for t in range(T):
             rg.create_vtk_sg()
@@ -789,9 +784,9 @@ class SmoothImageMeta(object):
             interp_template = kernelMatrix_fort.applyk( \
                 psit[...,t], rg.nodes, self.dual_template,
                 self.khSmooth, self.kho, self.rg.num_nodes)
-            meta = rg.grid_interpolate(self.m[:,t], psit[...,t])
             xtc[:,0] = xtc[:,0] - self.id_x
             xtc[:,1] = xtc[:,1] - self.id_y
+            cmeta =metat[...,t] + (float(t)/(T-1))*res 
             rg.add_vtk_point_data(self.xt[:,:,t], "x")
             rg.add_vtk_point_data(xtc, "xtc")
             rg.add_vtk_point_data(self.z[:,:,t], "z")
@@ -804,7 +799,8 @@ class SmoothImageMeta(object):
             rg.add_vtk_point_data(self.target, "target")
             rg.add_vtk_point_data(interp_target.real, "deformedTarget")
             rg.add_vtk_point_data(interp_template.real, "deformedTemplate")
-            rg.add_vtk_point_data(meta.real, "metamorphosis")
+            rg.add_vtk_point_data(metat[...,t].real, "metamorphosis")
+            rg.add_vtk_point_data(cmeta.real, "correctedMetamorphosis")
             rg.vtk_write(t, name, output_dir=self.output_dir)
 
 if __name__ == "__main__":
