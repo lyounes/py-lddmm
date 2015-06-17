@@ -394,7 +394,8 @@ class SurfaceMatching(object):
                     vf.vectors.append('velocity') ;
                     vf.vectors.append(vt)
                     nu = self.fv0ori*f.computeVertexNormals()
-                    displ += dt * (vt*nu).sum(axis=1)
+                    if t >= self.jumpIndex[0]:
+                        displ += dt * (vt*nu).sum(axis=1)
                     f.saveVTK2(self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.vtk', vf)
 
                 for k,fv in enumerate(self.fv1):
@@ -424,7 +425,8 @@ class SurfaceMatching(object):
                 vf.scalars.append(np.exp(Jt[kk, :])/(AV[:,0]+1)-1)
                 vf.scalars.append('displacement')
                 vf.scalars.append(displ)
-                displ += dt * (v*nu).sum(axis=1)
+                if kk >= self.jumpIndex[0]:
+                    displ += dt * (v*nu).sum(axis=1)
                 if kk < self.Tsize:
                     nu = self.fv0ori*fvDef.computeVertexNormals()
                     v = self.param.KparDiff.applyK(ft[kk,...], self.at[kk,...], firstVar=self.xt[kk,...])
