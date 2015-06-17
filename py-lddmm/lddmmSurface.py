@@ -67,7 +67,7 @@ def main():
     tmpl = surfaces.Surface(filename=args.template)
     tmpl.vertices *= args.scaleFactor
     K1 = Kernel(name=args.typeKernel, sigma = args.sigmaKernel)
-    sm = smt.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=args.sigmaDist, sigmaError=args.sigmaError, errorType=args.typeError)
+    sm = smt.SurfaceMatchingParam(timeStep=0.05, KparDiff=K1, sigmaDist=args.sigmaDist, sigmaError=args.sigmaError, errorType=args.typeError)
     fv = surfaces.Surface(filename=args.target)
     fv.vertices *= args.scaleFactor
     if args.flipTarget:

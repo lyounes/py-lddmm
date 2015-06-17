@@ -481,7 +481,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                     f.updateVertices(yt)
                     vf = surfaces.vtkFields() ;
                     vf.scalars.append('Jacobian') ;
-                    vf.scalars.append(np.exp(Jt[t, :])-1)
+                    vf.scalars.append(np.exp(Jt[t, :]))
                     vf.scalars.append('displacement')
                     vf.scalars.append(displ)
                     vf.vectors.append('velocity') ;
@@ -510,7 +510,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 AV = (AV[0]/AV0[0])-1
                 vf = surfaces.vtkFields() ;
                 vf.scalars.append('Jacobian') ;
-                vf.scalars.append(np.exp(Jt[kk, :])-1)
+                vf.scalars.append(np.exp(Jt[kk, :]))
                 vf.scalars.append('Jacobian_T') ;
                 vf.scalars.append(AV[:,0])
                 vf.scalars.append('Jacobian_N') ;

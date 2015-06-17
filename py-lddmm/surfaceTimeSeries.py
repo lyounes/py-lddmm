@@ -118,7 +118,7 @@ class SurfaceMatching(object):
             self.fvDef.append(surfaces.Surface(surf=self.fv0))
         self.npt = self.x0.shape[0]
         if times is None:
-            times = np.array(1+range(self.nTarg))
+            times = 1+np.array(range(self.nTarg))
         self.Tsize = int(round(times[-1]/self.param.timeStep))        
         self.jumpIndex = np.int_(np.round(times/self.param.timeStep))
         self.isjump = np.zeros(self.Tsize+1, dtype=bool)

@@ -22,6 +22,7 @@ file_write_iter = 1
 
 def configure(sim, config_name):
     sim.config_name = config_name
+    sim.nscale = 1
     modname = globals()['__name__']
     module = sys.modules[modname]
     print module
@@ -154,10 +155,11 @@ def eight(sim):
     sim.time_max = 1.
     sim.cg_init_eps = 1e-4
     sim.write_iter = file_write_iter
+    sim.nscale = 3
 
     sim.kvn = 'laplacian'
     sim.khn = 'laplacian'
-    sim.kvs = 2.0
+    sim.kvs = 4.0
     sim.khs = .5
     sim.kvo = 4
     sim.kho = 2
@@ -236,6 +238,7 @@ def leaf200(sim):
     sim.khs = .2
     sim.kvo = 4
     sim.kho = 4
+    sim.nscale = 3 
     logging.info("KV params: name=%s, sigma=%f, order=%f" \
                         % (sim.kvn,sim.kvs,sim.kvo))
     logging.info("KH params: name=%s, sigma=%f, order=%f" \
@@ -330,7 +333,7 @@ def brains(sim):
 
 def phantoms(sim):
     sim.dim = 2
-    sim.sigma = .25
+    sim.sigma = .1
     sim.sfactor = 1./numpy.power(sim.sigma, 2)
     sim.num_points = (100,100)
     sim.domain_max = None
@@ -442,9 +445,9 @@ def inho(sim):
 
 def faces(sim):
     sim.dim = 2
-    sim.sigma = 2
+    sim.sigma = 1
     sim.sfactor = 1./numpy.power(sim.sigma, 2)
-    sim.num_points = (112,92)
+    sim.num_points = (92,112)
     #sim.domain_max = (1., 1.)
     sim.domain_max = None
     sim.dx = (1.,1.)
@@ -457,7 +460,7 @@ def faces(sim):
     sim.kvn = 'laplacian'
     sim.khn = 'laplacian'
     sim.kvs = 3.
-    sim.khs = 1
+    sim.khs = 1.
     sim.kvo = 4
     sim.kho = 2
     logging.info("KV params: name=%s, sigma=%f, order=%f" \
@@ -465,10 +468,49 @@ def faces(sim):
     logging.info("KH params: name=%s, sigma=%f, order=%f" \
                         % (sim.khn,sim.khs,sim.kho))
     size = sim.num_points
-    im1 = Image.open("/cis/home/younes/IMAGES/orl_faces/s1/1.pgm").rotate(-90).resize(size)
-    im2 = Image.open("/cis/home/younes/IMAGES/orl_faces/s1/2.pgm").rotate(-90).resize(size)
+    im1 = Image.open("/cis/home/younes/IMAGES/orl_faces/s13/1.pgm").rotate(180).resize(size)
+    im2 = Image.open("/cis/home/younes/IMAGES/orl_faces/s13/2.pgm").rotate(180).resize(size)
     print 'im1', im1
     #im1.save("/cis/home/younes/IMAGES/orl_faces/s1/1.png")
+    ims = [im1, im2]
+    tp = numpy.zeros(size)
+    tr = numpy.zeros(size)
+    for j in range(size[0]):
+        for k in range(size[1]):
+            tp[j,k] = ims[0].getpixel((j,k)) #/ 255.
+            tr[j,k] = ims[1].getpixel((j,k)) #/ 255.
+    sim.template_in = tp.ravel(order='F')
+    sim.target_in = tr.ravel(order='F')
+
+def heart(sim):
+    sim.dim = 2
+    sim.sigma = .025
+    sim.sfactor = 1./numpy.power(sim.sigma, 2)
+    sim.nscale = 2
+    sim.num_points = (80,90)
+    #sim.domain_max = (1., 1.)
+    sim.domain_max = None
+    sim.dx = (1.,1.)
+    sim.num_times = 11
+    sim.time_min = 0.
+    sim.time_max = 1.
+    sim.cg_init_eps = 1e-4
+    sim.write_iter = file_write_iter
+
+    sim.kvn = 'laplacian'
+    sim.khn = 'laplacian'
+    sim.kvs = 1.25
+    sim.khs = 1.
+    sim.kvo = 4
+    sim.kho = 2
+    logging.info("KV params: name=%s, sigma=%f, order=%f" \
+                        % (sim.kvn,sim.kvs,sim.kvo))
+    logging.info("KH params: name=%s, sigma=%f, order=%f" \
+                        % (sim.khn,sim.khs,sim.kho))
+    size = sim.num_points
+    #im1 = Image.open("/cis/home/younes/MorphingData/hearts/HCM/IM-0006-0001.jpg").transpose(Image.FLIP_TOP_BOTTOM).resize(size, Image.BICUBIC)
+    im1 = Image.open("/cis/home/younes/MorphingData/hearts/HCM/IM-0001-0074.jpg").transpose(Image.FLIP_TOP_BOTTOM).crop((60,80,140,170))
+    im2 = Image.open("/cis/home/younes/MorphingData/hearts/HCM/IM-0001-0080.jpg").transpose(Image.FLIP_TOP_BOTTOM).crop((60,80,140,170))
     ims = [im1, im2]
     tp = numpy.zeros(size)
     tr = numpy.zeros(size)
