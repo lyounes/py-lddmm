@@ -486,7 +486,7 @@ def heart(sim):
     sim.dim = 2
     sim.sigma = .025
     sim.sfactor = 1./numpy.power(sim.sigma, 2)
-    sim.nscale = 2
+    sim.nscale = 4
     sim.num_points = (80,90)
     #sim.domain_max = (1., 1.)
     sim.domain_max = None
@@ -499,7 +499,7 @@ def heart(sim):
 
     sim.kvn = 'laplacian'
     sim.khn = 'laplacian'
-    sim.kvs = 1.25
+    sim.kvs = 4.
     sim.khs = 1.
     sim.kvo = 4
     sim.kho = 2

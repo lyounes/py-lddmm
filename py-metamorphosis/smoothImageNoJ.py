@@ -170,9 +170,9 @@ class SmoothImageMeta(object):
                             self.num_times)
         self.dt = (self.time_max - self.time_min) / (self.num_times - 1)
         self.optimize_iteration = 0
-        self.g_eps = 1.
+        self.gradCoeff = 1./(self.rg.num_nodes*self.template_in.max())
 
-        self.khSmooth =0.2*numpy.asarray(self.rgI.dx).max() # self.khs/2
+        self.khSmooth =0.2*numpy.asarray(self.rg.dx).max() # self.khs/2
         logging.info("sigma: %f" % self.sigma)
         logging.info("sfactor: %f" % self.sfactor)
         logging.info("num_points: %s" % str(self.rg.num_points))
@@ -275,12 +275,12 @@ class SmoothImageMeta(object):
         xd = self.rg.nodes[:,0:self.dim] / dx0
         xd = numpy.fabs(xd - numpy.rint(xd)).sum(axis=1)
         J0 = numpy.nonzero(xd<=1e-5)[0]
-        J1 = numpy.nonzero(xd>1e-5)[0]
+        #J1 = numpy.nonzero(xd>1e-5)[0]
         
         self.optimize_iteration = 0
-        self.g_eps = 1.
+        self.gradCoeff = 1./(self.rg.num_nodes*self.template_in.max())
 
-        self.khSmooth =0.2*numpy.asarray(self.rgI.dx).max() # self.khs/2
+        self.khSmooth =0.2*numpy.asarray(self.rg.dx).max() # self.khs/2
         logging.info("sigma: %f" % self.sigma)
         logging.info("sfactor: %f" % self.sfactor)
         logging.info("num_points: %s" % str(self.rg.num_points))
@@ -310,11 +310,13 @@ class SmoothImageMeta(object):
         self.alpha_state = numpy.copy(self.alpha)
         if self.unconstrained:
             z00 = self.z0
-            si = kernelExpansion(y0, y1, z00, self.khs, self.kho, verbose=False)
-            z01 = si.minimize()
-            self.z0 = numpy.zeros((rg.num_nodes, 3))
+            self.z0 = numpy.zeros(rg.num_nodes,3)
             self.z0[J0] = z00 
-            self.z0[J1] = z01
+            #si = kernelExpansion(y0, y1, z00, self.khs, self.kho, verbose=False)
+            #z01 = si.minimize()
+            #self.z0 = numpy.zeros((rg.num_nodes, 3))
+            #self.z0[J0] = z00 
+            #self.z0[J1] = z01
             self.z0weight = 100*numpy.ones((rg.num_nodes,1))
             self.z0_state = numpy.copy(self.z0)
 
@@ -428,7 +430,7 @@ class SmoothImageMeta(object):
             if not self.noJ:
                 rg.add_vtk_point_data(self.J[:,T-1].real, "J")
             rg.vtk_write(0, "objFun_test", output_dir=self.output_dir)
-        return objFun * self.g_eps
+        return objFun
 
     def updateTry(self, direction, eps, objRef=None):
         rg, N, T = self.getSimData()
@@ -522,8 +524,8 @@ class SmoothImageMeta(object):
             for k in range(3):
                 dx[:,k] = 2.*diff*(-1)*d_interp[:,k]
 
-            dx *= self.g_eps * self.rg.element_volumes[0]
-            dm *= self.g_eps * self.rg.element_volumes[0]
+            dx *= self.rg.element_volumes[0]
+            dm *= self.rg.element_volumes[0]
         else:
             dm = 2*diff*self.J[:,T-1]
             for k in range(3):
@@ -531,9 +533,9 @@ class SmoothImageMeta(object):
                   *(-1)*d_interp[:,k]
 
             dJ = diff * diff
-            dx *= self.g_eps * self.rgI.element_volumes[0]
-            dm *= self.g_eps * self.rgI.element_volumes[0]
-            dJ *= self.g_eps * self.rgI.element_volumes[0]
+            dx *= self.rgI.element_volumes[0]
+            dm *= self.rgI.element_volumes[0]
+            dJ *= self.rgI.element_volumes[0]
 
         # test the endpoint gradient
         if testGradient:
@@ -555,12 +557,12 @@ class SmoothImageMeta(object):
                                                      self.kho, self.rg.num_nodes, self.rgI.num_nodes)
             diff = m1 - interp_target.real
             if self.noJ:
-                objFun = numpy.multiply(diff, diff).sum() * self.g_eps * \
+                objFun = numpy.multiply(diff, diff).sum() * \
                   self.rgI.element_volumes[0]
                 ip = numpy.multiply(dx, xr).sum(axis=1).sum() \
                   + numpy.dot(dm, mr)
             else:
-                objFun = numpy.dot(diff*sqrtJ, sqrtJ*diff) * self.g_eps * \
+                objFun = numpy.dot(diff*sqrtJ, sqrtJ*diff) * \
                   self.rgI.element_volumes[0]
                 ip = numpy.multiply(dx, xr).sum(axis=1).sum() \
                   + numpy.dot(dm, mr)  \
@@ -904,12 +906,11 @@ class SmoothImageMeta(object):
 
     def computeMatching(self):
 
-        conjugateGradient.cg(self, True, maxIter=100, TestGradient=False, \
+        conjugateGradient.cg(self, True, maxIter=500, TestGradient=False, \
                             epsInit=self.cg_init_eps)
         for j in range(self.nscale-1):   
-            print 'compute', self.rg.nodes.shape
             self.scale_up()
-            conjugateGradient.cg(self, True, maxIter=100, TestGradient=False, \
+            conjugateGradient.cg(self, True, maxIter=500, TestGradient=False, \
                                 epsInit=self.cg_init_eps)
         return self
 
@@ -918,18 +919,21 @@ class SmoothImageMeta(object):
         rgI = self.rgI ;
         psit = numpy.zeros((rg.num_nodes,3, self.num_times))
         metat = numpy.zeros((rg.num_nodes, self.num_times))
+        cmeta = numpy.zeros((rg.num_nodes, self.num_times))
         #psit_y = numpy.zeros((rg.num_nodes,3, self.num_times))
+        interp_target_x = kernelMatrix_fort.applyk( \
+                        self.xt[...,T-1], rgI.nodes, self.dual_target,
+                        self.khSmooth, self.kho, self.rg.num_nodes, self.rgI.num_nodes)
+        res = interp_target_x - self.m[...,T-1]
         psit[:,:,0] = rg.nodes.copy()
         metat[...,0] = rg.grid_interpolate(self.m[:,0], psit[...,0]).real
+        cmeta[...,0] = numpy.copy(metat[...,0])
         for t in range(1, self.num_times):
             ft = rg.nodes - self.dt * self.v[...,t-1]
             psit[:, 0, t] = rg.grid_interpolate(psit[:,0,t-1], ft).real
             psit[:, 1, t] = rg.grid_interpolate(psit[:,1,t-1], ft).real
             metat[...,t] = rg.grid_interpolate(self.m[:,t], psit[...,t]).real
-        interp_target_x = kernelMatrix_fort.applyk( \
-                        self.xt[...,0], rgI.nodes, self.dual_target,
-                        self.khSmooth, self.kho, self.rg.num_nodes, self.rgI.num_nodes)
-        res = interp_target_x - metat[...,self.num_times-1]
+            cmeta[...,t] = rg.grid_interpolate(self.m[:,t]+(float(t)/(T-1))*res, psit[...,t]).real
             
         for t in range(T):
             rg.create_vtk_sg()
@@ -940,9 +944,10 @@ class SmoothImageMeta(object):
             interp_template = kernelMatrix_fort.applyk( \
                 psit[...,t], self.rgI.nodes, self.dual_template,
                 self.khSmooth, self.kho, self.rg.num_nodes, self.rgI.num_nodes)
-            xtc[:,0] = xtc[:,0] - self.id_x
-            xtc[:,1] = xtc[:,1] - self.id_y
-            cmeta =metat[...,t] + (float(t)/(T-1))*res 
+            xtc[:,0] = (xtc[:,0] - self.id_x)
+            xtc[:,1] = (xtc[:,1] - self.id_y)
+            
+            #cmeta =metat[...,t] + (float(t)/(T-1))*res 
             rg.add_vtk_point_data(self.xt[:,:,t], "x")
             rg.add_vtk_point_data(xtc, "xtc")
             rg.add_vtk_point_data(self.z[:,:,t], "z")
@@ -956,7 +961,7 @@ class SmoothImageMeta(object):
             rg.add_vtk_point_data(interp_target.real, "deformedTarget")
             rg.add_vtk_point_data(interp_template.real, "deformedTemplate")
             rg.add_vtk_point_data(metat[...,t].real, "metamorphosis")
-            rg.add_vtk_point_data(cmeta.real, "correctedMetamorphosis")
+            rg.add_vtk_point_data(cmeta[...,t].real, "correctedMetamorphosis")
             rg.vtk_write(t, name, output_dir=self.output_dir)
 
 if __name__ == "__main__":
