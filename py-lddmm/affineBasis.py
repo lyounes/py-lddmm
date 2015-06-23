@@ -139,7 +139,7 @@ def getExponential(A):
         if t > 1e-10:
             R += ((1-np.cos(t))/(t**2)) * (np.dot(A,A)) + (np.sin(t)/t)*A
     else:
-        R = np.eye(self.dim) + A
+        R = np.eye(A.shape[0]) + A
     return R
 
 def gradExponential(A, p, x):
@@ -151,8 +151,8 @@ def gradExponential(A, p, x):
             ct = np.cos(t)
             a1 = st/t
             a2 = (1-ct)/(t**2)
-            da1 = (t*ct-st)/(8*t**3)
-            da2 = (t*st -2*(1-ct))/(8*t**4)
+            da1 = (t*ct-st)/(1*t**3)
+            da2 = (t*st -2*(1-ct))/(1*t**4)
             dR = (a1*dR + (da1 * (p*np.dot(x,A)).sum() + da2 * (p*np.dot(x,np.dot(A,A))).sum())*A
                   - a2 * (np.dot(np.dot(p,A.T).T,x) + np.dot(p.T,np.dot(x,A))))
     return dR
