@@ -88,7 +88,7 @@ def main():
                             maxIter_cg=1000, affine=args.affine, rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100., volumeOnly=args.atrophyVolume)
     else:
         f = smt.SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, symmetric=args.symmetric, saveTrajectories = True,
-                            maxIter=2000, affine=args.affine, rotWeight=1, transWeight = 1, scaleWeight=10., affineWeight=100.)
+                            maxIter=2000, affine=args.affine, rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)
 
     f.optimizeMatching()
     for atarg in args.target:
