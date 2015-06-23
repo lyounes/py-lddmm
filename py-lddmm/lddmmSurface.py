@@ -67,7 +67,7 @@ def main():
     tmpl = surfaces.Surface(filename=args.template)
     tmpl.vertices *= args.scaleFactor
     K1 = Kernel(name=args.typeKernel, sigma = args.sigmaKernel)
-    sm = smt.SurfaceMatchingParam(timeStep=0.05, KparDiff=K1, sigmaDist=args.sigmaDist, sigmaError=args.sigmaError, errorType=args.typeError)
+    sm = smt.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=args.sigmaDist, sigmaError=args.sigmaError, errorType=args.typeError)
     fv = surfaces.Surface(filename=args.target)
     fv.vertices *= args.scaleFactor
     if args.flipTarget:
@@ -88,7 +88,7 @@ def main():
                             maxIter_cg=1000, affine=args.affine, rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100., volumeOnly=args.atrophyVolume)
     else:
         f = smt.SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, symmetric=args.symmetric, saveTrajectories = True,
-                            maxIter=2000, affine=args.affine, rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)
+                            maxIter=2000, affine=args.affine, rotWeight=1, transWeight = 1, scaleWeight=10., affineWeight=100.)
 
     f.optimizeMatching()
     for atarg in args.target:

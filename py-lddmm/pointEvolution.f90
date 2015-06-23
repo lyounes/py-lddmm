@@ -96,10 +96,10 @@ subroutine shoot1order(x0, alpha, y0, nu0, a, b, sig, ord, withjac, withnu, t0, 
           end if
           dx = dx + Kv*alpha(t, l, :)
           if (withjac > 0) then
-            djac = djac + Kv_diff * dot_product(x(t,k,:) - x(t,l,:),alpha(t,l,:))
+            djac = djac + 2* Kv_diff * dot_product(x(t,k,:) - x(t,l,:),alpha(t,l,:))
           end if
           if (withnu > 0) then
-            dnu = dnu - Kv_diff * dot_product(nu(t,:,l),alpha(t,l,:)) * (x(t,k,:) - x(t,l,:))
+            dnu = dnu - 2 * Kv_diff * dot_product(nu(t,:,l),alpha(t,l,:)) * (x(t,k,:) - x(t,l,:))
           end if
         end do !l
         x(t+1, k,:) = matmul(a(t,:,:),x(t,k,:)) + dt*(dx+b(t,:))
@@ -193,12 +193,12 @@ subroutine adjoint1order(xt, alpha, px1, a, sig, ord, regweight, t0, numx, dimx,
               Kv_diff = -lpt * exp(-1.0*ut)/(2*sig**2)
             end if
           end if
-          dpx = dpx + Kv_diff * (dot_product(px(t+1,k,:),alpha(t, l, :)) &
+          dpx = dpx + 2*Kv_diff * (dot_product(px(t+1,k,:),alpha(t, l, :)) &
                                 + dot_product(px(t+1,l, :),alpha(t, k, :))&
                                 - 2*regweight*dot_product(alpha(t,k,:),alpha(t, l, :)))&
                               * (xt(t,k,:) - xt(t,l,:))
         end do !l
-        px(t, k,:) = matmul(px(t+1, k, :), a(t,:,:)) + dt* dpx
+        px(t, k,:) = matmul(transpose(a(t,:,:)), px(t+1, k, :)) + dt* dpx
      end do !k
   end do !t
 end subroutine adjoint1order

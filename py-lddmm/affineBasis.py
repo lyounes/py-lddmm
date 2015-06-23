@@ -98,8 +98,8 @@ class AffineBasis:
                 ct = np.cos(t)
                 a1 = st/t
                 a2 = (1-ct)/(t**2)
-                da1 = (t*ct-st)/(8*t**3)
-                da2 = (t*st -2*(1-ct))/(8*t**4)
+                da1 = (t*ct-st)/(1*t**3)
+                da2 = (t*st -2*(1-ct))/(1*t**4)
                 dR = (a1*dR + (da1 * (p*np.dot(x,A)).sum() + da2 * (p*np.dot(x,np.dot(A,A))).sum())*A
                       - a2 * (np.dot(np.dot(p,A.T).T,x) + np.dot(p.T,np.dot(x,A))))
         return dR

@@ -663,7 +663,7 @@ def landmarkEPDiff(T, x0, a0, KparDiff, affine = None, withJacobian=False, withN
 # affine: affine component [A, b] or None
 # if withJacobian =True: return Jacobian determinant
 # if withNormal = nu0, returns nu(t) evolving as dnu/dt = -Dv^{T} nu
-def landmarkDirectEvolutionEuler_np(x0, at, KparDiff, affine = None, withJacobian=False, withNormals=None, withPointSet=None):
+def landmarkDirectEvolutionEuler_py(x0, at, KparDiff, affine = None, withJacobian=False, withNormals=None, withPointSet=None):
     N = x0.shape[0]
     dim = x0.shape[-1]
     M = at.shape[0] + 1
@@ -740,8 +740,8 @@ def landmarkDirectEvolutionEuler_np(x0, at, KparDiff, affine = None, withJacobia
 def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=False, withNormals=None, withPointSet=None):
     N = x0.shape[0]
     dim = x0.shape[1]
-    M = at.shape[0] + 1
-    timeStep = 1.0/(M-1)
+    M = at.shape[0] 
+    timeStep = 1.0/(M)
 #    xt = np.zeros([M, N, dim])
     simpleOutput = True
     withJ = 0
@@ -756,13 +756,13 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=F
     if not(affine is None):
         A0 = affine[0]
         b = affine[1]
-        A = np.zeros([M-1,dim,dim])
+        A = np.zeros([M,dim,dim])
         for k in range(A0.shape[0]):
-            A[k,...] = affineBasis.getExponential(timeStep*A[k]) 
+            A[k,...] = affineBasis.getExponential(timeStep*A0[k]) 
     else:
-        A = np.zeros([M-1,dim,dim])
-        b = np.zeros([M-1,dim])
-        for k in range(M-1):
+        A = np.zeros([M,dim,dim])
+        b = np.zeros([M,dim])
+        for k in range(M):
             A[k,...] = np.eye(dim) 
         
     if not (withPointSet is None):
@@ -781,8 +781,8 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=F
         if withJacobian:
             simpleOutput = False
 #            Jt = np.zeros([M, N])
-    foo = pfor.shoot1order( x0, at, y0, nt0, A, b, KparDiff.sigma, KparDiff.order, withJ, withnu,
-                           M-1, N, dim, K)
+    foo = pfor.shoot1order(x0, at, y0, nt0, A, b, KparDiff.sigma, KparDiff.order, withJ, withnu,
+                           M, N, dim, K)
     if simpleOutput:
         return foo[0]
     else:
@@ -797,7 +797,7 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=F
 
 
 
-def landmarkHamiltonianCovector_np(x0, at, px1, KparDiff, regweight, affine = None):
+def landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine = None):
     N = x0.shape[0]
     dim = x0.shape[1]
     M = at.shape[0]
@@ -807,7 +807,7 @@ def landmarkHamiltonianCovector_np(x0, at, px1, KparDiff, regweight, affine = No
         A0 = affine[0]
         A = np.zeros([M,dim,dim])
         for k in range(A0.shape[0]):
-            A[k,...] = affineBasis.getExponential(timeStep*A[k]) 
+            A[k,...] = affineBasis.getExponential(timeStep*A0[k]) 
     else:
         A = np.zeros([M,dim,dim])
         for k in range(M-1):
@@ -816,7 +816,7 @@ def landmarkHamiltonianCovector_np(x0, at, px1, KparDiff, regweight, affine = No
     pxt = pfor.adjoint1order(xt, at, px1, A, KparDiff.sigma, KparDiff.order, regweight, M, N, dim)
     return pxt, xt
 
-def landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine = None):
+def landmarkHamiltonianCovector_py(x0, at, px1, KparDiff, regweight, affine = None):
     N = x0.shape[0]
     dim = x0.shape[1]
     M = at.shape[0]
