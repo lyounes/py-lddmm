@@ -1,11 +1,13 @@
 import numpy as np
 import surfaces
+import loggingUtils
 from surfaces import *
 from kernelFunctions import *
 from surfaceMatching import *
 
 def compute(createSurfaces=True):
 
+    loggingUtils.setup_default_logging('', stdOutput = True)
     if createSurfaces:
         [x,y,z] = np.mgrid[0:200, 0:200, 0:200]/100.
         y = y-1
@@ -72,3 +74,7 @@ def compute(createSurfaces=True):
 
 
     return f
+
+
+if __name__=="__main__":
+    compute(False)
