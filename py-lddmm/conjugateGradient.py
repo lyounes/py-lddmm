@@ -42,7 +42,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
     if hasattr(opt, 'gradEps'):
         gradEps = opt.gradEps
     else:
-        gradEps = 1.0
+        gradEps = None
 
     if hasattr(opt, 'cgBurnIn'):
         cgBurnIn = opt.cgBurnIn
@@ -134,6 +134,9 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
                 oldDir = np.copy(dir0)
                 grdOld = np.copy(grd)
 
+        if it == 0 and gradEps is None:
+            gradEps = 0.001 * np.sqrt(grd2)
+            
         objTry = opt.updateTry(dir0, eps, obj)
 
         noUpdate = 0

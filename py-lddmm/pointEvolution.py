@@ -19,11 +19,11 @@ def gaussianDiffeonsEvolutionEuler(c0, S0, at, sigma, affine = None, withJacobia
     sig2 = sigma*sigma
 
 
-    if (withPointSet == None) and (withDiffeonSet==None):
+    if (withPointSet is None) and (withDiffeonSet is None):
         withJacobian = False
         withNormals = None
 
-    if not(withPointSet == None):
+    if not(withPointSet is None):
         simpleOutput = False
         x0 = withPointSet
         N = x0.shape[0]
@@ -32,7 +32,7 @@ def gaussianDiffeonsEvolutionEuler(c0, S0, at, sigma, affine = None, withJacobia
         if type(withJacobian) == bool:
             if withJacobian:
                 Jt = np.zeros(np.insert(x0.shape[0:-1], 0, T))
-        elif not(withJacobian==None):
+        elif not(withJacobian is None):
             #print withJacobian
             J0 = withJacobian
             Jt = np.zeros(np.insert(J0.shape, 0, T))
@@ -42,16 +42,16 @@ def gaussianDiffeonsEvolutionEuler(c0, S0, at, sigma, affine = None, withJacobia
             withJacobian=False
         withPointSet = True
                               
-        if not(withNormals == None):
+        if not(withNormals is None):
             b0 = withNormals
             bt = np.zeros(np.concatenate([[T], b0.shape]))
             bt[0, ...] = b0
             
-    if not(affine == None):
+    if not(affine is None):
         A = affine[0]
         b = affine[1]
         
-    if not (withDiffeonSet==None):
+    if not (withDiffeonSet is None):
         simpleOutput = False
         K = withDiffeonSet[0].shape[0]
         yt = np.zeros([T,K,dim])
@@ -60,7 +60,7 @@ def gaussianDiffeonsEvolutionEuler(c0, S0, at, sigma, affine = None, withJacobia
         Ut[0, :, :] = withDiffeonSet[1]
         if withJacobian:
             Jt = np.zeros([T, K])
-        if not(withNormals == None):
+        if not(withNormals is None):
             b0 = withNormals
             bt = np.zeros([T, K, dim])
             bt[0, :, :] = b0
@@ -83,14 +83,14 @@ def gaussianDiffeonsEvolutionEuler(c0, S0, at, sigma, affine = None, withJacobia
         zc = np.dot(fc, a)
 
         Dv = -((fc.reshape([M,M,1])*betac).reshape([M, M, 1, dim])*a.reshape([1, M, dim, 1])).sum(axis=1)
-        if not (affine == None):
+        if not (affine is None):
             Dv = Dv + A[t].reshape([1,dim,dim])
         SDvT = (S.reshape([M,dim,1,dim])*Dv.reshape([M,1,dim, dim])).sum(axis=3)
         zS = SDvT.transpose([0,2,1]) + SDvT
         zScorr = (SDvT.reshape([M, 1, dim, dim])*Dv.reshape([M, dim, dim, 1])).sum(axis=2) 
 
         ct[t+1, :, :] = c + timeStep * zc
-        if not (affine == None):
+        if not (affine is None):
             ct[t+1, :, :] += timeStep * (np.dot(c, A[t].T) + b[t])
 
         St[t+1, :, :, :] = S + timeStep * zS + (timeStep**2) * zScorr
@@ -105,13 +105,13 @@ def gaussianDiffeonsEvolutionEuler(c0, S0, at, sigma, affine = None, withJacobia
             fx = np.exp(-dst/2)
             zx = np.dot(fx, a)
             xt[t+1, ...] = x + timeStep * zx
-            if not (affine == None):
+            if not (affine is None):
                 xt[t+1, ...] += timeStep * (np.dot(x, A[t].T) + b[t])
             if withJacobian:
                 #print Jt.shape
                 Div = -(fx * (betax * a).sum(axis=-1)).sum(axis=-1)
                 Jt[t+1, ...] = Jt[t, ...] + timeStep * Div
-                if not (affine == None):
+                if not (affine is None):
                     Jt[t+1, ...] += timeStep * (np.trace(A[t]))
             if withNormals:
                 bb = np.squeeze(bt[t, ...])
@@ -119,7 +119,7 @@ def gaussianDiffeonsEvolutionEuler(c0, S0, at, sigma, affine = None, withJacobia
                 zb -= (fx * (betax * a).sum(axis=-1)).sum(axis=-1)[..., np.newaxis] *bb
                 bt[t+1,:,:] = bb + timeStep*zb
 
-        # if not(withPointSet==None):
+        # if not(withPointSet is None):
         #     x = np.squeeze(xt[t, ...])
         #     diffx = x.[N, 1, dim]) - c.reshape([1, M, dim])
         #     betax = (R.reshape([1, M, dim, dim])*diffx.reshape([N, M, 1, dim])).sum(axis=3)
@@ -127,14 +127,14 @@ def gaussianDiffeonsEvolutionEuler(c0, S0, at, sigma, affine = None, withJacobia
         #     fx = np.exp(-dst/2)
         #     zx = np.dot(fx, a)
         #     xt[t+1, :, :] = x + timeStep * zx
-        #     if not (affine == None):
+        #     if not (affine is None):
         #         xt[t+1, :, :] += timeStep * (np.dot(x, A[t].T) + b[t])
         #     if withJacobian:
         #         Div = -(fx * (betax * a.reshape(1,M, dim)).sum(axis=2)).sum(axis=1)
         #         Jt[t+1, :] = Jt[t, :] + timeStep * Div
-        #         if not (affine == None):
+        #         if not (affine is None):
         #             Jt[t+1, :] += timeStep * (np.trace(A[t]))
-        #     if not(withNormals==None):
+        #     if not(withNormals is None):
         #         bb = np.squeeze(bt[t, :, :])
         #         zb = ((fx * np.dot(bb, a.T)).reshape([N,M,1]) * betax).sum(axis=1)
         #         zb -= (fx * (betax * a.reshape([1,M,dim])).sum(axis=2)).sum(axis=1).reshape([N,1]) *bb
@@ -151,10 +151,10 @@ def gaussianDiffeonsEvolutionEuler(c0, S0, at, sigma, affine = None, withJacobia
             fy = np.exp(-dst/2)
             zy = np.dot(fy, a)
             yt[t+1, :, :] = y + timeStep * zy
-            if not (affine == None):
+            if not (affine is None):
                 yt[t+1, :, :] += timeStep * (np.dot(y, A[t].T) + b[t])
             Dvy = -((fy.reshape([K,M,1])*betay).reshape([K, M, 1, dim])*a.reshape([1, M, dim, 1])).sum(axis=1)
-            if not (affine == None):
+            if not (affine is None):
                 Dvy = Dvy + A[t].reshape([1,dim,dim])
             UDvT = (U.reshape([K,dim,1,dim])*Dvy.reshape([K,1,dim, dim])).sum(axis=3)
             zU = UDvT.transpose([0,2,1]) + UDvT
@@ -163,7 +163,7 @@ def gaussianDiffeonsEvolutionEuler(c0, S0, at, sigma, affine = None, withJacobia
             if withJacobian:
                 Div = -(fy * (betay * a.reshape(1,M, dim)).sum(axis=2)).sum(axis=1)
                 Jt[t+1, :] = Jt[t, :] + timeStep * Div
-                if not (affine == None):
+                if not (affine is None):
                     Jt[t+1, :] += timeStep * (np.trace(A[t]))
             if withNormals:
                 bb = np.squeeze(bt[t, :, :])
@@ -187,7 +187,7 @@ def gaussianDiffeonsEvolutionEuler(c0, S0, at, sigma, affine = None, withJacobia
             output.append(Ut)
             if withJacobian:
                 output.append(Jt)
-        # if not (withNormals==None):
+        # if not (withNormals is None):
         #     output.append(nt)
         return output
 
@@ -200,7 +200,7 @@ def gaussianDiffeonsCovectorPset(c0, S0, x0,  at, pc1, pS1, px1, sigma, regweigh
     T = at.shape[0]
     timeStep = 1.0/T
     #print c0.shape, x0.shape
-    if not(withJacobian==None):
+    if not(withJacobian is None):
         #print withJacobian
         J0 = withJacobian[0]
         pJ1 = withJacobian[1]
@@ -224,7 +224,7 @@ def gaussianDiffeonsCovectorPset(c0, S0, x0,  at, pc1, pS1, px1, sigma, regweigh
         #pJt[T-1, ...] = pJ1
     sig2 = sigma*sigma
 
-    if not(affine == None):
+    if not(affine is None):
         A = affine[0]
 
     sigEye = sig2*np.eye(dim)
@@ -309,7 +309,7 @@ def gaussianDiffeonsCovectorPset(c0, S0, x0,  at, pc1, pS1, px1, sigma, regweigh
         pSt[T-t-2, :, :, :] = pS - timeStep * zpS
 
 
-        if not (affine == None):
+        if not (affine is None):
             pxt[T-t-2, :, :] -= timeStep * np.dot(np.squeeze(pxt[T-t-1, :, :]), A[T-t-1])
             pct[T-t-2, :, :] -= timeStep * np.dot(np.squeeze(pct[T-t-1, :, :]), A[T-t-1])
             pSt[T-t-2, :, :, :] -= timeStep * ((A[T-t-1].reshape([1,dim,dim,1])*pSt[T-t-1, :, :, :].reshape([M,1,dim,dim])).sum(axis=2) + (pSt[T-t-1, :, :, :].reshape([M,dim,1,dim])*A[T-t-1].reshape([1,1,dim,dim])).sum(axis=3))
@@ -338,7 +338,7 @@ def gaussianDiffeonsCovectorNormals(c0, S0, b0, x0, xS0,  at, pc1, pS1, pb1, px1
     pSt[T-1, :, :, :] = pS1
     sig2 = sigma*sigma
 
-    if not(affine == None):
+    if not(affine is None):
         A = affine[0]
 
     sigEye = sig2*np.eye(dim)
@@ -468,7 +468,7 @@ def gaussianDiffeonsCovectorNormals(c0, S0, b0, x0, xS0,  at, pc1, pS1, pb1, px1
         pct[T-t-2, :, :] = pc - timeStep * zpc
         pSt[T-t-2, :, :, :] = pS - timeStep * zpS
 
-        if not (affine == None):
+        if not (affine is None):
             pbt[T-t-2, :, :] -= timeStep * np.dot(np.squeeze(pbt[T-t-1, :, :]), A[T-t-1].T)
             pct[T-t-2, :, :] -= timeStep * np.dot(np.squeeze(pct[T-t-1, :, :]), A[T-t-1])
             pSt[T-t-2, :, :, :] -= timeStep * ((A[T-t-1].reshape([1,dim,dim,1])*pSt[T-t-1, :, :, :].reshape([M,1,dim,dim])).sum(axis=2) + (pSt[T-t-1, :, :, :].reshape([M,dim,1,dim])*A[T-t-1].reshape([1,1,dim,dim])).sum(axis=3))
@@ -478,7 +478,7 @@ def gaussianDiffeonsCovectorNormals(c0, S0, b0, x0, xS0,  at, pc1, pS1, pb1, px1
     
 # Computes gradient after covariant evolution for deformation cost a^TK(x,x) a
 def gaussianDiffeonsGradientPset(c0, S0, x0, at, pc1, pS1, px1, sigma, regweight, getCovector = False, affine = None, withJacobian=None):
-    if not(withJacobian==None):
+    if not(withJacobian is None):
         #print withJacobian
         J0 = withJacobian[0]
         pJ1 = withJacobian[1]
@@ -496,7 +496,7 @@ def gaussianDiffeonsGradientPset(c0, S0, x0, at, pc1, pS1, px1, sigma, regweight
     dat = np.zeros(at.shape)
     M = c0.shape[0]
     dim = c0.shape[1]
-    if not (affine == None):
+    if not (affine is None):
         dA = np.zeros(affine[0].shape)
         db = np.zeros(affine[1].shape)
     for t in range(at.shape[0]):
@@ -516,7 +516,7 @@ def gaussianDiffeonsGradientPset(c0, S0, x0, at, pc1, pS1, px1, sigma, regweight
             [grc, grS, grx, gcc] = gd.gaussianDiffeonsGradientMatricesPset(c, S, x, a, pc, pS, px, sigma, 1.0/at.shape[0])
             da = 2*np.dot(gcc,a) - grx - grc - grS
 
-        if not (affine == None):
+        if not (affine is None):
             #print px.shape, x.shape, pc.shape, c.shape
             dA[t] = (px * x).sum(axis=tuple(range(x.ndim-1))) + np.dot(pc.T, c) - 2*np.multiply(pS.reshape([M, dim, dim, 1]), S.reshape([M, dim, 1, dim])).sum(axis=1).sum(axis=0)
             db[t] = px.sum(axis=tuple(range(x.ndim-1))) + pc.sum(axis=0)
@@ -525,7 +525,7 @@ def gaussianDiffeonsGradientPset(c0, S0, x0, at, pc1, pS1, px1, sigma, regweight
         dat[t, :, :] = LA.solve(gcc+(L.max()/1000)*np.eye(M), da)
         #dat[t, :, :] = LA.solve(gcc, da)
 
-    if affine == None:
+    if affine is None:
         if getCovector == False:
             if withJacobian:
                 return dat, ct, St, xt, Jt
@@ -557,7 +557,7 @@ def gaussianDiffeonsGradientNormals(c0, S0, b0, x0, xS0, at, pc1, pS1, pb1, px1,
     dat = np.zeros(at.shape)
     M = c0.shape[0]
     dim = c0.shape[1]
-    if not (affine == None):
+    if not (affine is None):
         dA = np.zeros(affine[0].shape)
         db = np.zeros(affine[1].shape)
     for t in range(at.shape[0]):
@@ -576,7 +576,7 @@ def gaussianDiffeonsGradientNormals(c0, S0, b0, x0, xS0, at, pc1, pS1, pb1, px1,
         #print t, (grS**2).sum(), (grb**2).sum()
         
         da = 2*np.dot(gcc,a) - grb - grc - grS - grx - grxS
-        if not (affine == None):
+        if not (affine is None):
             dA[t] = -np.dot(b.T, pb) + np.dot(pc.T, c) - 2*np.multiply(pS.reshape([M, dim, dim, 1]), S.reshape([M, dim, 1, dim])).sum(axis=1).sum(axis=0)
             db[t] = pc.sum(axis=0)
 
@@ -584,7 +584,7 @@ def gaussianDiffeonsGradientNormals(c0, S0, b0, x0, xS0, at, pc1, pS1, pb1, px1,
         dat[t, :, :] = LA.solve(gcc+(L.max()/1000)*np.eye(M), da)
         #dat[t, :, :] = LA.solve(gcc, da)
 
-    if affine == None:
+    if affine is None:
         if getCovector == False:
             return dat, ct, St, bt, xt, xSt
         else:
@@ -605,17 +605,17 @@ def landmarkEPDiff(T, x0, a0, KparDiff, affine = None, withJacobian=False, withN
     xt[0, :, :] = x0
     at[0, :, :] = a0
     simpleOutput = True
-    if not (withNormals==None):
+    if not (withNormals is None):
         simpleOutput = False
         nt = np.zeros([T+1, N, dim])
         nt[0, :, :] = withNormals
     if withJacobian:
         simpleOutput = False
         Jt = np.zeros([T+1, N])
-    if not(affine == None):
+    if not(affine is None):
         A = affine[0]
         b = affine[1]
-    if not (withPointSet==None):
+    if not (withPointSet is None):
         simpleOutput = False
         K = withPointSet.shape[0]
         yt = np.zeros([T+1,K,dim])
@@ -628,30 +628,30 @@ def landmarkEPDiff(T, x0, a0, KparDiff, affine = None, withJacobian=False, withN
         #print 'test', px.sum()
         if k < (T-1):
             at[k+1, :, :] = a - timeStep * KparDiff.applyDiffKT(z, a[np.newaxis,...], a[np.newaxis,...])
-        if not (affine == None):
+        if not (affine is None):
             xt[k+1, :, :] += timeStep * (np.dot(z, A[k].T) + b[k])
-        if not (withPointSet == None):
+        if not (withPointSet is None):
             zy = np.squeeze(yt[k, :, :])
             yt[k+1, :, :] = zy + timeStep * KparDiff.applyK(z, a, firstVar=zy)
-            if not (affine == None):
+            if not (affine is None):
                 yt[k+1, :, :] += timeStep * (np.dot(zy, A[k].T) + b[k])
 
-        if not (withNormals==None):
+        if not (withNormals is None):
             zn = np.squeeze(nt[k, :, :])        
             nt[k+1, :, :] = zn - timeStep * KparDiff.applyDiffKT(z, zn[np.newaxis,...], a[np.newaxis,...]) 
-            if not (affine == None):
+            if not (affine is None):
                 nt[k+1, :, :] += timeStep * np.dot(zn, A[k])
         if withJacobian:
             Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(z, a)
-            if not (affine == None):
+            if not (affine is None):
                 Jt[k+1, :] += timeStep * (np.trace(A[k]))
     if simpleOutput:
         return xt, at
     else:
         output = [xt, at]
-        if not (withPointSet==None):
+        if not (withPointSet is None):
             output.append(yt)
-        if not (withNormals==None):
+        if not (withNormals is None):
             output.append(nt)
         if withJacobian:
             output.append(Jt)
@@ -671,14 +671,14 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=F
     xt = np.zeros([M, N, dim])
     xt[0, ...] = x0
     simpleOutput = True
-    if not (withNormals==None):
+    if not (withNormals is None):
         simpleOutput = False
         nt = np.zeros([M, N, dim])
         nt[0, ...] = withNormals
-    if not(affine == None):
+    if not(affine is None):
         A = affine[0]
         b = affine[1]
-    if not (withPointSet==None):
+    if not (withPointSet is None):
         simpleOutput = False
         K = withPointSet.shape[0]
         yt = np.zeros([M,K,dim])
@@ -694,43 +694,43 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=F
     for k in range(M-1):
         z = np.squeeze(xt[k, ...])
         a = np.squeeze(at[k, ...])
-        if not(affine == None):
+        if not(affine is None):
             Rk = affineBasis.getExponential(timeStep*A[k])
             xt[k+1, ...] = np.dot(z, Rk.T) + timeStep * (KparDiff.applyK(z, a) + b[k])
         else:
             xt[k+1, ...] = z + timeStep * KparDiff.applyK(z, a)
-        # if not (affine == None):
+        # if not (affine is None):
         #     xt[k+1, :, :] += timeStep * (np.dot(z, A[k].T) + b[k])
-        if not (withPointSet == None):
+        if not (withPointSet is None):
             zy = np.squeeze(yt[k, :, :])
-            if not(affine == None):
+            if not(affine is None):
                 yt[k+1, ...] = np.dot(zy, Rk.T) + timeStep * (KparDiff.applyK(z, a, firstVar=zy) + b[k])
             else:
                 yt[k+1, :, :] = zy + timeStep * KparDiff.applyK(z, a, firstVar=zy)
-            # if not (affine == None):
+            # if not (affine is None):
             #     yt[k+1, :, :] += timeStep * (np.dot(zy, A[k].T) + b[k])
             if withJacobian:
                 Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(z, a, firstVar=zy)
-                if not (affine == None):
+                if not (affine is None):
                     Jt[k+1, :] += timeStep * (np.trace(A[k]))
         else:
             if withJacobian:
                 Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(z, a)
-                if not (affine == None):
+                if not (affine is None):
                     Jt[k+1, :] += timeStep * (np.trace(A[k]))
 
-        if not (withNormals==None):
+        if not (withNormals is None):
             zn = np.squeeze(nt[k, :, :])        
             nt[k+1, :, :] = zn - timeStep * KparDiff.applyDiffKT(z, zn[np.newaxis,...], a[np.newaxis,...]) 
-            if not (affine == None):
+            if not (affine is None):
                 nt[k+1, :, :] -= timeStep * np.dot(zn, A[k])
     if simpleOutput:
         return xt
     else:
         output = [xt]
-        if not (withPointSet==None):
+        if not (withPointSet is None):
             output.append(yt)
-        if not (withNormals==None):
+        if not (withNormals is None):
             output.append(nt)
         if withJacobian:
             output.append(Jt)
@@ -747,7 +747,7 @@ def landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine = None)
     xt = landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
     pxt = np.zeros([M+1, N, dim])
     pxt[M, :, :] = px1
-    if not(affine == None):
+    if not(affine is None):
         A = affine[0]
 
     for t in range(M):
@@ -766,7 +766,7 @@ def landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine = None)
         zpx = KparDiff.applyDiffKT(z, a1, a2)
         #print 'zpx', np.fabs(zpx).sum(), np.fabs(px).sum(), z.sum()
         #print 'pxt', np.fabs((pxt)[M-t-2]).sum()
-        if not (affine == None):
+        if not (affine is None):
             pxt[M-t-1, :, :] = np.dot(px, affineBasis.getExponential(timeStep*A[M-t-1])) + timeStep * zpx
         else:
             pxt[M-t-1, :, :] = px + timeStep * zpx
@@ -802,7 +802,7 @@ def landmarkHamiltonianGradient(x0, at, px1, KparDiff, regweight, getCovector = 
     (pxt, xt) = landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine=affine)
     dat = np.zeros(at.shape)
     timeStep = 1.0/at.shape[0]
-    if not (affine == None):
+    if not (affine is None):
         A = affine[0]
         dA = np.zeros(affine[0].shape)
         db = np.zeros(affine[1].shape)
@@ -811,11 +811,11 @@ def landmarkHamiltonianGradient(x0, at, px1, KparDiff, regweight, getCovector = 
         px = np.squeeze(pxt[k+1, :, :])
         #print 'testgr', (2*a-px).sum()
         dat[k, :, :] = (2*regweight*a-px)
-        if not (affine == None):
+        if not (affine is None):
             dA[k] = affineBasis.gradExponential(A[k]*timeStep, pxt[k+1], xt[k]) #.reshape([self.dim**2, 1])/timeStep
             db[k] = pxt[k+1].sum(axis=0) #.reshape([self.dim,1]) 
 
-    if affine == None:
+    if affine is None:
         if getCovector == False:
             return dat, xt
         else:
@@ -826,17 +826,22 @@ def landmarkHamiltonianGradient(x0, at, px1, KparDiff, regweight, getCovector = 
         else:
             return dat, dA, db, xt, pxt
 
-def timeSeriesCovector(x0, at, px1, KparDiff, regweight, affine = None):
+def timeSeriesCovector(x0, at, px1, KparDiff, regweight, affine = None, isjump = None):
     N = x0.shape[0]
     dim = x0.shape[1]
     M = at.shape[0]
     nTarg = len(px1)
-    Tsize1 = M/nTarg
+    if isjump is None:
+        Tsize1 = M/nTarg
+        isjump = np.array(M+1, dtype=bool_)
+        for k in range(nTarg):
+            isjump[(k+1)*Tsize1] = True
     timeStep = 1.0/M
     xt = landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
     pxt = np.zeros([M+1, N, dim])
     pxt[M, :, :] = px1[nTarg-1]
-    if not(affine == None):
+    jk = nTarg-2
+    if not(affine is None):
         A = affine[0]
 
     for t in range(M):
@@ -847,30 +852,31 @@ def timeSeriesCovector(x0, at, px1, KparDiff, regweight, affine = None):
         # if (isfield(KparDiff, 'zs') && size(z, 2) == 3)
         #     z(:,3) = z(:,3) / KparDiff.zs ;
         # end
-        a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*regweight*a[np.newaxis,...]))
+        a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*regweight[M-t-1]*a[np.newaxis,...]))
         a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
         #a1 = [px, a, -2*regweight*a]
         #a2 = [a, px, a]
         #print 'test', px.sum()
         zpx = KparDiff.applyDiffKT(z, a1, a2)
-        # if not (affine == None):
+        # if not (affine is None):
         #     zpx += np.dot(px, A[M-t-1])
         # pxt[M-t-1, :, :] = px + timeStep * zpx
-        if not (affine == None):
+        if not (affine is None):
             pxt[M-t-1, :, :] = np.dot(px, affineBasis.getExponential(timeStep*A[M-t-1])) + timeStep * zpx
         else:
             pxt[M-t-1, :, :] = px + timeStep * zpx
-        if (t<M-1) and ((M-1-t)%Tsize1 == 0):
-            pxt[M-t-1, :, :] += px1[(M-t-1)/Tsize1 - 1]
+        if (t<M-1) and isjump[M-1-t]:
+            pxt[M-t-1, :, :] += px1[jk]
+            jk -= 1
         #print 'zpx', np.fabs(zpx).sum(), np.fabs(px).sum(), z.sum()
         #print 'pxt', np.fabs((pxt)[M-t-2]).sum()
         
     return pxt, xt
 
-def timeSeriesGradient(x0, at, px1, KparDiff, regweight, getCovector = False, affine = None):
-    (pxt, xt) = timeSeriesCovector(x0, at, px1, KparDiff, regweight, affine=affine)
+def timeSeriesGradient(x0, at, px1, KparDiff, regweight, getCovector = False, affine = None, isjump=None):
+    (pxt, xt) = timeSeriesCovector(x0, at, px1, KparDiff, regweight, affine=affine, isjump=isjump)
     dat = np.zeros(at.shape)
-    if not (affine == None):
+    if not (affine is None):
         A = affine[0]
         dA = np.zeros(affine[0].shape)
         db = np.zeros(affine[1].shape)
@@ -878,15 +884,15 @@ def timeSeriesGradient(x0, at, px1, KparDiff, regweight, getCovector = False, af
         a = np.squeeze(at[k, :, :])
         px = np.squeeze(pxt[k+1, :, :])
         #print 'testgr', (2*a-px).sum()
-        dat[k, :, :] = (2*regweight*a-px)
-        if not (affine == None):
-            dA[k] = affineBasis.gradExponential(A[k]*timeStep, pxt[k+1], xt[k]) #.reshape([self.dim**2, 1])/timeStep
+        dat[k, :, :] = (2*regweight[k]*a-px)
+        if not (affine is None):
+            dA[k] = affineBasis.gradExponential(A[k]/at.shape[0], pxt[k+1], xt[k]) #.reshape([self.dim**2, 1])/timeStep
             db[k] = pxt[k+1].sum(axis=0) #.reshape([self.dim,1]) 
-        # if not (affine == None):
+        # if not (affine is None):
         #     dA[k] = np.dot(pxt[k+1].T, xt[k])
         #     db[k] = pxt[k+1].sum(axis=0)
 
-    if affine == None:
+    if affine is None:
         if getCovector == False:
             return dat, xt
         else:
@@ -909,13 +915,13 @@ def secondOrderEvolution(x0, a0, rhot, KparDiff, withJacobian=False, withPointSe
     xt[0, :, :] = x0
     at[0, :, :] = a0
     simpleOutput = True
-    if not(affine == None):
+    if not(affine is None):
         aff_ = True
         A = affine[0]
         b = affine[1]
     else:
         aff_=False
-    if not (withPointSet==None):
+    if not (withPointSet is None):
         simpleOutput = False
         K = withPointSet.shape[0]
         zt = np.zeros([T+1,K,dim])
@@ -942,7 +948,7 @@ def secondOrderEvolution(x0, a0, rhot, KparDiff, withJacobian=False, withPointSe
         else:
             xt[k+1, :, :] = x + timeStep * zx  
             at[k+1, :, :] = a + timeStep * za
-        if not (withPointSet == None):
+        if not (withPointSet is None):
             z = np.squeeze(zt[k, :, :])
             zx = KparDiff.applyK(x, a, firstVar=z)
             if aff_:
@@ -961,7 +967,7 @@ def secondOrderEvolution(x0, a0, rhot, KparDiff, withJacobian=False, withPointSe
         return xt, at
     else:
         output = [xt, at]
-        if not (withPointSet==None):
+        if not (withPointSet is None):
             output.append(zt)
         if withJacobian:
             output.append(Jt)
@@ -975,7 +981,7 @@ def secondOrderHamiltonian(x, a, rho, px, pa, KparDiff, affine=None):
     Ht = (px * KparDiff.applyK(x, a)).sum() 
     Ht += (pa*(-KparDiff.applyDiffKT(x, a[np.newaxis,...], a[np.newaxis,...]) + rho)).sum()
     Ht -= (rho**2).sum()/2
-    if not(affine == None):
+    if not(affine is None):
         A = affine[0]
         b = affine[1]
         Ht += (px * (np.dot(x, A.T) + b)).sum() - (pa * np.dot(a, A)).sum()
@@ -986,13 +992,13 @@ def secondOrderCovector(x0, a0, rhot, px1, pa1, KparDiff, affine = None, times= 
     T = rhot.shape[0]
     nTarg = len(px1)
     Tsize1 = T/nTarg
-    if not(affine == None):
+    if not(affine is None):
         aff_ = True
         A = affine[0]
         b = affine[1]
     else:
         aff_ = False
-    if times == None:
+    if times is None:
         t1 = (float(T)/nTarg) * (range(nTarg)+1)
     N = x0.shape[0]
     dim = x0.shape[1]
@@ -1035,7 +1041,7 @@ def secondOrderCovector(x0, a0, rhot, px1, pa1, KparDiff, affine = None, times= 
         #     zpa -= np.dot(pa, A[T-t-1].T)
 
         ### Checking derivatives
-        # if affine == None:
+        # if affine is None:
         #     afn = None
         # else:
         #     afn = (A[T-t-1], b[T-t-1])
@@ -1063,13 +1069,13 @@ def secondOrderCovector(x0, a0, rhot, px1, pa1, KparDiff, affine = None, times= 
 # Computes gradient after covariant evolution for deformation cost a^TK(x,x) a
 def secondOrderGradient(x0, a0, rhot, px1, pa1, KparDiff, times = None, getCovector = False, affine=None, controlWeight=1.0):
     (pxt, pat, xt, at) = secondOrderCovector(x0, a0, rhot, px1, pa1, KparDiff, times=times,affine=affine)
-    if not (affine == None):
+    if not (affine is None):
         dA = np.zeros(affine[0].shape)
         db = np.zeros(affine[1].shape)
     Tsize = rhot.shape[0]
     timeStep = 1.0/Tsize
     drhot = np.zeros(rhot.shape)
-    if not (affine == None):
+    if not (affine is None):
         dim = x0.shape[1]
         for k in range(Tsize):
             x = np.squeeze(xt[k, :, :])
@@ -1095,7 +1101,7 @@ def secondOrderGradient(x0, a0, rhot, px1, pa1, KparDiff, times = None, getCovec
     #drhot = rhot*controlWeight - pat[1:pat.shape[0],...]
     da0 = KparDiff.applyK(x0, a0) - pat[0,...]
 
-    if affine == None:
+    if affine is None:
         if getCovector == False:
             return da0, drhot, xt, at
         else:
@@ -1124,7 +1130,7 @@ def secondOrderFiberEvolution(x0, a0, y0, v0, rhot, KparDiff, withJacobian=False
     yt[0, :, :] = y0
     vt[0, :, :] = v0
     simpleOutput = True
-    if not (withPointSet==None):
+    if not (withPointSet is None):
         simpleOutput = False
         K = withPointSet.shape[0]
         zt = np.zeros([T+1,K,dim])
@@ -1149,7 +1155,7 @@ def secondOrderFiberEvolution(x0, a0, y0, v0, rhot, KparDiff, withJacobian=False
         at[k+1, :, :] = a + timeStep * (-KparDiff.applyDiffKT(y, a[np.newaxis,...], a[np.newaxis,...]) + rho[:,np.newaxis] * v) 
         vt[k+1, :, :] = v + timeStep * KparDiff.applyDiffK(y, v, a) 
         KparDiff.release()
-        if not (withPointSet == None):
+        if not (withPointSet is None):
             z = np.squeeze(zt[k, :, :])
             zt[k+1, :, :] = z + timeStep * KparDiff.applyK(y, a, firstVar=z)
             if withJacobian:
@@ -1160,7 +1166,7 @@ def secondOrderFiberEvolution(x0, a0, y0, v0, rhot, KparDiff, withJacobian=False
         return xt, at, yt, vt
     else:
         output = [xt, at, yt, vt]
-        if not (withPointSet==None):
+        if not (withPointSet is None):
             output.append(zt)
         if withJacobian:
             output.append(Jt)
@@ -1182,7 +1188,7 @@ def secondOrderFiberCovector(x0, a0, y0, v0, rhot, px1, pa1, py1, pv1, KparDiff,
     T = rhot.shape[0]
     nTarg = len(px1)
     Tsize1 = T/nTarg
-    if times == None:
+    if times is None:
         t1 = (float(T)/nTarg) * (range(nTarg)+1)
     N = x0.shape[0]
     M = y0.shape[0]
@@ -1265,7 +1271,7 @@ def secondOrderFiberCovector(x0, a0, y0, v0, rhot, px1, pa1, py1, pv1, KparDiff,
 def secondOrderFiberGradient(x0, a0, y0, v0, rhot, px1, pa1, py1, pv1, KparDiff, times = None, getCovector = False):
     (pxt, pat, pyt, pvt, xt, at, yt, vt) = secondOrderFiberCovector(x0, a0, y0, v0, rhot, px1, pa1, py1, pv1, KparDiff, times=times)
     drhot = np.zeros(rhot.shape)
-    # if not (affine == None):
+    # if not (affine is None):
     #     dA = np.zeros(affine[0].shape)
     #     db = np.zeros(affine[1].shape)
     for k in range(rhot.shape[0]):
@@ -1280,7 +1286,7 @@ def secondOrderFiberGradient(x0, a0, y0, v0, rhot, px1, pa1, py1, pv1, KparDiff,
         # dr = eps*np.random.normal(size=rho.shape)
         # dH = secondOrderFiberHamiltonian(xt[k,...],at[k,...],yt[k,...],v,rho+dr,pxt[k,...],pa,pyt[k,...],pvt[k,...],KparDiff)
         # print 'Test H; v:', (dH - H0)/eps, -(drhot[k,:]*dr).sum()/eps
-        # if not (affine == None):
+        # if not (affine is None):
         #     dA[k] = np.dot(pxt[k].T, xt[k])
         #     db[k] = pxt[k].sum(axis=0)
     if getCovector == False:

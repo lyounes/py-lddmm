@@ -6,5 +6,5 @@ py-lddmm: python code for surface and curve matching running python2.7 and using
 py-metamorphosis: python code for metamorphosis (python2.7, PIL, vtk, fortran libraries)
 diffeoReg (to come): C++ code for image matching (LDDMM and metamorphosis)
 
-To compile f90 kernel functions:
+To compile f90 programs in py-lddmm
 f2py --f90flags='-fopenmp' -lgomp -c kernelFunctions.f90 -m kernelFunctions_fort

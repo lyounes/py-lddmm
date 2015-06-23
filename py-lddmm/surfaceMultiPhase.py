@@ -205,8 +205,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             self.lmb = np.zeros([self.Tsize+1, self.nfaces])
             self.constraintTerm = self.constraintTermSliding
             self.constraintTermGrad = self.constraintTermGradSliding
-            self.useKernelDotProduct = False
-            self.dotProduct = self.standardDotProduct            
+            self.useKernelDotProduct = True
+            self.dotProduct = self.kernelDotProduct
+            #self.useKernelDotProduct = False
+            #self.dotProduct = self.standardDotProduct            
             # if self.param.KparDiff.name == 'none':
             #     self.dotProduct = self.normalizedDotProduct
             #     self.weightDot = 1.
@@ -419,7 +421,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 dxcval[self.nsurf][t][npt:npt1, :] += np.dot(lnu, A)
                 if self.useKernelDotProduct:
                     Kxx = self.param.KparDiff.getK(x)
-                    dacval[k][t] = scila.solve(Kxx, self.param.KparDiff.applyK(z, lnu, firstVar=x))
+                    dacval[k][t] = spLA.solve(Kxx, self.param.KparDiff.applyK(z, lnu, firstVar=x))
                 else:
                     dacval[k][t] = self.param.KparDiff.applyK(z, lnu, firstVar=x)
                 if self.affineDim > 0:

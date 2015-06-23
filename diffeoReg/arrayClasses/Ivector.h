@@ -137,7 +137,7 @@ public:
     while(i>=0) {
       if((*this)[i] < max[i]) {
 	(*this)[i]++ ;
-	for (j=i+1; j<max.size(); j++)
+	for (j=i+1; j<(int) max.size(); j++)
 	  (*this)[j] = min[j] ;
 	break ;
       }
