@@ -1,4 +1,5 @@
 import csv
+import argparse
 import loggingUtils
 import surfaces
 from surfaces import *
@@ -10,6 +11,7 @@ import Queue
 def threadfun(q):
     while True:
         print str(q.qsize())+' jobs left'
+        os.environ['OMP_NUM_THREADS'] = '4'
         f = q.get()
         try:
             f.optimizeMatching()
@@ -24,8 +26,7 @@ def runLongitudinalSurface(template, targetList, minL=3,atrophy=False, resultDir
     else:
         import surfaceTimeSeries as match
 
-    os.environ['OMP_NUM_THREADS'] = 4
-    max_proc = 5
+    max_proc = 12
     
     with open('/cis/home/younes/MATLAB/shapeFun/CA_STUDIES/BIOCARD/filelist.txt','r') as csvf:
         rdr = list(csv.DictReader(csvf,delimiter=',',fieldnames=('lab','isleft','id','filename')))
@@ -57,10 +58,11 @@ def runLongitudinalSurface(template, targetList, minL=3,atrophy=False, resultDir
 
     q = Queue.Queue()
     #files = [files[1],files[5],files[8]]
-    #selected = range(len(files)) 
-    selected = (1,9) 
+    selected = range(len(files)) 
+    #selected = (1,9) 
     for k in selected:
         s = files[k]
+        fv = []
         print s[0]
         for fn in s:
                 try:
@@ -104,9 +106,7 @@ if __name__=="__main__":
     parser.add_argument('--results', metavar = 'resultDir', type = str, dest = 'resultDir', default = '.', help='Output directory')
     args = parser.parse_args()
     
-    #template: /cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/4_create_population_based_template/newTemplate.byu'
-    #targetList: '/cis/home/younes/MATLAB/shapeFun/CA_STUDIES/BIOCARD/filelist.txt'
-    #Results: '/cis/home/younes/Results/biocardTS/withAtrophy'
+    # /cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/4_create_population_based_template/newTemplate.byu /cis/home/younes/MATLAB/shapeFun/CA_STUDIES/BIOCARD/filelist.txt --results /cis/home/younes/Results/biocardTS/withAtrophy
     
     
     runLongitudinalSurface(args.template, args.targetList, atrophy=True, resultDir=args.resultDir)
