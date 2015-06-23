@@ -36,6 +36,7 @@ def main():
     parser.add_argument('--symmetric', action = 'store_true', dest = 'symmetric', default = False, help='Use error term on both template and target')
     parser.add_argument('--flipTarget', action = 'store_true', dest = 'flipTarget', default = False, help='Flip target orientation')
     parser.add_argument('--mu', metavar='mu', type=float, dest='mu', default = 0.001, help='mu for augmented lagrangian') 
+    parser.add_argument('--affine', metavar='affine', type=str, dest='affine', default = 'euclidean', help='type of affine transformation') 
     args = parser.parse_args()
     
     if len(args.template) > 1:
@@ -84,15 +85,16 @@ def main():
 
     if args.atrophy or args.atrophyVolume:
         f = smt.SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, mu = args.mu, symmetric=args.symmetric,
-                            maxIter_cg=1000, affine= 'euclidean', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100., volumeOnly=args.atrophyVolume)
+                            maxIter_cg=1000, affine=args.affine, rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100., volumeOnly=args.atrophyVolume)
     else:
         f = smt.SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, symmetric=args.symmetric, saveTrajectories = True,
-                            maxIter=2000, affine= 'euclidean', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)
+                            maxIter=2000, affine=args.affine, rotWeight=1, transWeight = 1, scaleWeight=10., affineWeight=100.)
 
     f.optimizeMatching()
-    u = path.split(args.target)
-    [nm,ext] = path.splitext(u[1])
-    f.fvDef.savebyu(args.dirOut+'/'+nm+'Def.byu')
+    for atarg in args.target:
+        u = path.split(atarg)
+        [nm,ext] = path.splitext(u[1])
+        f.fvDef.savebyu(args.dirOut+'/'+nm+'Def.byu')
     #if args.saveTrajectories:
         
 

@@ -1036,24 +1036,24 @@ subroutine adjointSystem_unconstrained(dt,sfactor,kvs,kvo,khs,kho,alpha,x,m,z,&
   ! end do ! k
 end subroutine adjointSystem_unconstrained
 
-subroutine applyK(x, y, beta, sig, ord, num_nodes, f)
+subroutine applyK(x, y, beta, sig, ord, num_nodes_x, num_nodes_y, f)
   implicit none
-  integer :: num_nodes
-  real(8) :: x(num_nodes, 3)
-  real(8) :: y(num_nodes, 3)
+  integer :: num_nodes_x, num_nodes_y
+  real(8) :: x(num_nodes_x, 3)
+  real(8) :: y(num_nodes_y, 3)
   real(8) :: sig
   integer :: ord
-  real(8) :: f(num_nodes)
-  real(8) :: beta(num_nodes)
+  real(8) :: f(num_nodes_x)
+  real(8) :: beta(num_nodes_y)
   real(8) :: Kh
 
-  !f2py integer, intent(in) :: num_nodes
-  !f2py real(8), intent(in), dimension(num_nodes, 3) :: x 
-  !f2py real(8), intent(in), dimension(num_nodes, 3) :: y 
-  !f2py real(8), intent(in), dimension(num_nodes) :: beta 
+  !f2py integer, intent(in) :: num_nodes_x, num_nodes_y
+  !f2py real(8), intent(in), dimension(num_nodes_x, 3) :: x 
+  !f2py real(8), intent(in), dimension(num_nodes_y, 3) :: y 
+  !f2py real(8), intent(in), dimension(num_nodes_y) :: beta 
   !f2py real(8), intent(in) :: sig
   !f2py integer, intent(in) :: ord
-  !f2py real(8), intent(out), dimension(num_nodes) :: f
+  !f2py real(8), intent(out), dimension(num_nodes_x) :: f
 
   real(8) :: ut
   real(8) :: lpt
@@ -1064,10 +1064,10 @@ subroutine applyK(x, y, beta, sig, ord, num_nodes, f)
        0.,0.,0., 1./15, 2./21,   0.,0.,0.,0., 1./105 /), (/5,5/))
 
   !$omp parallel do private(k,l,ut,lpt,Kh,df) shared &
-  !$omp& (num_nodes, f, sig, ord, beta, c_)
-  do k = 1, num_nodes, 1
+  !$omp& (num_nodes_x, num_nodes_y, f, sig, ord, beta, c_)
+  do k = 1, num_nodes_x, 1
      df = 0
-     do l = 1, num_nodes, 1
+     do l = 1, num_nodes_y, 1
         ut = sqrt((x(k,1)-y(l,1))**2 + (x(k,2)-y(l,2))**2) / sig
         if (ut < 1e-8) then
            Kh = 1.0
@@ -1082,26 +1082,26 @@ subroutine applyK(x, y, beta, sig, ord, num_nodes, f)
   !$omp end parallel do
 end subroutine applyK
 
-subroutine applyK_and_Diff(x, y, beta, sig, ord, num_nodes, f, f2)
+subroutine applyK_and_Diff(x, y, beta, sig, ord, num_nodes_x, num_nodes_y, f, f2)
   implicit none
-  integer :: num_nodes
-  real(8) :: x(num_nodes, 3)
-  real(8) :: y(num_nodes, 3)
+  integer :: num_nodes_x, num_nodes_y
+  real(8) :: x(num_nodes_x, 3)
+  real(8) :: y(num_nodes_y, 3)
   real(8) :: sig
   integer :: ord
-  real(8) :: f(num_nodes)
-  real(8) :: f2(num_nodes,3)
-  real(8) :: beta(num_nodes)
+  real(8) :: f(num_nodes_x)
+  real(8) :: f2(num_nodes_x,3)
+  real(8) :: beta(num_nodes_y)
   real(8) :: Kh, Kh_diff
 
-  !f2py integer, intent(in) :: num_nodes
-  !f2py real(8), intent(in), dimension(num_nodes, 3) :: x 
-  !f2py real(8), intent(in), dimension(num_nodes, 3) :: y 
-  !f2py real(8), intent(in), dimension(num_nodes) :: beta 
+  !f2py integer, intent(in) :: num_nodes_x, num_nodes_y
+  !f2py real(8), intent(in), dimension(num_nodes_x, 3) :: x 
+  !f2py real(8), intent(in), dimension(num_nodes_y, 3) :: y 
+  !f2py real(8), intent(in), dimension(num_nodes_y) :: beta 
   !f2py real(8), intent(in) :: sig
   !f2py integer, intent(in) :: ord
-  !f2py real(8), intent(out), dimension(num_nodes) :: f
-  !f2py real(8), intent(out), dimension(num_nodes,3) :: f2
+  !f2py real(8), intent(out), dimension(num_nodes_x) :: f
+  !f2py real(8), intent(out), dimension(num_nodes_y,3) :: f2
 
   real(8) :: ut
   real(8) :: lpt
@@ -1114,11 +1114,11 @@ subroutine applyK_and_Diff(x, y, beta, sig, ord, num_nodes, f, f2)
        0.,0.,0., 1./105 /), (/4,4/))
 
   !$omp parallel do private(k,l,ut,lpt,Kh,Kh_diff,df,df2) shared &
-  !$omp& (num_nodes, f, f2, sig, ord, beta, c_, c1_)
-  do k = 1, num_nodes, 1
+  !$omp& (num_nodes_x, num_nodes_y, f, f2, sig, ord, beta, c_, c1_)
+  do k = 1, num_nodes_x, 1
      df = 0
      df2 = 0
-     do l = 1, num_nodes, 1
+     do l = 1, num_nodes_y, 1
         ut = sqrt((x(k,1)-y(l,1))**2 + (x(k,2)-y(l,2))**2) / sig
         if (ut < 1e-8) then
            Kh = 1.0

@@ -48,17 +48,17 @@ class RegularGrid(object):
         self.domain_max = numpy.empty(self.dim)
         self.dk = numpy.empty(self.dim)
         for d in range(dim):
-            if dx == None:
+            if dx is None:
                 self.num_points[d] = num_points[d]
                 self.domain_max[d] = domain_max[d]
                 self.dx[d] = (2.0*self.domain_max[d])/(self.num_points[d])
                 self.dk[d] = (2.0*numpy.pi)/((self.num_points[d]) * self.dx[d])
-            elif domain_max == None:
+            elif domain_max is None:
                 self.num_points[d] = num_points[d]
                 self.dx[d] = dx[d]
                 self.domain_max[d] = self.dx[d] * self.num_points[d] / 2.0
                 self.dk[d] = (2.0*numpy.pi)/((self.num_points[d]) * self.dx[d])
-            elif num_points == None:
+            elif num_points is None:
                 self.domain_max[d] = domain_max[d]
                 self.dx[d] = dx[d]
                 self.num_points[d] = (2.0*self.domain_max[d])/self.dx[d]

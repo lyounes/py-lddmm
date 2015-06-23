@@ -5,23 +5,27 @@ import surfaces
 from surfaces import *
 from kernelFunctions import *
 import surfaceMatching
-import surfaceTimeSeries as match
 #import secondOrderMatching as match
 
-def compute():
+def compute(Atrophy=False):
+    if Atrophy:
+        import surfaceTimeSeriesAtrophy as match
+    else:
+        import surfaceTimeSeries as match
 
     #outputDir = '/Users/younes/Development/Results/biocardTS/spline'
     outputDir = '/Users/younes/Development/Results/biocardTS/piecewise'
     #outputDir = '/cis/home/younes/MorphingData/twoBallsStitched'
     #outputDir = '/Users/younes/Development/Results/tight_stitched_rigid2_10'
     if __name__ == "__main__":
-        loggingUtils.setup_default_logging(outputDir, fileName='info')
+        loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput = False)
     else:
         loggingUtils.setup_default_logging()
 
     rdir = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/6_mappings_baseline_template_all/0_template_to_all/' ;
     sub = '2840698'
     #sub = '2729611'
+    fv0 = surfaces.Surface(filename='/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/4_create_population_based_template/newTemplate.byu')
     if sub == '2840698':
         fv1 = surfaces.Surface(filename=rdir+'2840698_2_4_hippo_L_reg.byu_10_6.5_2.5.byu')
         fv2 = surfaces.Surface(filename=rdir+'2840698_3_4_hippo_L_reg.byu_10_6.5_2.5.byu')
@@ -38,9 +42,13 @@ def compute():
 
 
     sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=2.5, sigmaError=1., errorType='varifold')
-    f = (match.SurfaceMatching(Template=fv1, Targets=(fv2,fv3,fv4), outputDir=outputDir, param=sm,
-                               #typeRegression='all', controlWeight=1.,
-                          affine='euclidean', testGradient=False, affineWeight=.1,  maxIter=1000))
+    if Atrophy:
+        f = match.SurfaceMatching(Template=fv0, Targets=(fv1,fv2,fv3,fv4), outputDir=outputDir, param=sm, regWeight=.1,
+                                affine='euclidean', testGradient=False, affineWeight=.1,  maxIter_cg=1000, mu=0.0001)
+    else:
+       f = match.SurfaceMatching(Template=fv0, Targets=(fv1,fv2,fv3,fv4), outputDir=outputDir, param=sm, regWeight=.1,
+                                affine='euclidean', testGradient=True, affineWeight=.1,  maxIter=1000)
+ 
     #, affine='none', rotWeight=0.1))
     f.optimizeMatching()
 
@@ -48,5 +56,5 @@ def compute():
     return f
 
 if __name__=="__main__":
-    compute()
+    compute(True)
 

@@ -9,7 +9,7 @@ import pointEvolution as evol
 
 def compute():
 
-    outputDir = '/cis/home/younes/Development/Results/biocardSingleTest'
+    outputDir = '/cis/home/younes/Development/Results/biocardSingle'
     #outputDir = '/cis/home/younes/MorphingData/twoBallsStitched'
     #outputDir = '/Users/younes/Development/Results/tight_stitched_rigid2_10'
     if __name__ == "__main__":

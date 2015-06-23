@@ -14,7 +14,7 @@ subroutine kernelmatrix(x, y, sig, ord, num_nodes, num_nodes_y, dim, f)
   !f2py integer, intent(in) :: ord
   !f2py real(8), intent(out), dimension(num_nodes, num_nodes_y) :: f
 
-  real(8) :: ut, Kh
+  real(8) :: ut,Kh
   real(8) :: lpt
   integer :: k,l 
   real(8) :: df(num_nodes_y)

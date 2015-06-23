@@ -1,5 +1,6 @@
 ##EDIT THE FOLLOWING LINES ACCORDING TO YOUR SYSTEM CONFIGURATION
 CC = g++
+CXX = g++
 
 ## where the binary directory will be created to store executables after make install
 PROJECT=.
@@ -22,10 +23,10 @@ LPATH = $(GSL_LPATH) $(FFTW3_LPATH) $(IMAGICK_LPATH)
 CFLAGS =  -O3 -ffast-math -Wall 
 #-arch x86_64 
 #COMPILE.cpp = $(CC) $(IPATH)  $(CFLAGS) -c
-COMPILE.cpp = $(CC) $(ARRAY_IPATH) `pkg-config --cflags fftw3 Magick++ gsl` $(CFLAGS) -c
+COMPILE.cpp = $(CC) $(ARRAY_IPATH) `pkg-config --cflags fftw3 GraphicsMagick++ gsl` $(CFLAGS) -c
 LIBPATH = -lfftw3 -lMagick++ -lstdc++ -lgsl -lgslcblas
-LIBS = `pkg-config --libs fftw3 Magick++ gsl` 
-COMPILE.o = $(CC)  $(LIBS) 
+LDLIBS = `pkg-config --libs fftw3 GraphicsMagick++ gsl` 
+COMPILE.o = $(CC)   
 #COMPILE.o = $(CC) $(IPATH)  $(CFLAGS) 
 
 DIR.h = \
@@ -97,7 +98,7 @@ SOURCES.o = $(SOURCES.cpp:%.cpp=%.o)
 #%.d: %.cpp
 #	$(SHELL) -ec '$(CC) -M  $(IPATH)  $(CFLAGS) $< | sed '\"s/$*.o/& $@/g'\" > $@'
 %.d: %.cpp $(SOURCES.h)
-	$(SHELL) -ec '$(CC) -M  $(ARRAY_IPATH) `pkg-config --cflags fftw3 Magick++ gsl`  $(CFLAGS) $< > $@'
+	$(SHELL) -ec '$(CC) -M  $(ARRAY_IPATH) `pkg-config --cflags fftw3 GraphicsMagick++ gsl`  $(CFLAGS) $< > $@'
 
 -include $(SOURCES.cpp:.cpp=.d)
 -include $(MAINS.cpp:.cpp=.d)
@@ -105,6 +106,8 @@ SOURCES.o = $(SOURCES.cpp:%.cpp=%.o)
 
 %.o: %.cpp 
 	$(COMPILE.cpp) $<
+%: %.o $(SOURCES.o)
+	$(COMPILE.o) $< -o $@ $(SOURCES.o) $(LDLIBS)
 
 all: metamorphosis affine_registration initialMomentumMatching initialMomentumMatchingSYM initialMomentumSegmentation velocityMatching parallelTranslation procrusteanAverage momentumAverage shoot momentumCovMatrix initialMomentumLandmarkMatching printDefaultParam
 
@@ -112,43 +115,6 @@ all: metamorphosis affine_registration initialMomentumMatching initialMomentumMa
 preinstall:
 	mkdir -p $(PROJECT)/include  
 	cp -R ./arrayClasses $(PROJECT)/include
-
-procrusteanAverage: $(SOURCES.o) procrusteanAverage.o
-	$(COMPILE.o) procrusteanAverage.o -o procrusteanAverage $(SOURCES.o) 
-printDefaultParam: $(SOURCES.o) printDefaultParam.o
-	$(COMPILE.o) printDefaultParam.o -o printDefaultParam $(SOURCES.o) 
-momentumAverage: $(SOURCES.o) momentumAverage.o
-	$(COMPILE.o) momentumAverage.o -o momentumAverage $(SOURCES.o)
-parallelTranslation: $(SOURCES.o) parallelTranslation.o $(SOURCES.h)
-	$(COMPILE.o) parallelTranslation.o -o parallelTranslation $(SOURCES.o) 
-metamorphosis: $(SOURCES.o) metamorphosis.o
-	$(COMPILE.o) metamorphosis.o -o metamorphosis $(SOURCES.o) 
-initialMomentumLandmarkMatching: $(SOURCES.o) initialMomentumLandmarkMatching.o
-	$(COMPILE.o) initialMomentumLandmarkMatching.o -o initialMomentumLandmarkMatching $(SOURCES.o)
-initialMomentumMatching: $(SOURCES.o) initialMomentumMatching.o
-	$(COMPILE.o) initialMomentumMatching.o -o initialMomentumMatching $(SOURCES.o) 
-initialMomentumMatchingSYM: $(SOURCES.o) initialMomentumMatchingSYM.o
-	$(COMPILE.o) initialMomentumMatchingSYM.o -o initialMomentumMatchingSYM $(SOURCES.o) 
-initialMomentumSegmentation: $(SOURCES.o) initialMomentumSegmentation.o
-	$(COMPILE.o) initialMomentumSegmentation.o -o initialMomentumSegmentation $(SOURCES.o) 
-velocityMatching: $(SOURCES.o) velocityMatching.o
-	$(COMPILE.o) velocityMatching.o -o velocityMatching $(SOURCES.o)
-greedyImageMatching: $(SOURCES.o) greedyImageMatching.o
-	$(COMPILE.o) greedyImageMatching.o -o greedyImageMatching $(SOURCES.o) 
-matchShootMG: $(SOURCES.o) matchShootMG.o
-	$(COMPILE.o) matchShootMG.o -o matchShootMG $(SOURCES.o) 
-shootingBatch: $(SOURCES.o) shootingBatch.o
-	$(COMPILE.o) shootingBatch.o -o shootingBatch $(SOURCES.o) 
-affine_registration: $(SOURCES.o) affine_registration.o
-	$(COMPILE.o) affine_registration.o -o affine_registration $(SOURCES.o) 
-testKernel: $(SOURCES.o) testKernel.o
-	$(COMPILE.o) testKernel.o -o testKernel $(SOURCES.o) 
-shoot: $(SOURCES.o) shoot.o
-	$(COMPILE.o) shoot.o -o shoot $(SOURCES.o)
-momentumCovMatrix: $(SOURCES.o) momentumCovMatrix.o
-	$(COMPILE.o) momentumCovMatrix.o -o momentumCovMatrix $(SOURCES.o) 
-tensorCurvature: $(SOURCES.o) tensorCurvature.o
-	$(COMPILE.o) tensorCurvature.cpp -o tensorCurvature $(SOURCES.o) 
 
 doc:
 	doxygen matching.dox
