@@ -445,7 +445,9 @@ def inho(sim):
 
 def faces(sim):
     sim.dim = 2
-    sim.sigma = 1
+    sim.sigma = .1
+    sim.smooth = 0.25
+    sim.nscale = 3
     sim.sfactor = 1./numpy.power(sim.sigma, 2)
     sim.num_points = (92,112)
     #sim.domain_max = (1., 1.)
@@ -459,7 +461,7 @@ def faces(sim):
 
     sim.kvn = 'laplacian'
     sim.khn = 'laplacian'
-    sim.kvs = 3.
+    sim.kvs = 10.
     sim.khs = 1.
     sim.kvo = 4
     sim.kho = 2
@@ -468,8 +470,8 @@ def faces(sim):
     logging.info("KH params: name=%s, sigma=%f, order=%f" \
                         % (sim.khn,sim.khs,sim.kho))
     size = sim.num_points
-    im1 = Image.open("/cis/home/younes/IMAGES/orl_faces/s13/1.pgm").rotate(180).resize(size)
-    im2 = Image.open("/cis/home/younes/IMAGES/orl_faces/s13/2.pgm").rotate(180).resize(size)
+    im1 = Image.open("/cis/home/younes/IMAGES/orl_faces/s26/1.pgm").rotate(180).resize(size)
+    im2 = Image.open("/cis/home/younes/IMAGES/orl_faces/s25/2.pgm").rotate(180).resize(size)
     print 'im1', im1
     #im1.save("/cis/home/younes/IMAGES/orl_faces/s1/1.png")
     ims = [im1, im2]
