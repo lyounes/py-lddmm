@@ -99,7 +99,7 @@ class SurfaceMatching(object):
 
             #print np.fabs(self.fv1.surfel-self.fv0.surfel).max()
 
-        self.saveRate = 3
+        self.saveRate = 10
         self.iter = 0
         self.setOutputDir(outputDir)
         self.dim = self.fv0.vertices.shape[1]

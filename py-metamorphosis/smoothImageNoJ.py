@@ -154,6 +154,7 @@ class SmoothImageMeta(object):
         self.spline_interp = False
         self.noJ = True
         self.unconstrained = False
+        self.smooth = 0.2
         # used only for letter examples
         self.letter_match = letter_match
 
@@ -172,7 +173,7 @@ class SmoothImageMeta(object):
         self.optimize_iteration = 0
         self.gradCoeff = 1./(self.rg.num_nodes*self.template_in.max())
 
-        self.khSmooth =0.2*numpy.asarray(self.rg.dx).max() # self.khs/2
+        self.khSmooth = self.smooth*numpy.asarray(self.rg.dx).max() # self.khs/2
         logging.info("sigma: %f" % self.sigma)
         logging.info("sfactor: %f" % self.sfactor)
         logging.info("num_points: %s" % str(self.rg.num_points))
@@ -233,6 +234,14 @@ class SmoothImageMeta(object):
                     self.khSmooth, self.kho, self.rg.num_nodes, self.rgI.num_nodes)
         self.template = templ
         self.D_template = dtempl
+        tmpMax = numpy.max(numpy.abs(self.template))
+        tarMax = numpy.max(numpy.abs(self.target))
+        self.D_template /= tmpMax
+        self.template /= tmpMax
+        self.dual_template /= tmpMax
+        self.target /= tarMax
+        self.dual_target /= tarMax
+        print self.target.max()
 
         if True:
             temp = numpy.zeros(rg.num_nodes)
@@ -252,13 +261,6 @@ class SmoothImageMeta(object):
             rg.vtk_write(0, "initial_data", output_dir=self.output_dir)
             print 'saved Initial'
 
-        tmpMax = numpy.max(numpy.abs(self.template))
-        tarMax = numpy.max(numpy.abs(self.target))
-        self.D_template /= tmpMax
-        self.template /= tmpMax
-        self.dual_template /= tmpMax
-        self.target /= tarMax
-        self.dual_target /= tarMax
         #self.z0weight[:] = numpy.sqrt(1e-6 + (self.D_template**2).sum(axis=1)[..., numpy.newaxis])
 
     def scale_up(self, scale_factor=2):
@@ -273,14 +275,14 @@ class SmoothImageMeta(object):
                              self.domain_max, [x*scale for x in self.dx], "meta")
         print 'scale_up', self.rg.nodes.shape
         xd = self.rg.nodes[:,0:self.dim] / dx0
-        xd = numpy.fabs(xd - numpy.rint(xd)).sum(axis=1)
-        J0 = numpy.nonzero(xd<=1e-5)[0]
+        xdm = numpy.fabs(xd - numpy.rint(xd)).sum(axis=1)
+        J0 = numpy.nonzero(xdm<=1e-5)[0]
         #J1 = numpy.nonzero(xd>1e-5)[0]
         
         self.optimize_iteration = 0
         self.gradCoeff = 1./(self.rg.num_nodes*self.template_in.max())
 
-        self.khSmooth =0.2*numpy.asarray(self.rg.dx).max() # self.khs/2
+        self.khSmooth =self.smooth*numpy.asarray(self.rg.dx).max() # self.khs/2
         logging.info("sigma: %f" % self.sigma)
         logging.info("sfactor: %f" % self.sfactor)
         logging.info("num_points: %s" % str(self.rg.num_points))
@@ -299,13 +301,20 @@ class SmoothImageMeta(object):
         self.id_x = self.rg.nodes[:,0].copy()
         self.id_y = self.rg.nodes[:,1].copy()
         self.m = numpy.zeros((rg.num_nodes, self.num_times))
-        alpha0 = self.alpha
+        alpha0 = numpy.copy(self.alpha_state)
         # y0 = self.rg.nodes[J0,...]
         # y1 = self.rg.nodes[J1,...]
         # si = kernelExpansion(y0, y1, alpha0[:, numpy.newaxis], self.kvs, self.kvo, verbose=False)
         # alpha1 = si.minimize()
         self.alpha = numpy.zeros(rg.num_nodes)
-        self.alpha[J0] = alpha0 
+        #print alpha0.shape
+        #print xd
+        for k,j in enumerate(J0):
+            #J1 = numpy.nonzero(numpy.logical_and((xd - xd[j]).min(axis=1) > -0.5-1e-5, (xd-xd[j]).max(axis=1) < (0.5-1e-5)))
+            J1 = numpy.nonzero(numpy.logical_and((xd - xd[j]).min(axis=1) > -1e-5, (xd-xd[j]).max(axis=1) < (1-1e-5)))
+            #print k, j, xd[j], J1[0]
+            self.alpha[J1[0]] = alpha0[k]/len(J1[0])
+        #self.alpha[J0] = alpha0 
         #self.alpha[J1] = alpha1
         self.alpha_state = numpy.copy(self.alpha)
         if self.unconstrained:
@@ -331,6 +340,15 @@ class SmoothImageMeta(object):
                     self.khSmooth, self.kho, self.rg.num_nodes, self.rgI.num_nodes)
         self.template = templ
         self.D_template = dtempl
+        tmpMax = numpy.max(numpy.abs(self.template))
+        tarMax = numpy.max(numpy.abs(self.target))
+        self.D_template /= tmpMax
+        self.template /= tmpMax
+        self.dual_template /= tmpMax
+        self.target /= tarMax
+        self.dual_target /= tarMax
+        self.shoot()
+        print self.target.max()
 
         if True:
             temp = numpy.zeros(rg.num_nodes)
@@ -344,20 +362,13 @@ class SmoothImageMeta(object):
             rg.create_vtk_sg()
             rg.add_vtk_point_data(self.template, "template")
             rg.add_vtk_point_data(self.D_template, "D_template")
+            rg.add_vtk_point_data(self.alpha, "alpha")
             rg.add_vtk_point_data(self.target, "target")
             rg.add_vtk_point_data(kvt, "kvt")
             rg.add_vtk_point_data(kht, "kht")
             rg.vtk_write(0, "initial_data", output_dir=self.output_dir)
             print 'saved Initial'
 
-        tmpMax = numpy.max(numpy.abs(self.template))
-        tarMax = numpy.max(numpy.abs(self.target))
-        self.D_template /= tmpMax
-        self.template /= tmpMax
-        self.dual_template /= tmpMax
-        self.target /= tarMax
-        self.dual_target /= tarMax
-        self.shoot()
         #self.z0weight[:] = numpy.sqrt(1e-6 + (self.D_template**2).sum(axis=1)[..., numpy.newaxis])
 
 
@@ -906,12 +917,12 @@ class SmoothImageMeta(object):
 
     def computeMatching(self):
 
-        conjugateGradient.cg(self, True, maxIter=500, TestGradient=False, \
-                            epsInit=self.cg_init_eps)
         for j in range(self.nscale-1):   
+            conjugateGradient.cg(self, True, maxIter=100, TestGradient=False, \
+                                 epsInit=self.cg_init_eps)
             self.scale_up()
-            conjugateGradient.cg(self, True, maxIter=500, TestGradient=False, \
-                                epsInit=self.cg_init_eps)
+        conjugateGradient.cg(self, True, maxIter=500, TestGradient=False, \
+                             epsInit=self.cg_init_eps)
         return self
 
     def writeData(self, name):

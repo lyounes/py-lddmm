@@ -60,7 +60,7 @@ subroutine shoot1order(x0, alpha, y0, nu0, a, b, sig, ord, withjac, withnu, t0, 
           dy = 0
         end if
         do l=1, numx, 1
-          ut = norm2(x(t,k,:) - x(t,l,:)) / sig
+          ut = sqrt(sum((x(t,k,:) - x(t,l,:))**2)) / sig
           if (ord > 4) then
             ut = ut * ut
             if (ut < 1e-8) then
@@ -116,7 +116,7 @@ subroutine shoot1order(x0, alpha, y0, nu0, a, b, sig, ord, withjac, withnu, t0, 
      do k = 1, numy, 1
         dy=0
         do l=1, numx, 1
-          ut = norm2(y(t,k,:)-x(t,l,:)) / sig 
+          ut = sqrt(sum((y(t,k,:)-x(t,l,:))**2)) / sig 
           if (ord > 4) then
             ut = ut * ut
             if (ut < 1e-8) then
@@ -177,7 +177,7 @@ subroutine adjoint1order(xt, alpha, px1, a, sig, ord, regweight, t0, numx, dimx,
      do k = 1, numx, 1
         dpx=0
         do l=1, numx, 1
-          ut = norm2(xt(t,k,:) - xt(t,l,:)) / sig
+          ut = sqrt(sum((xt(t,k,:) - xt(t,l,:))**2)) / sig
           if (ord > 4) then
             ut = ut * ut
             if (ut < 1e-8) then
