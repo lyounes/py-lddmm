@@ -44,7 +44,7 @@ def runLongitudinalSurface(template, targetList, minL=3,atrophy=False, resultDir
     #files = [files[1],files[5],files[8]]
     #files = [files[9]]
     #selected = range(len(files)) 
-    selected = (1,9) 
+    selected = (9,1) 
     logset = False
     for k in selected:
         s = files[k]
