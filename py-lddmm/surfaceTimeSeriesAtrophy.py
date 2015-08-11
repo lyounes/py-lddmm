@@ -440,7 +440,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
             self.meanc = np.sqrt((self.cstr**2).sum()/self.cval.size)
             logging.info('mean constraint %f max constraint %f' %(np.sqrt((self.cstr**2).sum()/self.cval.size), np.fabs(self.cstr).max()))
             logging.info('Saving surfaces...')
-            print self.nTarg
+            #print self.nTarg
             for k in range(self.nTarg):
                 self.fvDef[k].updateVertices(np.squeeze(self.xt[self.jumpIndex[k], :, :]))
             dim2 = self.dim**2
@@ -550,8 +550,8 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
                     self.mu *= 0.5
                 else:
                     self.muEps = self.muEps /2
-            else:
-                self.mu *= 0.9
+            #else:
+            #    self.mu *= 0.9
             if self.muEps > self.meanc:
                 self.muEps = 0.9 * self.meanc 
             self.obj = None
