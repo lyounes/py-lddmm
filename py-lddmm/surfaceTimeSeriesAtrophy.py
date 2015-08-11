@@ -1,10 +1,7 @@
-import os
 import numpy as np
 import numpy.linalg as la
-import scipy as sp
 import logging
 import surfaces
-import kernelFunctions as kfun
 import pointEvolution as evol
 #import pointEvolution_fort as evol_omp
 import conjugateGradient as cg
@@ -67,7 +64,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         timeStep = 1.0/self.Tsize
         obj=0
         cval = np.zeros(self.cval.shape)
-        dim2 = self.dim**2
+        #dim2 = self.dim**2
         for t in range(self.jumpIndex[0], self.Tsize):
             a = at[t]
             x = xt[t]
@@ -115,7 +112,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         dxcval = np.zeros(xt.shape)
         dacval = np.zeros(at.shape)
         dAffcval = np.zeros(Afft.shape)
-        dim2 = self.dim**2
+        #dim2 = self.dim**2
         for t in range(self.jumpIndex[0], self.Tsize):
             a = at[t]
             x = xt[t]
@@ -287,7 +284,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         kj = self.nTarg - 2
 
         foo = self.constraintTermGrad(xt, at, Afft)
-        lmb = foo[0]
+        #lmb = foo[0]
         dxcval = foo[1]
         dacval = foo[2]
         dAffcval = foo[3]
@@ -394,7 +391,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
 
     def standardDotProduct(self, g1, g2):
         res = np.zeros(len(g2))
-        dim2 = self.dim**2
+        #dim2 = self.dim**2
         for ll,gr in enumerate(g2):
             res[ll]=0
             res[ll] += np.multiply(g1.diff, gr.diff).sum()
@@ -536,7 +533,8 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         self.coeffAff = self.coeffAff1
         self.muEps = 1.0
         it = 0
-        while (self.muEps > 0.001) & (it<self.maxIter_al)  :
+        itGrad = 0 ;
+        while itGrad < 8 or ((self.muEps > 0.001) and (it<self.maxIter_al))  :
             logging.info('Starting Minimization: gradEps = %f muEps = %f mu = %f' %(self.gradEps, self.muEps,self.mu))
             #self.coeffZ = max(1.0, self.mu)
             cg.cg(self, verb = self.verb, maxIter = self.maxIter_cg, TestGradient = self.testGradient, epsInit=0.1)
@@ -546,6 +544,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
             logging.info('mean lambdas %f' %(np.fabs(self.lmb).sum() / self.lmb.size))
             if self.converged:
                 self.gradEps *= .75
+                itGrad += 1 
                 if (((self.cstr**2).sum()/self.cval.size) > self.muEps**2):
                     self.mu *= 0.5
                 else:
