@@ -312,7 +312,7 @@ class Kernel(KernelSpec):
             if firstVar is None:
                 z = kff.kernelmatrix(x, x, self.sigma, self.order, x.shape[0], x.shape[0], x.shape[1])
             else:
-                z = kff.kernelmatrix(x, y, self.sigma, self.order, x.shape[0], y.shape[0], x.shape[1])
+                z = kff.kernelmatrix(x, firstVar, self.sigma, self.order, x.shape[0], firstVar.shape[0], x.shape[1])
         return z
 
         

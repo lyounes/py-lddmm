@@ -65,7 +65,7 @@ def runLongitudinalSurface(template, targetList, minL=3,atrophy=False, resultDir
         try:
             if atrophy:
                 f = match.SurfaceMatching(Template=fv0, Targets=fv, outputDir=outputDir, param=sm, regWeight=.1,
-                                            affine='euclidean', testGradient=False, affineWeight=.1,  maxIter_cg=1000, mu=0.0001)
+                                            affine='euclidean', testGradient=False, volumeOnly=True, affineWeight=.1,  maxIter_cg=1000, mu=0.0001)
             else:
                 f = match.SurfaceMatching(Template=fv0, Targets=fv, outputDir=outputDir, param=sm, regWeight=.1,
                                         affine='euclidean', testGradient=False, affineWeight=.1,  maxIter=1000)
