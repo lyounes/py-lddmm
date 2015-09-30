@@ -35,7 +35,8 @@ def runLongitudinalSurface(template, targetList, minL=3,atrophy=False, resultDir
                 else:
                     currentFile = [] ;
                 previousLab = int(row['lab'])
-                
+    print len(files)
+    return                  
 
     fv0 = surfaces.Surface(filename=template)
     K1 = Kernel(name='laplacian', sigma = 6.5, order=4)
