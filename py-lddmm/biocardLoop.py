@@ -44,7 +44,7 @@ def runLongitudinalSurface(template, targetList, minL=3,atrophy=False, resultDir
     #files = [files[1],files[5],files[8]]
     #files = [files[9]]
     #selected = range(len(files)) 
-    selected = (9,1) 
+    selected = (83,86,90) 
     logset = False
     for k in selected:
         s = files[k]
@@ -57,7 +57,7 @@ def runLongitudinalSurface(template, targetList, minL=3,atrophy=False, resultDir
                     print e
   
 
-        outputDir = resultDir +'_'+str(k)
+        outputDir = resultDir +str(k)
         info_outputDir = outputDir
         if __name__ == "__main__" and (not logset):
             loggingUtils.setup_default_logging(info_outputDir, fileName='info', stdOutput=True)

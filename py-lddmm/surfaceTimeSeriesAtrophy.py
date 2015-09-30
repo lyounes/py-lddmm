@@ -534,7 +534,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         self.muEps = 1.0
         it = 0
         itGrad = 0 ;
-        while itGrad < 8 or ((self.muEps > 0.001) and (it<self.maxIter_al))  :
+        while (itGrad < 8 or (self.muEps > 0.001)) and (it<self.maxIter_al)  :
             logging.info('Starting Minimization: gradEps = %f muEps = %f mu = %f' %(self.gradEps, self.muEps,self.mu))
             #self.coeffZ = max(1.0, self.mu)
             cg.cg(self, verb = self.verb, maxIter = self.maxIter_cg, TestGradient = self.testGradient, epsInit=0.1)
