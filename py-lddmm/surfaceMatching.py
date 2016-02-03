@@ -75,7 +75,7 @@ class Direction:
 class SurfaceMatching(object):
 
     def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000,
-                 regWeight = 1.0, affineWeight = 1.0, verb=True,
+                 regWeight = 1.0, affineWeight = 1.0, internalWeight=-1.0, verb=True,
                  subsampleTargetSize=-1,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
                  testGradient=True, saveFile = 'evolution',
@@ -108,6 +108,7 @@ class SurfaceMatching(object):
         self.saveTrajectories = saveTrajectories
         self.symmetric = symmetric
         self.testGradient = testGradient
+        self.internalWeight = internalWeight
         self.regweight = regWeight
         self.affine = affine
         self.affB = AffineBasis(self.dim, affine)
@@ -202,6 +203,7 @@ class SurfaceMatching(object):
         timeStep = 1.0/self.Tsize
         dim2 = self.dim**2
         A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+        foo = surfaces.Surface(surf=self.fv0)
         if self.affineDim > 0:
             for t in range(self.Tsize):
                 AB = np.dot(self.affineBasis, Afft[t])
@@ -221,6 +223,9 @@ class SurfaceMatching(object):
             ra = param.KparDiff.applyK(z, a)
             self.v[t, :] = ra
             obj = obj + self.regweight*timeStep*np.multiply(a, (ra)).sum()
+            if self.internalWeight > 0:
+                foo.updateVertices(z)
+                obj += self.internalWeight*foo.normGrad(ra)
             if self.affineDim > 0:
                 obj +=  timeStep * np.multiply(self.affineWeight.reshape(Afft[t].shape), Afft[t]**2).sum()
             #print xt.sum(), at.sum(), obj
@@ -308,6 +313,79 @@ class SurfaceMatching(object):
     def initPointGradient(self):
         px = self.param.fun_objGrad(self.fvInit, self.fv0, self.param.KparDist)
         return px / self.param.sigmaError**2
+    
+    def hamiltonianCovector(self, px1, affine = None):
+        x0 = self.x0
+        at = self.at
+        KparDiff = self.param.KparDiff
+        N = x0.shape[0]
+        dim = x0.shape[1]
+        M = at.shape[0]
+        timeStep = 1.0/M
+        xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+        foo = surfaces.Surface(surf=self.fv0)
+        if not(affine is None):
+            A0 = affine[0]
+            A = np.zeros([M,dim,dim])
+            for k in range(A0.shape[0]):
+                A[k,...] = getExponential(timeStep*A0[k]) 
+        else:
+            A = np.zeros([M,dim,dim])
+            for k in range(M-1):
+                A[k,...] = np.eye(dim) 
+                
+        pxt = np.zeros([M+1, N, dim])
+        pxt[M, :, :] = px1
+        foo = surfaces.Surface(surf=self.fv0)
+        for t in range(M):
+            px = np.squeeze(pxt[M-t, :, :])
+            z = np.squeeze(xt[M-t-1, :, :])
+            a = np.squeeze(at[M-t-1, :, :])
+            foo.updateVertices(z)
+            v = self.param.KparDiff.applyK(z,a)
+            Lv = -foo.laplacian(v) 
+            DLv = self.internalWeight*foo.diffNormGrad(v)
+            a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...], 
+                                 2*self.internalWeight*a[np.newaxis,...]))
+            a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], Lv[np.newaxis,...]))
+            zpx = self.param.KparDiff.applyDiffKT(z, a1, a2) + 2*DLv
+            if not (affine is None):
+                pxt[M-t-1, :, :] = np.dot(px, A[M-t-1]) + timeStep * zpx
+            else:
+                pxt[M-t-1, :, :] = px + timeStep * zpx
+        return pxt, xt
+    
+    def hamiltonianGradient(self, px1, affine = None):
+        if self.internalWeight < 0:
+            return evol.landmarkHamiltonianGradient(self.x0, self.at, px1, self.param.KparDiff, self.regweight, affine=affine, 
+                                                    getCovector=True)
+                                                    
+        foo = surfaces.Surface(surf=self.fv0)
+        (pxt, xt) = self.hamiltonianCovector(px1, affine=affine)
+        at = self.at        
+        dat = np.zeros(at.shape)
+        timeStep = 1.0/at.shape[0]
+        if not (affine is None):
+            A = affine[0]
+            dA = np.zeros(affine[0].shape)
+            db = np.zeros(affine[1].shape)
+        for k in range(at.shape[0]):
+            z = np.squeeze(xt[k,...])
+            foo.updateVertices(z)
+            a = np.squeeze(at[k, :, :])
+            px = np.squeeze(pxt[k+1, :, :])
+            #print 'testgr', (2*a-px).sum()
+            v = self.param.KparDiff.applyK(z,a)
+            Lv = -foo.laplacian(v) 
+            dat[k, :, :] = 2*self.regweight*a-px + 2*self.internalWeight * Lv
+            if not (affine is None):
+                dA[k] = gradExponential(A[k]*timeStep, px, xt[k]) #.reshape([self.dim**2, 1])/timeStep
+                db[k] = pxt[k+1].sum(axis=0) #.reshape([self.dim,1]) 
+    
+        if affine is None:
+            return dat, xt, pxt
+        else:
+            return dat, dA, db, xt, pxt
 
     def getGradient(self, coeff=1.0):
         px1 = -self.endPointGradient()
@@ -318,7 +396,7 @@ class SurfaceMatching(object):
                 AB = np.dot(self.affineBasis, self.Afft[t])
                 A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
                 A[1][t] = AB[dim2:dim2+self.dim]
-        foo = evol.landmarkHamiltonianGradient(self.x0, self.at, px1, self.param.KparDiff, self.regweight, affine=A, getCovector=True)
+        foo = self.hamiltonianGradient(px1, affine=A)
         grd = Direction()
         grd.diff = foo[0]/(coeff*self.Tsize)
         grd.aff = np.zeros(self.Afft.shape)
@@ -485,6 +563,8 @@ class SurfaceMatching(object):
             self.fvInit.updateVertices(self.x0)
 
 
+    def endOfProcedure(self):
+        self.endOfIteration()
     def optimizeMatching(self):
         #print 'dataterm', self.dataTerm(self.fvDef)
         #print 'obj fun', self.objectiveFun(), self.obj0

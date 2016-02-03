@@ -53,6 +53,7 @@ def runLongitudinalSurface(template, targetList, minL=3,atrophy=False, resultDir
         print s[0]
         for fn in s:
                 try:
+                    #fv += [surfaces.Surface(filename=fn+'.byu')]
                     fv += [surfaces.Surface(filename=fn+'.byu')]
                 except NameError as e:
                     print e

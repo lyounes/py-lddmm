@@ -9,7 +9,7 @@ import pointEvolution as evol
 
 def compute():
 
-    outputDir = '/cis/home/younes/Development/Results/biocardSingle'
+    outputDir = '/cis/home/younes/Development/Results/biocardSingle2'
     #outputDir = '/cis/home/younes/MorphingData/twoBallsStitched'
     #outputDir = '/Users/younes/Development/Results/tight_stitched_rigid2_10'
     if __name__ == "__main__":
@@ -38,11 +38,11 @@ def compute():
     fv1.concatenate(f1)
 
 
-    K1 = Kernel(name='laplacian', sigma = 10.)
+    K1 = Kernel(name='laplacian', sigma = 2.)
     
     sm = SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=2.5, sigmaError=1, errorType='measure')
-    f = (SurfaceMatching(Template=fv0, Target=fv1, outputDir=outputDir,param=sm, testGradient=False,
-                         maxIter=2000, affine='none', rotWeight=0.1))
+    f = (SurfaceMatching(Template=fv0, Target=fv1, outputDir=outputDir,param=sm, testGradient=True,
+                         maxIter=2000, affine='none', rotWeight=0.1, internalWeight=10.0))
     f.optimizeMatching()
 
     if len(f0) > 1:
