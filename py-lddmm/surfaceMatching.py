@@ -225,7 +225,7 @@ class SurfaceMatching(object):
             obj = obj + self.regweight*timeStep*np.multiply(a, (ra)).sum()
             if self.internalWeight > 0:
                 foo.updateVertices(z)
-                obj += self.internalWeight*foo.normGrad(ra)
+                obj += self.internalWeight*foo.normGrad(ra)*timeStep
             if self.affineDim > 0:
                 obj +=  timeStep * np.multiply(self.affineWeight.reshape(Afft[t].shape), Afft[t]**2).sum()
             #print xt.sum(), at.sum(), obj
@@ -343,12 +343,13 @@ class SurfaceMatching(object):
             a = np.squeeze(at[M-t-1, :, :])
             foo.updateVertices(z)
             v = self.param.KparDiff.applyK(z,a)
-            Lv = -foo.laplacian(v) 
+            Lv = -2*foo.laplacian(v) 
             DLv = self.internalWeight*foo.diffNormGrad(v)
             a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...], 
-                                 2*self.internalWeight*a[np.newaxis,...]))
-            a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], Lv[np.newaxis,...]))
-            zpx = self.param.KparDiff.applyDiffKT(z, a1, a2) + 2*DLv
+                                 -self.internalWeight*a[np.newaxis,...], Lv[np.newaxis,...]))
+            a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], Lv[np.newaxis,...],
+                                 -self.internalWeight*a[np.newaxis,...]))
+            zpx = self.param.KparDiff.applyDiffKT(z, a1, a2) - DLv
             if not (affine is None):
                 pxt[M-t-1, :, :] = np.dot(px, A[M-t-1]) + timeStep * zpx
             else:
@@ -479,7 +480,7 @@ class SurfaceMatching(object):
         if (self.iter % self.saveRate == 0) :
             logging.info('Saving surfaces...')
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
-            if self.affineDim <=0:
+            if self.internalWeight < 0 and self.affineDim <=0:
                 xtEPDiff, atEPdiff = evol.landmarkEPDiff(self.at.shape[0], self.x0,
                                                          np.squeeze(self.at[0, :, :]), self.param.KparDiff)
                 self.fvDef.updateVertices(np.squeeze(xtEPDiff[-1, :, :]))

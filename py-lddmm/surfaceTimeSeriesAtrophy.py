@@ -503,7 +503,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
                 vf.scalars.append(np.exp(Jt[kk, :])/(AV[:,0]+1)-1)
                 vf.scalars.append('displacement')
                 vf.scalars.append(displ)
-                if t >= self.jumpIndex[0]:
+                if kk >= self.jumpIndex[0]:
                     displ += dt * (v*nu).sum(axis=1)
                 if kk < self.Tsize:
                     nu = self.fv0ori*fvDef.computeVertexNormals()

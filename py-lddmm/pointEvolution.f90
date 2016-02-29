@@ -1,3 +1,5 @@
+
+
 subroutine shoot1order(x0, alpha, y0, nu0, a, b, sig, ord, withjac, withnu, t0, numx, dimx,  numy, x, y, jac, nu)
   implicit none
   integer :: t0, numx, dimx, numy, ord, withjac, withnu
@@ -13,19 +15,7 @@ subroutine shoot1order(x0, alpha, y0, nu0, a, b, sig, ord, withjac, withnu, t0, 
   real(8) :: nu0(numx, dimx)
   real(8) :: nu(t0+1, numx, dimx)
 
-  real(8) :: ut, Kv, Kv_diff, lpt
-  real(8) :: ada
-  integer :: t, k, l
-  real(8) :: dx(dimx),dy(dimx),dnu(dimx),djac
-  real(8) :: c_(5, 5), c1_(4, 4)
-  real(8) :: dt
-  real(8) :: xt(numx, dimx)
-  real(8) :: alphat(numx, dimx)
-  real(8) :: yt(numy, dimx)
-  real(8) :: at(dimx, dimx)
-  real(8) :: bt(dimx)
-  real(8) :: jact(numx)
-  real(8) :: nut(numx, dimx)
+   
 
   !f2py integer, intent(in) :: t0, numx, dimx, numy, ord, withJ, withnu
   !f2py real(8), intent(in) :: sig
@@ -39,6 +29,28 @@ subroutine shoot1order(x0, alpha, y0, nu0, a, b, sig, ord, withjac, withnu, t0, 
   !f2py real(8), intent(out), dimension(t0+1, numy, dimx) :: y
   !f2py real(8), intent(out), dimension(t0+1, numx) :: jac
   !f2py real(8), intent(out), dimension(t0+1, numx, dimx) :: nu
+
+!  interface
+!    function matmult(dima, dimx1, dimx2, a,x) result(b)
+!     integer dima, dimx1, dimx2
+!     real(8), dimension(dima,dimx1), intent(in) :: a
+!     real(8), dimension(dimx1,dimx2), intent(in) :: x
+!     real(8), dimension(dima,dimx2) :: b
+!    end function
+!  end interface
+  real(8) :: dotproduct
+  real(8) :: ut, Kv, Kv_diff, lpt, ppp
+  integer :: t, k, l, ip, jp
+  real(8) :: dx(dimx),dy(dimx),dnu(dimx),djac
+  real(8) :: c_(5, 5), c1_(4, 4)
+  real(8) :: dt
+  real(8) :: xt(numx, dimx)
+  real(8) :: alphat(numx, dimx)
+  real(8) :: yt(numy, dimx)
+  real(8) :: at(dimx, dimx)
+  real(8) :: bt(dimx)
+  real(8) :: nut(numx, dimx)
+
 
   dt = 1./t0 
   x(1,:,:) = x0
@@ -63,14 +75,15 @@ subroutine shoot1order(x0, alpha, y0, nu0, a, b, sig, ord, withjac, withnu, t0, 
      bt = b(t,:)
      nut = nu(t,:,:)
      yt = y(t,:,:)
-     !$omp parallel do private(k,l,ut,lpt,Kv, Kv_diff, &
-     !$omp& dx, dy, dnu, djac) shared (alphat,at,bt,xt,nut,x,nu,jac,sig,ord,c_,c1_,numy,numx)
+     !$omp parallel do private(k,l,ut,lpt,Kv, Kv_diff, ppp, ip, jp, &
+     !$omp& dx, dy, dnu, djac) shared (alphat,at,bt,xt,nut,x,nu,jac,sig,ord,c_, &
+     !$omp c1_,numy,numx,withnu,withjac)
      do k = 1, numx, 1
         dx=0
         dnu=0
         djac = 0
         do l=1, numx, 1
-          ut = sqrt(sum((x(t,k,:) - x(t,l,:))**2)) / sig
+          ut = sqrt(sum((xt(k,:) - xt(l,:))**2)) / sig
           if (ord > 4) then
             ut = ut * ut
             if (ut < 1e-8) then
@@ -106,15 +119,27 @@ subroutine shoot1order(x0, alpha, y0, nu0, a, b, sig, ord, withjac, withnu, t0, 
           end if
           dx = dx + Kv*alphat(l, :)
           if (withjac > 0) then
-            djac = djac + 2* Kv_diff * dot_product(xt(k,:) - xt(l,:),alphat(l,:))
+            djac = djac + 2* Kv_diff * sum((xt(k,:) - xt(l,:))*alphat(l,:))
           end if
           if (withnu > 0) then
-            dnu = dnu - 2 * Kv_diff * dot_product(nut(:,l),alphat(l,:)) * (xt(k,:) - xt(l,:))
+            dnu = dnu - 2 * Kv_diff * sum(nut(:,l)*alphat(l,:)) * (xt(k,:) - xt(l,:))
           end if
         end do !l
-        x(t+1, k,:) = matmul(at,xt(k,:)) + dt*(dx+bt)
+        do ip = 1,dimx,1
+         x(t+1, k, ip) = dt*(dx(ip)+bt(ip))
+         do jp=1,dimx,1
+           x(t+1, k, ip) = x(t+1, k, ip) + at(ip,jp) * xt(k, jp) 
+         end do
+        end do
+!        x(t+1, k,:) = matmult(dimx, dimx, 1, at,xt(k,:)) + dt*(dx+bt)
         if (withnu > 0) then
-          nu(t+1,k,:) = matmul(nut(k,:),at) + dt * dnu
+         do ip = 1,dimx,1
+          nu(t+1, k, ip) = 0
+          do jp=1,dimx,1
+            nu(t+1, k, ip) = nu(t+1, k, ip) + nut(k,jp) * at(jp,ip)
+          end do
+         end do
+!          nu(t+1,k,:) = matmult(1, dimx, dimx, nut(k,:),at) + dt * dnu
         end if
         if (withjac > 0) then
           jac(t+1,k) = jac(t,k) + dt * djac
@@ -127,7 +152,7 @@ subroutine shoot1order(x0, alpha, y0, nu0, a, b, sig, ord, withjac, withnu, t0, 
      do k = 1, numy, 1
         dy=0
         do l=1, numx, 1
-          ut = sqrt(sum((y(t,k,:)-x(t,l,:))**2)) / sig 
+          ut = sqrt(sum((yt(k,:)-xt(l,:))**2)) / sig 
           if (ord > 4) then
             ut = ut * ut
             if (ut < 1e-8) then
@@ -145,7 +170,14 @@ subroutine shoot1order(x0, alpha, y0, nu0, a, b, sig, ord, withjac, withnu, t0, 
           end if
           dy = dy + Kv*alphat(l, :)
         end do !l
-        y(t+1, k,:) = matmul(at, yt(t,:)) + dt*(dy + bt)
+        do ip = 1,dimx,1
+            ppp = 0
+            do jp=1,dimx,1
+                ppp = ppp + at(ip,jp)*yt(k,jp)
+            end do
+            y(t+1,k,ip) = ppp + dt * (dy(ip) + bt(ip))
+        end do
+!        y(t+1, k,:) = matmul(at, yt(k,:)) + dt*(dy + bt)
      end do !k
      !$omp end parallel do
   end do !t
@@ -161,16 +193,6 @@ subroutine adjoint1order(xt, alpha, px1, a, sig, ord, regweight, t0, numx, dimx,
   real(8) :: a(t0, dimx, dimx)
   real(8) :: px(t0+1, numx, dimx)
 
-  real(8) :: ut, Kv, Kv_diff, lpt
-  integer :: t, k, l
-  real(8) :: dx(dimx), dpx(dimx)
-  real(8) :: c_(5, 5), c1_(4, 4)
-  real(8) :: dt
-  real(8) :: xtt(numx, dimx)
-  real(8) :: alphat(numx, dimx)
-  real(8) :: at(dimx, dimx)
-  real(8) :: pxt(numx, dimx)
-
   !f2py integer, intent(in) :: t0, numx, dimx, ord
   !f2py real(8), intent(in) :: sig, regweight
   !f2py real(8), intent(in), dimension(t0+1,numx, dimx) :: xt
@@ -178,6 +200,18 @@ subroutine adjoint1order(xt, alpha, px1, a, sig, ord, regweight, t0, numx, dimx,
   !f2py real(8), intent(in), dimension(t0, numx, dimx) :: alpha
   !f2py real(8), intent(in), dimension(t0, dimx, dimx) :: a
   !f2py real(8), intent(out), dimension(t0+1, numx, dimx) :: px
+
+  real(8) :: dotproduct
+  real(8) :: ut, Kv_diff, lpt, ppp
+  integer :: t, k, l, ip, jp
+  real(8) :: dpx(dimx)
+  real(8) :: c_(5, 5), c1_(4, 4)
+  real(8) :: dt
+  real(8) :: xtt(numx, dimx)
+  real(8) :: alphat(numx, dimx)
+  real(8) :: at(dimx, dimx)
+  real(8) :: pxt(numx, dimx)
+
 
   dt = 1./t0 
   px(t0+1,:,:) = px1
@@ -191,7 +225,7 @@ subroutine adjoint1order(xt, alpha, px1, a, sig, ord, regweight, t0, numx, dimx,
      xtt = xt(t,:,:)
      pxt = px(t+1,:,:)
      at = a(t,:,:)
-     !$omp parallel do private(k,l,ut,lpt,Kv_diff, &
+     !$omp parallel do private(k,l,ut,lpt,Kv_diff,ppp,ip,jp, &
      !$omp& dpx) shared (alphat,xtt,px,pxt,regweight,at,sig,ord,c_,c1_)
      do k = 1, numx, 1
         dpx=0
@@ -212,13 +246,52 @@ subroutine adjoint1order(xt, alpha, px1, a, sig, ord, regweight, t0, numx, dimx,
               Kv_diff = -lpt * exp(-1.0*ut)/(2*sig**2)
             end if
           end if
-          dpx = dpx + 2*Kv_diff * (dot_product(pxt(k,:),alphat(l, :)) &
-                                + dot_product(pxt(l, :),alphat(k, :))&
-                                - 2*regweight*dot_product(alphat(k,:),alphat(l, :)))&
+          dpx = dpx + 2*Kv_diff * (sum(pxt(k,:)*alphat(l, :)) &
+                                + sum(pxt(l, :)*alphat(k, :))&
+                                - 2*regweight*sum(alphat(k,:)*alphat(l, :)))&
                               * (xtt(k,:) - xtt(l,:))
         end do !l
-        px(t, k,:) = matmul(transpose(at), pxt(k, :)) + dt* dpx
+        do ip = 1,dimx,1
+            ppp = 0
+            do jp=1,dimx,1
+                ppp = ppp + at(jp,ip)*pxt(k,jp)
+            end do
+            px(t,k,ip) = ppp + dt * dpx(ip)
+        end do
+!        px(t, k,:) = matmul(transpose(at), pxt(k, :)) + dt* dpx
      end do !k
+     !$omp end parallel do
   end do !t
 end subroutine adjoint1order
 
+ 
+!function matmult(dima, dimx1, dimx2, a,x) result(b)
+! implicit none
+! integer dima, dimx1, dimx2
+! real(8), dimension(dima,dimx1), intent(in) :: a
+! real(8), dimension(dimx1,dimx2), intent(in) :: x
+! real(8), dimension(dima,dimx2) :: b
+!
+! integer ip, jp
+! do ip = 1,dima,1
+!    b(ip,:) = 0
+!    do jp=1,dimx1,1
+!        b(ip,:) = b(ip,:) + a(ip,jp)*x(jp,:)
+!    end do
+! end do
+!end function
+
+ 
+function dotproduct(d,x,y) result (res)
+ implicit none
+ integer d
+ real(8), dimension(d),intent(in) :: x
+ real(8), dimension(d),intent(in) :: y
+ real(8) res
+
+ integer i
+ res = sum(x*y)
+! do i=1,d,1
+!  res = res + x(i)*y(i)
+! end do
+end function

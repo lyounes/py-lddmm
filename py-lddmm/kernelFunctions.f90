@@ -659,3 +659,5 @@ subroutine applykdiffmat(x, y, beta, sig, ord, num_nodes, num_nodes_y, dim, f)
   end do
   !$omp end parallel do
 end subroutine applykdiffmat
+
+
