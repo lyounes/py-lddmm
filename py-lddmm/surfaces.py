@@ -286,7 +286,6 @@ class Surface:
     def smooth(self, n=30, smooth=0.1):
         if gotVTK:
             g = self.toPolyData()
-            print g
             smoother= vtkWindowedSincPolyDataFilter()
             smoother.SetInput(g)
             smoother.SetNumberOfIterations(n)
@@ -748,6 +747,10 @@ class Surface:
             z += np.linalg.det(v[c[:], :])/6
         return z
 
+    # Computes surface area
+    def surfArea(self):
+        return np.sqrt((self.surfel**2).sum(axis=1)).sum()
+
     # Reads from .off file
     def readOFF(self, offfile):
         with open(offfile,'r') as f:
@@ -883,16 +886,16 @@ class Surface:
     def saveVTK(self, fileName, scalars = None, normals = None, tensors=None, scal_name='scalars', vectors=None, vect_name='vectors'):
         vf = vtkFields()
         #print scalars
-        if not (scalars==None):
+        if not (scalars is None):
             vf.scalars.append(scal_name)
             vf.scalars.append(scalars)
-        if not (vectors==None):
+        if not (vectors is None):
             vf.vectors.append(vect_name)
             vf.vectors.append(vectors)
-        if not (normals==None):
+        if not (normals is None):
             vf.normals.append('normals')
             vf.normals.append(normals)
-        if not (tensors==None):
+        if not (tensors is None):
             vf.tensors.append('tensors')
             vf.tensors.append(tensors)
         self.saveVTK2(fileName, vf)
@@ -1037,60 +1040,102 @@ class Surface:
         self.computeCentersAreas()
     
     def normGrad(self, phi):
-        res = 0 
-        for k,f in enumerate(self.faces):
-            a = (self.surfel[k]**2).sum() ;
-            v1 = self.vertices[f[0],:]
-            v2 = self.vertices[f[1],:]
-            v3 = self.vertices[f[2],:]
-            l1 = ((v2-v3)**2).sum()
-            l2 = ((v1-v3)**2).sum()
-            l3 = ((v1-v2)**2).sum()
-            phi1 = phi[f[0],:]
-            phi2 = phi[f[1],:]
-            phi3 = phi[f[2],:]
-            u = l1*((phi2-phi1)*(phi3-phi1)).sum() + l2*((phi3-phi2)*(phi1-phi2)).sum() + l3*((phi1-phi3)*(phi2-phi3)).sum()
-            res += u/a
+        v1 = self.vertices[self.faces[:,0],:]
+        v2 = self.vertices[self.faces[:,1],:]
+        v3 = self.vertices[self.faces[:,2],:]
+        l1 = ((v2-v3)**2).sum(axis=1)
+        l2 = ((v1-v3)**2).sum(axis=1)
+        l3 = ((v1-v2)**2).sum(axis=1)
+        phi1 = phi[self.faces[:,0],:]
+        phi2 = phi[self.faces[:,1],:]
+        phi3 = phi[self.faces[:,2],:]
+        a = (self.surfel**2).sum(axis=1)
+        u = l1*((phi2-phi1)*(phi3-phi1)).sum(axis=1) + l2*((phi3-phi2)*(phi1-phi2)).sum(axis=1) + l3*((phi1-phi3)*(phi2-phi3)).sum(axis=1)
+        res = (u/a).sum()
+#        
+#        for k,f in enumerate(self.faces):
+#            a = (self.surfel[k]**2).sum()
+#            v1 = self.vertices[f[0],:]
+#            v2 = self.vertices[f[1],:]
+#            v3 = self.vertices[f[2],:]
+#            l1 = ((v2-v3)**2).sum()
+#            l2 = ((v1-v3)**2).sum()
+#            l3 = ((v1-v2)**2).sum()
+#            phi1 = phi[f[0],:]
+#            phi2 = phi[f[1],:]
+#            phi3 = phi[f[2],:]
+#            u = l1*((phi2-phi1)*(phi3-phi1)).sum() + l2*((phi3-phi2)*(phi1-phi2)).sum() + l3*((phi1-phi3)*(phi2-phi3)).sum()
+#            res += u/a
         return res
     
-    def laplacian(self, phi):
+    def laplacian(self, phi, weighted=False):
         res = np.zeros(phi.shape)
+        v1 = self.vertices[self.faces[:,0],:]
+        v2 = self.vertices[self.faces[:,1],:]
+        v3 = self.vertices[self.faces[:,2],:]
+        l1 = (((v2-v3)**2).sum(axis=1))[...,np.newaxis]
+        l2 = (((v1-v3)**2).sum(axis=1))[...,np.newaxis]
+        l3 = (((v1-v2)**2).sum(axis=1))[...,np.newaxis]
+        phi1 = phi[self.faces[:,0],:]
+        phi2 = phi[self.faces[:,1],:]
+        phi3 = phi[self.faces[:,2],:]
+        a = 2*((self.surfel**2).sum(axis=1))[...,np.newaxis]
+        r1 = (l1 * (phi2 + phi3-2*phi1) + (l2-l3) * (phi2-phi3))/a
+        r2 = (l2 * (phi1 + phi3-2*phi2) + (l1-l3) * (phi1-phi3))/a
+        r3 = (l3 * (phi1 + phi2-2*phi3) + (l2-l1) * (phi2-phi1))/a
         for k,f in enumerate(self.faces):
-            v1 = self.vertices[f[0],:]
-            v2 = self.vertices[f[1],:]
-            v3 = self.vertices[f[2],:]
-            l1 = ((v2-v3)**2).sum()
-            l2 = ((v1-v3)**2).sum()
-            l3 = ((v1-v2)**2).sum()
-            phi1 = phi[f[0],:]
-            phi2 = phi[f[1],:]
-            phi3 = phi[f[2],:]
-            a = 2*(self.surfel[k]**2).sum() ;
-            res[f[0],:] += (l1 * (phi2 + phi3-2*phi1) + (l2-l3) * (phi2-phi3))/a
-            res[f[1],:] += (l2 * (phi1 + phi3-2*phi2) + (l1-l3) * (phi1-phi3))/a
-            res[f[2],:] += (l3 * (phi1 + phi2-2*phi3) + (l2-l1) * (phi2-phi1))/a
-        return res
+            res[f[0],:] += r1[k,:]
+            res[f[1],:] += r2[k,:]
+            res[f[2],:] += r3[k,:]
+        if weighted:
+            av = self.computeVertexArea()
+            return res/av[0]
+        else:
+            return res
 
     def diffNormGrad(self, phi):
         res = np.zeros((self.vertices.shape[0],phi.shape[1]))
+        v1 = self.vertices[self.faces[:,0],:]
+        v2 = self.vertices[self.faces[:,1],:]
+        v3 = self.vertices[self.faces[:,2],:]
+        l1 = (((v2-v3)**2).sum(axis=1))
+        l2 = (((v1-v3)**2).sum(axis=1))
+        l3 = (((v1-v2)**2).sum(axis=1))
+        phi1 = phi[self.faces[:,0],:]
+        phi2 = phi[self.faces[:,1],:]
+        phi3 = phi[self.faces[:,2],:]
+        a = ((self.surfel**2).sum(axis=1))
+        u = l1*((phi2-phi1)*(phi3-phi1)).sum(axis=1) + l2*((phi3-phi2)*(phi1-phi2)).sum(axis=1) + l3*((phi1-phi3)*(phi2-phi3)).sum(axis=1)
+        u = (2*u/a**2)[...,np.newaxis]
+        a = a[...,np.newaxis]
+        
+        r1 = - u * np.cross(v2-v3,self.surfel) + 2*((v1-v3) *(((phi3-phi2)*(phi1-phi2)).sum(axis=1))[:,np.newaxis]
+            + (v1-v2)*(((phi1-phi3)*(phi2-phi3)).sum(axis=1)[:,np.newaxis]))/a
+        r2 = - u * np.cross(v3-v1,self.surfel) + 2*((v2-v1) *(((phi1-phi3)*(phi2-phi3)).sum(axis=1))[:,np.newaxis]
+            + (v2-v3)*(((phi2-phi1)*(phi3-phi1)).sum(axis=1))[:,np.newaxis])/a
+        r3 = - u * np.cross(v1-v2,self.surfel) + 2*((v3-v2) *(((phi2-phi1)*(phi3-phi1)).sum(axis=1))[:,np.newaxis]
+            + (v3-v1)*(((phi3-phi2)*(phi1-phi2)).sum(axis=1)[:,np.newaxis]))/a
         for k,f in enumerate(self.faces):
-            a = (self.surfel[k]**2).sum() ;
-            v1 = self.vertices[f[0],:]
-            v2 = self.vertices[f[1],:]
-            v3 = self.vertices[f[2],:]
-            l1 = ((v2-v3)**2).sum()
-            l2 = ((v1-v3)**2).sum()
-            l3 = ((v1-v2)**2).sum()
-            phi1 = phi[f[0],:]
-            phi2 = phi[f[1],:]
-            phi3 = phi[f[2],:]
-            u = l1*((phi2-phi1)*(phi3-phi1)).sum() + l2*((phi3-phi2)*(phi1-phi2)).sum() + l3*((phi1-phi3)*(phi2-phi3)).sum()
-            res[f[0],:] += - (2*u/a**2) * np.cross(v2-v3,self.surfel[k]) + 2*((v1-v3) *((phi3-phi2)*(phi1-phi2)).sum() 
-            + (v1-v2)*((phi1-phi3)*(phi2-phi3)).sum())/a
-            res[f[1],:] += - (2*u/a**2) * np.cross(v3-v1,self.surfel[k]) + 2*((v2-v1) *((phi1-phi3)*(phi2-phi3)).sum() 
-            + (v2-v3)*((phi2-phi1)*(phi3-phi1)).sum())/a
-            res[f[2],:] += - (2*u/a**2) * np.cross(v1-v2,self.surfel[k]) + 2*((v3-v2) *((phi2-phi1)*(phi3-phi1)).sum() 
-            + (v3-v1)*((phi3-phi2)*(phi1-phi2)).sum())/a
+            res[f[0],:] += r1[k,:]
+            res[f[1],:] += r2[k,:]
+            res[f[2],:] += r3[k,:]
+        return res
+    
+    def meanCurvatureVector(self):
+        res = np.zeros(self.vertices.shape)
+        v1 = self.vertices[self.faces[:,0],:]
+        v2 = self.vertices[self.faces[:,1],:]
+        v3 = self.vertices[self.faces[:,2],:]
+        a = np.sqrt(((self.surfel**2).sum(axis=1)))
+        a = a[...,np.newaxis]
+        
+        r1 = - np.cross(v2-v3,self.surfel)/a
+        r2 = - np.cross(v3-v1,self.surfel)/a
+        r3 = - np.cross(v1-v2,self.surfel)/a
+        for k,f in enumerate(self.faces):
+            res[f[0],:] += r1[k,:]
+            res[f[1],:] += r2[k,:]
+            res[f[2],:] += r3[k,:]
         return res
     
 # Reads several .byu files
