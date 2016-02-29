@@ -19,6 +19,13 @@ subroutine shoot1order(x0, alpha, y0, nu0, a, b, sig, ord, withjac, withnu, t0, 
   real(8) :: dx(dimx),dy(dimx),dnu(dimx),djac
   real(8) :: c_(5, 5), c1_(4, 4)
   real(8) :: dt
+  real(8) :: xt(numx, dimx)
+  real(8) :: alphat(numx, dimx)
+  real(8) :: yt(numy, dimx)
+  real(8) :: at(dimx, dimx)
+  real(8) :: bt(dimx)
+  real(8) :: jact(numx)
+  real(8) :: nut(numx, dimx)
 
   !f2py integer, intent(in) :: t0, numx, dimx, numy, ord, withJ, withnu
   !f2py real(8), intent(in) :: sig
@@ -50,15 +57,18 @@ subroutine shoot1order(x0, alpha, y0, nu0, a, b, sig, ord, withjac, withnu, t0, 
        0.,0.,0., 1./105 /), (/4,4/))
 
   do t = 1, t0, 1
+     xt = x(t,:,:)
+     at = a(t,:,:)
+     alphat = alpha(t,:,:)
+     bt = b(t,:)
+     nut = nu(t,:,:)
+     yt = y(t,:,:)
      !$omp parallel do private(k,l,ut,lpt,Kv, Kv_diff, &
-     !$omp& dx, dy, dnu, djac) shared (alpha,a,b,x,y,nu,jac,sig,ord,c_,c1_)
+     !$omp& dx, dy, dnu, djac) shared (alphat,at,bt,xt,nut,x,nu,jac,sig,ord,c_,c1_,numy,numx)
      do k = 1, numx, 1
         dx=0
         dnu=0
         djac = 0
-        if (numy > 0) then
-          dy = 0
-        end if
         do l=1, numx, 1
           ut = sqrt(sum((x(t,k,:) - x(t,l,:))**2)) / sig
           if (ord > 4) then
@@ -94,25 +104,26 @@ subroutine shoot1order(x0, alpha, y0, nu0, a, b, sig, ord, withjac, withnu, t0, 
               end if
             end if
           end if
-          dx = dx + Kv*alpha(t, l, :)
+          dx = dx + Kv*alphat(l, :)
           if (withjac > 0) then
-            djac = djac + 2* Kv_diff * dot_product(x(t,k,:) - x(t,l,:),alpha(t,l,:))
+            djac = djac + 2* Kv_diff * dot_product(xt(k,:) - xt(l,:),alphat(l,:))
           end if
           if (withnu > 0) then
-            dnu = dnu - 2 * Kv_diff * dot_product(nu(t,:,l),alpha(t,l,:)) * (x(t,k,:) - x(t,l,:))
+            dnu = dnu - 2 * Kv_diff * dot_product(nut(:,l),alphat(l,:)) * (xt(k,:) - xt(l,:))
           end if
         end do !l
-        x(t+1, k,:) = matmul(a(t,:,:),x(t,k,:)) + dt*(dx+b(t,:))
+        x(t+1, k,:) = matmul(at,xt(k,:)) + dt*(dx+bt)
         if (withnu > 0) then
-          nu(t+1,k,:) = matmul(nu(t,k,:),a(t,:,:)) + dt * dnu
+          nu(t+1,k,:) = matmul(nut(k,:),at) + dt * dnu
         end if
         if (withjac > 0) then
           jac(t+1,k) = jac(t,k) + dt * djac
         end if
      end do !k
      !$omp end parallel do
+
      !$omp parallel do private(k,l,ut,lpt,Kv,dy) &
-     !$omp& shared (alpha,a,b,x,y,sig,ord,c_,c1_)
+     !$omp& shared (alphat,at,bt,xt,yt,y,sig,ord,c_,c1_)
      do k = 1, numy, 1
         dy=0
         do l=1, numx, 1
@@ -132,9 +143,9 @@ subroutine shoot1order(x0, alpha, y0, nu0, a, b, sig, ord, withjac, withnu, t0, 
               Kv = lpt * exp(-1.0*ut)
             end if
           end if
-          dy = dy + Kv*alpha(t, l, :)
+          dy = dy + Kv*alphat(l, :)
         end do !l
-        y(t+1, k,:) = matmul(a(t,:,:), y(t,k,:)) + dt*(dy + b(t,:))
+        y(t+1, k,:) = matmul(at, yt(t,:)) + dt*(dy + bt)
      end do !k
      !$omp end parallel do
   end do !t
@@ -155,6 +166,10 @@ subroutine adjoint1order(xt, alpha, px1, a, sig, ord, regweight, t0, numx, dimx,
   real(8) :: dx(dimx), dpx(dimx)
   real(8) :: c_(5, 5), c1_(4, 4)
   real(8) :: dt
+  real(8) :: xtt(numx, dimx)
+  real(8) :: alphat(numx, dimx)
+  real(8) :: at(dimx, dimx)
+  real(8) :: pxt(numx, dimx)
 
   !f2py integer, intent(in) :: t0, numx, dimx, ord
   !f2py real(8), intent(in) :: sig, regweight
@@ -172,8 +187,12 @@ subroutine adjoint1order(xt, alpha, px1, a, sig, ord, regweight, t0, numx, dimx,
        0.,0.,0., 1./105 /), (/4,4/))
 
   do t = t0, 1, -1
+     alphat = alpha(t,:,:)
+     xtt = xt(t,:,:)
+     pxt = px(t+1,:,:)
+     at = a(t,:,:)
      !$omp parallel do private(k,l,ut,lpt,Kv_diff, &
-     !$omp& dpx) shared (alpha,xt,px,regweight,a,sig,ord,c_,c1_)
+     !$omp& dpx) shared (alphat,xtt,px,pxt,regweight,at,sig,ord,c_,c1_)
      do k = 1, numx, 1
         dpx=0
         do l=1, numx, 1
@@ -193,12 +212,12 @@ subroutine adjoint1order(xt, alpha, px1, a, sig, ord, regweight, t0, numx, dimx,
               Kv_diff = -lpt * exp(-1.0*ut)/(2*sig**2)
             end if
           end if
-          dpx = dpx + 2*Kv_diff * (dot_product(px(t+1,k,:),alpha(t, l, :)) &
-                                + dot_product(px(t+1,l, :),alpha(t, k, :))&
-                                - 2*regweight*dot_product(alpha(t,k,:),alpha(t, l, :)))&
-                              * (xt(t,k,:) - xt(t,l,:))
+          dpx = dpx + 2*Kv_diff * (dot_product(pxt(k,:),alphat(l, :)) &
+                                + dot_product(pxt(l, :),alphat(k, :))&
+                                - 2*regweight*dot_product(alphat(k,:),alphat(l, :)))&
+                              * (xtt(k,:) - xtt(l,:))
         end do !l
-        px(t, k,:) = matmul(transpose(a(t,:,:)), px(t+1, k, :)) + dt* dpx
+        px(t, k,:) = matmul(transpose(at), pxt(k, :)) + dt* dpx
      end do !k
   end do !t
 end subroutine adjoint1order

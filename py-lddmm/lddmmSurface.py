@@ -2,7 +2,6 @@
 import os
 from os import path
 import argparse
-import diffeo
 import pointSets
 import surfaces
 import logging
@@ -24,7 +23,7 @@ def main():
     parser.add_argument('--sigmaDist', metavar='sigmaDist', type=float, dest='sigmaDist', default = 2.5, help='kernel width (error term); (default = 2.5)') 
     parser.add_argument('--sigmaError', metavar='sigmaError', type=float, dest='sigmaError', default = 1.0, help='std error; (default = 1.0)') 
     parser.add_argument('--typeError', metavar='typeError', type=str, dest='typeError', default = 'varifold', help='type error term (default: varifold)') 
-    parser.add_argument('--dirOut', metavar = 'dirOut', type = str, dest = 'dirOut', default = '', help='Output directory')
+    parser.add_argument('--dirOut', metavar = 'dirOut', type = str, dest = 'dirOut', default = '.', help='Output directory')
     parser.add_argument('--tmpOut', metavar = 'tmpOut', type = str, dest = 'tmpOut', default = '', help='info files directory')
     parser.add_argument('--rigid', action = 'store_true', dest = 'rigid', default = False, help='Perform Rigid Registration First')
     parser.add_argument('--logFile', metavar = 'logFile', type = str, dest = 'logFile', default = 'info.txt', help='Output log file')
@@ -46,10 +45,7 @@ def main():
             args.target = [args.template[l1 - 1 - k]] + args.target
         args.template = args.template[0:ns]
             
-    print args.template, args.target
-
-    if args.dirOut == '':
-        args.dirOut = '.'
+    
 
     if args.tmpOut == '':
         args.tmpOut = args.dirOut + '/tmp'

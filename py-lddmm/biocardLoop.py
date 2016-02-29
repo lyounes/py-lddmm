@@ -35,7 +35,8 @@ def runLongitudinalSurface(template, targetList, minL=3,atrophy=False, resultDir
                 else:
                     currentFile = [] ;
                 previousLab = int(row['lab'])
-                
+    print len(files)
+    return                  
 
     fv0 = surfaces.Surface(filename=template)
     K1 = Kernel(name='laplacian', sigma = 6.5, order=4)
@@ -44,21 +45,23 @@ def runLongitudinalSurface(template, targetList, minL=3,atrophy=False, resultDir
     #files = [files[1],files[5],files[8]]
     #files = [files[9]]
     #selected = range(len(files)) 
-    selected = (1,9) 
+    selected = (83,86,90) 
+    logset = False
     for k in selected:
         s = files[k]
         fv = []
         print s[0]
         for fn in s:
                 try:
+                    #fv += [surfaces.Surface(filename=fn+'.byu')]
                     fv += [surfaces.Surface(filename=fn+'.byu')]
                 except NameError as e:
                     print e
   
 
-        outputDir = resultDir +'_'+str(k)
+        outputDir = resultDir +str(k)
         info_outputDir = outputDir
-        if __name__ == "__main__":
+        if __name__ == "__main__" and (not logset):
             loggingUtils.setup_default_logging(info_outputDir, fileName='info', stdOutput=True)
         else:
             loggingUtils.setup_default_logging(fileName='info')
@@ -66,7 +69,7 @@ def runLongitudinalSurface(template, targetList, minL=3,atrophy=False, resultDir
         try:
             if atrophy:
                 f = match.SurfaceMatching(Template=fv0, Targets=fv, outputDir=outputDir, param=sm, regWeight=.1,
-                                            affine='euclidean', testGradient=False, affineWeight=.1,  maxIter_cg=1000, mu=0.0001)
+                                            affine='euclidean', testGradient=False, affineWeight=.1,  maxIter_cg=50, maxIter_al=50, mu=0.0001)
             else:
                 f = match.SurfaceMatching(Template=fv0, Targets=fv, outputDir=outputDir, param=sm, regWeight=.1,
                                         affine='euclidean', testGradient=False, affineWeight=.1,  maxIter=1000)

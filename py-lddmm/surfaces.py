@@ -197,9 +197,9 @@ class Surface:
         res = d2*s
         u = maxval*np.ones(c2.shape)
         u[rad+1:n0-rad, rad+1:n1-rad, rad+1:n2-rad] = (c2[diam:n0, diam:n1, diam:n2]
-                                                 - c2[0:n0-diam, diam:n1, diam:n2] - c2[diam:n0, 0:n1-diam, diam:n2] - c2[diam:n0, diam:n1, 0:n2-diam] 
-                                                 + c2[0:n0-diam, 0:n1-diam, diam:n2] + c2[diam:n0, 0:n1-diam, 0:n2-diam] + c2[0:n0-diam, diam:n1, 0:n2-diam]
-                                                 - c2[0:n0-diam, 0:n1-diam, 0:n2-diam])
+        - c2[0:n0-diam, diam:n1, diam:n2] - c2[diam:n0, 0:n1-diam, diam:n2] - c2[diam:n0, diam:n1, 0:n2-diam] 
+        + c2[0:n0-diam, 0:n1-diam, diam:n2] + c2[diam:n0, 0:n1-diam, 0:n2-diam] + c2[0:n0-diam, diam:n1, 0:n2-diam]
+        - c2[0:n0-diam, 0:n1-diam, 0:n2-diam])
 
         I = np.nonzero(np.fabs(u) < maxval)
         #print len(I[0])
@@ -460,12 +460,14 @@ class Surface:
         for kv in range(nv):
             I2 = np.nonzero(edg0[kv,:])
             for kkv in I2[0].tolist():
-                edgF[edg0[kkv,kv]-1,edg0[kv,kkv]-1] = kv+1
+                if edg0[kkv,kv] > 0:
+                    edgF[edg0[kkv,kv]-1,edg0[kv,kkv]-1] = kv+1
 
         isOriented = np.int_(np.zeros(f.shape[0]))
         isActive = np.int_(np.zeros(f.shape[0]))
         I = np.nonzero(np.squeeze(edgF[0,:]))
         # list of faces to be oriented
+        # Start with face 0 and its neighbors
         activeList = [0]+I[0].tolist()
         lastOriented = 0
         isOriented[0] = True
@@ -473,16 +475,17 @@ class Surface:
             isActive[k] = True 
 
         while lastOriented < len(activeList)-1:
-            i = activeList[lastOriented]
+            #next face to be oriented
             j = activeList[lastOriented +1]
+            # find an already oriented face among all neighbors of j
             I = np.nonzero(edgF[j,:])
             foundOne = False
             for kk in I[0].tolist():
-                if (foundOne==False)  & (isOriented[kk]):
+                if (foundOne==False) and (isOriented[kk]):
                     foundOne = True
                     u1 = edgF[j,kk] -1
                     u2 = edgF[kk,j] - 1
-                    if not ((edg[u1,u2] == 1) & (edg[u2,u1] == 1)): 
+                    if not ((edg[u1,u2] == 1) and (edg[u2,u1] == 1)): 
                         # reorient face j
                         edg[f[j,0],f[j,1]] -= 1
                         edg[f[j,1],f[j,2]] -= 1
@@ -517,7 +520,7 @@ class Surface:
             inFace[self.faces[:,k]] = 1
         J = np.nonzero(inFace)
         self.vertices = self.vertices[J[0], :]
-        logging.info('Found %d isolated vertices'%(J[0].shape[0]))
+        logging.info('Found %d isolated vertices'%(N-J[0].shape[0]))
         Q = -np.ones(N)
         for k,j in enumerate(J[0]):
             Q[j] = k
@@ -648,7 +651,6 @@ class Surface:
                 j = j+1
         E = E[0:j, :]
         
-        edgeFace = np.zeros([j, nf])
         ne = j
         #print E
 
@@ -1033,8 +1035,63 @@ class Surface:
             nv0 = nv
             nf0 = nf
         self.computeCentersAreas()
+    
+    def normGrad(self, phi):
+        res = 0 
+        for k,f in enumerate(self.faces):
+            a = (self.surfel[k]**2).sum() ;
+            v1 = self.vertices[f[0],:]
+            v2 = self.vertices[f[1],:]
+            v3 = self.vertices[f[2],:]
+            l1 = ((v2-v3)**2).sum()
+            l2 = ((v1-v3)**2).sum()
+            l3 = ((v1-v2)**2).sum()
+            phi1 = phi[f[0],:]
+            phi2 = phi[f[1],:]
+            phi3 = phi[f[2],:]
+            u = l1*((phi2-phi1)*(phi3-phi1)).sum() + l2*((phi3-phi2)*(phi1-phi2)).sum() + l3*((phi1-phi3)*(phi2-phi3)).sum()
+            res += u/a
+        return res
+    
+    def laplacian(self, phi):
+        res = np.zeros(phi.shape)
+        for k,f in enumerate(self.faces):
+            v1 = self.vertices[f[0],:]
+            v2 = self.vertices[f[1],:]
+            v3 = self.vertices[f[2],:]
+            l1 = ((v2-v3)**2).sum()
+            l2 = ((v1-v3)**2).sum()
+            l3 = ((v1-v2)**2).sum()
+            phi1 = phi[f[0],:]
+            phi2 = phi[f[1],:]
+            phi3 = phi[f[2],:]
+            a = 2*(self.surfel[k]**2).sum() ;
+            res[f[0],:] += (l1 * (phi2 + phi3-2*phi1) + (l2-l3) * (phi2-phi3))/a
+            res[f[1],:] += (l2 * (phi1 + phi3-2*phi2) + (l1-l3) * (phi1-phi3))/a
+            res[f[2],:] += (l3 * (phi1 + phi2-2*phi3) + (l2-l1) * (phi2-phi1))/a
+        return res
 
-        
+    def diffNormGrad(self, phi):
+        res = np.zeros((self.vertices.shape[0],phi.shape[1]))
+        for k,f in enumerate(self.faces):
+            a = (self.surfel[k]**2).sum() ;
+            v1 = self.vertices[f[0],:]
+            v2 = self.vertices[f[1],:]
+            v3 = self.vertices[f[2],:]
+            l1 = ((v2-v3)**2).sum()
+            l2 = ((v1-v3)**2).sum()
+            l3 = ((v1-v2)**2).sum()
+            phi1 = phi[f[0],:]
+            phi2 = phi[f[1],:]
+            phi3 = phi[f[2],:]
+            u = l1*((phi2-phi1)*(phi3-phi1)).sum() + l2*((phi3-phi2)*(phi1-phi2)).sum() + l3*((phi1-phi3)*(phi2-phi3)).sum()
+            res[f[0],:] += - (2*u/a**2) * np.cross(v2-v3,self.surfel[k]) + 2*((v1-v3) *((phi3-phi2)*(phi1-phi2)).sum() 
+            + (v1-v2)*((phi1-phi3)*(phi2-phi3)).sum())/a
+            res[f[1],:] += - (2*u/a**2) * np.cross(v3-v1,self.surfel[k]) + 2*((v2-v1) *((phi1-phi3)*(phi2-phi3)).sum() 
+            + (v2-v3)*((phi2-phi1)*(phi3-phi1)).sum())/a
+            res[f[2],:] += - (2*u/a**2) * np.cross(v1-v2,self.surfel[k]) + 2*((v3-v2) *((phi2-phi1)*(phi3-phi1)).sum() 
+            + (v3-v1)*((phi3-phi2)*(phi1-phi2)).sum())/a
+        return res
     
 # Reads several .byu files
 def readMultipleByu(regexp, Nmax = 0):
@@ -1054,6 +1111,8 @@ def saveEvolution(fileName, fv0, xt):
     for k in range(xt.shape[0]):
         fv.vertices = np.squeeze(xt[k, :, :])
         fv.savebyu(fileName+'{0: 02d}'.format(k)+'.byu')
+
+
 
 
 
