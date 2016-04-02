@@ -52,9 +52,11 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
     def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, verb=True, regWeight=1.0, affineWeight = 1.0,
                   testGradient=False, mu = 0.1, outputDir='.', saveFile = 'evolution', affine='none', saveTrajectories=False,
                   rotWeight = None, scaleWeight = None, transWeight = None, symmetric=False, maxIter_cg=1000, maxIter_al=100):
-        super(SurfaceMatching, self).__init__(Template, Target, fileTempl, fileTarg, param, maxIter_cg, regWeight, affineWeight,
-                                                              verb, -1, rotWeight, scaleWeight, transWeight, symmetric, testGradient,
-                                                              saveFile, saveTrajectories, affine, outputDir)
+        super(SurfaceMatching, self).__init__(Template=Template, Target=Target, fileTempl=fileTempl, 
+                                              fileTarg=fileTarg, param=param, maxIter=maxIter_cg, regWeight=regWeight, affineWeight=affineWeight,
+                                              verb=verb, subsampleTargetSize=-1, rotWeight=rotWeight, scaleWeight=scaleWeight, transWeight=transWeight, 
+                                              symmetric=symmetric, testGradient=testGradient,
+                                              saveFile=saveFile, saveTrajectories=saveTrajectories, affine=affine, outputDir=outputDir)
 
 
         self.maxIter_cg = maxIter_cg
@@ -69,7 +71,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         self.mu = mu
         self.useKernelDotProduct = True
         self.dotProduct = self.kernelDotProduct
-        self.saveRate = 1
+        self.saveRate = 10
         #self.useKernelDotProduct = False
         #self.dotProduct = self.standardDotProduct
 
@@ -540,14 +542,14 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
 if __name__=="__main__":
 
-    outputDir = '/cis/home/younes/Development/Results/tilakWK7E3E'
+    outputDir = '/cis/home/younes/Development/Results/tilakAW2Superior'
     loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput = False)
 
     #fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/tilakGrant/InnerWK7398.byu')
     #fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/tilakGrant/OuterWK7398.byu')
-    fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/tilakGrant/WK7E3EBottom.vtk')
+    fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/AW2SuperiorInner.byu')
+    fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/AW2SuperiorOuter.byu')
     #fv0 = surfaces.Surface(filename=outputDir+'/template2.vtk')
-    fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/tilakGrant/WK7E3ETop.vtk')
     fv0.removeIsolated()
     fv0.edgeRecover()
     fv1.removeIsolated()
@@ -560,6 +562,6 @@ if __name__=="__main__":
                                               sigmaError=1., errorType='varifold')
                                              
     f = SurfaceMatching(Template=fv0, Target=fv1, outputDir=outputDir, param=sm, regWeight=1., saveTrajectories=True, symmetric = False,
-                        affine='none', testGradient=True, affineWeight=.00001,  maxIter_cg=100, maxIter_al=50, mu=0.001)
+                        affine='none', testGradient=False, affineWeight=.00001,  maxIter_cg=100, maxIter_al=50, mu=0.001)
     f.optimizeMatching()
 

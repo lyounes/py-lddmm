@@ -152,6 +152,17 @@ class Surface:
         normals /=af.reshape([self.vertices.shape[0],1])
 
         return normals
+
+    def computeAreaWeightedVertexNormals(self):
+        self.computeCentersAreas() 
+        normals = np.zeros(self.vertices.shape)
+        F = self.faces
+        for k in range(F.shape[0]):
+            normals[F[k,0]] += self.surfel[k]
+            normals[F[k,1]] += self.surfel[k]
+            normals[F[k,2]] += self.surfel[k]
+
+        return normals
          
 
     # Computes edges from vertices/faces
