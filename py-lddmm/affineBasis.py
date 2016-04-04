@@ -100,8 +100,17 @@ class AffineBasis:
                 a2 = (1-ct)/(t**2)
                 da1 = (t*ct-st)/(1*t**3)
                 da2 = (t*st -2*(1-ct))/(1*t**4)
-                dR = (a1*dR + (da1 * (p*np.dot(x,A)).sum() + da2 * (p*np.dot(x,np.dot(A,A))).sum())*A
-                      - a2 * (np.dot(np.dot(p,A.T).T,x) + np.dot(p.T,np.dot(x,A))))
+#                dR = (a1*dR + (da1 * (p*np.dot(x,A)).sum() + da2 * (p*np.dot(x,np.dot(A,A))).sum())*A
+#                      - a2 * (np.dot(np.dot(p,A.T).T,x) + np.dot(p.T,np.dot(x,A))))
+                dR = (a1*dR + (da1 * (p*np.dot(x,A.T)).sum() + da2 * (p*np.dot(x,np.dot(A,A).T)).sum())*A
+                  + a2 * (np.dot(np.dot(p,A).T,x) + np.dot(p.T,np.dot(x,A.T))))
+#            dA = np.random.normal(size=A.shape)
+#            print A,dA
+#            ep = 1e-8
+#            u0 = (p*np.dot(x,self.getExponential(A).T)).sum()
+#            u1 = (p*np.dot(x,self.getExponential(A+ep*dA).T)).sum()
+#            print (u1-u0)/ep, (dR*dA).sum()
+#                  TEST OK
         return dR
 
                 
@@ -151,9 +160,11 @@ def gradExponential(A, p, x):
             ct = np.cos(t)
             a1 = st/t
             a2 = (1-ct)/(t**2)
-            da1 = (t*ct-st)/(1*t**3)
-            da2 = (t*st -2*(1-ct))/(1*t**4)
+            da1 = (t*ct-st)/(t**3)
+            da2 = (t*st -2*(1-ct))/(t**4)
             dR = (a1*dR + (da1 * (p*np.dot(x,A)).sum() + da2 * (p*np.dot(x,np.dot(A,A))).sum())*A
                   - a2 * (np.dot(np.dot(p,A.T).T,x) + np.dot(p.T,np.dot(x,A))))
+#            dR = (a1*dR + (da1 * (p*np.dot(x,A.T)).sum() + da2 * (p*np.dot(x,np.dot(A,A).T)).sum())*A
+#                  + a2 * (np.dot(np.dot(p,A).T,x) + np.dot(p.T,np.dot(x,A.T))))
     return dR
 

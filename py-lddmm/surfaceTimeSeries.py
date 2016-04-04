@@ -147,6 +147,10 @@ class SurfaceMatching(object):
         self.coeffAff1 = 1.
         self.coeffAff2 = 100.
         self.coeffAff = self.coeffAff1
+        if self.affineDim > 0:
+            self.affineBurnIn = True
+        else:
+            self.affineBurnIn = False
         z= self.fv0.surfVolume()
         if (z < 0):
             self.fv0ori = -1
@@ -297,6 +301,8 @@ class SurfaceMatching(object):
         grd = Direction()
         grd.diff = foo[0] / coeff
         grd.aff = np.zeros(self.Afft.shape)
+        if self.affineBurnIn:
+            grd.diff *= 0 
         if self.affineDim > 0 and self.iter < self.affBurnIn:
             dA = foo[1]
             db = foo[2]
@@ -328,6 +334,8 @@ class SurfaceMatching(object):
     def randomDir(self):
         dirfoo = Direction()
         dirfoo.diff = np.random.randn(self.Tsize, self.npt, self.dim)
+        if self.affineBurnIn:
+            dirfoo.diff *= 0 
         if self.iter < self.affBurnIn:
             dirfoo.aff = np.random.randn(self.Tsize, self.affineDim)
         else:
@@ -360,6 +368,7 @@ class SurfaceMatching(object):
         self.iter += 1
         if self.iter >= self.affBurnIn:
             self.coeffAff = self.coeffAff2
+            self.affineBurnIn = False
         if (self.iter % self.saveRate == 0):
             logging.info('Saving surfaces...')
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)

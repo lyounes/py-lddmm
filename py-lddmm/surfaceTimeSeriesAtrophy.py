@@ -57,7 +57,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         self.dotProduct = self.kernelDotProduct
         self.saveRate = 1
         self.coeffAff1 = self.coeffAff2 ;
-        self.volumeWeight = 0 
+        self.volumeWeight = 100 
         if self.affineDim > 0:
             self.affineBurnIn = True
         else:
@@ -433,6 +433,8 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
     def randomDir(self):
         dirfoo = surfaceTimeSeries.Direction()
         dirfoo.diff = np.random.randn(self.Tsize, self.npt, self.dim)
+        if self.affineBurnIn:
+            dirfoo.diff *= 0 
         if self.affineDim > 0:
             dirfoo.aff = np.random.randn(self.Tsize, self.affineDim)
         return dirfoo
