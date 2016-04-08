@@ -57,7 +57,8 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         self.dotProduct = self.kernelDotProduct
         self.saveRate = 1
         self.coeffAff1 = self.coeffAff2 ;
-        self.volumeWeight = 100 
+        self.affBurnIn = 10
+        self.volumeWeight = 1
         if self.affineDim > 0:
             self.affineBurnIn = True
         else:
