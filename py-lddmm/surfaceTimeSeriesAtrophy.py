@@ -548,6 +548,10 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         self.coeffAff = self.coeffAff2
         grd = self.getGradient(self.gradCoeff)
         [grd2] = self.dotProduct(grd, [grd])
+        for k in range(self.nTarg):
+            #self.fvDef[k].updateVertices(np.squeeze(self.xt[self.jumpIndex[k], :, :]))
+            logging.info('volumes: Target %d %f -- trajectory %f' 
+                %(k, self.fv1[k].surfVolume(), self.fvDef[k].surfVolume()))
 
         self.gradEps = np.sqrt(grd2) / 100
         self.coeffAff = self.coeffAff1
