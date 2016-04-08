@@ -65,7 +65,7 @@ class SurfaceMatching(object):
             for s in Targets:
                 self.fv1.append(surfaces.Surface(surf=s))
 
-
+        self.volumeWeight = 10.0 
         self.nTarg = len(self.fv1)
         self.saveRate = 10
         self.iter = 0
@@ -143,10 +143,14 @@ class SurfaceMatching(object):
         self.fv0.saveVTK(self.outputDir+'/Template.vtk')
         for k,s in enumerate(self.fv1):
             s.saveVTK(self.outputDir+'/Target'+str(k)+'.vtk')
-        self.affBurnIn = 50
+        self.affBurnIn = 20
         self.coeffAff1 = 1.
         self.coeffAff2 = 100.
         self.coeffAff = self.coeffAff1
+        if self.affineDim > 0:
+            self.affineBurnIn = True
+        else:
+            self.affineBurnIn = False
         z= self.fv0.surfVolume()
         if (z < 0):
             self.fv0ori = -1
@@ -174,6 +178,7 @@ class SurfaceMatching(object):
         obj = 0
         for k,s in enumerate(_fvDef):
             obj += self.param.fun_obj(s, self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
+            obj += self.volumeWeight*(s.surfVolume()-self.fv1[k].surfVolume())**2
         return obj
 
     def  objectiveFunDef(self, at, Afft, withTrajectory = False, withJacobian=False):
@@ -272,7 +277,9 @@ class SurfaceMatching(object):
     def endPointGradient(self):
         px = []
         for k in range(self.nTarg):
-            px.append(-self.param.fun_objGrad(self.fvDef[k], self.fv1[k], self.param.KparDist)/ self.param.sigmaError**2)
+            targGradient = -self.param.fun_objGrad(self.fvDef[k], self.fv1[k], self.param.KparDist)/ self.param.sigmaError**2
+            targGradient -= (1./3) * self.volumeWeight*(self.fvDef[k].surfVolume() - self.fv1[k].surfVolume()) * self.fvDef[k].computeAreaWeightedVertexNormals()
+            px.append(targGradient)
         return px 
 
 
@@ -294,6 +301,8 @@ class SurfaceMatching(object):
         grd = Direction()
         grd.diff = foo[0] / coeff
         grd.aff = np.zeros(self.Afft.shape)
+        if self.affineBurnIn:
+            grd.diff *= 0 
         if self.affineDim > 0 and self.iter < self.affBurnIn:
             dA = foo[1]
             db = foo[2]
@@ -325,6 +334,8 @@ class SurfaceMatching(object):
     def randomDir(self):
         dirfoo = Direction()
         dirfoo.diff = np.random.randn(self.Tsize, self.npt, self.dim)
+        if self.affineBurnIn:
+            dirfoo.diff *= 0 
         if self.iter < self.affBurnIn:
             dirfoo.aff = np.random.randn(self.Tsize, self.affineDim)
         else:
@@ -357,6 +368,7 @@ class SurfaceMatching(object):
         self.iter += 1
         if self.iter >= self.affBurnIn:
             self.coeffAff = self.coeffAff2
+            self.affineBurnIn = False
         if (self.iter % self.saveRate == 0):
             logging.info('Saving surfaces...')
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
@@ -425,8 +437,6 @@ class SurfaceMatching(object):
                 vf.scalars.append(np.exp(Jt[kk, :])/(AV[:,0]+1)-1)
                 vf.scalars.append('displacement')
                 vf.scalars.append(displ)
-                if kk >= self.jumpIndex[0]:
-                    displ += dt * (v*nu).sum(axis=1)
                 if kk < self.Tsize:
                     nu = self.fv0ori*fvDef.computeVertexNormals()
                     v = self.param.KparDiff.applyK(ft[kk,...], self.at[kk,...], firstVar=self.xt[kk,...])
@@ -434,6 +444,8 @@ class SurfaceMatching(object):
                     kkm = kk
                 else:
                     kkm = kk-1
+                if kk >= self.jumpIndex[0]:
+                    displ += dt * (v*nu).sum(axis=1)
                 vf.vectors.append('velocity') ;
                 vf.vectors.append(self.v[kkm,:])
                 fvDef.saveVTK2(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', vf)
@@ -450,7 +462,7 @@ class SurfaceMatching(object):
         [grd2] = self.dotProduct(grd, [grd])
 
         self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
-        print 'Gradient lower bound:', self.gradEps
+        logging.info('Gradient lower bound: %f'  %(self.gradEps))
         #print 'x0:', self.x0
         #print 'y0:', self.y0
         self.cgBurnIn = self.affBurnIn

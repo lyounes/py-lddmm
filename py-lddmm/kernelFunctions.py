@@ -23,7 +23,7 @@ def kernelMatrixGauss(x, firstVar=None, grid=None, par=[1], diff = False, diff2 
                 elif diff2:
                     K = K/(sig2*sig2)
             else:
-                dst = ((grid[..., newaxis, :] - x)**2).sum(axis=-1)
+                dst = ((grid[..., np.newaxis, :] - x)**2).sum(axis=-1)
                 K = np.exp(-dst/sig2)
                 if diff:
                     K = -K/sig2
