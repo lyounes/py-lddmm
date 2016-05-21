@@ -50,7 +50,7 @@ class Vector: public _Vector<_real>
       ifs >> nb ;
       Ivector MIN, MAX ;
       //      unsigned int i ;
-      MIN.resize(1) ;
+     MIN.resize(1) ;
       MIN.zero() ;
       MAX.resize(1) ;
       MAX[0] = nb-1 ;
@@ -61,34 +61,10 @@ class Vector: public _Vector<_real>
       ifs.close() ;
     }
     else if (dim==2) {
-      Magick::Image img0;
-      try{
-	img0.read(file) ;
-      }
-      catch(Magick::WarningCoder &warning) {
-	cerr << "Coder Warning: " << warning.what() << endl;
-      }
-      int nbl = img0.rows(), nbc = img0.columns() ;
-      Magick::PixelPacket *pixels = img0.getPixels(0, 0, nbc, nbl);
-      Ivector MIN, MAX ;
-      unsigned int i ;
-      MIN.resize(2) ;
-      MIN.zero() ;
-      MAX.resize(2) ;
-      MAX[0] = nbl-1 ;
-      MAX[1] = nbc-1 ;
-      Domain D(MIN, MAX) ;
-      zeros(D) ;
-      i = 0 ;
-      for(int ii = 0 ; ii<nbl; ii++) 
-	for (int jj=0; jj<nbc; jj++) {
-	  Magick::Color u = pixels[nbc * ii + jj] ; //img0.pixelColor(jj,ii) ;
-	  (*this)[i++] = (_real) 255.0*(u.redQuantum()+u.greenQuantum()+u.blueQuantum())/(3.0*MaxRGB) ;
-	}
-      // cout << max() << " " << min() << endl ;
+      load2DImage(file) ;
     }
     else if (dim == 3) {
-      loadAnalyze(file) ;
+      load3DImage(file) ;
       //      AnalyzeImage<_real> AI0(file) ;
       //      copy(*(AI0.getAnalyzeImage())) ;
       cout << "MM" << " " << min() << " " << max() << endl ;
@@ -98,6 +74,97 @@ class Vector: public _Vector<_real>
       exit(1) ;
     }
   }
+  void load2DImage(const char* file) {
+    Magick::Image img0;
+    try{
+      img0.read(file) ;
+    }
+    catch(Magick::WarningCoder &warning) {
+      cerr << "Coder Warning: " << warning.what() << endl;
+    }
+    int nbl = img0.rows(), nbc = img0.columns() ;
+    Magick::PixelPacket *pixels = img0.getPixels(0, 0, nbc, nbl);
+    Ivector MIN, MAX ;
+    unsigned int i ;
+    MIN.resize(2) ;
+    MIN.zero() ;
+    MAX.resize(2) ;
+    MAX[0] = nbl-1 ;
+    MAX[1] = nbc-1 ;
+    Domain D(MIN, MAX) ;
+    zeros(D) ;
+    i = 0 ;
+    for(int ii = 0 ; ii<nbl; ii++) 
+      for (int jj=0; jj<nbc; jj++) {
+	Magick::Color u = pixels[nbc * ii + jj] ; //img0.pixelColor(jj,ii) ;
+	(*this)[i++] = (_real) 255.0*(u.redQuantum()+u.greenQuantum()+u.blueQuantum())/(3.0*MaxRGB) ;
+      }
+    // cout << max() << " " << min() << endl ;
+  }
+
+  void load3DImage(const char* filename0) {
+    char filetype[4] ;
+    strncpy(filetype, filename0 + strlen(filename0) - 3, 3) ;
+    filetype[3] = '\0';
+    cout << "3D image " << filetype << endl ;
+    cout << strcmp(filetype, "tif") << endl ; 
+    if (strcmp(filetype, "tif") == 0)
+      loadFileStack(filename0) ;
+    else
+      loadAnalyze(filename0) ;
+  }
+
+  void loadFileStack(const char* filename0) {
+    // filename0 assumed in the form path1[start|end]path2
+    char* path1, *path2, *start, *end ;
+    char filename[256], path[256], number[8], form[8] ;
+    int ndig, i1, i2, nbl=0, nbc=0, nb3 ;
+    Vector img ;
+    strcpy(path, filename0) ;
+    path1 = strtok(path, "[|]") ;
+    start = strtok(NULL, "[|]") ;
+    end = strtok(NULL, "[|]") ;
+    path2 = strtok(NULL, "[|]") ;
+    ndig = strlen(start) ;
+    sscanf(start, "%d", &i1) ;
+    sscanf(end, "%d", &i2) ;
+    sprintf(form, "%%0%dd", ndig) ;
+    nb3 = i2 - i1 + 1 ;
+    cout << "nb3 " << nb3 << endl ;
+    for (int k=i1; k<=i2; k++) {
+      cout << "image " << k << endl ;
+      sprintf(number, form, k) ;
+      cout << number << endl ;
+      sprintf(filename, "%s%s%s", path1, number, path2) ;
+      cout << filename << endl ;
+      img.load2DImage(filename) ;
+      if (k==i1) {
+	Ivector MIN, MAX ;
+	MIN.resize(3) ;
+	MIN.zero() ;
+	MIN[2] = i1 ;
+	MAX.resize(3) ;
+	MAX[0] = img.d.getM(0) ;
+	MAX[1] = img.d.getM(1) ;
+	nbl = MAX[0] - MIN[0] + 1 ; 
+	nbc = MAX[1] - MIN[1] + 1 ; 
+	MAX[2] = i2 ;
+	Domain D(MIN, MAX) ;
+	zeros(D) ;
+      }
+      cout << "Done reading; size: " << nbl << " " << nbc << endl ;
+      for (int i=0; i<nbl; i++){
+	//cout << i << " " << flush ;
+	for (int j=0; j<nbc; j++) 
+	  //cout << nb3*(nbc*i + j)+k-i1 << " " << flush ;
+	  (*this)[nb3*(nbc*i + j)+k-i1] = img[nbc*i+j] ;
+	}
+    }
+  }
+	
+	
+	
+    
 
   void loadAnalyze(const char *filename0) {
     char filename[256] ;
@@ -375,7 +442,7 @@ class Vector: public _Vector<_real>
   /**
      save in vtk scalar format (3D)
   */
-  void write_imageVTK(char *file)
+  void write_imageVTK(const char *file) const
   {
     if (d.n != 3) {
       write_image(file) ;
@@ -385,7 +452,7 @@ class Vector: public _Vector<_real>
       ofstream ofs ;
       char path[255] ;
       sprintf(path, "%s.vtk", file) ;
-      ofs.open(path) ;
+      ofs.open(path, ios::binary) ;
       if (ofs.fail()) {
 	cerr << "Unable to open " << file << ".vtk in write_imageVTK" << endl ;
 	exit(1) ;
@@ -396,10 +463,22 @@ class Vector: public _Vector<_real>
 	  << d.getM(0) << " " << d.getM(0) << endl ;
       ofs << "ASCII" << endl << "DATASET STRUCTURED_POINTS" << endl << "DIMENSIONS " << d.getM(0)+1 << " " 
 	  << d.getM(1)+1 << " " << d.getM(2) + 1 <<  endl;
-      ofs << "SPACING 1 1 1" << endl << "ORIGIN 0 0 0" << endl << "POINT_DATA " << d.length << endl ;
-      ofs << "SCALARS Scalars_ _real" << endl << "LOOKUP_TABLE default" << endl ;
-      for (unsigned int i=0; i<length(); i++)
-	ofs << (*this)[i] << " " ;
+      ofs << "ORIGIN 0 0 0" << endl << "SPACING 1 1 1" << endl << "POINT_DATA " << d.length << endl ;
+      ofs << "SCALARS Scalars_ double" << endl << "LOOKUP_TABLE default" << endl ;
+      //std::copy((*this).begin(), (*this).end(), std::ostream_iterator<double>(ofs)) ;
+      //ofs.write((const char*) (*this), (*this).size() * sizeof(double));
+      /* double u ; */
+      //int nbl = d.getM(0)-d.getm(0)+1;
+      int nbc = d.getM(1)-d.getm(1)+1, nbz = d.getM(2)-d.getm(2)+1 ;
+      int off = nbz*(nbc*d.getm(0)+d.getm(1)) + d.getm(2) ;
+      for (int k=d.getm(2); k<=d.getM(2); k++)
+	for (int j=d.getm(1); j<=d.getM(1); j++)
+	  for (int i=d.getm(0); i<=d.getM(0); i++)
+	    ofs << (*this)[nbz*(nbc*i+j) + k-off] << " ";
+      /* 	u = (*this)[i] ; */
+      /*	ofs.write((char*) &u, sizeof(double)) ; */
+      /* } */
+      ofs.close() ;
     }
   }
   
@@ -460,6 +539,7 @@ class Vector: public _Vector<_real>
     
     if (d.n == 3) {
       char path[255] ;
+      write_imageVTK(file) ;
       sprintf(path, "%s.hdr", file) ;
       saveAnalyze(path) ;
 /*       _Vector<_real> tmp0 ; */

@@ -270,7 +270,18 @@ class Surface:
         self.faces = np.int_(F[0:gf, :])
         self.computeCentersAreas()
 
-
+    def subDivide(self, number=1):
+        if gotVTK:
+            polydata = self.toPolyData()
+            subdivisionFilter = vtkLinearSubdivisionFilter()
+            subdivisionFilter.SetInput(polydata)
+            subdivisionFilter.SetNumberOfSubdivisions(number)
+            subdivisionFilter.Update()
+            self.fromPolyData(subdivisionFilter.GetOutput())
+        else:
+            raise Exception('Cannot run subDivide without VTK')
+                        
+            
     def Simplify(self, target=1000.0):
         if gotVTK:
             polydata = self.toPolyData()
@@ -1060,7 +1071,7 @@ class Surface:
         phi1 = phi[self.faces[:,0],:]
         phi2 = phi[self.faces[:,1],:]
         phi3 = phi[self.faces[:,2],:]
-        a = (self.surfel**2).sum(axis=1)
+        a = np.sqrt((self.surfel**2).sum(axis=1))
         u = l1*((phi2-phi1)*(phi3-phi1)).sum(axis=1) + l2*((phi3-phi2)*(phi1-phi2)).sum(axis=1) + l3*((phi1-phi3)*(phi2-phi3)).sum(axis=1)
         res = (u/a).sum()
 #        
@@ -1090,7 +1101,7 @@ class Surface:
         phi1 = phi[self.faces[:,0],:]
         phi2 = phi[self.faces[:,1],:]
         phi3 = phi[self.faces[:,2],:]
-        a = 2*((self.surfel**2).sum(axis=1))[...,np.newaxis]
+        a = 2*(np.sqrt((self.surfel**2).sum(axis=1)))[...,np.newaxis]
         r1 = (l1 * (phi2 + phi3-2*phi1) + (l2-l3) * (phi2-phi3))/a
         r2 = (l2 * (phi1 + phi3-2*phi2) + (l1-l3) * (phi1-phi3))/a
         r3 = (l3 * (phi1 + phi2-2*phi3) + (l2-l1) * (phi2-phi1))/a
@@ -1115,9 +1126,11 @@ class Surface:
         phi1 = phi[self.faces[:,0],:]
         phi2 = phi[self.faces[:,1],:]
         phi3 = phi[self.faces[:,2],:]
-        a = ((self.surfel**2).sum(axis=1))
+        #a = ((self.surfel**2).sum(axis=1))
+        a = np.sqrt((self.surfel**2).sum(axis=1))
         u = l1*((phi2-phi1)*(phi3-phi1)).sum(axis=1) + l2*((phi3-phi2)*(phi1-phi2)).sum(axis=1) + l3*((phi1-phi3)*(phi2-phi3)).sum(axis=1)
-        u = (2*u/a**2)[...,np.newaxis]
+        #u = (2*u/a**2)[...,np.newaxis]
+        u = (u/a**3)[...,np.newaxis]
         a = a[...,np.newaxis]
         
         r1 = - u * np.cross(v2-v3,self.surfel) + 2*((v1-v3) *(((phi3-phi2)*(phi1-phi2)).sum(axis=1))[:,np.newaxis]
