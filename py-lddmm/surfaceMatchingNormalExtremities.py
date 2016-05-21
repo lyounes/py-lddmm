@@ -104,7 +104,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             self.nu[t,...] = nu
 
             if t<self.Tsize:
-                cval[t,...] = ((r*r).sum(axis=1) - ((nu*r).sum(axis=1))**2)/2
+                #cval[t,...] = ((r*r).sum(axis=1) - ((nu*r).sum(axis=1))**2)/2
+                cval[t,...] = (np.sqrt((r*r).sum(axis=1)) - (nu*r).sum(axis=1))/2
                 obj += timeStep*((-self.lmb[t,...] * cval[t,...]).sum() + (cval[t,...]**2).sum()/(2*self.mu))
 
         #print 'cstr', obj
@@ -135,10 +136,11 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             nu /= normNu.reshape([nu.shape[0], 1])
             nu *= self.fv0ori
             vt = self.param.KparDiff.applyK(x, a)
+            normvt = np.sqrt((vt*vt).sum(axis=1))
             vnu = (nu*vt).sum(axis=1)
-            lmb[t, :] = self.lmb[t,:] - ((vt*vt).sum(axis=1) - vnu**2)/(2*self.mu)
-            lnu = - nu * lmb[t, :, np.newaxis] * vnu[:,np.newaxis] #np.multiply(nu, lmb[t, :].reshape([self.npt, 1]))
-            lv = vt * lmb[t,:,np.newaxis] 
+            lmb[t, :] = self.lmb[t,:] - (normvt - vnu)/(2*self.mu)
+            lnu = - nu * lmb[t, :, np.newaxis]/2 #np.multiply(nu, lmb[t, :].reshape([self.npt, 1]))
+            lv = vt * lmb[t,:,np.newaxis] / (2*np.maximum(normvt, 1e-6))
             lnu += lv
             lv = lv * vnu[:,np.newaxis]
             dxcval[t] = self.param.KparDiff.applyDiffKT(x, a[np.newaxis,...], lnu[np.newaxis,...])
@@ -542,13 +544,15 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
 if __name__=="__main__":
 
-    outputDir = '/cis/home/younes/Development/Results/tilakAW2Superior'
-    loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput = False)
+    outputDir = '/cis/home/younes/Development/Results/tilakAW1Superior'
+    loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput = True)
 
     #fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/tilakGrant/InnerWK7398.byu')
     #fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/tilakGrant/OuterWK7398.byu')
-    fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/AW2SuperiorInner.byu')
-    fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/AW2SuperiorOuter.byu')
+    print 'reading fv0'    
+    fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/AW1SuperiorInner.byu')
+    print 'reading fv1'
+    fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/AW1SuperiorOuter.byu')
     #fv0 = surfaces.Surface(filename=outputDir+'/template2.vtk')
     fv0.removeIsolated()
     fv0.edgeRecover()
