@@ -160,6 +160,8 @@ class SurfaceMatching(object):
         else:
             self.fv0ori = 1
             self.fv1ori = 1
+        
+        print 'orientation: ', self.fv0ori
 
         self.Tsize = int(round(1.0/self.param.timeStep))
         self.at = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])

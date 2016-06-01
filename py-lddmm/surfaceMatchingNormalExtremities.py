@@ -105,7 +105,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             self.nu[t,...] = nu
 
             if t<self.Tsize:
-                cval[t,...] = ((r*r).sum(axis=1) - ((nu*r).sum(axis=1))**2)/2
+                #cval[t,...] = ((r*r).sum(axis=1) - ((nu*r).sum(axis=1))**2)/2
+                cval[t,...] = (np.sqrt((r*r).sum(axis=1)) - (nu*r).sum(axis=1))/2
                 obj += timeStep*((-self.lmb[t,...] * cval[t,...]).sum() + (cval[t,...]**2).sum()/(2*self.mu))
 
         #print 'cstr', obj
@@ -136,12 +137,13 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             nu /= normNu.reshape([nu.shape[0], 1])
             nu *= self.fv0ori
             vt = self.param.KparDiff.applyK(x, a)
+            normvt = np.sqrt((vt*vt).sum(axis=1))
             vnu = (nu*vt).sum(axis=1)
-            lmb[t, :] = self.lmb[t,:] - ((vt*vt).sum(axis=1) - vnu**2)/(2*self.mu)
-            lnu = - nu * lmb[t, :, np.newaxis] * vnu[:,np.newaxis] #np.multiply(nu, lmb[t, :].reshape([self.npt, 1]))
-            lv = vt * lmb[t,:,np.newaxis] 
-            lnu += lv
-            lv = lv * vnu[:,np.newaxis]
+            lmb[t, :] = self.lmb[t,:] - (normvt - vnu)/(2*self.mu)
+            lnu = - nu * lmb[t, :, np.newaxis]/2 #np.multiply(nu, lmb[t, :].reshape([self.npt, 1]))
+            lv = vt * lmb[t,:,np.newaxis] / 2 
+            lnu += lv / (np.maximum(normvt[:,np.newaxis], 1e-6))
+            #lv = lv * vnu[:,np.newaxis]
             dxcval[t] = self.param.KparDiff.applyDiffKT(x, a[np.newaxis,...], lnu[np.newaxis,...])
             dxcval[t] += self.param.KparDiff.applyDiffKT(x, lnu[np.newaxis,...], a[np.newaxis,...])
             if self.useKernelDotProduct:
@@ -580,13 +582,15 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 if __name__=="__main__":
 
     #outputDir = '/cis/home/younes/Development/Results/ERC_Normals_ADNI_014_S_4058/'
-    outputDir = '/cis/home/younes/Development/Results/DH1Middle/'
-    loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput = False)
+    outputDir = '/cis/home/younes/Development/Results/tilakAW2Sup/'
 
-    #fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Final_Cut_Surfaces/014_S_4058/ab_ADNI_014_S_4058_combinedERCTEC_L_internal.byu')
-    #fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Final_Cut_Surfaces/014_S_4058/ab_ADNI_014_S_4058_combinedERCTEC_L_external.byu')
-    fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/DH1MiddleOuter.byu')
-    fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/DH1MiddleInner.byu')
+    #fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/DH1MiddleOuter.byu')
+    #fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/DH1MiddleInner.byu')
+    #outputDir = '/cis/home/younes/Development/Results/tilakAW1Superior'
+    loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput = True)
+
+    fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/AW2SupInner.byu')
+    fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/AW2SupOuter.byu')
     fv0.removeIsolated()
     fv0.edgeRecover()
     fv1.removeIsolated()
@@ -602,6 +606,7 @@ if __name__=="__main__":
     sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=1.5, 
                                               sigmaError=.1, errorType='varifold')
                                              
+    fv0.flipFaces()
     f = SurfaceMatching(Template=fv0, Target=fv1, outputDir=outputDir, param=sm, regWeight=.1, saveTrajectories=True, symmetric = False,
                         affine='none', testGradient=False, internalWeight=100., affineWeight=.00001,  maxIter_cg=200, maxIter_al=50, mu=1e-6)
     f.optimizeMatching()
