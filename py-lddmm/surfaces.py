@@ -1074,20 +1074,6 @@ class Surface:
         a = np.sqrt((self.surfel**2).sum(axis=1))
         u = l1*((phi2-phi1)*(phi3-phi1)).sum(axis=1) + l2*((phi3-phi2)*(phi1-phi2)).sum(axis=1) + l3*((phi1-phi3)*(phi2-phi3)).sum(axis=1)
         res = (u/a).sum()
-#        
-#        for k,f in enumerate(self.faces):
-#            a = (self.surfel[k]**2).sum()
-#            v1 = self.vertices[f[0],:]
-#            v2 = self.vertices[f[1],:]
-#            v3 = self.vertices[f[2],:]
-#            l1 = ((v2-v3)**2).sum()
-#            l2 = ((v1-v3)**2).sum()
-#            l3 = ((v1-v2)**2).sum()
-#            phi1 = phi[f[0],:]
-#            phi2 = phi[f[1],:]
-#            phi3 = phi[f[2],:]
-#            u = l1*((phi2-phi1)*(phi3-phi1)).sum() + l2*((phi3-phi2)*(phi1-phi2)).sum() + l3*((phi1-phi3)*(phi2-phi3)).sum()
-#            res += u/a
         return res
     
     def laplacian(self, phi, weighted=False):

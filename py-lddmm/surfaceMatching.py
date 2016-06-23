@@ -218,6 +218,7 @@ class SurfaceMatching(object):
         #print xt[-1, :, :]
         #print obj
         obj=0
+        obj1 = 0 
         for t in range(self.Tsize):
             z = np.squeeze(xt[t, :, :])
             a = np.squeeze(at[t, :, :])
@@ -228,9 +229,12 @@ class SurfaceMatching(object):
             if self.internalWeight > 0:
                 foo.updateVertices(z)
                 obj += self.internalWeight*foo.normGrad(ra)*timeStep
+
             if self.affineDim > 0:
-                obj +=  timeStep * np.multiply(self.affineWeight.reshape(Afft[t].shape), Afft[t]**2).sum()
+                obj1 +=  timeStep * np.multiply(self.affineWeight.reshape(Afft[t].shape), Afft[t]**2).sum()
             #print xt.sum(), at.sum(), obj
+        #print obj, obj+obj1
+        obj += obj1
         if withJacobian:
             return obj, xt, Jt
         elif withTrajectory:

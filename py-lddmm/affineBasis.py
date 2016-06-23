@@ -5,6 +5,7 @@ class AffineBasis:
         u = 1.0/np.sqrt(2.0)
         dimSym = (dim * (dim-1))/2
         affCode = 0
+        rotCode = 0 
         self.dim = dim
         self.rotComp = []
         self.simComp = []
@@ -12,16 +13,22 @@ class AffineBasis:
         self.transComp = []
         if affine == 'affine':
             affCode = 1
+            rotCode = 1
             self.affineDim = 2* (dimSym + dim)
         elif affine == 'similitude':
             affCode = 2
+            rotCode = 1
             self.affineDim = dimSym + 1 + dim
         elif affine == 'euclidean':
             affCode = 3
+            rotCode = 1
             self.affineDim = dimSym + dim
         elif affine == 'translation':
             affCode = 4
             self.affineDim = dim
+        elif affine == 'scale':
+            affCode = 2
+            self.affineDim = dim + 1
         else:
             affCode = 5
             self.basis = []
@@ -50,7 +57,7 @@ class AffineBasis:
                 self.basis[i*dim+i,k] = 1./np.sqrt(dim)
             k += 1
             self.simComp = range(k0, k)
-        if affCode <= 3:
+        if rotCode == 1:
             k0 = k
             for i in range(dim):
                 for j in range(i+1, dim):
@@ -129,7 +136,7 @@ class AffineBasis:
             
     def integrateFlow(self, Afft):
         Tsize = Afft.shape[0]
-        dim2 = self.dim**2
+        #dim2 = self.dim**2
         X = [np.zeros([Tsize+1, self.dim, self.dim]), np.zeros([Tsize+1, self.dim])]
         A = self.getTransforms(Afft)
         dt = 1.0/Tsize

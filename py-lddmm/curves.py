@@ -9,7 +9,7 @@ except ImportError:
     print 'could not import VTK functions'
     gotVTK = False
     
-import kernelFunctions as kfun
+#import kernelFunctions as kfun
 
 # General surface class
 class Curve:
@@ -21,7 +21,7 @@ class Curve:
                         self.vertices = np.empty(0)
                         self.centers = np.empty(0)
                         self.faces = np.empty(0)
-                        self.lenel = np.empty(0)
+                        self.linel = np.empty(0)
                     else:
                         self.vertices = np.copy(pointSet)
                         self.faces = np.int_(np.zeros([pointSet.shape[0], 2]))
@@ -43,14 +43,14 @@ class Curve:
                         self.vertices = np.empty(0)
                         self.centers = np.empty(0)
                         self.faces = np.empty(0)
-                        self.lenel = np.empty(0)
+                        self.linel = np.empty(0)
             else:
                 self.vertices = np.copy(FV[1])
                 self.faces = np.int_(FV[0])
                 self.computeCentersLengths()
         else:
             self.vertices = np.copy(curve.vertices)
-            self.lenel = np.copy(curve.lenel)
+            self.linel = np.copy(curve.linel)
             self.faces = np.copy(curve.faces)
             self.centers = np.copy(curve.centers)
 
@@ -59,9 +59,14 @@ class Curve:
         xDef1 = self.vertices[self.faces[:, 0], :]
         xDef2 = self.vertices[self.faces[:, 1], :]
         self.centers = (xDef1 + xDef2) / 2
-        #self.lenel = np.zeros([self.faces.shape[0], self.vertices.shape[1]]) ;
-        self.lenel = xDef2 - xDef1 ; 
-        #self.lenel[:,1] = xDef2[:,1] - xDef1[:,1] ; 
+        #self.linel = np.zeros([self.faces.shape[0], self.vertices.shape[1]]) ;
+        self.linel = xDef2 - xDef1 ; 
+        print "in computeCentersLengths"
+        J = np.nonzero((self.linel**2).sum(axis=1)<1e-10)
+        for i in J[0]:
+            print i
+            print self.vertices[self.faces[i,0],:], " ", self.vertices[self.faces[i,1],:], " ", self.linel[i]
+        #self.linel[:,1] = xDef2[:,1] - xDef1[:,1] ; 
 
     # modify vertices without toplogical change
     def updateVertices(self, x0):
@@ -69,14 +74,14 @@ class Curve:
         xDef1 = self.vertices[self.faces[:, 0], :]
         xDef2 = self.vertices[self.faces[:, 1], :]
         self.centers = (xDef1 + xDef2) / 2
-        #self.lenel = np.zeros([self.faces.shape[0], self.vertices.shape[1]]) ;
-        self.lenel = xDef2 - xDef1 ; 
-        #self.lenel[:,1] = xDef2[:,1] - xDef1[:,1] ; 
+        #self.linel = np.zeros([self.faces.shape[0], self.vertices.shape[1]]) ;
+        self.linel = xDef2 - xDef1 ; 
+        #self.linel[:,1] = xDef2[:,1] - xDef1[:,1] ; 
 
     def computeVertexLength(self):
         a = np.zeros(self.vertices.shape[0])
         n = np.zeros(self.vertices.shape[0])
-        af = np.sqrt((self.lenel**2).sum(axis=1))
+        af = np.sqrt((self.linel**2).sum(axis=1))
         for jj in range(3):
             I = self.faces[:,jj]
             for k in range(I.size):
@@ -90,15 +95,15 @@ class Curve:
         e = self.vertices[self.faces[:,1] ,:] - self.vertices[self.faces[:,0] ,:]
         th = np.arctan2(e[:,1], e[:,0])
         #print th.shape
-        ll = np.sqrt((self.lenel**2).sum(axis=1))/2
+        ll = np.sqrt((self.linel**2).sum(axis=1))/2
         ka = (th[np.mod(range(1,self.faces.shape[0]+1), self.faces.shape[0])] - th[range(0,self.faces.shape[0])])/ll
-        nrm = np.zeros(self.lenel.shape)
-        nrm[:,0] = -self.lenel[:,1]
-        nrm[:,1] = self.lenel[:,0]
+        nrm = np.zeros(self.linel.shape)
+        nrm[:,0] = -self.linel[:,1]
+        nrm[:,1] = self.linel[:,0]
         lnrm = np.sqrt((nrm**2).sum(axis=1))[:, np.newaxis]
         nrm = nrm/lnrm
         nrm = (nrm[np.mod(range(1,self.faces.shape[0]+1), self.faces.shape[0])] + nrm[range(0,self.faces.shape[0])])/2
-        kan = self.lenel/ll[:,np.newaxis]
+        kan = self.linel/ll[:,np.newaxis]
         ka = (kan[np.mod(range(1,self.faces.shape[0]+1), self.faces.shape[0]),:] - kan[range(0,self.faces.shape[0]),:])
         
         return ka, nrm, kan
@@ -164,10 +169,11 @@ class Curve:
                     #self.vertices = np.multiply(data.shape-V-1, scales)
             self.vertices = np.multiply(V, scales)
             self.faces = np.int_(F[0:gf, :])
-            self.computeCentersLengths()
             #self.checkEdges()
             #print self.faces.shape
             self.orientEdges()
+            self.removeDuplicates()
+            self.computeCentersLengths()
             #print self.faces.shape
             #self.checkEdges()
         else:
@@ -195,7 +201,7 @@ class Curve:
         is1 = np.int_(is1)
 
         if ((is0+is1).max() !=2) | ((is0+is1).min()!=2):
-            print 'Problems with curve: wrong topology'
+            print 'Problems with curve in orientEdges: wrong topology'
             return
 
         count = np.zeros(self.vertices.shape[0])
@@ -205,7 +211,7 @@ class Curve:
         usedFace[0] = 1
         count[F[0,0]] = 1
         count[F[0,1]] = 1
-        k0 = F[0,0]
+        #k0 = F[0,0]
         kcur = F[0,1]
         j=1
         while j < self.faces.shape[0]:
@@ -233,6 +239,37 @@ class Curve:
             #print j
             #print j, self.faces.shape[0]
         self.faces = np.int_(F[0:j, :])
+        
+    def removeDuplicates(self, c=0.01):
+        c2 = c**2
+        N0 = self.vertices.shape[0]
+        w = np.zeros(N0, dtype=int)
+
+        newv = np.zeros(self.vertices.shape)
+        newv[0,:] = self.vertices[0,:]
+        N = 1
+        for kj in range(1,N0):
+            dist = ((self.vertices[kj,:]-newv[0:N,:])**2).sum(axis=1)
+            #print dist.shape
+            J = np.nonzero(dist<c2)
+            J = J[0]
+            #print kj, ' ', J, len(J)
+            if (len(J)>0):
+                print "duplicate:", kj, J[0]
+                w[kj] = J[0]
+            else:
+                w[N] = N
+                newv[N, :] = self.vertices[kj,:] 
+                N=N+1
+
+        newv = newv[0:N,:]
+        self.vertices = newv
+        print self.faces[0:5, :]
+        print w[0:5]
+        self.faces = w[self.faces]
+        print self.faces[0:5,:]
+        
+
             
 
     def checkEdges(self):
@@ -261,7 +298,7 @@ class Curve:
         return z
 
     def length(self):
-        ll = np.sqrt((self.lenel**2).sum(axis=1))
+        ll = np.sqrt((self.linel**2).sum(axis=1))
         return ll.sum()
 
 
@@ -289,9 +326,9 @@ class Curve:
         xDef1 = self.vertices[self.faces[:, 0], :]
         xDef2 = self.vertices[self.faces[:, 1], :]
         self.centers = (xDef1 + xDef2) / 2
-        #self.lenel = np.zeros(self.faces.shape[0], self.vertices.shape[1]) ;
-        self.lenel = xDef2 - xDef1 ; 
-        #self.lenel[:,1] = xDef2[:,1] - xDef1[:,1] ; 
+        #self.linel = np.zeros(self.faces.shape[0], self.vertices.shape[1]) ;
+        self.linel = xDef2 - xDef1 ; 
+        #self.linel[:,1] = xDef2[:,1] - xDef1[:,1] ; 
 
     # Reads from .dat file
     def readCurve(self, infile):
@@ -336,9 +373,9 @@ class Curve:
         xDef1 = self.vertices[self.faces[:, 0], :]
         xDef2 = self.vertices[self.faces[:, 1], :]
         self.centers = (xDef1 + xDef2) / 2
-        #self.lenel = np.zeros(self.faces.shape[0], self.vertices.shape[1]) ;
-        self.lenel = xDef2 - xDef1 ; 
-        #self.lenel[:,1] = xDef2[:,1] - xDef1[:,1] ; 
+        #self.linel = np.zeros(self.faces.shape[0], self.vertices.shape[1]) ;
+        self.linel = xDef2 - xDef1 ; 
+        #self.linel[:,1] = xDef2[:,1] - xDef1[:,1] ; 
 
     #Saves in .byu format
     def saveCurve(self, outfile):
@@ -436,7 +473,7 @@ class Curve:
             raise Exception('Cannot read VTK files without VTK functions')
 
     def resample(self, ds):
-        ll = np.sqrt((self.lenel**2).sum(axis=1))
+        ll = np.sqrt((self.linel**2).sum(axis=1))
         if ll.max() < ds:
             return
         v = np.zeros([2*self.vertices.shape[0], self.vertices.shape[1]])  
@@ -460,6 +497,49 @@ class Curve:
         self.computeCentersLengths()
         print 'resampling', self.length(), self.vertices.shape[0]
         self.resample(ds)
+
+    def normGrad(self, phi):
+        phi1 = phi[self.faces[:,0],:]
+        phi2 = phi[self.faces[:,1],:]
+        a = np.sqrt((self.linel**2).sum(axis=1))[..., np.newaxis]
+        print min(a) 
+        res = (((phi2-phi1)**2)/a).sum()
+        return res
+        
+    def laplacian(self, phi, weighted=False):
+        res = np.zeros(phi.shape)
+        phi1 = phi[self.faces[:,0],:]
+        phi2 = phi[self.faces[:,1],:]
+        a = 2/(np.sqrt((self.surfel**2).sum(axis=1)))[...,np.newaxis]
+        r1 = (phi2 -phi1)/a
+        for k,f in enumerate(self.faces):
+            res[f[0],:] += r1[k,:]
+            res[f[1],:] -= r1[k,:]
+        if weighted:
+            av = self.computeVertexLength()
+            return res/av[0]
+        else:
+            return res
+
+    def diffNormGrad(self, phi):
+        res = np.zeros((self.vertices.shape[0],phi.shape[1]))
+        v1 = self.vertices[self.faces[:,0],:]
+        v2 = self.vertices[self.faces[:,1],:]
+        phi1 = phi[self.faces[:,0],:]
+        phi2 = phi[self.faces[:,1],:]
+        #a = ((self.surfel**2).sum(axis=1))
+        a = np.sqrt((self.surfel**2).sum(axis=1))
+        u = ((phi2-phi1)**2).sum(axis=1)
+        #u = (2*u/a**2)[...,np.newaxis]
+        u = (u/a**3)[...,np.newaxis]
+        a = a[...,np.newaxis]
+        
+        r1 = u * (v1 - v2)
+        for k,f in enumerate(self.faces):
+            res[f[0],:] += r1[k,:]
+            res[f[1],:] -= r1[k,:]
+        return res
+
 
 
 def mergeCurves(curves, tol=0.01):
@@ -538,7 +618,7 @@ def saveEvolution(fileName, fv0, xt):
 # Current norm of fv1
 def currentNorm0(fv1, KparDist):
     c2 = fv1.centers
-    cr2 = fv1.lenel
+    cr2 = fv1.linel
     obj = np.multiply(cr2, KparDist.applyK(c2, cr2)).sum()
     return obj
 #    g11 = kfun.kernelMatrix(KparDist, c2)
@@ -548,9 +628,9 @@ def currentNorm0(fv1, KparDist):
 # Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct 
 def currentNormDef(fvDef, fv1, KparDist):
     c1 = fvDef.centers
-    cr1 =fvDef.lenel
+    cr1 =fvDef.linel
     c2 = fv1.centers
-    cr2 = fv1.lenel
+    cr2 = fv1.linel
     obj = (np.multiply(cr1, KparDist.applyK(c1, cr1)).sum()
             - 2*np.multiply(cr1, KparDist.applyK(c2, cr2, firstVar=c1)).sum())
     #g11 = kfun.kernelMatrix(KparDist, c1)
@@ -566,9 +646,9 @@ def currentNorm(fvDef, fv1, KparDist):
 def currentNormGradient(fvDef, fv1, KparDist):
     xDef = fvDef.vertices
     c1 = fvDef.centers
-    cr1 = fvDef.lenel
+    cr1 = fvDef.linel
     c2 = fv1.centers
-    cr2 = fv1.lenel
+    cr2 = fv1.linel
     dim = c1.shape[1]
     #print cr2
 
@@ -620,7 +700,7 @@ def currentNormGradient(fvDef, fv1, KparDist):
 # Measure norm of fv1
 def measureNorm0(fv1, KparDist):
     c2 = fv1.centers
-    cr2 = fv1.lenel
+    cr2 = fv1.linel
     cr2 = np.sqrt((cr2**2).sum(axis=1))[:,np.newaxis]
  #   g11 = kfun.kernelMatrix(KparDist, c2)
     #print cr2.shape, g11.shape
@@ -631,10 +711,10 @@ def measureNorm0(fv1, KparDist):
 # Computes |fvDef|^2 - 2 fvDef * fv1 with measure dot produuct 
 def measureNormDef(fvDef, fv1, KparDist):
     c1 = fvDef.centers
-    cr1 = fvDef.lenel
+    cr1 = fvDef.linel
     cr1 = np.sqrt((cr1**2).sum(axis=1)+1e-10)[:,np.newaxis]
     c2 = fv1.centers
-    cr2 = fv1.lenel
+    cr2 = fv1.linel
     cr2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)[:,np.newaxis]
     obj = (np.multiply(cr1, KparDist.applyK(c1, cr1)).sum()
         - 2*np.multiply(cr1, KparDist.applyK(c2, cr2, firstVar=c1)).sum())
@@ -653,9 +733,9 @@ def measureNorm(fvDef, fv1, KparDist):
 def measureNormGradient(fvDef, fv1, KparDist):
     xDef = fvDef.vertices
     c1 = fvDef.centers
-    cr1 = fvDef.lenel
+    cr1 = fvDef.linel
     c2 = fv1.centers
-    cr2 = fv1.lenel
+    cr2 = fv1.linel
     dim = c1.shape[1]
     a1 = np.sqrt((cr1**2).sum(axis=1)+1e-10)
     a2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)
