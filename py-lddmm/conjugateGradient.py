@@ -47,7 +47,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
     if hasattr(opt, 'cgBurnIn'):
         cgBurnIn = opt.cgBurnIn
     else:
-        cgBurnIn = -1
+        cgBurnIn = 10
     
     if hasattr(opt, 'gradCoeff'):
         gradCoeff = opt.gradCoeff
@@ -134,8 +134,11 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
                 oldDir = np.copy(dir0)
                 grdOld = np.copy(grd)
 
-        if it == 0 and gradEps is None:
-            gradEps = 0.001 * np.sqrt(grd2)
+        if it == 0 or it == cgBurnIn: 
+            if gradEps is None:
+                gradEps = 0.001 * np.sqrt(grd2)
+            else:
+                gradEps = min(gradEps, 0.001 * np.sqrt(grd2))
             
         objTry = opt.updateTry(dir0, eps, obj)
 
@@ -207,7 +210,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
             if verb | (it == maxIter):
                 logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, beta = {3:.5f}, gradient: {4:.5f}'.format(it+1, obj, eps, beta, np.sqrt(grd2)))
 
-            if np.sqrt(grd2) <gradEps:
+            if np.sqrt(grd2) <gradEps and it>cgBurnIn:
                 logging.info('Stopping Gradient Descent: small gradient')
                 opt.converged = True 
                 if hasattr(opt, 'endOfIteration'):

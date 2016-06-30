@@ -1,4 +1,5 @@
 import os
+import glob
 import numpy as np
 #import scipy as sp
 import matchingParam
@@ -18,9 +19,12 @@ from affineBasis import *
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class CurveMatchingParam(matchingParam.MatchingParam):
-    def __init__(self, timeStep = .1, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist=2.5, sigmaError=1.0, errorType = 'measure', typeKernel='gauss'):
+    def __init__(self, timeStep = .1, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist=2.5, sigmaError=1.0, 
+                 errorType = 'measure', typeKernel='gauss', internalCost=None):
 	matchingParam.MatchingParam.__init__(self, timeStep=timeStep, KparDiff = KparDiff, KparDist = KparDist, sigmaKernel = sigmaKernel, sigmaDist=sigmaDist,
 					     sigmaError=sigmaError, errorType = errorType, typeKernel=typeKernel)
+          
+        self.internalCost = internalCost
                                          
         if errorType == 'current':
             print 'Running Current Matching'
@@ -32,6 +36,10 @@ class CurveMatchingParam(matchingParam.MatchingParam):
             self.fun_obj0 = curves.measureNorm0
             self.fun_obj = curves.measureNormDef
             self.fun_objGrad = curves.measureNormGradient
+        elif errorType=='varifold':
+            self.fun_obj0 = curves.varifoldNorm0
+            self.fun_obj = curves.varifoldNormDef
+            self.fun_objGrad = curves.varifoldNormGradient
         else:
             print 'Unknown error Type: ', self.errorType
 
@@ -57,7 +65,6 @@ class Direction:
 #        affine: 'affine', 'similitude', 'euclidean', 'translation' or 'none'
 #        maxIter: max iterations in conjugate gradient
 class CurveMatching:
-
     def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000, regWeight = 1.0, affineWeight = 1.0, verb=True,
                  gradLB = 0.001, saveRate=10, saveTrajectories=False,
                  rotWeight = None, scaleWeight = None, transWeight = None, internalWeight=-1.0, 
@@ -104,6 +111,8 @@ class CurveMatching:
                 return
             else:
                 os.mkdir(outputDir)
+        for f in glob.glob(outputDir+'/*.vtk'):
+            os.remove(f)
         self.fvDef = curves.Curve(curve=self.fv0)
         self.iter = 0 ;
         self.maxIter = maxIter
@@ -127,11 +136,21 @@ class CurveMatching:
             self.param = CurveMatchingParam()
         else:
             self.param = param
-        x0 = self.fv0.vertices
+        
+        if self.param.internalCost == 'h1':
+            self.internalCost = curves.normGrad 
+            self.internalCostGrad = curves.diffNormGrad 
+        elif self.param.internalCost == 'h1Invariant':
+            self.internalCost = curves.normGradInvariant 
+            self.internalCostGrad = curves.diffNormGradInvariant
+        else:
+            self.internalCost = None
+            
+        self.x0 = self.fv0.vertices
 
         self.Tsize = int(round(1.0/self.param.timeStep))
-        self.at = np.zeros([self.Tsize, x0.shape[0], x0.shape[1]])
-        self.atTry = np.zeros([self.Tsize, x0.shape[0], x0.shape[1]])
+        self.at = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
+        self.atTry = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
         self.Afft = np.zeros([self.Tsize, self.affineDim])
         self.AfftTry = np.zeros([self.Tsize, self.affineDim])
         self.xt = np.tile(self.fv0.vertices, [self.Tsize+1, 1, 1])
@@ -176,9 +195,9 @@ class CurveMatching:
             #rzz = kfun.kernelMatrix(param.KparDiff, z)
             ra = param.KparDiff.applyK(z, a)
             obj = obj + self.regweight*timeStep*np.multiply(a, (ra)).sum()
-            if self.internalWeight > 0:
+            if self.internalCost:
                 foo.updateVertices(z)
-                obj += self.internalWeight*foo.normGrad(ra)*timeStep
+                obj += self.internalWeight*self.internalCost(foo, ra)*timeStep
             if self.affineDim > 0:
                 obj +=  timeStep * np.multiply(self.affineWeight.reshape(Afft[t].shape), Afft[t]**2).sum()
             #print xt.sum(), at.sum(), obj
@@ -265,13 +284,17 @@ class CurveMatching:
             a = np.squeeze(at[M-t-1, :, :])
             foo.updateVertices(z)
             v = self.param.KparDiff.applyK(z,a)
-            if self.internalWeight>0:
-                Lv = -2*foo.laplacian(v) 
-                DLv = self.internalWeight*foo.diffNormGrad(v)
+            if self.internalCost:
+                grd = self.internalCostGrad(foo, v)
+                Lv =  grd[0]
+                DLv = self.internalWeight*grd[1]
                 a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...], 
                                      -self.internalWeight*a[np.newaxis,...], Lv[np.newaxis,...]))
-                a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], Lv[np.newaxis,...],
-                                     -self.internalWeight*a[np.newaxis,...]))
+                a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], 
+                                     Lv[np.newaxis,...], -self.internalWeight*a[np.newaxis,...]))
+#                a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...], 
+#                                     -2*self.internalWeight*a[np.newaxis,...]))
+#                a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], Lv[np.newaxis,...]))
                 zpx = self.param.KparDiff.applyDiffKT(z, a1, a2) - DLv
             else:
                 a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...]))
@@ -286,7 +309,7 @@ class CurveMatching:
 
 
     def hamiltonianGradient(self, px1, affine = None):
-        if self.internalWeight < 1e-10:
+        if not self.internalCost:
             return evol.landmarkHamiltonianGradient(self.x0, self.at, px1, self.param.KparDiff, self.regweight, affine=affine, 
                                                     getCovector=True)
                                                     
@@ -306,9 +329,9 @@ class CurveMatching:
             px = np.squeeze(pxt[k+1, :, :])
             #print 'testgr', (2*a-px).sum()
             v = self.param.KparDiff.applyK(z,a)
-            if self.internalWeight>0:
-                Lv = -foo.laplacian(v) 
-                dat[k, :, :] = 2*self.regweight*a-px + 2*self.internalWeight * Lv
+            if self.internalCost:
+                Lv = self.internalCostGrad(foo, v, variables='phi') 
+                dat[k, :, :] = 2*self.regweight*a-px + self.internalWeight * Lv
             else:
                 dat[k, :, :] = 2*self.regweight*a-px
 
@@ -337,7 +360,7 @@ class CurveMatching:
         #         AB = np.dot(self.affineBasis, self.Afft[t])
         #         A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
         #         A[1][t] = AB[dim2:dim2+self.dim]
-        foo = evol.landmarkHamiltonianGradient(self.fv0.vertices, self.at, px1, self.param.KparDiff, self.regweight, affine=A)
+        foo = self.hamiltonianGradient(px1, affine=A)
         grd = Direction()
         grd.diff = foo[0]/(coeff*self.Tsize)
         grd.aff = np.zeros(self.Afft.shape)
@@ -403,6 +426,21 @@ class CurveMatching:
     def endOfIteration(self):
         (obj1, self.xt, Jt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True, withJacobian=True)
         self.iter += 1
+        
+#        if self.testGradient:
+#            Phi = np.random.normal(size=self.x0.shape)
+#            dPhi1 = np.random.normal(size=self.x0.shape)
+#            dPhi2 = np.random.normal(size=self.x0.shape)
+#            eps = 1e-6
+#            fv22 = curves.Curve(curve=self.fvDef)
+#            fv22.updateVertices(self.fvDef.vertices+eps*dPhi2)
+#            e0 = self.fvDef.normGrad(Phi)
+#            e1 = self.fvDef.normGrad(Phi+eps*dPhi1)
+#            e2 = fv22.normGrad(Phi)
+#            lap = self.fvDef.laplacian(Phi)
+#            grad = self.fvDef.diffNormGrad(Phi)
+#            print 'Laplacian:', (e1-e0)/eps, -2*(lap*dPhi1).sum()
+#            print 'Gradient:', (e2-e0)/eps, -(grad*dPhi2).sum()
 
         if self.saveRate > 0 and self.iter%self.saveRate==0:
             if self.dim==2:
