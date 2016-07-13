@@ -116,14 +116,14 @@ def compute(model='default', dirOut='/cis/home/younes'):
         ftarg = (fv2, fv22)
 
     ## Object kernel
-    K1 = Kernel(name='laplacian', sigma = .5)
+    K1 = Kernel(name='laplacian', sigma = 2)
 
     loggingUtils.setup_default_logging(dirOut+'/Development/Results/curveMatching', fileName='info.txt', 
                                        stdOutput = True)    
     
-    sm = CurveMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=1, sigmaError=.05, errorType='varifold', internalCost='h1Invariant')
-    f = CurveMatching(Template=ftemp, Target=ftarg, outputDir=dirOut+'/Development/Results/curveMatching'+model+'2',param=sm, testGradient=False,
-                      regWeight=.1, internalWeight=100.0, maxIter=10000, affine='none', rotWeight=10., transWeight = 10., scaleWeight=100., affineWeight=100.)
+    sm = CurveMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=1, sigmaError=.05, errorType='varifold')#, internalCost='h1Invariant')
+    f = CurveMatching(Template=ftemp, Target=ftarg, outputDir=dirOut+'/Development/Results/curveMatching'+model+'3',param=sm, testGradient=False,
+                      regWeight=1, internalWeight=100.0, maxIter=10000, affine='none', rotWeight=10., transWeight = 10., scaleWeight=100., affineWeight=100.)
                       
  
     f.optimizeMatching()
@@ -132,5 +132,5 @@ def compute(model='default', dirOut='/cis/home/younes'):
     return f
     
 if __name__=="__main__":
-    compute(model='rays', dirOut='/Users/younes')
+    compute(model='rays')#, dirOut='/Users/younes')
 
