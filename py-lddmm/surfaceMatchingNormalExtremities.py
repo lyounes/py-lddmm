@@ -583,15 +583,15 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 if __name__=="__main__":
 
     #outputDir = '/cis/home/younes/Development/Results/ERC_Normals_ADNI_014_S_4058/'
-    outputDir = '/cis/home/younes/Development/Results/cat/398_2/'
+    outputDir = '/cis/home/younes/Development/Results/NK1/'
 
     #fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/DH1MiddleOuter.byu')
     #fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/DH1MiddleInner.byu')
     #outputDir = '/cis/home/younes/Development/Results/tilakAW1Superior'
     loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput = True)
 
-    fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/cat/398inner.byu')
-    fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/cat/398outer.byu')
+    fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/NK1Inner.byu')
+    fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/NK1Outer.byu')
     fv0.removeIsolated()
     fv0.edgeRecover()
     fv1.removeIsolated()

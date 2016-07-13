@@ -71,9 +71,10 @@ class Curve:
         nv = 0
         nf = 0
         for fv in fvl:
+            dim = fv.vertices.shape[1]
             nv += fv.vertices.shape[0]
             nf += fv.faces.shape[0]
-        self.vertices = np.zeros([nv,2])
+        self.vertices = np.zeros([nv,dim])
         self.faces = np.zeros([nf,2], dtype='int')
 
         nv0 = 0
@@ -458,13 +459,16 @@ class Curve:
     # Saves in .vtk format 
     def saveVTK(self, fileName, scalars = None, normals = None, scal_name='scalars'):
         F = self.faces ;
-        V = self.vertices ;
+        V = np.copy(self.vertices) ;
+        if V.shape[1] == 2: 
+            V = np.concatenate((V, np.zeros([1,V.shape[0]])))
+
 
         with open(fileName, 'w') as fvtkout:
             fvtkout.write('# vtk DataFile Version 3.0\nSurface Data\nASCII\nDATASET POLYDATA\n') 
             fvtkout.write('\nPOINTS {0: d} float'.format(V.shape[0]))
             for ll in range(V.shape[0]):
-                fvtkout.write('\n{0: f} {1: f} {2: f}'.format(V[ll,0], V[ll,1], 0))
+                fvtkout.write('\n{0: f} {1: f} {2: f}'.format(V[ll,0], V[ll,1], V[ll,2]))
             fvtkout.write('\nLINES {0:d} {1:d}'.format(F.shape[0], 3*F.shape[0]))
             for ll in range(F.shape[0]):
                 fvtkout.write('\n2 {0: d} {1: d}'.format(F[ll,0], F[ll,1]))
@@ -490,9 +494,11 @@ class Curve:
             v = u.GetOutput()
             npoints = int(v.GetNumberOfPoints())
             nfaces = int(v.GetNumberOfLines())
-            V = np.zeros([npoints, 2])
+            V = np.zeros([npoints, 3])
             for kk in range(npoints):
-                V[kk, :] = np.array(v.GetPoint(kk)[0:2])
+                V[kk, :] = np.array(v.GetPoint(kk))
+            if np.fabs(V[:,2]).max() < 1e-20:
+                V = V[:,0:2]
 
             F = np.zeros([nfaces, 2])
             for kk in range(nfaces):
@@ -917,6 +923,18 @@ def normGradInvariant(fv, phi):
     res = (((phi2-phi1)**2).sum(axis=1)/a).sum() - (c**2)/a.sum()
     return res
 
+def normGradInvariant3D(fv, phi):
+    phi1 = phi[fv.faces[:,0],:]
+    phi2 = phi[fv.faces[:,1],:]
+    a = np.sqrt((fv.linel**2).sum(axis=1))
+    tl = fv.linel/a[...,np.newaxis]
+    M = (a.sum()+1e-6)*np.eye(3) 
+    - (fv.linel[:,:,np.newaxis]*tl[:,np.newaxis,:]).sum(axis=0)
+    c = np.cross(phi2-phi1, tl).sum(axis=0)
+    res = (((phi2-phi1)**2).sum(axis=1)/a).sum() - (np.linalg.solve(M,c)*c).sum()
+    #print res
+    return res
+
 def H1AlphaNorm(fv, phi):
     phi1 = phi[fv.faces[:,0],:]
     phi2 = phi[fv.faces[:,1],:]
@@ -950,6 +968,48 @@ def diffNormGradInvariant(fv, phi, variables='both'):
         r1 = -((dphia**2).sum(axis=1))[...,np.newaxis] * tl
         r1 += 2*(c/L)*((dphia*tl).sum(axis=1)[...,np.newaxis]*nl)
         r1 += ((c/L)**2)*tl
+        for k,f in enumerate(fv.faces):
+            gradx[f[0],:] -= r1[k,:]
+            gradx[f[1],:] += r1[k,:]
+    if variables == 'both':
+        return (gradphi, gradx)
+    elif variables == 'phi':
+        return gradphi
+    elif variables == 'x':
+        return gradx
+    else:
+        print 'Incorrect option in diffNormGradInvariant'
+
+
+def diffNormGradInvariant3D(fv, phi, variables='both'):
+    phi1 = phi[fv.faces[:,0],:]
+    phi2 = phi[fv.faces[:,1],:]
+    a2 = (fv.linel**2).sum(axis=1)
+    a = np.sqrt(a2)
+    tl = fv.linel/a[...,np.newaxis]
+    dphi = phi2-phi1
+    dphia = dphi/a[...,np.newaxis]
+    M = (a.sum()+1e-6)*np.eye(3) 
+    - (fv.linel[:,:,np.newaxis]*tl[:,np.newaxis,:]).sum(axis=0)
+    c = np.cross(dphi, tl).sum(axis=0)
+    Mc = np.linalg.solve(M,c)
+    #print Mc
+    tlmc = (tl*Mc[np.newaxis,:]).sum(axis=1)
+    if variables == 'both' or variables == 'phi':
+        r1 = 2 * (dphia - np.cross(tl, Mc[np.newaxis, :]))
+        gradphi = np.zeros(phi.shape)
+        for k,f in enumerate(fv.faces):
+            gradphi[f[0],:] -= r1[k,:]
+            gradphi[f[1],:] += r1[k,:]
+    
+    if variables == 'both' or variables == 'x':
+        gradx = np.zeros(fv.vertices.shape)
+        r1 = -((dphia**2).sum(axis=1))[...,np.newaxis] * tl
+        r1 -= 2 * np.cross(Mc[np.newaxis, :], dphia)
+        r1 += 2*(Mc*np.cross(dphia, tl)).sum(axis=1)[:, np.newaxis] * tl
+        r1 += (Mc**2).sum()*tl
+        r1 -= 2 * (tlmc)[:,np.newaxis] * Mc[np.newaxis,:]
+        r1 += (tlmc**2)[:,np.newaxis] * tl
         for k,f in enumerate(fv.faces):
             gradx[f[0],:] -= r1[k,:]
             gradx[f[1],:] += r1[k,:]
