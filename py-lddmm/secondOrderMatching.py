@@ -859,7 +859,7 @@ class SurfaceMatching:
         [grd2] = self.dotProduct(grd, [grd])
 
         self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
-        print 'Gradient lower bound:', self.gradEps
+        logging.info('Gradient lower bound: {0:f}'.format(self.gradEps))
         #print 'x0:', self.x0
         #print 'y0:', self.y0
         self.cgBurnIn = self.affBurnIn
