@@ -81,7 +81,6 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         timeStep = 1.0/self.Tsize
         obj=0
         cval = np.zeros(self.cval.shape)
-        dim2 = self.dim**2
         for t in range(self.Tsize):
             a = at[t]
             x = xt[t]

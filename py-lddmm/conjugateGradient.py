@@ -2,7 +2,7 @@ import numpy as np
 import scipy as sp
 import logging
 
-# Class running noninear conjugate gradient
+# Class running nonlinear conjugate gradient
 # opt is an optimizable class that must provide the following functions:
 #   getVariable(): current value of the optimzed variable
 #   objectiveFun(): value of the objective function
@@ -178,13 +178,14 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
 
        
         # increasing step if improves
-            contt = 1
+            contt = 5
             #eps0 = eps / 4
-            while contt==1:
+            while contt>=1:
                 objTry2 = opt.updateTry(dir0, 1.25*eps, objTry)
                 if objTry > objTry2:
                     eps *= 1.25
                     objTry=objTry2
+                    #contt -= 1
                 else:
                     contt=0
 
@@ -225,3 +226,61 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
         opt.endOptim()
 
     return opt.getVariable()
+
+def linearcg(op, b, iterMax=100, x0=None, param = None, verb=False):
+    if x0 is None:
+        x = np.zeros(b.shape)
+    else:
+        x = x0
+    if param is None:
+        z = op(x) - 2*b
+    else:
+        z = op(x, param) - 2*b
+
+    ener = (z*x).sum()
+    oldEner = ener
+    f=0
+    r = -z - b
+    for i2 in range(iterMax):
+        if i2 == 0:
+            mu = (r*r).sum()
+            if mu < 1e-10:
+                return x
+            p = r
+        else:
+            muold = mu
+            mu = (r*r).sum()
+            beta = mu/muold
+            p = r + beta * p
+
+        if param is None:
+            q = op(p)
+        else:
+            q = op(p, param)
+
+        u = (p*q).sum()
+        alpha = mu / u
+        x += alpha * p
+        r -= alpha * q
+        z += alpha * q
+        ener = (z*x).sum()
+        if param is None:
+            error = ((op(x)-b)**2).sum()
+        else:
+            error = ((op(x,param)-b)**2).sum()
+        if verb and (i2%10) == 0:
+            logging.info('iter {0:d} ener = {1:.6f} error = {2:.15f}'.format(i2+1, ener, error))
+        if alpha * np.mean((np.fabs(p))) < 1e-10:
+            f = 1
+            return x
+
+        if np.fabs(ener - oldEner) < (1e-20)*np.fabs(oldEner):
+            if verb:
+                logging.info('iter {0:d} ener = {1:.6f} error = {2:.15f}'.format(i2+1, ener, error))
+            f = 1
+            return x
+        oldEner = ener ;
+
+    if verb:
+        logging.info('iter {0:d} ener = {1:.6f} error = {2:.15f}'.format(i2+1, ener, error))
+    return x

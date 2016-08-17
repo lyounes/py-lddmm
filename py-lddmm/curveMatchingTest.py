@@ -1,9 +1,9 @@
 import numpy as np
-import curves
-from curves import *
+#import curves
+from curves import Curve
 import loggingUtils
-from kernelFunctions import *
-from curveMatching import *
+from kernelFunctions import Kernel
+from curveMatching import CurveMatchingParam, CurveMatching
 
 def compute(model='default', dirOut='/cis/home/younes'):
 
@@ -92,7 +92,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
             ftarg.append(Curve(FV=(f,v)))
     elif model == '3Drays':
         nrays = 10
-        t = np.arange(0, 5, 0.1)
+        t = np.arange(2, 5, 0.1)
         ftemp = []
         x0 = 5
         y0 = 5
@@ -124,39 +124,53 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v[:,2] = z0 + 0.4*theta[k]*t
             ftarg.append(Curve(FV=(f,v)))        
     elif model == 'helixes':
-        nrays = 10
-        t = np.arange(0, 5, 0.1)
+        nrays = 5
+        t = np.arange(0, 10, 0.1)
         ftemp = []
         x0 = 5
         y0 = 5
         z0 = 5
-        theta = 2*np.pi*np.arange(0, nrays)/nrays
+        r = 0.05
+        a = 0.5
+        h = .5
+        theta = 2*np.pi*(np.arange(0, nrays, dtype=float)/nrays)**h
         for k in range(nrays):
             f = np.zeros([t.shape[0]-1,2], dtype=int)
             f[:,0] = range(0, t.shape[0]-1)
             f[:,1] = range(1, t.shape[0])
             v = np.zeros([t.shape[0],3])
-            v[:,0] = x0 + t*np.cos(t+theta[k])
-            v[:,1] = y0 + t*np.sin(t+theta[k])
-            v[:,2] = z0 + 0.5*t
+            v[:,0] = x0 + r*(t**2)*np.cos(t+theta[k])
+            v[:,1] = y0 + r*(t**2)*np.sin(t+theta[k])
+            v[:,2] = z0 + a*t
             ftemp.append(Curve(FV=(f,v)))
             
         ftarg = []
-        x0 = 8
+        x0 = 5
         y0 = 5
-        z0 = 5
-        theta = 2*np.pi*(np.arange(0,nrays, dtype=float)/nrays)**(0.5)
+        z0 = 6
+        r = 0.05
+        a = 0.5
+        h = .25
+        theta = 2*np.pi*(np.arange(0,nrays, dtype=float)/nrays)**h +np.pi/6
         #theta = 2*np.pi*(np.arange(0,nrays, dtype=float)/nrays + 0.25)
         for k in range(nrays):
             f = np.zeros([t.shape[0]-1,2], dtype=int)
             f[:,0] = range(0, t.shape[0]-1)
             f[:,1] = range(1, t.shape[0])
             v = np.zeros([t.shape[0],3])
-            v[:,0] = x0 + 0.75*t*np.cos(t+theta[k])
-            v[:,1] = y0 + 0.75*t*np.sin(t+theta[k])
-            v[:,2] = z0 + 0.4*t
+            v[:,0] = x0 + r*(t**2)*np.cos(t+theta[k])
+            v[:,1] = y0 + r*(t**2)*np.sin(t+theta[k])
+            v[:,2] = z0 + a*t
             ftarg.append(Curve(FV=(f,v)))
-        
+    elif model == 'atlasSections':
+        fv01 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas04_curve01.txt')
+        fv02 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas04_curve02.txt')
+        fv03 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas04_curve03.txt')
+        fv11 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas09_curve01.txt')
+        fv12 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas09_curve02.txt')
+        fv13 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas09_curve03.txt')
+        ftemp = [fv01, fv02, fv03]
+        ftarg = [fv11, fv12, fv13]
     else:   
         [x,y] = np.mgrid[0:200, 0:200]/100.
         y = y-1
@@ -181,25 +195,14 @@ def compute(model='default', dirOut='/cis/home/younes'):
         ftarg = (fv2, fv22)
 
     ## Object kernel
-<<<<<<< HEAD
-    K1 = Kernel(name='laplacian', sigma = 2)
-=======
     K1 = Kernel(name='laplacian', sigma = .1)
->>>>>>> 13f4e022930047527723ee148bd10721b916b0a0
 
     loggingUtils.setup_default_logging(dirOut+'/Development/Results/curveMatching', fileName='info.txt', 
-                                       stdOutput = True)    
+                                       stdOutput = True)   
     
-<<<<<<< HEAD
-    sm = CurveMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=1, sigmaError=.05, errorType='varifold')#, internalCost='h1Invariant')
-    f = CurveMatching(Template=ftemp, Target=ftarg, outputDir=dirOut+'/Development/Results/curveMatching'+model+'3',param=sm, testGradient=False,
-                      regWeight=1, internalWeight=100.0, maxIter=10000, affine='none', rotWeight=10., transWeight = 10., scaleWeight=100., affineWeight=100.)
-=======
     sm = CurveMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=5, sigmaError=.1, errorType='varifold', internalCost='h1Invariant')
     f = CurveMatching(Template=ftemp, Target=ftarg, outputDir=dirOut+'/Development/Results/curveMatching'+model+'2',param=sm, testGradient=True,
                       regWeight=.1, internalWeight=100.0, maxIter=10000, affine='none', rotWeight=10., transWeight = 10., scaleWeight=100., affineWeight=100.)
->>>>>>> 13f4e022930047527723ee148bd10721b916b0a0
-                      
  
     f.optimizeMatching()
 
@@ -207,9 +210,5 @@ def compute(model='default', dirOut='/cis/home/younes'):
     return f
     
 if __name__=="__main__":
-<<<<<<< HEAD
-    compute(model='rays')#, dirOut='/Users/younes')
-=======
     compute(model='helixes', dirOut='/Users/younes')
->>>>>>> 13f4e022930047527723ee148bd10721b916b0a0
 
