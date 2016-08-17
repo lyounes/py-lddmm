@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 import numpy as np
 import numpy.linalg as la
 import scipy as sp
@@ -44,9 +44,14 @@ class SurfaceMatching(object):
                  maxIter=1000, regWeight = 1.0, affineWeight = 1.0, verb=True, affine = 'none',
                   rotWeight = None, scaleWeight = None, transWeight = None,
                  subsampleTargetSize=-1, testGradient=True, saveFile = 'evolution', outputDir = '.'):
+        if param==None:
+            self.param = SurfaceMatchingParam()
+        else:
+            self.param = param
+
         if Template==None:
             if fileTempl==None:
-                print 'Please provide a template surface'
+                logging.error('Please provide a template surface')
                 return
             else:
                 self.fv0 = surfaces.Surface(filename=fileTempl)
@@ -54,16 +59,28 @@ class SurfaceMatching(object):
             self.fv0 = surfaces.Surface(surf=Template)
         if Targets==None:
             if fileTarg==None:
-                print 'Please provide a list of target surfaces'
+                logging.error('Please provide a list of target surfaces')
                 return
             else:
-                self.fv1 = [] ;
-                for f in fileTarg:
-                    self.fv1.append(surfaces.Surface(filename=f))
+                self.fv1 = []
+                if self.param.errorType == 'L2Norm':
+                    for f in fileTarg:
+                        fv1 = surfaces.Surface()
+                        fv1.readFromImage(f)
+                        self.fv1.append(fv1)
+                else:
+                    for f in fileTarg:
+                        self.fv1.append(surfaces.Surface(filename=f))
         else:
-            self.fv1 = [] ;
-            for s in Targets:
-                self.fv1.append(surfaces.Surface(surf=s))
+            self.fv1 = []
+            if self.param.errorType == 'L2Norm':
+                for s in Targets:
+                    fv1 = surfaces.Surface()
+                    fv1.readFromImage(s)
+                    self.fv1.append(fv1)
+            else:
+                for s in Targets:
+                    self.fv1.append(surfaces.Surface(surf=s))
 
         self.volumeWeight = 10.0 
         self.nTarg = len(self.fv1)
@@ -98,20 +115,26 @@ class SurfaceMatching(object):
         if (len(self.affB.transComp) > 0) & (transWeight != None):
             self.affineWeight[self.affB.transComp] = transWeight
 
-        if param==None:
-            self.param = SurfaceMatchingParam()
-        else:
-            self.param = param
+        self.coeffAff_ = np.ones(self.affineDim)
+        if (len(self.affB.rotComp) > 0):
+            self.coeffAff_[self.affB.rotComp] = 100.
 
         self.fv0Fine = surfaces.Surface(surf=self.fv0)
         if (subsampleTargetSize > 0):
             self.fv0.Simplify(subsampleTargetSize)
-            v0 = self.fv0.surfVolume()
-            for s in self.fv1:
-                v1 = s.surfVolume()
-                if (v0*v1 < 0):
-                    s.flipFaces()
             print 'simplified template', self.fv0.vertices.shape[0]
+        v0 = self.fv0.surfVolume()
+        #print 'v0', v0
+        if self.param.errorType == 'L2Norm' and v0 < 0:
+            #print 'flip'
+            self.fv0.flipFaces()
+            v0 = -v0 ;
+        for s in self.fv1:
+            v1 = s.surfVolume()
+            #print 'v1', v1
+            if (v0*v1 < 0):
+                #print 'flip1'
+                s.flipFaces()
         self.x0 = self.fv0.vertices
         self.fvDef = []
         for k in range(self.nTarg):
@@ -146,7 +169,7 @@ class SurfaceMatching(object):
         self.affBurnIn = 20
         self.coeffAff1 = 1.
         self.coeffAff2 = 100.
-        self.coeffAff = self.coeffAff1
+        self.coeffAff = self.coeffAff1 * self.coeffAff_
         if self.affineDim > 0:
             self.affineBurnIn = True
         else:
@@ -177,7 +200,11 @@ class SurfaceMatching(object):
     def dataTerm(self, _fvDef):
         obj = 0
         for k,s in enumerate(_fvDef):
-            obj += self.param.fun_obj(s, self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
+            if self.param.errorType == 'L2Norm':
+                obj += surfaces.L2Norm(s, self.fv1[k].vfld) / (self.param.sigmaError**2)
+            else:
+                obj += self.param.fun_obj(s, self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
+            #print 'surf', s.surfVolume(), self.fv1[k].surfVolume(), self.volumeWeight
             obj += self.volumeWeight*(s.surfVolume()-self.fv1[k].surfVolume())**2
         return obj
 
@@ -218,26 +245,19 @@ class SurfaceMatching(object):
         else:
             return obj
 
-    # def  _objectiveFun(self, a0, rhot, withTrajectory = False):
-    #     (obj, xt, at) = self.objectiveFunDef(a0, rhot, withTrajectory=True)
-    #     for k in range(self.nTarg):
-    #         self.fvDef[k].updateVertices(np.squeeze(xt[(k+1)*self.Tsize1, :, :]))
-    #     obj0 = self.dataTerm(self.fvDef)
-
-    #     if withTrajectory:
-    #         return obj+obj0, xt, at
-    #     else:
-    #         return obj+obj0
 
     def objectiveFun(self):
         if self.obj is None:
             (self.obj, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             self.obj0 = 0
             for k in range(self.nTarg):
-                self.obj0 += self.param.fun_obj0(self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
-                foo = surfaces.Surface(surf=self.fvDef[k])
+                if self.param.errorType == 'L2Norm':
+                    self.obj0 += surfaces.L2Norm0(self.fv1[k])/(self.param.sigmaError**2)
+                else:   
+                    self.obj0 += self.param.fun_obj0(self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
+                #foo = surfaces.Surface(surf=self.fvDef[k])
                 self.fvDef[k].updateVertices(np.squeeze(self.xt[self.jumpIndex[k], :, :]))
-                foo.computeCentersAreas()
+                #foo.computeCentersAreas()
             self.obj += self.obj0 + self.dataTerm(self.fvDef)
             #print self.obj0,  self.dataTerm(self.fvDef)
         return self.obj
@@ -277,9 +297,13 @@ class SurfaceMatching(object):
     def endPointGradient(self):
         px = []
         for k in range(self.nTarg):
-            targGradient = -self.param.fun_objGrad(self.fvDef[k], self.fv1[k], self.param.KparDist)/ self.param.sigmaError**2
-            targGradient -= (1./3) * self.volumeWeight*(self.fvDef[k].surfVolume() - self.fv1[k].surfVolume()) * self.fvDef[k].computeAreaWeightedVertexNormals()
+            if self.param.errorType == 'L2Norm':
+                targGradient = -surfaces.L2NormGradient(self.fvDef[k], self.fv1[k].vfld)/(self.param.sigmaError**2)
+            else:
+                targGradient = -self.param.fun_objGrad(self.fvDef[k], self.fv1[k], self.param.KparDist)/(self.param.sigmaError**2)
+            targGradient -= (2./3) * self.volumeWeight*(self.fvDef[k].surfVolume() - self.fv1[k].surfVolume()) * self.fvDef[k].computeAreaWeightedVertexNormals()
             px.append(targGradient)
+        #print "px", (px[0]**2).sum()
         return px 
 
 
@@ -299,7 +323,7 @@ class SurfaceMatching(object):
                                         self.regweight, affine=A, isjump = self.isjump)
         # times = (1+np.array(range(self.nTarg)))*self.Tsize1)
         grd = Direction()
-        grd.diff = foo[0] / coeff
+        grd.diff = foo[0] / (coeff*self.Tsize)
         grd.aff = np.zeros(self.Afft.shape)
         if self.affineBurnIn:
             grd.diff *= 0 
@@ -351,10 +375,11 @@ class SurfaceMatching(object):
             ll = 0
             for ll,gr in enumerate(g2):
                 ggOld = gr.diff[t,...]
-                res[ll]  += (ggOld*gg).sum()/self.Tsize
+                res[ll]  += (ggOld*gg).sum()
         
-        for ll,gr in enumerate(g2):
-            res[ll] += (uu * gr.aff).sum() * self.coeffAff
+        if not uu is None:
+            for ll,gr in enumerate(g2):
+                res[ll] += (uu * gr.aff *self.coeffAff).sum()
 
         return res
 
@@ -367,7 +392,7 @@ class SurfaceMatching(object):
     def endOfIteration(self):
         self.iter += 1
         if self.iter >= self.affBurnIn:
-            self.coeffAff = self.coeffAff2
+            self.coeffAff = self.coeffAff2 * self.coeffAff_
             self.affineBurnIn = False
         if (self.iter % self.saveRate == 0):
             logging.info('Saving surfaces...')

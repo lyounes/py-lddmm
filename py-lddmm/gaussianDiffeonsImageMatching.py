@@ -241,7 +241,7 @@ class ImageMatching:
         self.gr0 = targetMargin-templateMargin+self.im1.origin + self.gr0 * self.im1.resol 
         self.gr0Fine = targetMargin-templateMargin+self.im1.origin + self.gr0Fine * self.im1.resol 
         self.J0 = np.log(self.im0.resol.prod()) * np.ones(self.im0.data.shape) 
-	self.ndf = self.c0.shape[0]
+        self.ndf = self.c0.shape[0]
         self.Tsize = int(round(1.0/self.param.timeStep))
         self.at = np.zeros([self.Tsize, self.c0.shape[0], self.dim])
         self.atTry = np.zeros([self.Tsize, self.c0.shape[0], self.dim])

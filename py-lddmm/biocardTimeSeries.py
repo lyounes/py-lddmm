@@ -18,7 +18,7 @@ def compute(Atrophy=False):
     #outputDir = '/cis/home/younes/MorphingData/twoBallsStitched'
     #outputDir = '/Users/younes/Development/Results/tight_stitched_rigid2_10'
     if __name__ == "__main__":
-        loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput = False)
+        loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput = True)
     else:
         loggingUtils.setup_default_logging()
 
@@ -44,10 +44,10 @@ def compute(Atrophy=False):
     sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=2.5, sigmaError=1., errorType='varifold')
     if Atrophy:
         f = match.SurfaceMatching(Template=fv0, Targets=(fv1,fv2,fv3,fv4), outputDir=outputDir, param=sm, regWeight=.1,
-                                affine='euclidean', testGradient=False, affineWeight=.1,  maxIter_cg=1000, mu=0.0001)
+                                affine='none', testGradient=True, affineWeight=.1,  maxIter_cg=1000, mu=0.0001)
     else:
        f = match.SurfaceMatching(Template=fv0, Targets=(fv1,fv2,fv3,fv4), outputDir=outputDir, param=sm, regWeight=.1,
-                                affine='euclidean', testGradient=True, affineWeight=.1,  maxIter=1000)
+                                affine='none', testGradient=True, affineWeight=.1,  maxIter=1000)
  
     #, affine='none', rotWeight=0.1))
     f.optimizeMatching()

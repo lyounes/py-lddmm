@@ -167,6 +167,13 @@ class CurveMatching:
         self.gradLB = gradLB
         self.saveRate = saveRate 
         self.saveTrajectories = saveTrajectories
+#        om = np.random.uniform(-1,1,[1,self.fv0.vertices.shape[1]])
+#        v1 = np.cross(om, self.fv0.vertices)
+#        #om = np.random.uniform(-1,1,[1,3])
+#        #v11 = np.cross(om[np.newaxis,:], fv11.vertices)
+#        dtest = self.internalCost(self.fv0, v1)
+#        print 'dtest= ', dtest
+
 
     def dataTerm(self, _fvDef):
         obj = self.param.fun_obj(_fvDef, self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
