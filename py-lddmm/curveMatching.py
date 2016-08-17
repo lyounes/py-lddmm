@@ -141,8 +141,12 @@ class CurveMatching:
             self.internalCost = curves.normGrad 
             self.internalCostGrad = curves.diffNormGrad 
         elif self.param.internalCost == 'h1Invariant':
-            self.internalCost = curves.normGradInvariant 
-            self.internalCostGrad = curves.diffNormGradInvariant
+            if self.fv0.vertices.shape[1] == 2:
+                self.internalCost = curves.normGradInvariant 
+                self.internalCostGrad = curves.diffNormGradInvariant
+            else:
+                self.internalCost = curves.normGradInvariant3D
+                self.internalCostGrad = curves.diffNormGradInvariant3D
         else:
             self.internalCost = None
             
@@ -427,20 +431,19 @@ class CurveMatching:
         (obj1, self.xt, Jt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True, withJacobian=True)
         self.iter += 1
         
-#        if self.testGradient:
-#            Phi = np.random.normal(size=self.x0.shape)
-#            dPhi1 = np.random.normal(size=self.x0.shape)
-#            dPhi2 = np.random.normal(size=self.x0.shape)
-#            eps = 1e-6
-#            fv22 = curves.Curve(curve=self.fvDef)
-#            fv22.updateVertices(self.fvDef.vertices+eps*dPhi2)
-#            e0 = self.fvDef.normGrad(Phi)
-#            e1 = self.fvDef.normGrad(Phi+eps*dPhi1)
-#            e2 = fv22.normGrad(Phi)
-#            lap = self.fvDef.laplacian(Phi)
-#            grad = self.fvDef.diffNormGrad(Phi)
-#            print 'Laplacian:', (e1-e0)/eps, -2*(lap*dPhi1).sum()
-#            print 'Gradient:', (e2-e0)/eps, -(grad*dPhi2).sum()
+        if self.internalCost and self.testGradient:
+            Phi = np.random.normal(size=self.x0.shape)
+            dPhi1 = np.random.normal(size=self.x0.shape)
+            dPhi2 = np.random.normal(size=self.x0.shape)
+            eps = 1e-6
+            fv22 = curves.Curve(curve=self.fvDef)
+            fv22.updateVertices(self.fvDef.vertices+eps*dPhi2)
+            e0 = self.internalCost(self.fvDef, Phi)
+            e1 = self.internalCost(self.fvDef, Phi+eps*dPhi1)
+            e2 = self.internalCost(fv22, Phi)
+            grad = self.internalCostGrad(self.fvDef, Phi)
+            print 'Laplacian:', (e1-e0)/eps, (grad[0]*dPhi1).sum()
+            print 'Gradient:', (e2-e0)/eps, (grad[1]*dPhi2).sum()
 
         if self.saveRate > 0 and self.iter%self.saveRate==0:
             if self.dim==2:
