@@ -1,10 +1,12 @@
 import os
+import glob
 import numpy as np
-import scipy as sp
+#import scipy as sp
 import matchingParam
 import curves
 import grid
-import kernelFunctions as kfun
+import pointSets
+#import kernelFunctions as kfun
 import pointEvolution as evol
 import conjugateGradient as cg
 from affineBasis import *
@@ -17,9 +19,12 @@ from affineBasis import *
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class CurveMatchingParam(matchingParam.MatchingParam):
-    def __init__(self, timeStep = .1, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist=2.5, sigmaError=1.0, errorType = 'measure', typeKernel='gauss'):
+    def __init__(self, timeStep = .1, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist=2.5, sigmaError=1.0, 
+                 errorType = 'measure', typeKernel='gauss', internalCost=None):
 	matchingParam.MatchingParam.__init__(self, timeStep=timeStep, KparDiff = KparDiff, KparDist = KparDist, sigmaKernel = sigmaKernel, sigmaDist=sigmaDist,
 					     sigmaError=sigmaError, errorType = errorType, typeKernel=typeKernel)
+          
+        self.internalCost = internalCost
                                          
         if errorType == 'current':
             print 'Running Current Matching'
@@ -31,6 +36,10 @@ class CurveMatchingParam(matchingParam.MatchingParam):
             self.fun_obj0 = curves.measureNorm0
             self.fun_obj = curves.measureNormDef
             self.fun_objGrad = curves.measureNormGradient
+        elif errorType=='varifold':
+            self.fun_obj0 = curves.varifoldNorm0
+            self.fun_obj = curves.varifoldNormDef
+            self.fun_objGrad = curves.varifoldNormGradient
         else:
             print 'Unknown error Type: ', self.errorType
 
@@ -40,7 +49,7 @@ class Direction:
         self.aff = []
 
 
-## Main class for surface matching
+## Main class for curve matching
 #        Template: surface class (from surface.py); if not specified, opens fileTemp
 #        Target: surface class (from surface.py); if not specified, opens fileTarg
 #        param: surfaceMatchingParam
@@ -56,13 +65,13 @@ class Direction:
 #        affine: 'affine', 'similitude', 'euclidean', 'translation' or 'none'
 #        maxIter: max iterations in conjugate gradient
 class CurveMatching:
-
     def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000, regWeight = 1.0, affineWeight = 1.0, verb=True,
-                 gradLB = 0.001, saveRate=10,
-                 rotWeight = None, scaleWeight = None, transWeight = None, testGradient=False, saveFile = 'evolution', affine = 'none', outputDir = '.'):
+                 gradLB = 0.001, saveRate=10, saveTrajectories=False,
+                 rotWeight = None, scaleWeight = None, transWeight = None, internalWeight=-1.0, 
+                 testGradient=False, saveFile = 'evolution', affine = 'none', outputDir = '.'):
         if Template==None:
             if fileTempl==None:
-                print 'Please provide a template surface'
+                print 'Please provide a template curve'
                 return
             else:
                 self.fv0 = curves.Curve(filename=fileTempl)
@@ -70,7 +79,7 @@ class CurveMatching:
             self.fv0 = curves.Curve(curve=Template)
         if Target==None:
             if fileTarg==None:
-                print 'Please provide a target surface'
+                print 'Please provide a target curve'
                 return
             else:
                 self.fv1 = curves.Curve(filename=fileTarg)
@@ -102,12 +111,15 @@ class CurveMatching:
                 return
             else:
                 os.mkdir(outputDir)
+        for f in glob.glob(outputDir+'/*.vtk'):
+            os.remove(f)
         self.fvDef = curves.Curve(curve=self.fv0)
         self.iter = 0 ;
         self.maxIter = maxIter
         self.verb = verb
         self.testGradient = testGradient
         self.regweight = regWeight
+        self.internalWeight = internalWeight
         self.affine = affine
         self.affB = AffineBasis(self.dim, affine)
         self.affineDim = self.affB.affineDim
@@ -121,14 +133,28 @@ class CurveMatching:
             self.affineWeight[self.affB.transComp] = transWeight
 
         if param==None:
-            self.param = SurfaceMatchingParam()
+            self.param = CurveMatchingParam()
         else:
             self.param = param
-        x0 = self.fv0.vertices
+        
+        if self.param.internalCost == 'h1':
+            self.internalCost = curves.normGrad 
+            self.internalCostGrad = curves.diffNormGrad 
+        elif self.param.internalCost == 'h1Invariant':
+            if self.fv0.vertices.shape[1] == 2:
+                self.internalCost = curves.normGradInvariant 
+                self.internalCostGrad = curves.diffNormGradInvariant
+            else:
+                self.internalCost = curves.normGradInvariant3D
+                self.internalCostGrad = curves.diffNormGradInvariant3D
+        else:
+            self.internalCost = None
+            
+        self.x0 = self.fv0.vertices
 
         self.Tsize = int(round(1.0/self.param.timeStep))
-        self.at = np.zeros([self.Tsize, x0.shape[0], x0.shape[1]])
-        self.atTry = np.zeros([self.Tsize, x0.shape[0], x0.shape[1]])
+        self.at = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
+        self.atTry = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
         self.Afft = np.zeros([self.Tsize, self.affineDim])
         self.AfftTry = np.zeros([self.Tsize, self.affineDim])
         self.xt = np.tile(self.fv0.vertices, [self.Tsize+1, 1, 1])
@@ -140,6 +166,14 @@ class CurveMatching:
         self.fv1.saveVTK(self.outputDir+'/Target.vtk')
         self.gradLB = gradLB
         self.saveRate = saveRate 
+        self.saveTrajectories = saveTrajectories
+#        om = np.random.uniform(-1,1,[1,self.fv0.vertices.shape[1]])
+#        v1 = np.cross(om, self.fv0.vertices)
+#        #om = np.random.uniform(-1,1,[1,3])
+#        #v11 = np.cross(om[np.newaxis,:], fv11.vertices)
+#        dtest = self.internalCost(self.fv0, v1)
+#        print 'dtest= ', dtest
+
 
     def dataTerm(self, _fvDef):
         obj = self.param.fun_obj(_fvDef, self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
@@ -165,12 +199,16 @@ class CurveMatching:
         #print xt[-1, :, :]
         #print obj
         obj=0
+        foo = curves.Curve(curve=self.fv0)
         for t in range(self.Tsize):
             z = np.squeeze(xt[t, :, :])
             a = np.squeeze(at[t, :, :])
             #rzz = kfun.kernelMatrix(param.KparDiff, z)
             ra = param.KparDiff.applyK(z, a)
             obj = obj + self.regweight*timeStep*np.multiply(a, (ra)).sum()
+            if self.internalCost:
+                foo.updateVertices(z)
+                obj += self.internalWeight*self.internalCost(foo, ra)*timeStep
             if self.affineDim > 0:
                 obj +=  timeStep * np.multiply(self.affineWeight.reshape(Afft[t].shape), Afft[t]**2).sum()
             #print xt.sum(), at.sum(), obj
@@ -228,6 +266,94 @@ class CurveMatching:
 
         return objTry
 
+    def hamiltonianCovector(self, px1, affine = None):
+        x0 = self.x0
+        at = self.at
+        KparDiff = self.param.KparDiff
+        N = x0.shape[0]
+        dim = x0.shape[1]
+        M = at.shape[0]
+        timeStep = 1.0/M
+        xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+        foo = curves.Curve(curve=self.fv0)
+        if not(affine is None):
+            A0 = affine[0]
+            A = np.zeros([M,dim,dim])
+            for k in range(A0.shape[0]):
+                A[k,...] = getExponential(timeStep*A0[k]) 
+        else:
+            A = np.zeros([M,dim,dim])
+            for k in range(M-1):
+                A[k,...] = np.eye(dim) 
+                
+        pxt = np.zeros([M+1, N, dim])
+        pxt[M, :, :] = px1
+        foo = curves.Curve(curve=self.fv0)
+        for t in range(M):
+            px = np.squeeze(pxt[M-t, :, :])
+            z = np.squeeze(xt[M-t-1, :, :])
+            a = np.squeeze(at[M-t-1, :, :])
+            foo.updateVertices(z)
+            v = self.param.KparDiff.applyK(z,a)
+            if self.internalCost:
+                grd = self.internalCostGrad(foo, v)
+                Lv =  grd[0]
+                DLv = self.internalWeight*grd[1]
+                a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...], 
+                                     -self.internalWeight*a[np.newaxis,...], Lv[np.newaxis,...]))
+                a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], 
+                                     Lv[np.newaxis,...], -self.internalWeight*a[np.newaxis,...]))
+#                a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...], 
+#                                     -2*self.internalWeight*a[np.newaxis,...]))
+#                a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], Lv[np.newaxis,...]))
+                zpx = self.param.KparDiff.applyDiffKT(z, a1, a2) - DLv
+            else:
+                a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...]))
+                a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
+                zpx = self.param.KparDiff.applyDiffKT(z, a1, a2)
+                
+            if not (affine is None):
+                pxt[M-t-1, :, :] = np.dot(px, A[M-t-1]) + timeStep * zpx
+            else:
+                pxt[M-t-1, :, :] = px + timeStep * zpx
+        return pxt, xt
+
+
+    def hamiltonianGradient(self, px1, affine = None):
+        if not self.internalCost:
+            return evol.landmarkHamiltonianGradient(self.x0, self.at, px1, self.param.KparDiff, self.regweight, affine=affine, 
+                                                    getCovector=True)
+                                                    
+        foo = curves.Curve(curve=self.fv0)
+        (pxt, xt) = self.hamiltonianCovector(px1, affine=affine)
+        at = self.at        
+        dat = np.zeros(at.shape)
+        timeStep = 1.0/at.shape[0]
+        if not (affine is None):
+            A = affine[0]
+            dA = np.zeros(affine[0].shape)
+            db = np.zeros(affine[1].shape)
+        for k in range(at.shape[0]):
+            z = np.squeeze(xt[k,...])
+            foo.updateVertices(z)
+            a = np.squeeze(at[k, :, :])
+            px = np.squeeze(pxt[k+1, :, :])
+            #print 'testgr', (2*a-px).sum()
+            v = self.param.KparDiff.applyK(z,a)
+            if self.internalCost:
+                Lv = self.internalCostGrad(foo, v, variables='phi') 
+                dat[k, :, :] = 2*self.regweight*a-px + self.internalWeight * Lv
+            else:
+                dat[k, :, :] = 2*self.regweight*a-px
+
+            if not (affine is None):
+                dA[k] = gradExponential(A[k]*timeStep, px, xt[k]) #.reshape([self.dim**2, 1])/timeStep
+                db[k] = pxt[k+1].sum(axis=0) #.reshape([self.dim,1]) 
+    
+        if affine is None:
+            return dat, xt, pxt
+        else:
+            return dat, dA, db, xt, pxt
 
 
     def endPointGradient(self):
@@ -245,7 +371,7 @@ class CurveMatching:
         #         AB = np.dot(self.affineBasis, self.Afft[t])
         #         A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
         #         A[1][t] = AB[dim2:dim2+self.dim]
-        foo = evol.landmarkHamiltonianGradient(self.fv0.vertices, self.at, px1, self.param.KparDiff, self.regweight, affine=A)
+        foo = self.hamiltonianGradient(px1, affine=A)
         grd = Direction()
         grd.diff = foo[0]/(coeff*self.Tsize)
         grd.aff = np.zeros(self.Afft.shape)
@@ -285,7 +411,7 @@ class CurveMatching:
 
     def dotProduct(self, g1, g2):
         res = np.zeros(len(g2))
-        dim2 = self.dim**2
+        #dim2 = self.dim**2
         for t in range(self.Tsize):
             z = np.squeeze(self.xt[t, :, :])
             gg = np.squeeze(g1.diff[t, :, :])
@@ -311,11 +437,28 @@ class CurveMatching:
     def endOfIteration(self):
         (obj1, self.xt, Jt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True, withJacobian=True)
         self.iter += 1
+        
+        if self.internalCost and self.testGradient:
+            Phi = np.random.normal(size=self.x0.shape)
+            dPhi1 = np.random.normal(size=self.x0.shape)
+            dPhi2 = np.random.normal(size=self.x0.shape)
+            eps = 1e-6
+            fv22 = curves.Curve(curve=self.fvDef)
+            fv22.updateVertices(self.fvDef.vertices+eps*dPhi2)
+            e0 = self.internalCost(self.fvDef, Phi)
+            e1 = self.internalCost(self.fvDef, Phi+eps*dPhi1)
+            e2 = self.internalCost(fv22, Phi)
+            grad = self.internalCostGrad(self.fvDef, Phi)
+            print 'Laplacian:', (e1-e0)/eps, (grad[0]*dPhi1).sum()
+            print 'Gradient:', (e2-e0)/eps, (grad[1]*dPhi2).sum()
 
         if self.saveRate > 0 and self.iter%self.saveRate==0:
             if self.dim==2:
                 A = self.affB.getTransforms(self.Afft)
                 (xt,yt) = evol.landmarkDirectEvolutionEuler(self.fv0.vertices, self.at, self.param.KparDiff, affine=A, withPointSet=self.gridxy)
+            if self.saveTrajectories:
+                pointSets.saveTrajectories(self.outputDir +'/'+ self.saveFile+'curves.vtk', self.xt)
+
             for kk in range(self.Tsize+1):
                 self.fvDef.updateVertices(np.squeeze(self.xt[kk, :, :]))
                 #self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = Jt[kk, :], scal_name='Jacobian')

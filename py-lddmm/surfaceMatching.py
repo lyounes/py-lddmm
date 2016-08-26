@@ -2,12 +2,14 @@ import os
 import numpy as np
 import numpy.linalg as la
 import scipy as sp
+import scipy.sparse.linalg as spla
 import logging
+import conjugateGradient as cg
+import diffeo
 import surfaces
 import pointSets
 import kernelFunctions as kfun
 import pointEvolution as evol
-import conjugateGradient as cg
 from affineBasis import *
 
 ## Parameter class for matching
@@ -18,9 +20,8 @@ from affineBasis import *
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class SurfaceMatchingParam:
-    def __init__(self, timeStep = .1, KparDiff = None, KparDist =
-                 None, sigmaKernel = 6.5, sigmaDist=2.5,
-                 sigmaError=1.0, errorType = 'measure',  typeKernel='gauss'):
+    def __init__(self, timeStep = .1, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist = 2.5,
+                 sigmaError = 1.0, errorType = 'measure',  typeKernel='gauss', internalCost = None):
         self.timeStep = timeStep
         self.sigmaKernel = sigmaKernel
         self.sigmaDist = sigmaDist
@@ -39,6 +40,10 @@ class SurfaceMatchingParam:
             self.fun_obj0 = surfaces.varifoldNorm0
             self.fun_obj = surfaces.varifoldNormDef
             self.fun_objGrad = surfaces.varifoldNormGradient
+        elif errorType == 'L2Norm':
+            self.fun_obj0 = None
+            self.fun_obj = None
+            self.fun_objGrad = None            
         else:
             logging.error('Unknown error Type: ' + self.errorType)
         if KparDiff == None:
@@ -49,6 +54,7 @@ class SurfaceMatchingParam:
             self.KparDist = kfun.Kernel(name = 'gauss', sigma = self.sigmaDist)
         else:
             self.KparDist = KparDist
+        self.internalCost = internalCost
 
 class Direction:
     def __init__(self):
@@ -75,11 +81,16 @@ class Direction:
 class SurfaceMatching(object):
 
     def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000,
-                 regWeight = 1.0, affineWeight = 1.0, internalWeight=-1.0, verb=True,
+                 regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
                  subsampleTargetSize=-1,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
                  testGradient=True, saveFile = 'evolution',
                  saveTrajectories = False, affine = 'none', outputDir = '.'):
+        if param==None:
+            self.param = SurfaceMatchingParam()
+        else:
+            self.param = param
+
         if Template==None:
             if fileTempl==None:
                 logging.error('Please provide a template surface')
@@ -88,14 +99,23 @@ class SurfaceMatching(object):
                 self.fv0 = surfaces.Surface(filename=fileTempl)
         else:
             self.fv0 = surfaces.Surface(surf=Template)
+            
         if Target==None:
             if fileTarg==None:
                 logging.error('Please provide a target surface')
                 return
             else:
-                self.fv1 = surfaces.Surface(filename=fileTarg)
+                if self.param.errorType == 'L2Norm':
+                    self.fv1 = surfaces.Surface()
+                    self.fv1.readFromImage(fileTarg)
+                else:
+                    self.fv1 = surfaces.Surface(filename=fileTarg)
         else:
-            self.fv1 = surfaces.Surface(surf=Target)
+            if self.param.errorType == 'L2Norm':
+                self.fv1 = surfaces.Surface()
+                self.fv1.initFromImage(fileTarg)
+            else:
+                self.fv1 = surfaces.Surface(surf=Target)
 
             #print np.fabs(self.fv1.surfel-self.fv0.surfel).max()
 
@@ -122,24 +142,40 @@ class SurfaceMatching(object):
         if (len(self.affB.transComp) > 0) & (transWeight != None):
             self.affineWeight[self.affB.transComp] = transWeight
 
-        if param==None:
-            self.param = SurfaceMatchingParam()
+
+                    
+
+        if self.param.internalCost == 'h1':
+            self.internalCost = surfaces.normGrad 
+            self.internalCostGrad = surfaces.diffNormGrad 
+#        elif self.param.internalCost == 'h1Invariant':
+#            if self.fv0.vertices.shape[1] == 2:
+#                self.internalCost = curves.normGradInvariant 
+#                self.internalCostGrad = curves.diffNormGradInvariant
+#            else:
+#                self.internalCost = curves.normGradInvariant3D
+#                self.internalCostGrad = curves.diffNormGradInvariant3D
         else:
-            self.param = param
+            self.internalCost = None
 
         self.fv0.getEdges()
         self.fv1.getEdges()
         self.closed = self.fv0.bdry.max() == 0 and self.fv1.bdry.max() == 0
         if self.closed:
             v0 = self.fv0.surfVolume()
+            if self.param.errorType == 'L2Norm' and v0 < 0:
+                self.fv0.flipFaces()
+                v0 = -v0 ;
             v1 = self.fv1.surfVolume()
             if (v0*v1 < 0):
                 self.fv1.flipFaces()
+
         #self.fv0Fine = surfaces.Surface(surf=self.fv0)
         self.fvInit = surfaces.Surface(surf=self.fv0)
         if (subsampleTargetSize > 0):
             self.fvInit.Simplify(subsampleTargetSize)
             logging.info('simplified template %d' %(self.fv0.vertices.shape[0]))
+
         self.x0 = np.copy(self.fvInit.vertices)
         self.x0try = np.copy(self.fvInit.vertices)
         self.fvDef = surfaces.Surface(surf=self.fvInit)
@@ -161,7 +197,7 @@ class SurfaceMatching(object):
             self.fv0ori = 1
             self.fv1ori = 1
         
-        print 'orientation: ', self.fv0ori
+        logging.info('orientation: {0:d}'.format(self.fv0ori))
 
         self.Tsize = int(round(1.0/self.param.timeStep))
         self.at = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
@@ -193,9 +229,13 @@ class SurfaceMatching(object):
 
 
     def dataTerm(self, _fvDef, _fvInit = None):
-        obj = self.param.fun_obj(_fvDef, self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
-        if _fvInit != None:
-            obj += self.param.fun_obj(_fvInit, self.fv0, self.param.KparDist) / (self.param.sigmaError**2)
+        if self.param.errorType == 'L2Norm':
+            obj = surfaces.L2Norm(_fvDef, self.fv1.vfld) / (self.param.sigmaError**2)
+        else:
+            obj = self.param.fun_obj(_fvDef, self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
+            if _fvInit != None:
+                obj += self.param.fun_obj(_fvInit, self.fv0, self.param.KparDist) / (self.param.sigmaError**2)
+        #print 'dataterm = ', obj + self.obj0
         return obj
 
     def  objectiveFunDef(self, at, Afft, withTrajectory = False, withJacobian=False, x0 = None):
@@ -218,6 +258,7 @@ class SurfaceMatching(object):
         #print xt[-1, :, :]
         #print obj
         obj=0
+        obj1 = 0 
         for t in range(self.Tsize):
             z = np.squeeze(xt[t, :, :])
             a = np.squeeze(at[t, :, :])
@@ -225,12 +266,15 @@ class SurfaceMatching(object):
             ra = param.KparDiff.applyK(z, a)
             self.v[t, :] = ra
             obj = obj + self.regweight*timeStep*np.multiply(a, (ra)).sum()
-            if self.internalWeight > 0:
+            if self.internalCost:
                 foo.updateVertices(z)
-                obj += self.internalWeight*foo.normGrad(ra)*timeStep
+                obj += self.internalWeight*self.internalCost(foo, ra)*timeStep
+
             if self.affineDim > 0:
-                obj +=  timeStep * np.multiply(self.affineWeight.reshape(Afft[t].shape), Afft[t]**2).sum()
+                obj1 +=  timeStep * np.multiply(self.affineWeight.reshape(Afft[t].shape), Afft[t]**2).sum()
             #print xt.sum(), at.sum(), obj
+        #print obj, obj+obj1
+        obj += obj1
         if withJacobian:
             return obj, xt, Jt
         elif withTrajectory:
@@ -238,27 +282,21 @@ class SurfaceMatching(object):
         else:
             return obj
 
-    # def  _objectiveFun(self, at, Afft, withTrajectory = False):
-    #     (obj, xt) = self.objectiveFunDef(at, Afft, withTrajectory=True)
-    #     self.fvDef.updateVertices(np.squeeze(xt[-1, :, :]))
-    #     obj0 = self.dataTerm(self.fvDef)
-
-    #     if withTrajectory:
-    #         return obj+obj0, xt
-    #     else:
-    #         return obj+obj0
 
     def objectiveFun(self):
         if self.obj == None:
-            self.obj0 = self.param.fun_obj0(self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
+            if self.param.errorType == 'L2Norm':
+                self.obj0 = surfaces.L2Norm0(self.fv1)/(self.param.sigmaError**2)
+            else:
+                self.obj0 = self.param.fun_obj0(self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
             if self.symmetric:
                 self.obj0 += self.param.fun_obj0(self.fv0, self.param.KparDist) / (self.param.sigmaError**2)
             (self.obj, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
-            foo = surfaces.Surface(surf=self.fvDef)
+            #foo = surfaces.Surface(surf=self.fvDef)
             self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
             if self.symmetric:
                 self.fvInit.updateVertices(np.squeeze(self.x0))
-            foo.computeCentersAreas()
+            #foo.computeCentersAreas()
             if self.symmetric:
                 self.obj += self.obj0 + self.dataTerm(self.fvDef, self.fvInit)
             else:
@@ -307,9 +345,21 @@ class SurfaceMatching(object):
         return objTry
 
 
+    def testEndpointGradient(self):
+        c0 = self.dataTerm(self.fvDef)
+        ff = surfaces.Surface(surf=self.fvDef)
+        dff = np.random.normal(size=ff.vertices.shape)
+        eps = 1e-6
+        ff.updateVertices(ff.vertices+eps*dff)
+        c1 = self.dataTerm(ff)
+        grd = self.endPointGradient()
+        logging.info("test endpoint gradient: {0:.5f} {1:.5f}".format((c1-c0)/eps, (grd*dff).sum()) )
 
     def endPointGradient(self):
-        px = self.param.fun_objGrad(self.fvDef, self.fv1, self.param.KparDist)
+        if self.param.errorType == 'L2Norm':
+            px = surfaces.L2NormGradient(self.fvDef, self.fv1.vfld)
+        else:
+            px = self.param.fun_objGrad(self.fvDef, self.fv1, self.param.KparDist)
         return px / self.param.sigmaError**2
 
     def initPointGradient(self):
@@ -325,7 +375,6 @@ class SurfaceMatching(object):
         M = at.shape[0]
         timeStep = 1.0/M
         xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
-        foo = surfaces.Surface(surf=self.fv0)
         if not(affine is None):
             A0 = affine[0]
             A = np.zeros([M,dim,dim])
@@ -345,9 +394,12 @@ class SurfaceMatching(object):
             a = np.squeeze(at[M-t-1, :, :])
             foo.updateVertices(z)
             v = self.param.KparDiff.applyK(z,a)
-            if self.internalWeight>0:
-                Lv = -2*foo.laplacian(v) 
-                DLv = self.internalWeight*foo.diffNormGrad(v)
+            if self.internalCost:
+                grd = self.internalCostGrad(foo, v)
+                Lv =  grd[0]
+                DLv = self.internalWeight*grd[1]
+#                Lv = -2*foo.laplacian(v) 
+#                DLv = self.internalWeight*foo.diffNormGrad(v)
                 a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...], 
                                      -self.internalWeight*a[np.newaxis,...], Lv[np.newaxis,...]))
                 a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], Lv[np.newaxis,...],
@@ -365,7 +417,7 @@ class SurfaceMatching(object):
         return pxt, xt
     
     def hamiltonianGradient(self, px1, affine = None):
-        if self.internalWeight < 1e-10:
+        if not self.internalCost:
             return evol.landmarkHamiltonianGradient(self.x0, self.at, px1, self.param.KparDiff, self.regweight, affine=affine, 
                                                     getCovector=True)
                                                     
@@ -385,9 +437,10 @@ class SurfaceMatching(object):
             px = np.squeeze(pxt[k+1, :, :])
             #print 'testgr', (2*a-px).sum()
             v = self.param.KparDiff.applyK(z,a)
-            if self.internalWeight>0:
-                Lv = -foo.laplacian(v) 
-                dat[k, :, :] = 2*self.regweight*a-px + 2*self.internalWeight * Lv
+            if self.internalCost:
+                Lv = self.internalCostGrad(foo, v, variables='phi') 
+                #Lv = -foo.laplacian(v) 
+                dat[k, :, :] = 2*self.regweight*a-px + self.internalWeight * Lv
             else:
                 dat[k, :, :] = 2*self.regweight*a-px
 
@@ -454,7 +507,6 @@ class SurfaceMatching(object):
 
     def dotProduct(self, g1, g2):
         res = np.zeros(len(g2))
-        dim2 = self.dim**2
         for t in range(self.Tsize):
             z = np.squeeze(self.xt[t, :, :])
             gg = np.squeeze(g1.diff[t, :, :])
@@ -487,12 +539,28 @@ class SurfaceMatching(object):
 
     def endOfIteration(self):
         self.iter += 1
+        if self.testGradient:
+            self.testEndpointGradient()
+        if self.internalCost and self.testGradient:
+            Phi = np.random.normal(size=self.x0.shape)
+            dPhi1 = np.random.normal(size=self.x0.shape)
+            dPhi2 = np.random.normal(size=self.x0.shape)
+            eps = 1e-6
+            fv22 = surfaces.Surface(surf=self.fvDef)
+            fv22.updateVertices(self.fvDef.vertices+eps*dPhi2)
+            e0 = self.internalCost(self.fvDef, Phi)
+            e1 = self.internalCost(self.fvDef, Phi+eps*dPhi1)
+            e2 = self.internalCost(fv22, Phi)
+            grad = self.internalCostGrad(self.fvDef, Phi)
+            print 'Laplacian:', (e1-e0)/eps, (grad[0]*dPhi1).sum()
+            print 'Gradient:', (e2-e0)/eps, (grad[1]*dPhi2).sum()
+            
         if self.iter >= self.affBurnIn:
             self.coeffAff = self.coeffAff2
         if (self.iter % self.saveRate == 0) :
             logging.info('Saving surfaces...')
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
-            if self.internalWeight < 1e-10 and self.affineDim <=0:
+            if not self.internalCost and self.affineDim <=0:
                 xtEPDiff, atEPdiff = evol.landmarkEPDiff(self.at.shape[0], self.x0,
                                                          np.squeeze(self.at[0, :, :]), self.param.KparDiff)
                 self.fvDef.updateVertices(np.squeeze(xtEPDiff[-1, :, :]))

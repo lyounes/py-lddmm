@@ -9,7 +9,7 @@ except ImportError:
     print 'could not import VTK functions'
     gotVTK = False
     
-import kernelFunctions as kfun
+#import kernelFunctions as kfun
 
 # General surface class
 class Curve:
@@ -21,62 +21,101 @@ class Curve:
                         self.vertices = np.empty(0)
                         self.centers = np.empty(0)
                         self.faces = np.empty(0)
-                        self.lenel = np.empty(0)
+                        self.linel = np.empty(0)
+                        self.component = np.empty(0)
                     else:
                         self.vertices = np.copy(pointSet)
-                        self.faces = np.int_(np.zeros([pointSet.shape[0], 2]))
+                        self.faces = np.zeros([pointSet.shape[0], 2], dtype=int)
+                        self.component = np.zeros(pointSet.shape[0], dtype=int)
                         for k in range(pointSet.shape[0]-1):
                             self.faces[k,:] = (k, k+1)
                         if isOpen == False:
                             self.faces[pointSet.shape[0]-1, :] = (pointSet.shape[0]-1, 0)
                         self.computeCentersLengths()
                 else:
-                    (mainPart, ext) = os.path.splitext(filename)
-                    if ext == '.dat':
-                        self.readCurve(filename)
-                    elif ext=='.txt':
-                        self.readTxt(filename)
-                    elif ext=='.vtk':
-                        self.readVTK(filename)
+                    if type(filename) is list:
+                        fvl = []
+                        for name in filename:
+                            fvl.append(Curve(filename=name))
+                        self.concatenate(fvl)
                     else:
-                        print 'Unknown Surface Extension:', ext
-                        self.vertices = np.empty(0)
-                        self.centers = np.empty(0)
-                        self.faces = np.empty(0)
-                        self.lenel = np.empty(0)
+                        self.read(filename)
             else:
                 self.vertices = np.copy(FV[1])
-                self.faces = np.int_(FV[0])
+                self.faces = np.int_(np.copy(FV[0]))
+                self.component = np.zeros(self.faces.shape[0], dtype=int)
                 self.computeCentersLengths()
         else:
-            self.vertices = np.copy(curve.vertices)
-            self.lenel = np.copy(curve.lenel)
-            self.faces = np.copy(curve.faces)
-            self.centers = np.copy(curve.centers)
+            if type(curve) is list:
+                self.concatenate(curve)
+            else:
+                self.vertices = np.copy(curve.vertices)
+                self.linel = np.copy(curve.linel)
+                self.faces = np.copy(curve.faces)
+                self.centers = np.copy(curve.centers)
+                self.component = np.copy(curve.component)
+
+    def read(self, filename):
+        (mainPart, ext) = os.path.splitext(filename)
+        if ext == '.dat':
+            self.readCurve(filename)
+        elif ext=='.txt':
+            self.readTxt(filename)
+        elif ext=='.vtk':
+            self.readVTK(filename)
+        else:
+            print 'Unknown Curve Extension:', ext
+            self.vertices = np.empty(0)
+            self.centers = np.empty(0)
+            self.component = np.empty(0)
+            self.faces = np.empty(0)
+            self.linel = np.empty(0)
+
+
+    def concatenate(self, fvl):
+        nv = 0
+        nf = 0
+        for fv in fvl:
+            dim = fv.vertices.shape[1]
+            nv += fv.vertices.shape[0]
+            nf += fv.faces.shape[0]
+        self.vertices = np.zeros([nv,dim])
+        self.faces = np.zeros([nf,2], dtype='int')
+        self.component = np.zeros(nf, dtype='int')
+
+        nv0 = 0
+        nf0 = 0
+        c = 0
+        for fv in fvl:
+            nv = nv0 + fv.vertices.shape[0]
+            nf = nf0 + fv.faces.shape[0]
+            self.vertices[nv0:nv, :] = fv.vertices
+            self.faces[nf0:nf, :] = fv.faces + nv0
+            self.component[nf0:nf] = c
+            nv0 = nv
+            nf0 = nf
+            c += 1
+        self.computeCentersLengths()
+        self.removeDuplicates()
+
 
     # face centers and area weighted normal
     def computeCentersLengths(self):
         xDef1 = self.vertices[self.faces[:, 0], :]
         xDef2 = self.vertices[self.faces[:, 1], :]
         self.centers = (xDef1 + xDef2) / 2
-        #self.lenel = np.zeros([self.faces.shape[0], self.vertices.shape[1]]) ;
-        self.lenel = xDef2 - xDef1 ; 
-        #self.lenel[:,1] = xDef2[:,1] - xDef1[:,1] ; 
+        #self.linel = np.zeros([self.faces.shape[0], self.vertices.shape[1]]) ;
+        self.linel = xDef2 - xDef1 ; 
 
     # modify vertices without toplogical change
     def updateVertices(self, x0):
         self.vertices = np.copy(x0) 
-        xDef1 = self.vertices[self.faces[:, 0], :]
-        xDef2 = self.vertices[self.faces[:, 1], :]
-        self.centers = (xDef1 + xDef2) / 2
-        #self.lenel = np.zeros([self.faces.shape[0], self.vertices.shape[1]]) ;
-        self.lenel = xDef2 - xDef1 ; 
-        #self.lenel[:,1] = xDef2[:,1] - xDef1[:,1] ; 
+        self.computeCentersLengths()
 
     def computeVertexLength(self):
         a = np.zeros(self.vertices.shape[0])
         n = np.zeros(self.vertices.shape[0])
-        af = np.sqrt((self.lenel**2).sum(axis=1))
+        af = np.sqrt((self.linel**2).sum(axis=1))
         for jj in range(3):
             I = self.faces[:,jj]
             for k in range(I.size):
@@ -84,21 +123,27 @@ class Curve:
                 n[I[k]] += 1
         a = np.divide(a,n)
         return a
-
+        
+    def computeUnitFaceNormals(self):
+        a = np.sqrt((self.linel**2).sum(axis=1))
+        normals = np.zeros(self.faces.shape)
+        normals[:,0] = - self.linel[:,1]/a
+        normals[:,1] = self.linel[:,0]/a
+        return normals
 
     def computeCurvature(self):
         e = self.vertices[self.faces[:,1] ,:] - self.vertices[self.faces[:,0] ,:]
         th = np.arctan2(e[:,1], e[:,0])
         #print th.shape
-        ll = np.sqrt((self.lenel**2).sum(axis=1))/2
+        ll = np.sqrt((self.linel**2).sum(axis=1))/2
         ka = (th[np.mod(range(1,self.faces.shape[0]+1), self.faces.shape[0])] - th[range(0,self.faces.shape[0])])/ll
-        nrm = np.zeros(self.lenel.shape)
-        nrm[:,0] = -self.lenel[:,1]
-        nrm[:,1] = self.lenel[:,0]
+        nrm = np.zeros(self.linel.shape)
+        nrm[:,0] = -self.linel[:,1]
+        nrm[:,1] = self.linel[:,0]
         lnrm = np.sqrt((nrm**2).sum(axis=1))[:, np.newaxis]
         nrm = nrm/lnrm
         nrm = (nrm[np.mod(range(1,self.faces.shape[0]+1), self.faces.shape[0])] + nrm[range(0,self.faces.shape[0])])/2
-        kan = self.lenel/ll[:,np.newaxis]
+        kan = self.linel/ll[:,np.newaxis]
         ka = (kan[np.mod(range(1,self.faces.shape[0]+1), self.faces.shape[0]),:] - kan[range(0,self.faces.shape[0]),:])
         
         return ka, nrm, kan
@@ -164,10 +209,12 @@ class Curve:
                     #self.vertices = np.multiply(data.shape-V-1, scales)
             self.vertices = np.multiply(V, scales)
             self.faces = np.int_(F[0:gf, :])
-            self.computeCentersLengths()
+            self.component = np.zeros(self.faces.shape[0], dtype = int)
             #self.checkEdges()
             #print self.faces.shape
             self.orientEdges()
+            self.removeDuplicates()
+            self.computeCentersLengths()
             #print self.faces.shape
             #self.checkEdges()
         else:
@@ -195,7 +242,7 @@ class Curve:
         is1 = np.int_(is1)
 
         if ((is0+is1).max() !=2) | ((is0+is1).min()!=2):
-            print 'Problems with curve: wrong topology'
+            print 'Problems with curve in orientEdges: wrong topology'
             return
 
         count = np.zeros(self.vertices.shape[0])
@@ -205,7 +252,7 @@ class Curve:
         usedFace[0] = 1
         count[F[0,0]] = 1
         count[F[0,1]] = 1
-        k0 = F[0,0]
+        #k0 = F[0,0]
         kcur = F[0,1]
         j=1
         while j < self.faces.shape[0]:
@@ -233,6 +280,49 @@ class Curve:
             #print j
             #print j, self.faces.shape[0]
         self.faces = np.int_(F[0:j, :])
+        
+    def removeDuplicates(self, c=0.0001):
+        c2 = c**2
+        N0 = self.vertices.shape[0]
+        w = np.zeros(N0, dtype=int)
+
+        newv = np.zeros(self.vertices.shape)
+        newv[0,:] = self.vertices[0,:]
+        N = 1
+        for kj in range(1,N0):
+            dist = ((self.vertices[kj,:]-newv[0:N,:])**2).sum(axis=1)
+            #print dist.shape
+            J = np.nonzero(dist<c2)
+            J = J[0]
+            #print kj, ' ', J, len(J)
+            if (len(J)>0):
+                print "duplicate:", kj, J[0]
+                w[kj] = J[0]
+            else:
+                w[kj] = N
+                newv[N, :] = self.vertices[kj,:] 
+                N=N+1
+
+        newv = newv[0:N,:]
+        self.vertices = newv
+        self.faces = w[self.faces]
+        
+        newf = np.zeros(self.faces.shape, dtype=int)
+        newc = np.zeros(self.component.shape, dtype=int)
+        Nf = self.faces.shape[0]
+        nj = 0
+        for kj in range(Nf):
+            if np.fabs(self.faces[kj,0] - self.faces[kj,1]) == 0:
+                print 'Empty face: ', kj, nj
+            else:
+                newf[nj,:] = self.faces[kj,:]
+                newc[nj] = self.component[kj]
+                nj += 1
+        self.faces = newf[0:nj, :]
+        self.component = newc[0:nj]
+                
+        
+
             
 
     def checkEdges(self):
@@ -261,7 +351,7 @@ class Curve:
         return z
 
     def length(self):
-        ll = np.sqrt((self.lenel**2).sum(axis=1))
+        ll = np.sqrt((self.linel**2).sum(axis=1))
         return ll.sum()
 
 
@@ -289,9 +379,9 @@ class Curve:
         xDef1 = self.vertices[self.faces[:, 0], :]
         xDef2 = self.vertices[self.faces[:, 1], :]
         self.centers = (xDef1 + xDef2) / 2
-        #self.lenel = np.zeros(self.faces.shape[0], self.vertices.shape[1]) ;
-        self.lenel = xDef2 - xDef1 ; 
-        #self.lenel[:,1] = xDef2[:,1] - xDef1[:,1] ; 
+        #self.linel = np.zeros(self.faces.shape[0], self.vertices.shape[1]) ;
+        self.linel = xDef2 - xDef1 ; 
+        #self.linel[:,1] = xDef2[:,1] - xDef1[:,1] ; 
 
     # Reads from .dat file
     def readCurve(self, infile):
@@ -333,12 +423,7 @@ class Curve:
                         j=0
                 ln = fbyu.readline().split()
         self.faces = np.int_(self.faces) - 1
-        xDef1 = self.vertices[self.faces[:, 0], :]
-        xDef2 = self.vertices[self.faces[:, 1], :]
-        self.centers = (xDef1 + xDef2) / 2
-        #self.lenel = np.zeros(self.faces.shape[0], self.vertices.shape[1]) ;
-        self.lenel = xDef2 - xDef1 ; 
-        #self.lenel[:,1] = xDef2[:,1] - xDef1[:,1] ; 
+        self.computeCentersLengths()
 
     #Saves in .byu format
     def saveCurve(self, outfile):
@@ -387,13 +472,17 @@ class Curve:
     # Saves in .vtk format 
     def saveVTK(self, fileName, scalars = None, normals = None, scal_name='scalars'):
         F = self.faces ;
-        V = self.vertices ;
+        V = np.copy(self.vertices) ;
+        if V.shape[1] == 2: 
+            #print V.shape, np.zeros([V.shape[0], 1]).shape
+            V = np.concatenate((V, np.zeros([V.shape[0], 1])), axis=1)
+
 
         with open(fileName, 'w') as fvtkout:
             fvtkout.write('# vtk DataFile Version 3.0\nSurface Data\nASCII\nDATASET POLYDATA\n') 
             fvtkout.write('\nPOINTS {0: d} float'.format(V.shape[0]))
             for ll in range(V.shape[0]):
-                fvtkout.write('\n{0: f} {1: f} {2: f}'.format(V[ll,0], V[ll,1], 0))
+                fvtkout.write('\n{0: f} {1: f} {2: f}'.format(V[ll,0], V[ll,1], V[ll,2]))
             fvtkout.write('\nLINES {0:d} {1:d}'.format(F.shape[0], 3*F.shape[0]))
             for ll in range(F.shape[0]):
                 fvtkout.write('\n2 {0: d} {1: d}'.format(F[ll,0], F[ll,1]))
@@ -419,9 +508,11 @@ class Curve:
             v = u.GetOutput()
             npoints = int(v.GetNumberOfPoints())
             nfaces = int(v.GetNumberOfLines())
-            V = np.zeros([npoints, 2])
+            V = np.zeros([npoints, 3])
             for kk in range(npoints):
-                V[kk, :] = np.array(v.GetPoint(kk)[0:2])
+                V[kk, :] = np.array(v.GetPoint(kk))
+            if np.fabs(V[:,2]).max() < 1e-20:
+                V = V[:,0:2]
 
             F = np.zeros([nfaces, 2])
             for kk in range(nfaces):
@@ -436,7 +527,7 @@ class Curve:
             raise Exception('Cannot read VTK files without VTK functions')
 
     def resample(self, ds):
-        ll = np.sqrt((self.lenel**2).sum(axis=1))
+        ll = np.sqrt((self.linel**2).sum(axis=1))
         if ll.max() < ds:
             return
         v = np.zeros([2*self.vertices.shape[0], self.vertices.shape[1]])  
@@ -462,6 +553,52 @@ class Curve:
         self.resample(ds)
 
 
+    def laplacian(self, phi, weighted=False):
+        res = np.zeros(phi.shape)
+        phi1 = phi[self.faces[:,0],:]
+        phi2 = phi[self.faces[:,1],:]
+        a = (np.sqrt((self.linel**2).sum(axis=1)))[...,np.newaxis]
+        r1 = (phi2 -phi1)/a
+        for k,f in enumerate(self.faces):
+            res[f[0],:] += r1[k,:]
+            res[f[1],:] -= r1[k,:]
+        if weighted:
+            av = self.computeVertexLength()
+            return res/av[0]
+        else:
+            return res
+
+#    def diffNormGrad(self, phi):
+#        res = np.zeros((self.vertices.shape[0],phi.shape[1]))
+#        phi1 = phi[self.faces[:,0],:]
+#        phi2 = phi[self.faces[:,1],:]
+#        a = np.sqrt((self.linel**2).sum(axis=1))
+#        u = ((phi2-phi1)**2).sum(axis=1)
+#        u = (u/a**3)[...,np.newaxis]
+#        
+#        r1 =  u * self.linel
+#        for k,f in enumerate(self.faces):
+#            res[f[0],:] += r1[k,:]
+#            res[f[1],:] -= r1[k,:]
+#        return res
+
+    def diffH1Alpha(self, phi):
+        res = np.zeros((self.vertices.shape[0],phi.shape[1]))
+        phi1 = phi[self.faces[:,0],:]
+        phi2 = phi[self.faces[:,1],:]
+        a = np.sqrt((self.linel**2).sum(axis=1))
+        L = a.sum()
+        u = ((phi2-phi1)**2).sum(axis=1)/L
+        u0 = (u/a).sum()/L
+        u = (u/a**3 - u0/a)[...,np.newaxis]
+        
+        r1 =  u * self.linel
+        for k,f in enumerate(self.faces):
+            res[f[0],:] += r1[k,:]
+            res[f[1],:] -= r1[k,:]
+        return res
+
+
 def mergeCurves(curves, tol=0.01):
     N = 0
     M = 0
@@ -472,15 +609,19 @@ def mergeCurves(curves, tol=0.01):
 
     vertices = np.zeros([N,dim])
     faces = np.zeros([M,dim], dtype=int)
+    component = np.zeros(M, dtype=int)
     N = 0
     M = 0
+    C = 0
     for c in curves:
         N1 = c.vertices.shape[0]
         M1 = c.faces.shape[0]
         vertices[N:N+N1,:] = c.vertices
         faces[M:M+M1, :] = c.faces + N
+        component[M:M+M1, :] = c.component + C
         N += N1
         M += M1
+        C += 1 + c.component.max()
         #print N,M
     dist = np.sqrt(((vertices[:, np.newaxis, :]-vertices[np.newaxis,:,:])**2).sum(axis=2))
     j=0
@@ -505,14 +646,19 @@ def mergeCurves(curves, tol=0.01):
     #print faces
     faces = refIndex[faces]
     faces2 = np.copy(faces)
+    comp2 = np.copy(component)
     j = 0
     for k in range(faces.shape[0]):
         if faces[k,1] != faces[k,0]:
             faces2[j,:] = faces[k,:]
+            comp2[j] = component[k]
             j += 1
             #print k,j
-    faces2 = faces2[range(j)]
-    return Curve(FV=(faces2,vert2))
+    faces2 = faces2[range(j), :]
+    comp2 = comp2[range(j)]
+    res = Curve(FV=(faces2,vert2))
+    res.component = comp2
+    return res
 
 # Reads several .byu files
 def readMultipleCurves(regexp, Nmax = 0):
@@ -538,7 +684,7 @@ def saveEvolution(fileName, fv0, xt):
 # Current norm of fv1
 def currentNorm0(fv1, KparDist):
     c2 = fv1.centers
-    cr2 = fv1.lenel
+    cr2 = fv1.linel
     obj = np.multiply(cr2, KparDist.applyK(c2, cr2)).sum()
     return obj
 #    g11 = kfun.kernelMatrix(KparDist, c2)
@@ -548,9 +694,9 @@ def currentNorm0(fv1, KparDist):
 # Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct 
 def currentNormDef(fvDef, fv1, KparDist):
     c1 = fvDef.centers
-    cr1 =fvDef.lenel
+    cr1 =fvDef.linel
     c2 = fv1.centers
-    cr2 = fv1.lenel
+    cr2 = fv1.linel
     obj = (np.multiply(cr1, KparDist.applyK(c1, cr1)).sum()
             - 2*np.multiply(cr1, KparDist.applyK(c2, cr2, firstVar=c1)).sum())
     #g11 = kfun.kernelMatrix(KparDist, c1)
@@ -566,9 +712,9 @@ def currentNorm(fvDef, fv1, KparDist):
 def currentNormGradient(fvDef, fv1, KparDist):
     xDef = fvDef.vertices
     c1 = fvDef.centers
-    cr1 = fvDef.lenel
+    cr1 = fvDef.linel
     c2 = fv1.centers
-    cr2 = fv1.lenel
+    cr2 = fv1.linel
     dim = c1.shape[1]
     #print cr2
 
@@ -620,7 +766,7 @@ def currentNormGradient(fvDef, fv1, KparDist):
 # Measure norm of fv1
 def measureNorm0(fv1, KparDist):
     c2 = fv1.centers
-    cr2 = fv1.lenel
+    cr2 = fv1.linel
     cr2 = np.sqrt((cr2**2).sum(axis=1))[:,np.newaxis]
  #   g11 = kfun.kernelMatrix(KparDist, c2)
     #print cr2.shape, g11.shape
@@ -631,10 +777,10 @@ def measureNorm0(fv1, KparDist):
 # Computes |fvDef|^2 - 2 fvDef * fv1 with measure dot produuct 
 def measureNormDef(fvDef, fv1, KparDist):
     c1 = fvDef.centers
-    cr1 = fvDef.lenel
+    cr1 = fvDef.linel
     cr1 = np.sqrt((cr1**2).sum(axis=1)+1e-10)[:,np.newaxis]
     c2 = fv1.centers
-    cr2 = fv1.lenel
+    cr2 = fv1.linel
     cr2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)[:,np.newaxis]
     obj = (np.multiply(cr1, KparDist.applyK(c1, cr1)).sum()
         - 2*np.multiply(cr1, KparDist.applyK(c2, cr2, firstVar=c1)).sum())
@@ -653,9 +799,9 @@ def measureNorm(fvDef, fv1, KparDist):
 def measureNormGradient(fvDef, fv1, KparDist):
     xDef = fvDef.vertices
     c1 = fvDef.centers
-    cr1 = fvDef.lenel
+    cr1 = fvDef.linel
     c2 = fv1.centers
-    cr2 = fv1.lenel
+    cr2 = fv1.linel
     dim = c1.shape[1]
     a1 = np.sqrt((cr1**2).sum(axis=1)+1e-10)
     a2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)
@@ -702,9 +848,272 @@ def measureNormGradient(fvDef, fv1, KparDist):
 
     return 2*px
 
-# class MultiSurface:
-#     def __init__(self, pattern):
-#         self.surf = []
-#         files = glob.glob(pattern)
-#         for f in files:
-#             self.surf.append(Surface(filename=f))
+def varifoldNorm0(fv1, KparDist, weight=1.):
+    d=weight
+    c2 = fv1.centers
+    cr2 = fv1.linel
+    a2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)
+    cr2 = cr2/a2[:,np.newaxis]
+    cr2cr2 = (cr2[:,np.newaxis,:]*cr2[np.newaxis,:,:]).sum(axis=2)
+    a2a2 = a2[:,np.newaxis]*a2[np.newaxis,:]
+    beta2 = (1 + d*cr2cr2**2)*a2a2
+    return KparDist.applyK(c2, beta2[...,np.newaxis], matrixWeights=True).sum()
+        
+
+# Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct 
+def varifoldNormDef(fvDef, fv1, KparDist):
+    d=1
+    c1 = fvDef.centers
+    cr1 = fvDef.linel
+    c2 = fv1.centers
+    cr2 = fv1.linel
+    a1 = np.sqrt((cr1**2).sum(axis=1)+1e-10)
+    a2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)
+    cr1 = cr1/a1[:,np.newaxis]
+    cr2 = cr2/a2[:,np.newaxis]
+
+    cr1cr1 = (cr1[:,np.newaxis,:]*cr1[np.newaxis,:,:]).sum(axis=2)
+    a1a1 = a1[:,np.newaxis]*a1[np.newaxis,:]
+    cr1cr2 = (cr1[:,np.newaxis,:]*cr2[np.newaxis,:,:]).sum(axis=2)
+    a1a2 = a1[:,np.newaxis]*a2[np.newaxis,:]
+
+    beta1 = (1 + d*cr1cr1**2)*a1a1
+    beta2 = (1 + d*cr1cr2**2)*a1a2
+
+    obj = (KparDist.applyK(c1, beta1[...,np.newaxis], matrixWeights=True).sum()
+        - 2*KparDist.applyK(c2, beta2[...,np.newaxis], firstVar=c1, matrixWeights=True).sum())
+    return obj
+
+# Returns |fvDef - fv1|^2 for current norm
+def varifoldNorm(fvDef, fv1, KparDist):
+    return varifoldNormDef(fvDef, fv1, KparDist) + varifoldNorm0(fv1, KparDist) 
+
+# Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (current norm)
+def varifoldNormGradient(fvDef, fv1, KparDist):
+    d=1
+    xDef = fvDef.vertices
+    c1 = fvDef.centers
+    cr1 = fvDef.linel
+    c2 = fv1.centers
+    cr2 = fv1.linel
+    dim = c1.shape[1]
+
+    a1 = np.sqrt((cr1**2).sum(axis=1)+1e-10)
+    a2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)
+    cr1 = cr1 / a1[:, np.newaxis]
+    cr2 = cr2 / a2[:, np.newaxis]
+    cr1cr1 =  (cr1[:, np.newaxis, :] * cr1[np.newaxis, :, :]).sum(axis=2)
+    cr1cr2 =  (cr1[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
+
+    beta1 = a1[:,np.newaxis]*a1[np.newaxis,:] * (1 + d*cr1cr1**2) 
+    beta2 = a1[:,np.newaxis]*a2[np.newaxis,:] * (1 + d*cr1cr2**2)
+
+    u1 = (2*d*cr1cr1[...,np.newaxis]*cr1[np.newaxis,...] - d*(cr1cr1**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
+          + cr1[:,np.newaxis,:])*a1[np.newaxis,:,np.newaxis]
+    u2 = (2*d*cr1cr2[...,np.newaxis]*cr2[np.newaxis,...] - d*(cr1cr2**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
+          + cr1[:,np.newaxis,:])*a2[np.newaxis,:,np.newaxis]
+
+    z1 = KparDist.applyK(c1, u1,matrixWeights=True) - KparDist.applyK(c2, u2, firstVar=c1, matrixWeights=True)
+    #print a1.shape, c1.shape
+    dz1 = (1./2.) * (KparDist.applyDiffKmat(c1, beta1) - KparDist.applyDiffKmat(c2, beta2, firstVar=c1))
+                        
+    #xDef1 = xDef[fvDef.faces[:, 0], :]
+    #xDef2 = xDef[fvDef.faces[:, 1], :]
+
+    px = np.zeros([xDef.shape[0], dim])
+    #I = fvDef.faces[:,0]
+    #crs = np.cross(xDef3 - xDef2, z1)
+    for k in range(fvDef.faces.shape[0]):
+        px[fvDef.faces[k,0], :] += dz1[k, :] - z1[k,:]
+        px[fvDef.faces[k,1], :] += dz1[k, :] + z1[k,:]
+
+    return 2*px
+
+def normGrad(fv, phi):
+    phi1 = phi[fv.faces[:,0],:]
+    phi2 = phi[fv.faces[:,1],:]
+    a = np.sqrt((fv.linel**2).sum(axis=1))
+    #print min(a) 
+    res = (((phi2-phi1)**2).sum(axis=1)/a).sum()
+    return res
+    
+def normGradInvariant(fv, phi):
+    phi1 = phi[fv.faces[:,0],:]
+    phi2 = phi[fv.faces[:,1],:]
+    a = np.sqrt((fv.linel**2).sum(axis=1))
+    nl = fv.computeUnitFaceNormals()
+    res = (((phi2-phi1)**2).sum(axis=1)/a).sum()
+    nc = 1+fv.component.max()
+    #print fv.faces.shape, phi.shape, nl.shape
+    for comp in range(nc):
+        I = np.nonzero(fv.component==comp)[0]
+        c = ((phi2[I,:] - phi1[I,:])*nl[I,:]).sum()
+        res -= (c**2)/a[I].sum()
+    return res
+
+def normGradInvariant3D(fv, phi):
+    phi1 = phi[fv.faces[:,0],:]
+    phi2 = phi[fv.faces[:,1],:]
+    a = np.sqrt((fv.linel**2).sum(axis=1))
+    tl = fv.linel/a[...,np.newaxis]
+    res = (((phi2-phi1)**2).sum(axis=1)/a).sum()
+    nc = 1+fv.component.max()
+    for comp in range(nc):
+        I = np.nonzero(fv.component==comp)[0]
+        M = ((a[I].sum()+1e-6)*np.eye(3) 
+            - (fv.linel[I,:,np.newaxis]*tl[I,np.newaxis,:]).sum(axis=0))
+        c = np.cross(phi2[I,:]-phi1[I,:], tl[I,:]).sum(axis=0)
+        res -= (np.linalg.solve(M,c)*c).sum()
+    #print res
+    return res
+
+def H1AlphaNorm(fv, phi):
+    phi1 = phi[fv.faces[:,0],:]
+    phi2 = phi[fv.faces[:,1],:]
+    nc = 1+fv.component.max()
+    res = 0 
+    for comp in range(nc):
+        I = np.nonzero(fv.component==comp)[0]
+        a = np.sqrt((fv.linel[I,:]**2).sum(axis=1))
+        res += (((phi2[I,:]-phi1[I,:])**2).sum(axis=1)/a).sum()/a.sum()
+    return res
+    
+def diffNormGradInvariant(fv, phi, variables='both'):
+    phi1 = phi[fv.faces[:,0],:]
+    phi2 = phi[fv.faces[:,1],:]
+    a2 = (fv.linel**2).sum(axis=1)
+    a = np.sqrt(a2)
+    tl = fv.linel/a[...,np.newaxis]
+    nl = np.zeros(tl.shape)
+    nl[:,0] = -tl[:,1]
+    nl[:,1] = tl[:,0]
+    dphi = phi2-phi1
+    dphia = dphi/a[...,np.newaxis]
+#    c = (dphi*nl).sum()
+#    L = a.sum()
+    nc = 1+fv.component.max()
+    if variables == 'both' or variables == 'phi':
+        r1 = 2 * dphia 
+        for comp in range(nc):
+            I = np.nonzero(fv.component==comp)[0]
+            c = (dphi[I,:]*nl[I,:]).sum()
+            L = a[I].sum()
+            r1[I,:] -= 2*(c/L)*nl[I,:]
+        gradphi = np.zeros(phi.shape)
+        for k,f in enumerate(fv.faces):
+            gradphi[f[0],:] -= r1[k,:]
+            gradphi[f[1],:] += r1[k,:]
+    
+    if variables == 'both' or variables == 'x':
+        gradx = np.zeros(fv.vertices.shape)
+        r1 = -((dphia**2).sum(axis=1))[...,np.newaxis] * tl
+        nc = fv.component.max()
+        for comp in range(nc):
+            I = np.nonzero(fv.component==comp)[0]
+            c = (dphi[I,:]*nl[I,:]).sum()
+            L = a[I].sum()
+            r1[I,:] += 2*(c/L)*((dphia[I,:]*tl[I,:]).sum(axis=1)[...,np.newaxis]*nl[I,:])
+            r1[I,:] += ((c/L)**2)*tl[I,:]
+        for k,f in enumerate(fv.faces):
+            gradx[f[0],:] -= r1[k,:]
+            gradx[f[1],:] += r1[k,:]
+    if variables == 'both':
+        return (gradphi, gradx)
+    elif variables == 'phi':
+        return gradphi
+    elif variables == 'x':
+        return gradx
+    else:
+        print 'Incorrect option in diffNormGradInvariant'
+
+
+def diffNormGradInvariant3D(fv, phi, variables='both'):
+    phi1 = phi[fv.faces[:,0],:]
+    phi2 = phi[fv.faces[:,1],:]
+    a2 = (fv.linel**2).sum(axis=1)
+    a = np.sqrt(a2)
+    tl = fv.linel/a[...,np.newaxis]
+    dphi = phi2-phi1
+    dphia = dphi/a[...,np.newaxis]
+    M = ((a.sum()+1e-6)*np.eye(3) 
+    - (fv.linel[:,:,np.newaxis]*tl[:,np.newaxis,:]).sum(axis=0))
+    c = np.cross(dphi, tl).sum(axis=0)
+    Mc = np.linalg.solve(M,c)
+    #print Mc
+    tlmc = (tl*Mc[np.newaxis,:]).sum(axis=1)
+    nc = 1+fv.component.max()
+
+    if variables == 'both' or variables == 'phi':
+        r1 = 2 * dphia
+        for comp in range(nc):
+            I = np.nonzero(fv.component==comp)[0]
+            M = ((a[I].sum()+1e-6)*np.eye(3) 
+                - (fv.linel[I,:,np.newaxis]*tl[I,np.newaxis,:]).sum(axis=0))
+            c = np.cross(dphi[I,:], tl[I,:]).sum(axis=0)
+            Mc = np.linalg.solve(M,c)
+            #print Mc
+            r1[I,:] -= 2*np.cross(tl[I,:], Mc[np.newaxis, :])
+        gradphi = np.zeros(phi.shape)
+        for k,f in enumerate(fv.faces):
+            gradphi[f[0],:] -= r1[k,:]
+            gradphi[f[1],:] += r1[k,:]
+    
+    if variables == 'both' or variables == 'x':
+        gradx = np.zeros(fv.vertices.shape)
+        r1 = -((dphia**2).sum(axis=1))[...,np.newaxis] * tl
+        for comp in range(nc):
+            I = np.nonzero(fv.component==comp)[0]
+            M = ((a[I].sum()+1e-6)*np.eye(3) 
+                - (fv.linel[I,:,np.newaxis]*tl[I,np.newaxis,:]).sum(axis=0))
+            c = np.cross(dphi[I,:], tl[I,:]).sum(axis=0)
+            Mc = np.linalg.solve(M,c)
+            #print Mc
+            tlmc = (tl[I,:]*Mc[np.newaxis,:]).sum(axis=1)
+            r1[I,:] -= 2 * np.cross(Mc[np.newaxis, :], dphia[I,:])
+            r1[I,:] += 2*(Mc*np.cross(dphia[I,:], tl[I,:])).sum(axis=1)[:, np.newaxis] * tl[I,:]
+            r1[I,:] += (Mc**2).sum()*tl[I,:]
+            r1[I,:] -= 2 * (tlmc)[:,np.newaxis] * Mc[np.newaxis,:]
+            r1[I,:] += (tlmc**2)[:,np.newaxis] * tl[I,:]
+            
+        for k,f in enumerate(fv.faces):
+            gradx[f[0],:] -= r1[k,:]
+            gradx[f[1],:] += r1[k,:]
+    if variables == 'both':
+        return (gradphi, gradx)
+    elif variables == 'phi':
+        return gradphi
+    elif variables == 'x':
+        return gradx
+    else:
+        print 'Incorrect option in diffNormGradInvariant'
+
+def diffNormGrad(fv, phi, variables='both'):
+    phi1 = phi[fv.faces[:,0],:]
+    phi2 = phi[fv.faces[:,1],:]
+    a2 = (fv.linel**2).sum(axis=1)
+    a = np.sqrt(a2)
+    tl = fv.linel/a[...,np.newaxis]
+    dphi = phi2-phi1
+    dphia = dphi/a[...,np.newaxis]
+    if variables == 'both' or variables == 'phi':
+        r1 = 2 * dphia
+        gradphi = np.zeros(phi.shape)
+        for k,f in enumerate(fv.faces):
+            gradphi[f[0],:] -= r1[k,:]
+            gradphi[f[1],:] += r1[k,:]
+    
+    if variables == 'both' or variables == 'x':
+        gradx = np.zeros(fv.vertices.shape)
+        r1 = -((dphia**2).sum(axis=1))[...,np.newaxis] * tl
+        for k,f in enumerate(fv.faces):
+            gradx[f[0],:] -= r1[k,:]
+            gradx[f[1],:] += r1[k,:]
+            
+    if variables == 'both':
+        return (gradphi, gradx)
+    elif variables == 'phi':
+        return gradphi
+    elif variables == 'x':
+        return gradx
+    else:
+        print 'Incorrect option in diffNormGrad'
