@@ -2,6 +2,7 @@
 import os.path
 import glob
 import argparse
+import subprocess
 
 
 
@@ -16,7 +17,7 @@ def createLongitudinalSurfaceScripts(minL=3):
             nscan += 1
         print d, nscan
         if nscan >= minL:
-            shname = targetDir+'scripts/'+ os.path.basename(d) +'.sh'
+            shname = targetDir+'scripts/s'+ os.path.basename(d) +'.sh'
             with open(shname, 'w') as fname:
                 fname.write('#!/bin/bash\n')
                 fname.write('#$ -cwd\n')
@@ -26,10 +27,12 @@ def createLongitudinalSurfaceScripts(minL=3):
                 fname.write('#$ -M laurent.younes@jhu.edu\n')
                 fname.write('#$ -o /dev/null\n')
                 fname.write('cd '+ source +'\n')
+                #fname.write('source ~/.bashrc\n which python\n')
+                #fname.write('which python\necho $PATH\necho $LD_LIBRARY_PATH\necho $SHELL\n')
                 fname.write('python L2TimeSeriesSecondOrder.py ' +  os.path.basename(d) + '\n')
             cstr = "qsub  " + shname
             print cstr
-            #subprocess.call(cstr, shell=True)
+            subprocess.call(cstr, shell=True)
 
 
  

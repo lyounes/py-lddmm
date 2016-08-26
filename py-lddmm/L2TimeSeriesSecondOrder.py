@@ -21,14 +21,16 @@ def compute(tmpl, targetDir, outputDir, display=True):
     fv = []
     fv0 = surfaces.Surface(filename=tmpl)
     j = 0 
+    print targetDir+'/imageOutput_time_{0:d}_channel_0.vtk'.format(j)
     while os.path.exists(targetDir+'/imageOutput_time_{0:d}_channel_0.vtk'.format(j)):
         fv = fv + [targetDir + '/imageOutput_time_{0:d}_channel_0.vtk'.format(j) ]
         j += 1
 
+    #print fv
     ## Object kernel
     K1 = Kernel(name='laplacian', sigma = 2.5, order=4)
     sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=2.5, sigmaError=.1, errorType='L2Norm')
-    f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=.1, typeRegression='geodesic',
+    f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=.1, typeRegression='splines2',
                               affine='euclidean', testGradient=False, rotWeight=1.)
  
     #, affine='none', rotWeight=0.1))
@@ -41,6 +43,7 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser(description='runs longitudinal surface registration')
     parser.add_argument('sub', metavar='sub', type = str, help='subject directory')
     args = parser.parse_args()
+    #print args.sub
     compute('/cis/home/younes/MorphingData/TimeseriesResults/estimatedTemplate.byu', 
             '/cis/home/younes/MorphingData/TimeseriesResults/' + args.sub, 
             '/cis/home/younes/Development/Results/L2TimeSeriesSplines/'+ args.sub, display=False)
