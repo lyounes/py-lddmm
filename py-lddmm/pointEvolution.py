@@ -807,7 +807,7 @@ def landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine = None)
             A[k,...] = affineBasis.getExponential(timeStep*A0[k]) 
     else:
         A = np.zeros([M,dim,dim])
-        for k in range(M-1):
+        for k in range(M):
             A[k,...] = np.eye(dim) 
             
     pxt = pfor.adjoint1order(xt, at, px1, A, KparDiff.sigma, KparDiff.order, regweight, M, N, dim)
