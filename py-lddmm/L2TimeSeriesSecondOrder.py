@@ -40,7 +40,7 @@ def compute(tmpl, targetDir, outputDir, display=True):
     return f
 
 if __name__=="__main__":
-    parser = argparse.ArgumentParser(description='runs longitudinal surface registration')
+    parser = argparse.ArgumentParser(description='runs second order longitudinal surface registration')
     parser.add_argument('sub', metavar='sub', type = str, help='subject directory')
     args = parser.parse_args()
     #print args.sub
