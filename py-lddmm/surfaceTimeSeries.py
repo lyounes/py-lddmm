@@ -84,12 +84,12 @@ class SurfaceMatching(object):
 
 
         if rescaleTemplate:
-            f0 = fv0.surfVolume()
-            f1 = fv1[0].surfVolume() 
-            fv0.updateVertices(fv0.vertices * (f1/f0)**(1/3))
-            m0 = np.mean(fv0.vertices, axis = 0)
-            m1 = np.mean(fv1.vertices, axis = 0)
-            fv0.updateVertices(fv0.vertices + (m1-m0))
+            f0 = np.fabs(self.fv0.surfVolume())
+            f1 = np.fabs(self.fv1[0].surfVolume()) 
+            self.fv0.updateVertices(self.fv0.vertices * (f1/f0)**(1/3))
+            m0 = np.mean(self.fv0.vertices, axis = 0)
+            m1 = np.mean(self.fv1[0].vertices, axis = 0)
+            self.fv0.updateVertices(self.fv0.vertices + (m1-m0))
         self.volumeWeight = 10.0 
         self.nTarg = len(self.fv1)
         self.saveRate = 10
