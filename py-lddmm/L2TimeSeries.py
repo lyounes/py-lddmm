@@ -51,7 +51,7 @@ if __name__=="__main__":
     parser.add_argument('sub', metavar='sub', type = str, help='subject directory')
     parser.add_argument('--display', action = 'store_true', dest = 'display', default = False, help='To also print on standard output')
     parser.add_argument('--atrophy', action = 'store_true', dest = 'atrophy', default = False, help='Atrophy Constraint')
-    parser.add_argument('--rescale', action = 'store_true', dest = 'atrophy', default = False, help='Atrophy Constraint')
+    parser.add_argument('--rescale', action = 'store_true', dest = 'rescale', default = False, help='Atrophy Constraint')
     args = parser.parse_args()
     #print args.sub
     compute('/cis/home/younes/MorphingData/TimeseriesResults/estimatedTemplate.byu', 
