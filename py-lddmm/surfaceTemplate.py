@@ -71,7 +71,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         self.Ntarg = len(self.fv1)
         self.npt = self.fv0.vertices.shape[0]
         self.dim = self.fv0.vertices.shape[1]
-        self.saveRate = 10
+        self.saveRate = 1
         self.iter = 0
         self.setOutputDir(outputDir)
         self.saveFile = saveFile
@@ -117,7 +117,8 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         self.Tsize = int(round(1.0/self.param.timeStep))
         
         self.updateTemplate = True
-        self.updateAllTraj = True
+        self.updateAllTraj = False
+        self.templateBurnIn = 10
         if self.affineDim > 0:
             self.updateAffine = True
         else:
@@ -321,17 +322,22 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         else:
             px1 = -self.param.fun_objGrad(self.fvDef[kk], self.fv1[kk], self.param.KparDist) / self.param.sigmaError**2
         #print 'in fun', kk
-        A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-        dim2 = self.dim**2
-        if self.affineDim > 0:
-            for t in range(self.Tsize):
-                AB = np.dot(self.affineBasis, self.AfftAll[kk][t])
-                #print self.dim, dim2, AB.shape, self.affineBasis.shape
-                A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-                A[1][t] = AB[dim2:dim2+self.dim]
-        foo = self.hamiltonianGradient(px1, kernel=self.param.KparDiff, x0=self.fvTmpl.vertices, at=self.atAll[kk], affine=A)
-        grd = foo[0:3]
-        pxTmpl = foo[4][0, ...]
+        if self.updateAllTraj:
+            A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+            dim2 = self.dim**2
+            if self.affineDim > 0:
+                for t in range(self.Tsize):
+                    AB = np.dot(self.affineBasis, self.AfftAll[kk][t])
+                    #print self.dim, dim2, AB.shape, self.affineBasis.shape
+                    A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
+                    A[1][t] = AB[dim2:dim2+self.dim]
+            foo = self.hamiltonianGradient(px1, kernel=self.param.KparDiff, x0=self.fvTmpl.vertices, at=self.atAll[kk], affine=A)
+            grd = foo[0:3]
+            pxTmpl = foo[4][0, ...]
+        else:
+            grd = [np.zeros(self.atAll[kk].shape),np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+            pxTmpl = px1
+
         #print kk, (px1-pxTmpl).sum()
         #print 'before put', kk
         q.put([kk, grd, pxTmpl])
@@ -374,26 +380,27 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         for kk in range(self.Ntarg):
             self.gradientComponent(q, kk)
             grd.all.append(smatch.Direction())
+                
 
         dim2 = self.dim**2
         for kk in range(self.Ntarg):
             foo = q.get()
-            dat = foo[1][0]/(coeff*self.Tsize)
-            dAfft = np.zeros(self.AfftAll[foo[0]].shape)
-            if self.affineDim > 0:
-                dA = foo[1][1]
-                db = foo[1][2]
-                dAfft = 2 *self.affineWeight.reshape([1, self.affineDim]) * self.AfftAll[foo[0]]
-                for t in range(self.Tsize):
-                    dAff = np.dot(self.affineBasis.T, np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])]))
-                    dAfft[t] -=  dAff.reshape(dAfft[t].shape) 
-                dAfft /= (self.coeffAff*coeff*self.Tsize)
             if self.updateAllTraj:
+                dat = foo[1][0]/(coeff*self.Tsize)
+                dAfft = np.zeros(self.AfftAll[foo[0]].shape)
+                if self.affineDim > 0:
+                    dA = foo[1][1]
+                    db = foo[1][2]
+                    dAfft = 2 *self.affineWeight.reshape([1, self.affineDim]) * self.AfftAll[foo[0]]
+                    for t in range(self.Tsize):
+                        dAff = np.dot(self.affineBasis.T, np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])]))
+                        dAfft[t] -=  dAff.reshape(dAfft[t].shape) 
+                    dAfft /= (self.coeffAff*coeff*self.Tsize)
                 grd.all[foo[0]].diff = dat
                 grd.all[foo[0]].aff = dAfft 
             else:
-                grd.all[foo[0]].diff = np.zeros(dat.shape)
-                grd.all[foo[0]].aff = np.zeros(dAfft.shape) 
+                grd.all[foo[0]].diff = foo[1][0]
+                grd.all[foo[0]].aff = np.zeros(self.AfftAll[foo[0]].shape)
             #print kk, foo[2].sum()
             pxTmpl += foo[2]
 
@@ -463,6 +470,8 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         if self.iter >= self.affBurnIn:
             self.updateAffine = False
             self.coeffAff = self.coeffAff2
+        if self.iter >= self.templateBurnIn:
+            self.updateAllTraj = True
         (obj1, self.xt, Jt) = self.objectiveFunDef(self.at, self.Afft, kernel = self.param.KparDiff0, withTrajectory=True, withJacobian=True)
         self.fvTmpl.updateVertices(np.squeeze(self.xt[-1, :, :]))
         self.fvTmpl.saveVTK(self.outputDir +'/'+ 'Template.vtk', scalars = Jt[-1], scal_name='Jacobian')
