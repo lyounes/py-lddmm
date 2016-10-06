@@ -304,13 +304,14 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             zpx = np.copy(dxcval[M-t-1])
             foo.updateVertices(z)
             v = self.param.KparDiff.applyK(z,a)
-            if self.internalWeight > 0:
-                Lv = -2*foo.laplacian(v) 
-                DLv = self.internalWeight*foo.diffNormGrad(v)
+            if self.internalCost:
+                grd = self.internalCostGrad(foo, v)
+                Lv =  grd[0]
+                DLv = self.internalWeight*self.regweight*grd[1]
                 a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...], 
-                                     -self.internalWeight*a[np.newaxis,...], Lv[np.newaxis,...]))
+                                     -self.internalWeight*self.regweight*a[np.newaxis,...], Lv[np.newaxis,...]))
                 a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], Lv[np.newaxis,...],
-                                     -self.internalWeight*a[np.newaxis,...]))
+                                     -self.internalWeight*self.regweight*a[np.newaxis,...]))
                 zpx += self.param.KparDiff.applyDiffKT(z, a1, a2) -DLv
             else:
                 a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...]))
@@ -338,10 +339,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 a = np.squeeze(at[t, :, :])
                 px = np.squeeze(pxt[t+1, :, :])
                 v = self.param.KparDiff.applyK(z,a)
-                Lv = -foo.laplacian(v) 
                 dat[t, :, :] += 2*self.regweight*a-px
-                if self.internalWeight>0:
-                    dat[t, :, :] += 2*self.internalWeight * Lv
+                if self.internalCost:
+                    Lv = self.internalCostGrad(foo, v, variables='phi') 
+                    dat[t, :, :] += self.regweight*self.internalWeight * Lv
         else:
             dat = -dacval 
             for t in range(self.Tsize):
@@ -350,9 +351,9 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 a = np.squeeze(at[t, :, :])
                 px = np.squeeze(pxt[t+1, :, :])
                 v = self.param.KparDiff.applyK(z,a)
-                Lv = -foo.laplacian(v) 
-                if self.internalWeight>0:
-                    dat[t, :, :] = self.param.KparDiff.applyK(z, 2*self.regweight*a-px + 2*self.internalWeight * Lv)
+                if self.internalCost:
+                    Lv = self.internalCostGrad(foo, v, variables='phi') 
+                    dat[t, :, :] = self.param.KparDiff.applyK(z, 2*self.regweight*a-px + self.regweight*self.internalWeight * Lv)
                 else:
                     dat[t] += self.param.KparDiff.applyK(z, 2*self.regweight*a - px)
         if self.affineDim > 0:
@@ -505,7 +506,6 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 f.saveVTK(self.outputDir +'/TargetCorrected.vtk')
                 
                 
-            #self.testConstraintTerm(self.xt, self.at, self.Afft)
             #nn = 0 ;
             AV0 = self.fvInit.computeVertexArea()
             nu = self.fv0ori*self.fvInit.computeVertexNormals()
@@ -546,6 +546,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             #logging.info('mean constraint %f max constraint %f' %(np.sqrt((self.cstr**2).sum()/self.cval.size), np.fabs(self.cstr).max()))
             self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
             self.fvInit.updateVertices(self.x0)
+            #self.testConstraintTerm(self.xt, self.at, self.Afft)
 
     def optimizeMatching(self):
 	self.coeffZ = 10.
@@ -583,15 +584,18 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 if __name__=="__main__":
 
     #outputDir = '/cis/home/younes/Development/Results/ERC_Normals_ADNI_014_S_4058/'
-    outputDir = '/cis/home/younes/Development/Results/NK1/'
+    outputDir = '/Users/younes/Development/Results/ALLIE/'
 
     #fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/DH1MiddleOuter.byu')
     #fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/DH1MiddleInner.byu')
     #outputDir = '/cis/home/younes/Development/Results/tilakAW1Superior'
     loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput = True)
 
-    fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/NK1Inner.byu')
-    fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/NK1Outer.byu')
+    #fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/NK1Inner.byu')
+    #fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/NK1Outer.byu')
+    fv0 = surfaces.Surface(filename='/Users/younes/Development/Data/ALLIE/Template.vtk')
+    fv1 = surfaces.Surface(filename='/Users/younes/Development/Data/ALLIE/Target.vtk')
+    #fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/NK1Outer.byu')
     fv0.removeIsolated()
     fv0.edgeRecover()
     fv1.removeIsolated()
@@ -599,16 +603,16 @@ if __name__=="__main__":
     #fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Surfaces/chelsea/bottom_surface_smooth.byu')
     #fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Surfaces/chelsea/top_surface_smooth.byu')   
 
-    K1 = kfun.Kernel(name='laplacian', sigma = 1.0, order=3)
+    K1 = kfun.Kernel(name='laplacian', sigma = .5, order=3)
     #K2 = kfun.Kernel(sigma = 2.5)
     #print fv0.normGrad(fv0.vertices)
     #fv0.subDivide(1)
     #print fv0.normGrad(fv0.vertices)
-    sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=20, 
-                                              sigmaError=1., errorType='varifold')
+    sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=10, 
+                                              sigmaError=.1, errorType='varifold', internalCost = 'h1')
                                              
     fv0.flipFaces()
-    f = SurfaceMatching(Template=fv0, Target=fv1, outputDir=outputDir, param=sm, regWeight=.1, saveTrajectories=True, symmetric = False,
-                        affine='none', testGradient=False, internalWeight=100., affineWeight=1e3,  maxIter_cg=200, maxIter_al=50, mu=1e-4)
+    f = SurfaceMatching(Template=fv0, Target=fv1, outputDir=outputDir, param=sm, regWeight=1., saveTrajectories=True, symmetric = False,
+                        affine='none', testGradient=True, internalWeight=100., affineWeight=1e3,  maxIter_cg=200, maxIter_al=50, mu=1e-4)
     f.optimizeMatching()
 
