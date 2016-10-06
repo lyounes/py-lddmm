@@ -7,7 +7,7 @@ from kernelFunctions import *
 import surfaceMatching
 #import secondOrderMatching as match
 
-def compute(tmpl, targetDir, outputDir, display=True, Atrophy=False):
+def compute(tmpl, targetDir, outputDir, display=True, Atrophy=False, rescale=False):
     if Atrophy:
         import surfaceTimeSeriesAtrophy as match
     else:
@@ -35,10 +35,10 @@ def compute(tmpl, targetDir, outputDir, display=True, Atrophy=False):
     sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=2.5, sigmaError=.1, errorType='L2Norm')
     if Atrophy:
         f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=.1,
-                                affine='euclidean', testGradient=True, rotWeight=1.,  maxIter_cg=100, mu=0.0001)
+                                affine='euclidean', rescaleTemplate=rescale, testGradient=True, rotWeight=1.,  maxIter_cg=100, mu=0.0001)
     else:
        f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=1.,
-                                affine='euclidean', testGradient=False, affineWeight=10,  maxIter=1000)
+                                affine='euclidean', rescaleTemplate=rescale, testGradient=False, affineWeight=10,  maxIter=1000)
  
     #, affine='none', rotWeight=0.1))
     f.optimizeMatching()
@@ -49,9 +49,12 @@ def compute(tmpl, targetDir, outputDir, display=True, Atrophy=False):
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description='runs first order longitudinal surface registration')
     parser.add_argument('sub', metavar='sub', type = str, help='subject directory')
+    parser.add_argument('--display', action = 'store_true', dest = 'display', default = False, help='To also print on standard output')
+    parser.add_argument('--atrophy', action = 'store_true', dest = 'atrophy', default = False, help='Atrophy Constraint')
+    parser.add_argument('--rescale', action = 'store_true', dest = 'atrophy', default = False, help='Atrophy Constraint')
     args = parser.parse_args()
     #print args.sub
     compute('/cis/home/younes/MorphingData/TimeseriesResults/estimatedTemplate.byu', 
             '/cis/home/younes/MorphingData/TimeseriesResults/' + args.sub, 
-            '/cis/home/younes/Development/Results/L2TimeSeriesAtrophy/'+ args.sub, display=False, Atrophy=True)
+            '/cis/home/younes/Development/Results/L2TimeSeriesAtrophy/'+ args.sub, display=args.display, Atrophy=args.atrophy, rescale=args.rescale)
 

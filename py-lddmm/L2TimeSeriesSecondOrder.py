@@ -7,7 +7,7 @@ import surfaceMatching
 import secondOrderMatching as match
 #import secondOrderMatching as match
 
-def compute(tmpl, targetDir, outputDir, display=True):
+def compute(tmpl, targetDir, outputDir, display=True, geodesic=False):
 
     #outputDir = '/Users/younes/Development/Results/biocardTS/spline'
     #outputDir = '/cis/home/younes/MorphingData/twoBallsStitched'
@@ -30,8 +30,12 @@ def compute(tmpl, targetDir, outputDir, display=True):
     ## Object kernel
     K1 = Kernel(name='laplacian', sigma = 2.5, order=4)
     sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=2.5, sigmaError=.1, errorType='L2Norm')
-    f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=.1, typeRegression='splines2',
-                              affine='euclidean', testGradient=False, rotWeight=1.)
+    if geodesic:
+        f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=.1, typeRegression='geodesic',
+                                  affine='euclidean', testGradient=False, rotWeight=1.)
+    else:
+        f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=.1, typeRegression='splines2',
+                                  affine='euclidean', testGradient=False, rotWeight=1.)
  
     #, affine='none', rotWeight=0.1))
     f.optimizeMatching()
@@ -42,9 +46,11 @@ def compute(tmpl, targetDir, outputDir, display=True):
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description='runs second order longitudinal surface registration')
     parser.add_argument('sub', metavar='sub', type = str, help='subject directory')
+    parser.add_argument('--display', action = 'store_true', dest = 'display', default = False, help='To also print on standard output')
+    parser.add_argument('--geodesic', action = 'store_true', dest = 'geodesic', default = False, help='Geodesic Regression')
     args = parser.parse_args()
     #print args.sub
     compute('/cis/home/younes/MorphingData/TimeseriesResults/estimatedTemplate.byu', 
             '/cis/home/younes/MorphingData/TimeseriesResults/' + args.sub, 
-            '/cis/home/younes/Development/Results/L2TimeSeriesSplines/'+ args.sub, display=False)
+            '/cis/home/younes/Development/Results/L2TimeSeriesSplines/'+ args.sub, display=args.display, geodesic = False)
 

@@ -43,7 +43,7 @@ class SurfaceMatching(object):
     def __init__(self, Template=None, Targets=None, fileTempl=None, fileTarg=None, param=None, times = None,
                  maxIter=1000, regWeight = 1.0, affineWeight = 1.0, verb=True, affine = 'none',
                   rotWeight = None, scaleWeight = None, transWeight = None,
-                 subsampleTargetSize=-1, testGradient=True, saveFile = 'evolution', outputDir = '.'):
+                  rescaleTemplate=False, subsampleTargetSize=-1, testGradient=True,  saveFile = 'evolution', outputDir = '.'):
         if param==None:
             self.param = SurfaceMatchingParam()
         else:
@@ -82,6 +82,14 @@ class SurfaceMatching(object):
                 for s in Targets:
                     self.fv1.append(surfaces.Surface(surf=s))
 
+
+        if rescaleTemplate:
+            f0 = fv0.surfVolume()
+            f1 = fv1[0].surfVolume() 
+            fv0.updateVertices(fv0.vertices * (f1/f0)**(1/3))
+            m0 = np.mean(fv0.vertices, axis = 0)
+            m1 = np.mean(fv1.vertices, axis = 0)
+            fv0.updateVertices(fv0.vertices + (m1-m0))
         self.volumeWeight = 10.0 
         self.nTarg = len(self.fv1)
         self.saveRate = 10

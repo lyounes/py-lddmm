@@ -30,10 +30,10 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
     def __init__(self, Template=None, Targets=None, fileTempl=None, fileTarg=None, param=None, times = None,
                 maxIter_cg=1000, regWeight=1.0, affineWeight = 1.0, verb=True, affine='none', 
                 rotWeight = None, scaleWeight = None, transWeight = None,
-                subsampleTargetSize=-1, testGradient=True, saveFile = 'evolution', outputDir = '.',
+                rescaleTemplate=False, subsampleTargetSize=-1, testGradient=True, saveFile = 'evolution', outputDir = '.',
                 mu = 0.1, volumeOnly=False, maxIter_al=100):
         super(SurfaceMatching, self).__init__(Template, Targets, fileTempl, fileTarg, param, times, maxIter_cg, regWeight, affineWeight,
-                                                verb, affine, rotWeight, scaleWeight, transWeight, subsampleTargetSize, testGradient,
+                                                verb, affine, rotWeight, scaleWeight, transWeight, rescaleTemplate, subsampleTargetSize, testGradient,
                                                 saveFile, outputDir)
 
 
