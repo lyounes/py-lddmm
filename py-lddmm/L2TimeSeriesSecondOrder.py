@@ -52,5 +52,5 @@ if __name__=="__main__":
     #print args.sub
     compute('/cis/home/younes/MorphingData/TimeseriesResults/estimatedTemplate.byu', 
             '/cis/home/younes/MorphingData/TimeseriesResults/' + args.sub, 
-            '/cis/home/younes/Development/Results/L2TimeSeriesSplines/'+ args.sub, display=args.display, geodesic = False)
+            '/cis/home/younes/Development/Results/L2TimeSeriesSplines/'+ args.sub, display=args.display, geodesic = args.geodesic)
 
