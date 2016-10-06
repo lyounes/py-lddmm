@@ -29,7 +29,7 @@ def createLongitudinalSurfaceScripts(minL=3):
                 fname.write('cd '+ source +'\n')
                 #fname.write('source ~/.bashrc\n which python\n')
                 #fname.write('which python\necho $PATH\necho $LD_LIBRARY_PATH\necho $SHELL\n')
-                fname.write('python L2TimeSeries.py ' +  os.path.basename(d) + '--display --atrophy --rescale\n')
+                fname.write('python L2TimeSeries.py ' +  os.path.basename(d) + '  --display --atrophy --rescale\n')
             cstr = "qsub  " + shname
             print cstr
             #subprocess.call(cstr, shell=True)
