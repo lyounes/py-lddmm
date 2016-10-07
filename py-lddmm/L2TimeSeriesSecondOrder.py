@@ -7,7 +7,7 @@ import surfaceMatching
 import secondOrderMatching as match
 #import secondOrderMatching as match
 
-def compute(tmpl, targetDir, outputDir, display=True, geodesic=False):
+def compute(tmpl, targetDir, outputDir, display=True, geodesic=False, rescale=False):
 
     #outputDir = '/Users/younes/Development/Results/biocardTS/spline'
     #outputDir = '/cis/home/younes/MorphingData/twoBallsStitched'
@@ -32,10 +32,10 @@ def compute(tmpl, targetDir, outputDir, display=True, geodesic=False):
     sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=2.5, sigmaError=.1, errorType='L2Norm')
     if geodesic:
         f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=.1, typeRegression='geodesic',
-                                  affine='euclidean', testGradient=False, rotWeight=1.)
+                                  affine='euclidean', rescaleTemplate=rescale, testGradient=False, rotWeight=1.)
     else:
         f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=.1, typeRegression='splines2',
-                                  affine='euclidean', testGradient=False, rotWeight=1.)
+                                  affine='euclidean', rescaleTemplate=rescale, testGradient=False, rotWeight=1.)
  
     #, affine='none', rotWeight=0.1))
     f.optimizeMatching()
@@ -48,9 +48,10 @@ if __name__=="__main__":
     parser.add_argument('sub', metavar='sub', type = str, help='subject directory')
     parser.add_argument('--display', action = 'store_true', dest = 'display', default = False, help='To also print on standard output')
     parser.add_argument('--geodesic', action = 'store_true', dest = 'geodesic', default = False, help='Geodesic Regression')
+    parser.add_argument('--rescale', action = 'store_true', dest = 'rescale', default = False, help='rescale template to baseline volume')
     args = parser.parse_args()
     #print args.sub
     compute('/cis/home/younes/MorphingData/TimeseriesResults/estimatedTemplate.byu', 
             '/cis/home/younes/MorphingData/TimeseriesResults/' + args.sub, 
-            '/cis/home/younes/Development/Results/L2TimeSeriesSplines/'+ args.sub, display=args.display, geodesic = args.geodesic)
+            '/cis/home/younes/Development/Results/L2TimeSeriesSplines/'+ args.sub, display=args.display, geodesic = args.geodesic, rescale=args.rescale)
 
