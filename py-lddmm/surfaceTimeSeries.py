@@ -90,6 +90,7 @@ class SurfaceMatching(object):
             m0 = np.mean(self.fv0.vertices, axis = 0)
             m1 = np.mean(self.fv1[0].vertices, axis = 0)
             self.fv0.updateVertices(self.fv0.vertices + (m1-m0))
+
         self.volumeWeight = 10.0 
         self.nTarg = len(self.fv1)
         self.saveRate = 10

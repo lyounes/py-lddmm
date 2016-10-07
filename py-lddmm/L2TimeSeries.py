@@ -35,7 +35,7 @@ def compute(tmpl, targetDir, outputDir, display=True, Atrophy=False, rescale=Fal
     sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=2.5, sigmaError=.1, errorType='L2Norm')
     if Atrophy:
         f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=.1,
-                                affine='euclidean', rescaleTemplate=rescale, testGradient=True, rotWeight=1.,  maxIter_cg=100, mu=0.0001)
+                                affine='euclidean', rescaleTemplate=rescale, testGradient=False, rotWeight=1.,  maxIter_cg=100, mu=0.0001)
     else:
        f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=1.,
                                 affine='euclidean', rescaleTemplate=rescale, testGradient=False, affineWeight=10,  maxIter=1000)
