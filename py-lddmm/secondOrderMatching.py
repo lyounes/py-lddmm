@@ -92,7 +92,7 @@ class SurfaceMatching:
         if rescaleTemplate:
             f0 = np.fabs(self.fv0.surfVolume())
             f1 = np.fabs(self.fv1[0].surfVolume()) 
-            self.fv0.updateVertices(self.fv0.vertices * (f1/f0)**(1/3))
+            self.fv0.updateVertices(self.fv0.vertices * (f1/f0)**(1./3))
             m0 = np.mean(self.fv0.vertices, axis = 0)
             m1 = np.mean(self.fv1[0].vertices, axis = 0)
             self.fv0.updateVertices(self.fv0.vertices + (m1-m0))
@@ -272,21 +272,24 @@ class SurfaceMatching:
             (xt, at) = evol.secondOrderEvolution(xt0[-1,...], a0, rhot, param.KparDiff, timeStep, affine=A)
         #print xt[-1, :, :]
         #print obj
-        obj0 = 0.5 * (a00 * param.KparDiff0.applyK(x0,a00)).sum() + 0.5 * (a0 * param.KparDiff.applyK(xt[0,...],a0)).sum()
+        obj00 = 0.5 * (a00 * param.KparDiff0.applyK(x0,a00)).sum() 
+        obj0 = 0.5 * (a0 * param.KparDiff.applyK(xt[0,...],a0)).sum()
+        obj10 = 0
         obj1 = 0
+        obj20 = 0
         obj2 = 0
         for t in range(self.Tsize0):
             rho = np.squeeze(rhot0[t, :, :])            
-            obj1 += timeStep* self.controlWeight * (rho**2).sum()/2
+            obj10 += timeStep* self.controlWeight * (rho**2).sum()/2
             if self.affineDim > 0:
-                obj2 +=  timeStep * (self.affineWeight.reshape(Afft0[t].shape) * Afft0[t]**2).sum()/2
+                obj20 +=  timeStep * (self.affineWeight.reshape(Afft0[t].shape) * Afft0[t]**2).sum()/2
         for t in range(self.Tsize):
             rho = np.squeeze(rhot[t, :, :])            
             obj1 += timeStep* self.controlWeight * (rho**2).sum()/2
             if self.affineDim > 0:
                 obj2 +=  timeStep * (self.affineWeight.reshape(Afft[t].shape) * Afft[t]**2).sum()/2
             #print xt.sum(), at.sum(), obj
-        obj = obj1+obj2+obj0
+        obj = obj1+obj2+obj0+obj10+obj20+obj00
         if display:
             logging.info('deformation terms: init %f, rho %f, aff %f'%(obj0,obj1,obj2))
         if withJacobian:
