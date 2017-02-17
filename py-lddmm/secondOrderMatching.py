@@ -2,10 +2,10 @@ import os
 import logging
 import numpy as np
 import numpy.linalg as la
-import scipy as sp
+#import scipy as sp
 import surfaces
 from pointSets import *
-import kernelFunctions as kfun
+#import kernelFunctions as kfun
 import pointEvolution as evol
 import conjugateGradient as cg
 from affineBasis import getExponential, gradExponential, AffineBasis
