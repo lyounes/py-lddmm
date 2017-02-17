@@ -1,5 +1,6 @@
 import os.path
 import argparse
+import logging
 import loggingUtils
 import surfaces
 from kernelFunctions import Kernel
@@ -7,7 +8,7 @@ import surfaceMatching
 import secondOrderMatching as match
 #import secondOrderMatching as match
 
-def compute(tmpl, targetDir, outputDir, display=True):
+def compute(tmpl, targetDir, outputDir, display=True, geodesic=False, rescale=False):
 
     #outputDir = '/Users/younes/Development/Results/biocardTS/spline'
     #outputDir = '/cis/home/younes/MorphingData/twoBallsStitched'
@@ -30,8 +31,14 @@ def compute(tmpl, targetDir, outputDir, display=True):
     ## Object kernel
     K1 = Kernel(name='laplacian', sigma = 2.5, order=4)
     sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=2.5, sigmaError=.1, errorType='L2Norm')
-    f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=.1, typeRegression='splines2',
-                              affine='euclidean', testGradient=False, rotWeight=1.)
+    if geodesic:
+        logging.info('Running Geodesic Regression')
+        f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=.1, typeRegression='geodesic',
+                                  affine='euclidean', rescaleTemplate=rescale, testGradient=True, rotWeight=1.)
+    else:
+        logging.info('Running Spline Regression')
+        f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=.1, typeRegression='splines2',
+                                  affine='euclidean', rescaleTemplate=rescale, testGradient=True, rotWeight=1.)
  
     #, affine='none', rotWeight=0.1))
     f.optimizeMatching()
@@ -40,11 +47,18 @@ def compute(tmpl, targetDir, outputDir, display=True):
     return f
 
 if __name__=="__main__":
-    parser = argparse.ArgumentParser(description='runs longitudinal surface registration')
+    parser = argparse.ArgumentParser(description='runs second order longitudinal surface registration')
     parser.add_argument('sub', metavar='sub', type = str, help='subject directory')
+    parser.add_argument('--display', action = 'store_true', dest = 'display', default = False, help='To also print on standard output')
+    parser.add_argument('--geodesic', action = 'store_true', dest = 'geodesic', default = False, help='Geodesic Regression')
+    parser.add_argument('--rescale', action = 'store_true', dest = 'rescale', default = False, help='rescale template to baseline volume')
     args = parser.parse_args()
     #print args.sub
+    if args.geodesic:
+        outDir = '/cis/home/younes/Development/Results/L2TimeSeriesGeodesicRegression/'
+    else:
+        outDir = '/cis/home/younes/Development/Results/L2TimeSeriesSplines/'
     compute('/cis/home/younes/MorphingData/TimeseriesResults/estimatedTemplate.byu', 
             '/cis/home/younes/MorphingData/TimeseriesResults/' + args.sub, 
-            '/cis/home/younes/Development/Results/L2TimeSeriesSplines/'+ args.sub, display=False)
+            outDir + args.sub, display=args.display, geodesic = args.geodesic, rescale=args.rescale)
 

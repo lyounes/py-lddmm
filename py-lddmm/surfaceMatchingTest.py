@@ -65,10 +65,10 @@ def compute(createSurfaces=True):
     ## Object kernel
     K1 = Kernel(name='gauss', sigma = 10.0)
 
-    sm = SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=10, sigmaError=1., errorType='current', internalCost='h1')
+    sm = SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=10, sigmaError=1., errorType='current')# internalCost='h1')
     f = SurfaceMatching(Template=fv1, Target=fv2, outputDir='/cis/home/younes/Results/Balls',param=sm, testGradient=True,
                         #subsampleTargetSize = 500,
-                         internalWeight=100, maxIter=1000, affine= 'euclidean', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)
+                         internalWeight=100, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)
 
     f.optimizeMatching()
 
