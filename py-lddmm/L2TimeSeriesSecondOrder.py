@@ -34,11 +34,11 @@ def compute(tmpl, targetDir, outputDir, display=True, geodesic=False, rescale=Fa
     if geodesic:
         logging.info('Running Geodesic Regression')
         f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=.1, typeRegression='geodesic',
-                                  affine='euclidean', rescaleTemplate=rescale, testGradient=True, rotWeight=1.)
+                                  affine='euclidean', rescaleTemplate=rescale, testGradient=False, rotWeight=1.)
     else:
         logging.info('Running Spline Regression')
         f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=.1, typeRegression='splines2',
-                                  affine='euclidean', rescaleTemplate=rescale, testGradient=True, rotWeight=1.)
+                                  affine='euclidean', rescaleTemplate=rescale, testGradient=False, rotWeight=1.)
  
     #, affine='none', rotWeight=0.1))
     f.optimizeMatching()
