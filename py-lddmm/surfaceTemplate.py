@@ -1,14 +1,27 @@
 import os
 import numpy as np
-import scipy as sp
-import copy
 import surfaces
-import kernelFunctions as kfun
+import logging
 import pointEvolution as evol
+import kernelFunctions as kfun
 import surfaceMatching as smatch
 import multiprocessing as mp
 import conjugateGradient as cg
-from affineBasis import *
+from affineBasis import AffineBasis
+
+
+
+
+class SurfaceTemplateParam(smatch.SurfaceMatchingParam):
+    def __init__(self, timeStep = .1, KparDiff = None, KparDiff0 = None, KparDist = None,
+                 sigmaError = 1.0, errorType = 'measure',  typeKernel='gauss', internalCost = None):
+        smatch.SurfaceMatchingParam.__init__(self, timeStep = timeStep, KparDiff = KparDiff, KparDist = KparDist,
+                     sigmaError = sigmaError, errorType = errorType,  typeKernel=typeKernel, internalCost = internalCost)
+        if KparDiff0 == None:
+            self.KparDiff0 = kfun.Kernel(name = self.typeKernel, sigma = self.sigmaKernel)
+        else:
+            self.KparDiff0 = KparDiff0
+
 
 class Direction:
     def __init__(self):
@@ -32,7 +45,8 @@ class Direction:
 #        maxIter: max iterations in conjugate gradient
 class SurfaceTemplate(smatch.SurfaceMatching):
 
-    def __init__(self, HyperTmpl=None, Targets=None, fileHTempl=None, fileTarg=None, param=None, maxIter=1000, lambdaPrior = 1.0, regWeight = 1.0, affineWeight = 1.0, verb=True,
+    def __init__(self, HyperTmpl=None, Targets=None, fileHTempl=None, fileTarg=None, param=None, maxIter=1000, 
+                 internalWeight=1.0, lambdaPrior = 1.0, regWeight = 1.0, affineWeight = 1.0, verb=True,
                  rotWeight = None, scaleWeight = None, transWeight = None, testGradient=False, saveFile = 'evolution', affine = 'none', outputDir = '.'):
         if HyperTmpl==None:
             if fileHTempl==None:
@@ -57,14 +71,17 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         self.Ntarg = len(self.fv1)
         self.npt = self.fv0.vertices.shape[0]
         self.dim = self.fv0.vertices.shape[1]
+        self.saveRate = 1
+        self.iter = 0
+        self.setOutputDir(outputDir)
         self.saveFile = saveFile
-        self.outputDir = outputDir
-        if not os.access(outputDir, os.W_OK):
-            if os.access(outputDir, os.F_OK):
-                print 'Cannot save in ' + outputDir
-                return
-            else:
-                os.mkdir(outputDir)
+#        self.outputDir = outputDir
+#        if not os.access(outputDir, os.W_OK):
+#            if os.access(outputDir, os.F_OK):
+#                print 'Cannot save in ' + outputDir
+#                return
+#            else:
+#                os.mkdir(outputDir)
 
         self.fv0.saveVTK(self.outputDir +'/'+ 'HyperTemplate.vtk')
         for kk in range(self.Ntarg):
@@ -74,7 +91,6 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         self.maxIter = maxIter
         self.verb = verb
         self.testGradient = testGradient
-        self.regweight = 1.
         self.regweight = regWeight
         self.affine = affine
         affB = AffineBasis(self.dim, affine)
@@ -87,16 +103,29 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             self.affineWeight[affB.simComp] = scaleWeight
         if (len(affB.transComp) > 0) & (transWeight != None):
             self.affineWeight[affB.transComp] = transWeight
+        self.coeffAff1 = 1.
+        self.coeffAff2 = 100.
+        self.coeffAff = self.coeffAff1
+        self.affBurnIn = 25
 
         self.lambdaPrior = lambdaPrior
         if param==None:
-            self.param = smatch.SurfaceMatchingParam()
+            self.param = SurfaceTemplateParam()
         else:
             self.param = param
 
         self.Tsize = int(round(1.0/self.param.timeStep))
+        
+        self.updateTemplate = True
+        self.updateAllTraj = False
+        self.templateBurnIn = 10
+        if self.affineDim > 0:
+            self.updateAffine = True
+        else:
+            self.updateAffine = False
 
         # Htempl to Templ
+        self.x0 = self.fv0.vertices
         self.at = np.zeros([self.Tsize, self.fv0.vertices.shape[0], self.fv0.vertices.shape[1]])
         self.atTry = np.zeros([self.Tsize, self.fv0.vertices.shape[0], self.fv0.vertices.shape[1]])
         self.Afft = np.zeros([self.Tsize, self.affineDim])
@@ -120,7 +149,15 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         self.tmplCoeff = 1.0#float(self.Ntarg)
         self.obj = None
         self.objTry = None
-        self.gradCoeff = self.fv0.vertices.shape[0]
+        self.gradCoeff = 1.#self.fv0.vertices.shape[0]
+
+
+        if self.param.internalCost == 'h1':
+            self.internalCost = surfaces.normGrad 
+            self.internalCostGrad = surfaces.diffNormGrad 
+        else:
+            self.internalCost = None
+        self.internalWeight = internalWeight
 
     def init(self, ff):
         self.fv0 = ff.fvTmpl
@@ -152,7 +189,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             self.AfftAll.append(np.zeros([self.Tsize, self.affineDim]))
             self.AfftAllTry.append(np.zeros([self.Tsize, self.affineDim]))
             self.xtAll.append(np.tile(self.fv0.vertices, [self.Tsize+1, 1, 1]))
-            self.fvDef.append(surfaces.Surface(surf=fv0))
+            self.fvDef.append(surfaces.Surface(surf=self.fv0))
 
         self.Ntarg = len(self.fv1)
         self.tmplCoeff = 1.0 #float(self.Ntarg)
@@ -167,6 +204,17 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             self.xtAll[kk] = np.copy(ff.xt[kk])
 
 
+    def dataTerm(self, _fvDef):
+        obj = 0 ;
+        if self.param.errorType == 'L2Norm':
+            for k,f in enumerate(_fvDef):
+                obj += surfaces.L2Norm(f, self.fv1[k].vfld) / (self.param.sigmaError**2)
+        else:
+            for k,f in enumerate(_fvDef):
+                obj += self.param.fun_obj(f, self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
+        #print 'dataterm = ', obj + self.obj0
+        return obj
+        
     def objectiveFun(self):
         if self.obj == None:
             self.obj0 = 0
@@ -204,30 +252,59 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 
     def randomDir(self):
         dfoo = Direction()
-        dfoo.prior = np.random.randn(self.Tsize, self.fv0.vertices.shape[0], self.fv0.vertices.shape[1])
+        if self.updateTemplate:
+            dfoo.prior = np.random.randn(self.Tsize, self.fv0.vertices.shape[0], self.fv0.vertices.shape[1])
+        else:
+            dfoo.prior = np.zeros((self.Tsize, self.fv0.vertices.shape[0], self.fv0.vertices.shape[1]))
+            
         dfoo.all = []
-        for k in range(self.Ntarg):
-            dfoo.all.append(smatch.Direction())
-            dfoo.all[k].diff = np.random.randn(self.Tsize, self.fv0.vertices.shape[0], self.fv0.vertices.shape[1])
-            dfoo.all[k].aff = np.random.randn(self.Tsize, self.affineDim)
+        if self.updateAllTraj:
+            for k in range(self.Ntarg):
+                dfoo.all.append(smatch.Direction())
+                dfoo.all[k].diff = np.random.randn(self.Tsize, self.fv0.vertices.shape[0], self.fv0.vertices.shape[1])
+                if self.updateAffine:
+                    dfoo.all[k].aff = np.random.randn(self.Tsize, self.affineDim)
+                else:
+                    dfoo.all[k].aff = np.zeros((self.Tsize, self.affineDim))
+        else:
+            for k in range(self.Ntarg):
+                dfoo.all.append(smatch.Direction())
+                dfoo.all[k].diff = np.zeros((self.Tsize, self.fv0.vertices.shape[0], self.fv0.vertices.shape[1]))
+                dfoo.all[k].aff = np.zeros((self.Tsize, self.affineDim))
         return(dfoo)
 
-    def updateTry(self, dir, eps, objRef=None):
+    def updateTry(self, direction, eps, objRef=None):
         objTry = self.obj0
-        atTry = self.at - eps * dir.prior
-        foo = self.objectiveFunDef(atTry, self.Afft, withTrajectory=True)
-        objTry += foo[0]*self.lambdaPrior
-        x0 = np.squeeze(foo[1][-1])
+        if self.updateTemplate:
+            atTry = self.at - eps * direction.prior
+        else:
+            atTry = np.copy(self.at)
+        #print 'x0 hypertemplate', self.x0.sum()
+        foo = self.objectiveFunDef(atTry, self.Afft, kernel = self.param.KparDiff0, withTrajectory=True, regWeight=self.lambdaPrior)
+        objTry += foo[0]
+        x0 = np.squeeze(foo[1][-1,...])
+        #print 'x0 template', x0.sum()
         #print -1, objTry - self.obj0
         atAllTry = []
         AfftAllTry = []
-        ff = surfaces.Surface(surf=self.fv0)
-        for (kk, d) in enumerate(dir.all):
-            atAllTry.append(self.atAll[kk] - eps * d.diff)
-            AfftAllTry.append(self.AfftAll[kk] - eps * d.aff)
-            foo = self.objectiveFunDef(atAllTry[kk], AfftAllTry[kk], withTrajectory=True, x0 = x0)
-            ff.updateVertices(np.squeeze(foo[1][-1]))
-            objTry += foo[0] + self.param.fun_obj(ff, self.fv1[kk], self.param.KparDist) / (self.param.sigmaError**2)
+        _ff = []
+        for (kk, d) in enumerate(direction.all):
+            if self.updateAllTraj:
+                atAllTry.append(self.atAll[kk] - eps * d.diff)
+                if self.updateAffine:
+                    AfftAllTry.append(self.AfftAll[kk] - eps * d.aff)
+                else:
+                    AfftAllTry.append(np.copy(self.AfftAll[kk]))
+            else:
+                atAllTry.append(np.copy(self.atAll[kk]))
+                AfftAllTry.append(np.copy(self.AfftAll[kk]))
+            foo = self.objectiveFunDef(atAllTry[kk], AfftAllTry[kk], kernel = self.param.KparDiff, withTrajectory=True, x0 = x0)
+            objTry += foo[0] 
+            ff = surfaces.Surface(surf=self.fv0)
+            ff.updateVertices(np.squeeze(foo[1][-1,...]))
+            #print 'x0 deformed template', ff.vertices.sum()
+            _ff.append(ff)
+        objTry += self.dataTerm(_ff)
 
         if (objRef == None) | (objTry < objRef):
             self.atTry = atTry
@@ -239,23 +316,52 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 
 
     def gradientComponent(self, q, kk):
-        px1 = - self.param.fun_objGrad(self.fvDef[kk], self.fv1[kk], self.param.KparDist) / self.param.sigmaError**2
+        #print kk, 'th gradient'
+        if self.param.errorType == 'L2Norm':
+            px1 = -surfaces.L2NormGradient(self.fvDef[kk], self.fv1[kk].vfld) / self.param.sigmaError**2
+        else:
+            px1 = -self.param.fun_objGrad(self.fvDef[kk], self.fv1[kk], self.param.KparDist) / self.param.sigmaError**2
         #print 'in fun', kk
-        A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-        dim2 = self.dim**2
-        if self.affineDim > 0:
-            for t in range(self.Tsize):
-                AB = np.dot(self.affineBasis, self.AfftAll[kk][t])
-                #print self.dim, dim2, AB.shape, self.affineBasis.shape
-                A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-                A[1][t] = AB[dim2:dim2+self.dim]
-        foo = evol.landmarkHamiltonianGradient(self.fvTmpl.vertices, self.atAll[kk], px1, self.param.KparDiff, self.regweight, getCovector = True, affine=A)
-        #print foo[0].shape, foo[1].shape
-        grd = foo[0:3]
-        pxTmpl = foo[-1][0, :, :]
+        if self.updateAllTraj:
+            A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+            dim2 = self.dim**2
+            if self.affineDim > 0:
+                for t in range(self.Tsize):
+                    AB = np.dot(self.affineBasis, self.AfftAll[kk][t])
+                    #print self.dim, dim2, AB.shape, self.affineBasis.shape
+                    A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
+                    A[1][t] = AB[dim2:dim2+self.dim]
+            foo = self.hamiltonianGradient(px1, kernel=self.param.KparDiff, x0=self.fvTmpl.vertices, at=self.atAll[kk], affine=A)
+            grd = foo[0:3]
+            pxTmpl = foo[4][0, ...]
+        else:
+            grd = [np.zeros(self.atAll[kk].shape),np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+            pxTmpl = px1
+
+        #print kk, (px1-pxTmpl).sum()
         #print 'before put', kk
         q.put([kk, grd, pxTmpl])
         #print 'end fun', kk
+
+    def testEndpointGradient(self):
+        c0 = self.dataTerm(self.fvDef)
+        _ff = []
+        _dff = []
+        incr = 0
+        for k in range(self.Ntarg):
+            ff = surfaces.Surface(surf=self.fvDef[k])
+            dff = np.random.normal(size=ff.vertices.shape)
+            eps = 1e-6
+            ff.updateVertices(ff.vertices+eps*dff)
+            _ff.append(ff)
+            _dff.append(dff)
+            if self.param.errorType == 'L2Norm':
+                grd = surfaces.L2NormGradient(self.fvDef[k], self.fv1[k].vfld) / self.param.sigmaError**2
+            else:   
+                grd = self.param.fun_objGrad(self.fvDef[k], self.fv1[k], self.param.KparDist) / self.param.sigmaError**2
+            incr += (grd*dff).sum()
+        c1 = self.dataTerm(_ff)
+        logging.info("test endpoint gradient: {0:.5f} {1:.5f}".format((c1-c0)/eps, incr ))
 
     def getGradient(self, coeff=1.0):
         #grd0 = np.zeros(self.atAll.shape)
@@ -274,35 +380,44 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         for kk in range(self.Ntarg):
             self.gradientComponent(q, kk)
             grd.all.append(smatch.Direction())
+                
 
         dim2 = self.dim**2
         for kk in range(self.Ntarg):
             foo = q.get()
-            dat = foo[1][0]/(coeff*self.Tsize)
-            dAfft = np.zeros(self.AfftAll[kk].shape)
-            if self.affineDim > 0:
-                dA = foo[1][1]
-                db = foo[1][2]
-                dAfft = 2 * self.AfftAll[kk]
-                for t in range(self.Tsize):
-                    dAff = np.dot(self.affineBasis.T, np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])]))
-                    dAfft[t] -=  np.divide(dAff.reshape(dAfft[t].shape), self.affineWeight.reshape(dAfft[t].shape))
-                dAfft /= (coeff*self.Tsize)
-                #print dat.shape
-            grd.all[foo[0]].diff = dat
-            grd.all[foo[0]].aff = dAfft
-            #print foo[0], grd[foo[0]][1].shape
+            if self.updateAllTraj:
+                dat = foo[1][0]/(coeff*self.Tsize)
+                dAfft = np.zeros(self.AfftAll[foo[0]].shape)
+                if self.affineDim > 0:
+                    dA = foo[1][1]
+                    db = foo[1][2]
+                    dAfft = 2 *self.affineWeight.reshape([1, self.affineDim]) * self.AfftAll[foo[0]]
+                    for t in range(self.Tsize):
+                        dAff = np.dot(self.affineBasis.T, np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])]))
+                        dAfft[t] -=  dAff.reshape(dAfft[t].shape) 
+                    dAfft /= (self.coeffAff*coeff*self.Tsize)
+                grd.all[foo[0]].diff = dat
+                grd.all[foo[0]].aff = dAfft 
+            else:
+                grd.all[foo[0]].diff = foo[1][0]
+                grd.all[foo[0]].aff = np.zeros(self.AfftAll[foo[0]].shape)
+            #print kk, foo[2].sum()
             pxTmpl += foo[2]
 
-        #print pxTmpl.shape
-        foo2 = evol.landmarkHamiltonianGradient(self.fv0.vertices, self.at, pxTmpl/self.lambdaPrior, self.param.KparDiff, self.regweight)
-        # xtPrior = np.copy(foo2[1])
-        grd.prior = foo2[0] / (self.tmplCoeff*coeff*self.Tsize)
+        #print pxTmpl.sum()
+        #print 'Template gradient'
+        foo2 = self.hamiltonianGradient(pxTmpl, kernel = self.param.KparDiff0, regWeight=self.lambdaPrior, x0=self.x0, at=self.at)
+        #print self.at.shape, self.atAll[0].shape
+        #print((foo2[1][-1,...]-self.fvTmpl.vertices)**2).bit_length
+        if self.updateTemplate:
+            grd.prior = foo2[0] / (self.tmplCoeff*coeff*self.Tsize)
+        else:
+            grd.prior = np.zeros(foo2[0].shape)
+        #print 'grds', grd.prior[5,...].sum(), grd.all[0].diff[5,...].sum()
+        #print 'grds', grd.prior.shape, grd.all[0].diff.shape
         return grd
 
     def dotProduct(self, g1, g2):
-        grd2 = 0
-        grd12 = 0
         res = np.zeros(len(g2))
         for (kk, gg1) in enumerate(g1.all):
             for t in range(self.Tsize):
@@ -310,26 +425,24 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                 z = np.squeeze(self.xtAll[kk][t, :, :])
                 gg = np.squeeze(gg1.diff[t, :, :])
                 u = self.param.KparDiff.applyK(z, gg)
-                uu = np.multiply(gg1.aff[t], self.affineWeight.reshape(gg1.aff[t].shape))
+                #uu = np.multiply(gg1.aff[t], self.affineWeight.reshape(gg1.aff[t].shape))
+                uu = gg1.aff[t]
                 #u = rzz*gg
                 ll = 0
                 for gr in g2:
                     ggOld = np.squeeze(gr.all[kk].diff[t, :, :])
-                    res[ll]  = res[ll] + np.multiply(ggOld,u).sum()
+                    res[ll]  += (ggOld*u).sum()
                     if self.affineDim > 0:
-                        res[ll] += np.multiply(uu, gr.all[kk].aff[t]).sum()
+                        res[ll] += (uu*gr.all[kk].aff[t]).sum() * self.coeffAff
                     ll = ll + 1
-
         for t in range(g1.prior.shape[0]):
             z = np.squeeze(self.xt[t, :, :])
-            #rzz = kfun.kernelMatrix(self.param.KparDiff, z)
             gg = np.squeeze(g1.prior[t, :, :])
-            u = self.param.KparDiff.applyK(z, gg)
-            #u = rzz*gg
+            u = self.param.KparDiff0.applyK(z, gg)
             ll = 0
             for gr in g2:
                 ggOld = np.squeeze(gr.prior[t, :, :])
-                res[ll]  = res[ll] + np.multiply(ggOld,u).sum()*(self.tmplCoeff*self.lambdaPrior)
+                res[ll]  += (ggOld*u).sum()*(self.tmplCoeff)
                 ll = ll + 1
         return res
 
@@ -351,19 +464,29 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 
 
     def endOfIteration(self):
-        (obj1, self.xt, Jt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True, withJacobian=True)
+        self.iter += 1
+        #if self.testGradient:
+        #    self.testEndpointGradient()
+        if self.iter >= self.affBurnIn:
+            self.updateAffine = False
+            self.coeffAff = self.coeffAff2
+        if self.iter >= self.templateBurnIn:
+            self.updateAllTraj = True
+        (obj1, self.xt, Jt) = self.objectiveFunDef(self.at, self.Afft, kernel = self.param.KparDiff0, withTrajectory=True, withJacobian=True)
         self.fvTmpl.updateVertices(np.squeeze(self.xt[-1, :, :]))
         self.fvTmpl.saveVTK(self.outputDir +'/'+ 'Template.vtk', scalars = Jt[-1], scal_name='Jacobian')
         for kk in range(self.Ntarg):
-            (obj1, self.xtAll[kk], Jt) = self.objectiveFunDef(self.atAll[kk], self.AfftAll[kk],
-                                                              withTrajectory=True, x0 = np.squeeze(self.xt[-1]), withJacobian=True)
-            self.fvDef[kk].updateVertices(self.xtAll[kk][-1])
+            (obj1, self.xtAll[kk], Jt) = self.objectiveFunDef(self.atAll[kk], self.AfftAll[kk], kernel = self.param.KparDiff,
+                                                              withTrajectory=True, x0 = self.fvTmpl.vertices, withJacobian=True)
+            self.fvDef[kk].updateVertices(self.xtAll[kk][-1, ...])
             self.fvDef[kk].saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = Jt[-1, :], scal_name='Jacobian')
 
     def computeTemplate(self):
+        self.coeffAff = self.coeffAff2
         grd = self.getGradient(self.gradCoeff)
         [grd2] = self.dotProduct(grd, [grd])
 
+        self.coeffAff = self.coeffAff1
         self.gradEps = max(0.1, np.sqrt(grd2) / 10000)
         cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=True)
         return self

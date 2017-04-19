@@ -23,7 +23,7 @@ def kernelMatrixGauss(x, firstVar=None, grid=None, par=[1], diff = False, diff2 
                 elif diff2:
                     K = K/(sig2*sig2)
             else:
-                dst = ((grid[..., newaxis, :] - x)**2).sum(axis=-1)
+                dst = ((grid[..., np.newaxis, :] - x)**2).sum(axis=-1)
                 K = np.exp(-dst/sig2)
                 if diff:
                     K = -K/sig2
@@ -312,7 +312,7 @@ class Kernel(KernelSpec):
             if firstVar is None:
                 z = kff.kernelmatrix(x, x, self.sigma, self.order, x.shape[0], x.shape[0], x.shape[1])
             else:
-                z = kff.kernelmatrix(x, y, self.sigma, self.order, x.shape[0], y.shape[0], x.shape[1])
+                z = kff.kernelmatrix(x, firstVar, self.sigma, self.order, x.shape[0], firstVar.shape[0], x.shape[1])
         return z
 
         

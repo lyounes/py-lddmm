@@ -60,7 +60,6 @@ class gridScalars:
                 # v = u.GetOutput()
                 # img = Image.open(fileName)
                 img=Img.imread(fileName).astype(float)
-                print img.shape
                 if (img.ndim == 3):
                     img = img.sum(axis=2)/(img.shape[2]+1)
                 self.data = img
@@ -282,6 +281,7 @@ def multilinInterp(img, diffeo):
         if np.any(diffeo[k, ...].max() > img.shape[k]-1):
             tooLarge = True
     if tooLarge:
+        #print "min", diffeo.min()
         dfo = np.copy(diffeo)
         dfo = np.maximum(dfo, 0)
         for k in range(img.ndim):
@@ -338,6 +338,10 @@ def multilinInterpGradient(img, diffeo):
         J[k, ...] = np.minimum(I[k, ...]+1, img.shape[k]-1) 
         r[k, ...] = dfo[k, ...] - I[k, ...]
 
+#    if tooLarge:
+#        print "too large"
+#    print I.min(), I.max(), J.min(), J.max()
+
     if ndim ==1:
         res = img[J[0, ...]] - img[I[0, ...]] 
     elif ndim==2:
@@ -347,7 +351,8 @@ def multilinInterpGradient(img, diffeo):
         res[1, ...] = (- ((1-r[0, ...]) * img[I[0, ...], I[1,...]] + r[0, ...] * img[J[0, ...], I[1,...]])
                 + ((1-r[0, ...]) * img[I[0, ...], J[1,...]] + r[0, ...] * img[J[0, ...], J[1,...]]))
     elif ndim==3:
-        res = np.zeros(np.insert(img.shape, 0, 3))
+        #res = np.zeros(np.insert(img.shape, 0, 3))
+        res = np.zeros(I.shape)
         res[0,...] = ((1-r[2,...]) * ((1-r[1, ...]) * (-img[I[0, ...], I[1,...], I[2, ...]] + img[J[0, ...], I[1,...], I[2,...]])
                                 + r[1, ...] * (-img[I[0, ...], J[1,...], I[2, ...]] + img[J[0, ...], J[1,...], I[2,...]]))
                 + r[2,...] * ((1-r[1, ...]) * (- img[I[0, ...], I[1,...], J[2, ...]] + img[J[0, ...], I[1,...], J[2,...]])
@@ -479,5 +484,46 @@ def jacobianMatrix(diffeo, resol=[1.,1.,1.], periodic=False):
             diffeo -= np.rint(dw/diffeo.shape[0])*diffeo.shape[0]
         grad =  np.fabs(gradient(np.squeeze(diffeo)), resol=resol)
     return grad
+
+def laplacian(X, neumann=0):
+    Xplus = np.zeros(np.array(X.shape) + 2) ;
+    if X.ndim == 1:
+        n1 = X.shape[0]
+        Xplus[1:n1+1] = X
+        if neumann:
+            Xplus[0] = Xplus[1]
+            Xplus[n1+1] = Xplus[n1]
+        Y = Xplus[0:n1] + Xplus[2:n1+2] - 2*X
+    elif X.ndim == 2:
+        n1 = X.shape[0]
+        n2 = X.shape[1]
+        Xplus[1:n1+1, 1:n2+1] = X
+        if neumann:
+            Xplus[0,:] = Xplus[1,:]
+            Xplus[:,0] = Xplus[:,1]
+            Xplus[n1+1,:] = Xplus[n1,:]
+            Xplus[:,n2+1] = Xplus[:,n2]
+        Y = (Xplus[1:n1+1, 0:n2] + Xplus[1:n1+1, 2:n2+2] + 
+            Xplus[0:n1, 1:n2+1] + Xplus[2:n1+2, 1:n2+1]) - 4*X
+    elif X.ndim == 3:
+        n1 = X.shape[0]
+        n2 = X.shape[1]
+        n3 = X.shape[2]
+        Xplus[1:n1+1, 1:n2+1, 1:n3+1] = X
+        if neumann:
+            Xplus[0,:,:] = Xplus[1,:,:]
+            Xplus[:,0,:] = Xplus[:,1,:]
+            Xplus[:,:,0] = Xplus[:,:,1]
+            Xplus[n1+1,:, :] = Xplus[n1,:, :]
+            Xplus[:,n2+1, :] = Xplus[:,n2, :]
+            Xplus[:,:,n3+1] = Xplus[:,:,n3]
+        Y = (Xplus[0:n1, 1:n2+1, 1:n3+1] + Xplus[2:n1+2, 1:n2+1, 1:n3+1] + 
+            Xplus[1:n1+1, 0:n2, 1:n3+1] + Xplus[1:n1+1, 2:n2+2, 1:n3+1] +
+            Xplus[1:n1+1, 1:n2+1, 0:n3] + Xplus[1:n1+1, 1:n2+1, 2:n3+2]) - 6*X
+    else:
+        logging.error('Laplacian in dim less than 3 only')
+        
+    return Y
+
 
 

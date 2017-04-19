@@ -3,7 +3,7 @@ import os
 from os import path
 import argparse
 import pointSets
-import surfaces
+import curves
 import logging
 import loggingUtils
 from kernelFunctions import *
@@ -11,9 +11,7 @@ from affineRegistration import *
 
 
 def main():
-
-
-    parser = argparse.ArgumentParser(description='runs surface matching registration over directories (relative to the template)')
+    parser = argparse.ArgumentParser(description='runs curve matching registration over directories (relative to the template)')
     parser.add_argument('template', metavar='template', nargs='+', type = str, help='template (list)')
     parser.add_argument('target', metavar='target', nargs='+', type = str, help='target (list)')
     #parser.add_argument('template', metavar='template', type = str, help='template')
@@ -30,12 +28,12 @@ def main():
     parser.add_argument('--logFile', metavar = 'logFile', type = str, dest = 'logFile', default = 'info.txt', help='Output log file')
     parser.add_argument('--stdout', action = 'store_true', dest = 'stdOutput', default = False, help='To also print on standard output')
     parser.add_argument('--scaleFactor', metavar='scaleFactor', type=float, dest='scaleFactor',
-                        default = 1, help='scale factor for all surfaces') 
-    parser.add_argument('--atrophy', action = 'store_true', dest = 'atrophy', default = False, help='force atrophy')
-    parser.add_argument('--atrophyVolume', action = 'store_true', dest = 'atrophyVolume', default = False, help='force atrophy')
-    parser.add_argument('--symmetric', action = 'store_true', dest = 'symmetric', default = False, help='Use error term on both template and target')
+                        default = 1, help='scale factor for all curves') 
+    #parser.add_argument('--atrophy', action = 'store_true', dest = 'atrophy', default = False, help='force atrophy')
+    #parser.add_argument('--atrophyVolume', action = 'store_true', dest = 'atrophyVolume', default = False, help='force atrophy')
+    #parser.add_argument('--symmetric', action = 'store_true', dest = 'symmetric', default = False, help='Use error term on both template and target')
     parser.add_argument('--flipTarget', action = 'store_true', dest = 'flipTarget', default = False, help='Flip target orientation')
-    parser.add_argument('--mu', metavar='mu', type=float, dest='mu', default = 0.001, help='mu for augmented lagrangian') 
+    #parser.add_argument('--mu', metavar='mu', type=float, dest='mu', default = 0.001, help='mu for augmented lagrangian') 
     parser.add_argument('--affine', metavar='affine', type=str, dest='affine', default = 'euclidean', help='type of affine transformation') 
     args = parser.parse_args()
     
@@ -56,22 +54,24 @@ def main():
         os.makedirs(args.tmpOut)
     loggingUtils.setup_default_logging(args.tmpOut, fileName=args.logFile, stdOutput = args.stdOutput)
 
-    if args.atrophy or args.atrophyVolume:
-        import surfaceMatchingAtrophy as smt
-    else:
-        import surfaceMatching as smt
+#    if args.atrophy or args.atrophyVolume:
+#        import surfaceMatchingAtrophy as smt
+#    else:
+#        import surfaceMatching as smt
 
-    tmpl = surfaces.Surface(filename=args.template)
+    import curveMatching as cmt
+
+    tmpl = curves.Curve(filename=args.template)
     tmpl.vertices *= args.scaleFactor
     K1 = Kernel(name=args.typeKernel, sigma = args.sigmaKernel)
-    sm = smt.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=args.sigmaDist, sigmaError=args.sigmaError, errorType=args.typeError)
-    fv = surfaces.Surface(filename=args.target)
+    sm = cmt.CurveMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=args.sigmaDist, sigmaError=args.sigmaError, errorType=args.typeError)
+    fv = curves.Curve(filename=args.target)
     fv.vertices *= args.scaleFactor
     if args.flipTarget:
         logging.info('Flipping Target Orientation')
-        print surfaces.currentNormDef(tmpl, fv, sm.KparDist)
+        print curves.currentNormDef(tmpl, fv, sm.KparDist)
         fv.flipFaces()
-        print surfaces.currentNormDef(tmpl, fv, sm.KparDist)
+        print curves.currentNormDef(tmpl, fv, sm.KparDist)
     #print fv.vertices
 
     if args.rigid:
@@ -80,20 +80,18 @@ def main():
 
         #print fv.vertices
 
-    if args.atrophy or args.atrophyVolume:
-        f = smt.SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, mu = args.mu, symmetric=args.symmetric,
-                            maxIter_cg=1000, affine=args.affine, rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100., volumeOnly=args.atrophyVolume)
-    else:
-        f = smt.SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, symmetric=args.symmetric, saveTrajectories = True,
+#    if args.atrophy or args.atrophyVolume:
+#        f = smt.SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, mu = args.mu, symmetric=args.symmetric,
+#                            maxIter_cg=1000, affine=args.affine, rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100., volumeOnly=args.atrophyVolume)
+#    else:
+#        f = smt.SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, symmetric=args.symmetric, saveTrajectories = True,
+#                            internalWeight = args.internalWeight, maxIter=2000, affine=args.affine, 
+#                            rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)
+
+    f = cmt.CurveMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False, saveTrajectories=True,
                             internalWeight = args.internalWeight, maxIter=2000, affine=args.affine, 
                             rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)
-
     f.optimizeMatching()
-    for atarg in args.target:
-        u = path.split(atarg)
-        [nm,ext] = path.splitext(u[1])
-        f.fvDef.savebyu(args.dirOut+'/'+nm+'Def.byu')
-    #if args.saveTrajectories:
         
 
 if __name__=="__main__":

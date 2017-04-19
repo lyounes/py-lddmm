@@ -1,6 +1,8 @@
 import numpy as np
 import scipy as sp
+import conjugateGradient as cg
 import scipy.linalg as spLA
+import diffeo
 import os
 import glob
 import logging
@@ -30,6 +32,7 @@ class Surface:
                     self.centers = np.empty(0)
                     self.faces = np.empty(0)
                     self.surfel = np.empty(0)
+                    self.component = np.empty(0)
                 else:
                     if type(filename) is list:
                         fvl = []
@@ -41,12 +44,14 @@ class Surface:
             else:
                 self.vertices = np.copy(FV[1])
                 self.faces = np.int_(FV[0])
+                self.component = np.zeros(self.faces.shape[0], dtype=int)
                 self.computeCentersAreas()
         else:
             self.vertices = np.copy(surf.vertices)
             self.faces = np.copy(surf.faces)
-            self.surfel = np.copy(surf.surfel)
-            self.centers = np.copy(surf.centers)
+            #self.surfel = np.copy(surf.surfel)
+            #self.centers = np.copy(surf.centers)
+            self.component = np.copy(surf.component)
             self.computeCentersAreas()
 
     def read(self, filename):
@@ -64,6 +69,7 @@ class Surface:
             self.vertices = np.empty(0)
             self.centers = np.empty(0)
             self.faces = np.empty(0)
+            self.component = np.empty(0)
             self.surfel = np.empty(0)
             
     # face centers and area weighted normal
@@ -72,7 +78,7 @@ class Surface:
         xDef2 = self.vertices[self.faces[:, 1], :]
         xDef3 = self.vertices[self.faces[:, 2], :]
         self.centers = (xDef1 + xDef2 + xDef3) / 3
-        self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)
+        self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
 
     # modify vertices without toplogical change
     def updateVertices(self, x0):
@@ -81,7 +87,7 @@ class Surface:
         xDef2 = self.vertices[self.faces[:, 1], :]
         xDef3 = self.vertices[self.faces[:, 2], :]
         self.centers = (xDef1 + xDef2 + xDef3) / 3
-        self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)
+        self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
 
     def computeSparseMatrices(self):
         self.v2f0 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]), (range(self.faces.shape[0]), self.faces[:,0]))).transpose(copy=False)
@@ -152,6 +158,17 @@ class Surface:
         normals /=af.reshape([self.vertices.shape[0],1])
 
         return normals
+
+    def computeAreaWeightedVertexNormals(self):
+        self.computeCentersAreas() 
+        normals = np.zeros(self.vertices.shape)
+        F = self.faces
+        for k in range(F.shape[0]):
+            normals[F[k,0]] += self.surfel[k]
+            normals[F[k,1]] += self.surfel[k]
+            normals[F[k,2]] += self.surfel[k]
+
+        return normals
          
 
     # Computes edges from vertices/faces
@@ -197,9 +214,9 @@ class Surface:
         res = d2*s
         u = maxval*np.ones(c2.shape)
         u[rad+1:n0-rad, rad+1:n1-rad, rad+1:n2-rad] = (c2[diam:n0, diam:n1, diam:n2]
-                                                 - c2[0:n0-diam, diam:n1, diam:n2] - c2[diam:n0, 0:n1-diam, diam:n2] - c2[diam:n0, diam:n1, 0:n2-diam] 
-                                                 + c2[0:n0-diam, 0:n1-diam, diam:n2] + c2[diam:n0, 0:n1-diam, 0:n2-diam] + c2[0:n0-diam, diam:n1, 0:n2-diam]
-                                                 - c2[0:n0-diam, 0:n1-diam, 0:n2-diam])
+        - c2[0:n0-diam, diam:n1, diam:n2] - c2[diam:n0, 0:n1-diam, diam:n2] - c2[diam:n0, diam:n1, 0:n2-diam] 
+        + c2[0:n0-diam, 0:n1-diam, diam:n2] + c2[diam:n0, 0:n1-diam, 0:n2-diam] + c2[0:n0-diam, diam:n1, 0:n2-diam]
+        - c2[0:n0-diam, 0:n1-diam, 0:n2-diam])
 
         I = np.nonzero(np.fabs(u) < maxval)
         #print len(I[0])
@@ -257,9 +274,21 @@ class Surface:
                 #self.vertices = np.multiply(data.shape-V-1, scales)
         self.vertices = np.multiply(V, scales)
         self.faces = np.int_(F[0:gf, :])
+        self.component = np.zeros(self.faces.shape[0], dtype = int)
         self.computeCentersAreas()
 
-
+    def subDivide(self, number=1):
+        if gotVTK:
+            polydata = self.toPolyData()
+            subdivisionFilter = vtkLinearSubdivisionFilter()
+            subdivisionFilter.SetInput(polydata)
+            subdivisionFilter.SetNumberOfSubdivisions(number)
+            subdivisionFilter.Update()
+            self.fromPolyData(subdivisionFilter.GetOutput())
+        else:
+            raise Exception('Cannot run subDivide without VTK')
+                        
+            
     def Simplify(self, target=1000.0):
         if gotVTK:
             polydata = self.toPolyData()
@@ -286,7 +315,6 @@ class Surface:
     def smooth(self, n=30, smooth=0.1):
         if gotVTK:
             g = self.toPolyData()
-            print g
             smoother= vtkWindowedSincPolyDataFilter()
             smoother.SetInput(g)
             smoother.SetNumberOfIterations(n)
@@ -303,7 +331,7 @@ class Surface:
 
             
     # Computes isosurfaces using vtk               
-    def Isosurface(self, data, value=0.5, target=1000.0, scales = [1., 1., 1.], smooth = 0.1, fill_holes = 1.):
+    def Isosurface(self, data, value=0.5, target=1000.0, scales = [1., 1., 1.], smooth = 0.1, fill_holes = 1., orientation=1):
         if gotVTK:
             #data = self.LocalSignedDistance(data0, value)
             if isinstance(data, vtkImageData):
@@ -393,7 +421,7 @@ class Surface:
             g = cp.GetOutput()
             self.fromPolyData(g,scales)
             z= self.surfVolume()
-            if (z > 0):
+            if (orientation*z < 0):
                 self.flipFaces()
                 #print 'flipping volume', z, self.surfVolume()
                 logging.info('flipping volume %.2f %.2f' % (z, self.surfVolume()))
@@ -460,12 +488,14 @@ class Surface:
         for kv in range(nv):
             I2 = np.nonzero(edg0[kv,:])
             for kkv in I2[0].tolist():
-                edgF[edg0[kkv,kv]-1,edg0[kv,kkv]-1] = kv+1
+                if edg0[kkv,kv] > 0:
+                    edgF[edg0[kkv,kv]-1,edg0[kv,kkv]-1] = kv+1
 
         isOriented = np.int_(np.zeros(f.shape[0]))
         isActive = np.int_(np.zeros(f.shape[0]))
         I = np.nonzero(np.squeeze(edgF[0,:]))
         # list of faces to be oriented
+        # Start with face 0 and its neighbors
         activeList = [0]+I[0].tolist()
         lastOriented = 0
         isOriented[0] = True
@@ -473,16 +503,17 @@ class Surface:
             isActive[k] = True 
 
         while lastOriented < len(activeList)-1:
-            i = activeList[lastOriented]
+            #next face to be oriented
             j = activeList[lastOriented +1]
+            # find an already oriented face among all neighbors of j
             I = np.nonzero(edgF[j,:])
             foundOne = False
             for kk in I[0].tolist():
-                if (foundOne==False)  & (isOriented[kk]):
+                if (foundOne==False) and (isOriented[kk]):
                     foundOne = True
                     u1 = edgF[j,kk] -1
                     u2 = edgF[kk,j] - 1
-                    if not ((edg[u1,u2] == 1) & (edg[u2,u1] == 1)): 
+                    if not ((edg[u1,u2] == 1) and (edg[u2,u1] == 1)): 
                         # reorient face j
                         edg[f[j,0],f[j,1]] -= 1
                         edg[f[j,1],f[j,2]] -= 1
@@ -517,7 +548,7 @@ class Surface:
             inFace[self.faces[:,k]] = 1
         J = np.nonzero(inFace)
         self.vertices = self.vertices[J[0], :]
-        logging.info('Found %d isolated vertices'%(J[0].shape[0]))
+        logging.info('Found %d isolated vertices'%(N-J[0].shape[0]))
         Q = -np.ones(N)
         for k,j in enumerate(J[0]):
             Q[j] = k
@@ -648,7 +679,6 @@ class Surface:
                 j = j+1
         E = E[0:j, :]
         
-        edgeFace = np.zeros([j, nf])
         ne = j
         #print E
 
@@ -746,6 +776,10 @@ class Surface:
             z += np.linalg.det(v[c[:], :])/6
         return z
 
+    # Computes surface area
+    def surfArea(self):
+        return np.sqrt((self.surfel**2).sum(axis=1)).sum()
+
     # Reads from .off file
     def readOFF(self, offfile):
         with open(offfile,'r') as f:
@@ -831,7 +865,8 @@ class Surface:
         xDef2 = self.vertices[self.faces[:, 1], :]
         xDef3 = self.vertices[self.faces[:, 2], :]
         self.centers = (xDef1 + xDef2 + xDef3) / 3
-        self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)
+        self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
+        self.component = np.zeros(self.faces.shape[0], dtype=int)
 
     #Saves in .byu format
     def savebyu(self, byufile):
@@ -881,16 +916,16 @@ class Surface:
     def saveVTK(self, fileName, scalars = None, normals = None, tensors=None, scal_name='scalars', vectors=None, vect_name='vectors'):
         vf = vtkFields()
         #print scalars
-        if not (scalars==None):
+        if not (scalars is None):
             vf.scalars.append(scal_name)
             vf.scalars.append(scalars)
-        if not (vectors==None):
+        if not (vectors is None):
             vf.vectors.append(vect_name)
             vf.vectors.append(vectors)
-        if not (normals==None):
+        if not (normals is None):
             vf.normals.append('normals')
             vf.normals.append(normals)
-        if not (tensors==None):
+        if not (tensors is None):
             vf.tensors.append('tensors')
             vf.tensors.append(tensors)
         self.saveVTK2(fileName, vf)
@@ -980,9 +1015,26 @@ class Surface:
             xDef2 = self.vertices[self.faces[:, 1], :]
             xDef3 = self.vertices[self.faces[:, 2], :]
             self.centers = (xDef1 + xDef2 + xDef3) / 3
-            self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)
+            self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
+            self.component = np.zeros(self.faces.shape[0], dtype=int)
         else:
             raise Exception('Cannot run readVTK without VTK')
+    
+    # Reads .vtk file
+    def readFromImage(self, fileName):
+        self.img = diffeo.gridScalars(fileName=fileName)
+        self.img.data /= self.img.data.max() + 1e-10
+        self.Isosurface(self.img.data)
+        smoothData = cg.linearcg(lambda x: -diffeo.laplacian(x), -self.img.data, iterMax=500)
+        self.vfld = diffeo.gradient(smoothData)
+    
+    # Reads .vtk file
+    def initFromImage(self, img):
+        self.img = diffeo.gridScalars(data=img)
+        self.img.data /= self.img.data.max() + 1e-10
+        self.Isosurface(self.img.data)
+        smoothData = cg.linearcg(lambda x: -diffeo.laplacian(x), -self.img.data, iterMax=500)
+        self.vfld = diffeo.gradient(smoothData)
     
     # Reads .obj file
     def readOBJ(self, fileName):
@@ -1010,7 +1062,7 @@ class Surface:
             xDef2 = self.vertices[self.faces[:, 1], :]
             xDef3 = self.vertices[self.faces[:, 2], :]
             self.centers = (xDef1 + xDef2 + xDef3) / 3
-            self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)
+            self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
         else:
             raise Exception('Cannot run readOBJ without VTK')
 
@@ -1022,19 +1074,108 @@ class Surface:
             nf += fv.faces.shape[0]
         self.vertices = np.zeros([nv,3])
         self.faces = np.zeros([nf,3], dtype='int')
+        self.component = np.zeros(nf, dtype='int')
 
         nv0 = 0
-        nf0 = 0        
+        nf0 = 0
+        c = 0
         for fv in fvl:
             nv = nv0 + fv.vertices.shape[0]
             nf = nf0 + fv.faces.shape[0]
             self.vertices[nv0:nv, :] = fv.vertices
             self.faces[nf0:nf, :] = fv.faces + nv0
+            self.component[nf0:nf] = c
             nv0 = nv
             nf0 = nf
+            c += 1
         self.computeCentersAreas()
+    
+    def normGrad(self, phi):
+        v1 = self.vertices[self.faces[:,0],:]
+        v2 = self.vertices[self.faces[:,1],:]
+        v3 = self.vertices[self.faces[:,2],:]
+        l1 = ((v2-v3)**2).sum(axis=1)
+        l2 = ((v1-v3)**2).sum(axis=1)
+        l3 = ((v1-v2)**2).sum(axis=1)
+        phi1 = phi[self.faces[:,0],:]
+        phi2 = phi[self.faces[:,1],:]
+        phi3 = phi[self.faces[:,2],:]
+        a = 4*np.sqrt((self.surfel**2).sum(axis=1))
+        u = l1*((phi2-phi1)*(phi3-phi1)).sum(axis=1) + l2*((phi3-phi2)*(phi1-phi2)).sum(axis=1) + l3*((phi1-phi3)*(phi2-phi3)).sum(axis=1)
+        res = (u/a).sum()
+        return res
+    
+    def laplacian(self, phi, weighted=False):
+        res = np.zeros(phi.shape)
+        v1 = self.vertices[self.faces[:,0],:]
+        v2 = self.vertices[self.faces[:,1],:]
+        v3 = self.vertices[self.faces[:,2],:]
+        l1 = (((v2-v3)**2).sum(axis=1))[...,np.newaxis]
+        l2 = (((v1-v3)**2).sum(axis=1))[...,np.newaxis]
+        l3 = (((v1-v2)**2).sum(axis=1))[...,np.newaxis]
+        phi1 = phi[self.faces[:,0],:]
+        phi2 = phi[self.faces[:,1],:]
+        phi3 = phi[self.faces[:,2],:]
+        a = 8*(np.sqrt((self.surfel**2).sum(axis=1)))[...,np.newaxis]
+        r1 = (l1 * (phi2 + phi3-2*phi1) + (l2-l3) * (phi2-phi3))/a
+        r2 = (l2 * (phi1 + phi3-2*phi2) + (l1-l3) * (phi1-phi3))/a
+        r3 = (l3 * (phi1 + phi2-2*phi3) + (l2-l1) * (phi2-phi1))/a
+        for k,f in enumerate(self.faces):
+            res[f[0],:] += r1[k,:]
+            res[f[1],:] += r2[k,:]
+            res[f[2],:] += r3[k,:]
+        if weighted:
+            av = self.computeVertexArea()
+            return res/av[0]
+        else:
+            return res
 
+    def diffNormGrad(self, phi):
+        res = np.zeros((self.vertices.shape[0],phi.shape[1]))
+        v1 = self.vertices[self.faces[:,0],:]
+        v2 = self.vertices[self.faces[:,1],:]
+        v3 = self.vertices[self.faces[:,2],:]
+        l1 = (((v2-v3)**2).sum(axis=1))
+        l2 = (((v1-v3)**2).sum(axis=1))
+        l3 = (((v1-v2)**2).sum(axis=1))
+        phi1 = phi[self.faces[:,0],:]
+        phi2 = phi[self.faces[:,1],:]
+        phi3 = phi[self.faces[:,2],:]
+        #a = ((self.surfel**2).sum(axis=1))
+        a = 2*np.sqrt((self.surfel**2).sum(axis=1))
+        u = l1*((phi2-phi1)*(phi3-phi1)).sum(axis=1) + l2*((phi3-phi2)*(phi1-phi2)).sum(axis=1) + l3*((phi1-phi3)*(phi2-phi3)).sum(axis=1)
+        #u = (2*u/a**2)[...,np.newaxis]
+        u = (u/a**3)[...,np.newaxis]
+        a = a[...,np.newaxis]
         
+        r1 = - u * np.cross(v2-v3,self.surfel) + 2*((v1-v3) *(((phi3-phi2)*(phi1-phi2)).sum(axis=1))[:,np.newaxis]
+            + (v1-v2)*(((phi1-phi3)*(phi2-phi3)).sum(axis=1)[:,np.newaxis]))/a
+        r2 = - u * np.cross(v3-v1,self.surfel) + 2*((v2-v1) *(((phi1-phi3)*(phi2-phi3)).sum(axis=1))[:,np.newaxis]
+            + (v2-v3)*(((phi2-phi1)*(phi3-phi1)).sum(axis=1))[:,np.newaxis])/a
+        r3 = - u * np.cross(v1-v2,self.surfel) + 2*((v3-v2) *(((phi2-phi1)*(phi3-phi1)).sum(axis=1))[:,np.newaxis]
+            + (v3-v1)*(((phi3-phi2)*(phi1-phi2)).sum(axis=1)[:,np.newaxis]))/a
+        for k,f in enumerate(self.faces):
+            res[f[0],:] += r1[k,:]
+            res[f[1],:] += r2[k,:]
+            res[f[2],:] += r3[k,:]
+        return res/2
+    
+    def meanCurvatureVector(self):
+        res = np.zeros(self.vertices.shape)
+        v1 = self.vertices[self.faces[:,0],:]
+        v2 = self.vertices[self.faces[:,1],:]
+        v3 = self.vertices[self.faces[:,2],:]
+        a = np.sqrt(((self.surfel**2).sum(axis=1)))
+        a = a[...,np.newaxis]
+        
+        r1 = - np.cross(v2-v3,self.surfel)/a
+        r2 = - np.cross(v3-v1,self.surfel)/a
+        r3 = - np.cross(v1-v2,self.surfel)/a
+        for k,f in enumerate(self.faces):
+            res[f[0],:] += r1[k,:]
+            res[f[1],:] += r2[k,:]
+            res[f[2],:] += r3[k,:]
+        return res
     
 # Reads several .byu files
 def readMultipleByu(regexp, Nmax = 0):
@@ -1057,31 +1198,24 @@ def saveEvolution(fileName, fv0, xt):
 
 
 
+
+
 # Current norm of fv1
 def currentNorm0(fv1, KparDist):
     c2 = fv1.centers
-    cr2 = fv1.surfel
-    #g11 = kfun.kernelMatrix(KparDist, c2)
+    cr2 = np.copy(fv1.surfel)
     obj = np.multiply(cr2, KparDist.applyK(c2, cr2)).sum()
-    #obj = np.multiply(np.dot(cr2,cr2.T), g11).sum()
-    #print 'cn0', obj
     return obj
         
 
 # Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct 
 def currentNormDef(fvDef, fv1, KparDist):
     c1 = fvDef.centers
-    cr1 = fvDef.surfel
+    cr1 = np.copy(fvDef.surfel)
     c2 = fv1.centers
-    cr2 = fv1.surfel
-    # g11 = kfun.kernelMatrix(KparDist, c1)
-    # g12 = kfun.kernelMatrix(KparDist, c2, c1)
-    #print cr1-cr2
+    cr2 = np.copy(fv1.surfel)
     obj = (np.multiply(cr1, KparDist.applyK(c1, cr1)).sum()
         - 2*np.multiply(cr1, KparDist.applyK(c2, cr2, firstVar=c1)).sum())
-    #obj = (np.multiply(np.dot(cr1,cr1.T), g11).sum() -
-    #       2*np.multiply(np.dot(cr1, cr2.T), g12).sum())
-        #print 'cn', obj
     return obj
 
 # Returns |fvDef - fv1|^2 for current norm
@@ -1092,31 +1226,14 @@ def currentNorm(fvDef, fv1, KparDist):
 def currentNormGradient(fvDef, fv1, KparDist):
     xDef = fvDef.vertices
     c1 = fvDef.centers
-    cr1 = fvDef.surfel
+    cr1 = np.copy(fvDef.surfel)
     c2 = fv1.centers
-    cr2 = fv1.surfel
+    cr2 = np.copy(fv1.surfel)
     dim = c1.shape[1]
 
-    # g11 = kfun.kernelMatrix(KparDist, c1)
-    # KparDist.hold()
-    # dg11 = kfun.kernelMatrix(KparDist, c1, diff=True)
-    # KparDist.release()
-    
-    # g12 = kfun.kernelMatrix(KparDist, c2, c1)
-    # KparDist.hold()
-    # dg12 = kfun.kernelMatrix(KparDist, c2, c1, diff=True)
-    # KparDist.release()
-
-
-    #z1 = g11*cr1 - g12 * cr2
-    z1 = KparDist.applyK(c1, cr1) - KparDist.applyK(c2, cr2, firstVar=c1)
+    z1 = (KparDist.applyK(c1, cr1) - KparDist.applyK(c2, cr2, firstVar=c1))/2
     dz1 = (1./3.) * (KparDist.applyDiffKT(c1, cr1[np.newaxis,...], cr1[np.newaxis,...]) -
                      KparDist.applyDiffKT(c2, cr1[np.newaxis,...], cr2[np.newaxis,...], firstVar=c1))
-
-    #     dg11 = np.multiply(dg11 ,(cr1*(cr1.T)))
-    # dg12 = np.multiply(dg12 , (cr1*(cr2.T)))
-
-    # dz1 = (2./3.) * (np.multiply(np.tile(dg11.sum(axis=1), (1,dim)), c1) - dg11*c1 - np.multiply(np.tile(dg12.sum(axis=1), (1, dim)), c1) + dg12*c2)
 
     xDef1 = xDef[fvDef.faces[:, 0], :]
     xDef2 = xDef[fvDef.faces[:, 1], :]
@@ -1143,29 +1260,18 @@ def currentNormGradient(fvDef, fv1, KparDist):
 # Measure norm of fv1
 def measureNorm0(fv1, KparDist):
     c2 = fv1.centers
-    cr2 = fv1.surfel
-    cr2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)[:,np.newaxis]
-    #cr2 = np.mat(np.sqrt((cr2**2).sum(axis=1)))
-    #g11 = kfun.kernelMatrix(KparDist, c2)
-    #print cr2.shape, g11.shape
+    cr2 = np.sqrt((fv1.surfel**2).sum(axis=1)+1e-10)[:,np.newaxis]
     return np.multiply(cr2, KparDist.applyK(c2, cr2)).sum()
-    #return (cr2 * (g11*cr2.T)).sum()
         
     
 # Computes |fvDef|^2 - 2 fvDef * fv1 with measure dot produuct 
 def measureNormDef(fvDef, fv1, KparDist):
     c1 = fvDef.centers
-    cr1 = fvDef.surfel
-    cr1 = np.sqrt((cr1**2).sum(axis=1)+1e-10)[:,np.newaxis]
+    cr1 = np.sqrt((fvDef.surfel**2).sum(axis=1)+1e-10)[:,np.newaxis]
     c2 = fv1.centers
-    cr2 = fv1.surfel
-    cr2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)[:,np.newaxis]
+    cr2 = np.sqrt((fv1.surfel**2).sum(axis=1)+1e-10)[:,np.newaxis]
     obj = (np.multiply(cr1, KparDist.applyK(c1, cr1)).sum()
         - 2*np.multiply(cr1, KparDist.applyK(c2, cr2, firstVar=c1)).sum())
-    #g11 = kfun.kernelMatrix(KparDist, c1)
-    #g12 = kfun.kernelMatrix(KparDist, c2, c1)
-    #obj = (np.multiply(cr1*cr1.T, g11).sum() - 2*np.multiply(cr1*(cr2.T), g12).sum())
-    #obj = (cr1 * g11 * cr1.T).sum() - 2* (cr1 * g12 *cr2.T).sum()
     return obj
 
 # Returns |fvDef - fv1|^2 for measure norm
@@ -1177,24 +1283,12 @@ def measureNorm(fvDef, fv1, KparDist):
 def measureNormGradient(fvDef, fv1, KparDist):
     xDef = fvDef.vertices
     c1 = fvDef.centers
-    cr1 = fvDef.surfel
     c2 = fv1.centers
-    cr2 = fv1.surfel
     dim = c1.shape[1]
-    a1 = np.sqrt((cr1**2).sum(axis=1)+1e-10)
-    a2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)
-    cr1 = cr1 / a1[:, np.newaxis]
-    cr2 = cr2 / a2[:, np.newaxis]
-
-    # g11 = kfun.kernelMatrix(KparDist, c1)
-    # KparDist.hold()
-    # dg11 = kfun.kernelMatrix(KparDist, c1, diff=True)
-    # KparDist.release()
-    
-    # g12 = kfun.kernelMatrix(KparDist, c2, c1)
-    # KparDist.hold()
-    # dg12 = kfun.kernelMatrix(KparDist, c2, c1, diff=True)
-    # KparDist.release()
+    a1 = np.sqrt((fvDef.surfel**2).sum(axis=1)+1e-10)
+    a2 = np.sqrt((fv1.surfel**2).sum(axis=1)+1e-10)
+    cr1 = fvDef.surfel / a1[:, np.newaxis]
+    #cr2 = fv1.surfel / a2[:, np.newaxis]
 
     z1 = KparDist.applyK(c1, a1[:, np.newaxis]) - KparDist.applyK(c2, a2[:, np.newaxis], firstVar=c1)
     z1 = np.multiply(z1, cr1)
@@ -1202,14 +1296,6 @@ def measureNormGradient(fvDef, fv1, KparDist):
     dz1 = (1./3.) * (KparDist.applyDiffKT(c1, a1[np.newaxis,:,np.newaxis], a1[np.newaxis,:,np.newaxis]) -
                       KparDist.applyDiffKT(c2, a1[np.newaxis,:,np.newaxis], a2[np.newaxis,:,np.newaxis], firstVar=c1))
                         
-    # z1 = g11*a1.T - g12 * a2.T
-    # z1 = np.multiply(z1, cr1)
-    # dg1 = np.multiply(dg11, a1.T)
-    # dg11 = np.multiply(dg1, a1)
-    # dg1 = np.multiply(dg12, a1.T)
-    # dg12 = np.multiply(dg1, a2)
-
-    # dz1 = (2./3.) * (np.multiply(dg11.sum(axis=1), c1) - dg11*c1 - np.multiply(dg12.sum(axis=1), c1) + dg12*c2)
 
     xDef1 = xDef[fvDef.faces[:, 0], :]
     xDef2 = xDef[fvDef.faces[:, 1], :]
@@ -1217,17 +1303,17 @@ def measureNormGradient(fvDef, fv1, KparDist):
 
     px = np.zeros([xDef.shape[0], dim])
     I = fvDef.faces[:,0]
-    crs = np.cross(xDef3 - xDef2, z1)
+    crs = np.cross(xDef3 - xDef2, z1)/2
     for k in range(I.size):
         px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
 
     I = fvDef.faces[:,1]
-    crs = np.cross(xDef1 - xDef3, z1)
+    crs = np.cross(xDef1 - xDef3, z1)/2
     for k in range(I.size):
         px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
 
     I = fvDef.faces[:,2]
-    crs = np.cross(xDef2 - xDef1, z1)
+    crs = np.cross(xDef2 - xDef1, z1)/2
     for k in range(I.size):
         px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
 
@@ -1236,14 +1322,10 @@ def measureNormGradient(fvDef, fv1, KparDist):
 def varifoldNorm0(fv1, KparDist):
     d=1
     c2 = fv1.centers
-    cr2 = fv1.surfel
-    a2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)
-    cr2 = cr2/a2[:,np.newaxis]
+    a2 = np.sqrt((fv1.surfel**2).sum(axis=1)+1e-10)
+    cr2 = fv1.surfel/a2[:,np.newaxis]
     cr2cr2 = (cr2[:,np.newaxis,:]*cr2[np.newaxis,:,:]).sum(axis=2)
     a2a2 = a2[:,np.newaxis]*a2[np.newaxis,:]
-    #cr2 = np.mat(np.sqrt((cr2**2).sum(axis=1)))
-    #g11 = kfun.kernelMatrix(KparDist, c2)
-    #print cr2.shape, g11.shape
     beta2 = (1 + d*cr2cr2**2)*a2a2
     return KparDist.applyK(c2, beta2[...,np.newaxis], matrixWeights=True).sum()
         
@@ -1252,13 +1334,11 @@ def varifoldNorm0(fv1, KparDist):
 def varifoldNormDef(fvDef, fv1, KparDist):
     d=1
     c1 = fvDef.centers
-    cr1 = fvDef.surfel
     c2 = fv1.centers
-    cr2 = fv1.surfel
-    a1 = np.sqrt((cr1**2).sum(axis=1)+1e-10)
-    a2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)
-    cr1 = cr1/a1[:,np.newaxis]
-    cr2 = cr2/a2[:,np.newaxis]
+    a1 = np.sqrt((fvDef.surfel**2).sum(axis=1)+1e-10)
+    a2 = np.sqrt((fv1.surfel**2).sum(axis=1)+1e-10)
+    cr1 = fvDef.surfel/a1[:,np.newaxis]
+    cr2 = fv1.surfel/a2[:,np.newaxis]
 
     cr1cr1 = (cr1[:,np.newaxis,:]*cr1[np.newaxis,:,:]).sum(axis=2)
     a1a1 = a1[:,np.newaxis]*a1[np.newaxis,:]
@@ -1281,15 +1361,13 @@ def varifoldNormGradient(fvDef, fv1, KparDist):
     d=1
     xDef = fvDef.vertices
     c1 = fvDef.centers
-    cr1 = fvDef.surfel
     c2 = fv1.centers
-    cr2 = fv1.surfel
     dim = c1.shape[1]
 
-    a1 = np.sqrt((cr1**2).sum(axis=1)+1e-10)
-    a2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)
-    cr1 = cr1 / a1[:, np.newaxis]
-    cr2 = cr2 / a2[:, np.newaxis]
+    a1 = np.sqrt((fvDef.surfel**2).sum(axis=1)+1e-10)
+    a2 = np.sqrt((fv1.surfel**2).sum(axis=1)+1e-10)
+    cr1 = fvDef.surfel / a1[:, np.newaxis]
+    cr2 = fv1.surfel / a2[:, np.newaxis]
     cr1cr1 =  (cr1[:, np.newaxis, :] * cr1[np.newaxis, :, :]).sum(axis=2)
     cr1cr2 =  (cr1[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
 
@@ -1311,21 +1389,168 @@ def varifoldNormGradient(fvDef, fv1, KparDist):
 
     px = np.zeros([xDef.shape[0], dim])
     I = fvDef.faces[:,0]
-    crs = np.cross(xDef3 - xDef2, z1)
+    crs = np.cross(xDef3 - xDef2, z1)/2
     for k in range(I.size):
         px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
 
     I = fvDef.faces[:,1]
-    crs = np.cross(xDef1 - xDef3, z1)
+    crs = np.cross(xDef1 - xDef3, z1)/2
     for k in range(I.size):
         px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
 
     I = fvDef.faces[:,2]
-    crs = np.cross(xDef2 - xDef1, z1)
+    crs = np.cross(xDef2 - xDef1, z1)/2
     for k in range(I.size):
         px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
 
     return 2*px
+
+
+def L2Norm0(fv1):
+    return np.fabs(fv1.surfVolume())
+    
+def L2Norm(fvDef, vfld):
+    vf = np.zeros((fvDef.centers.shape[0], 3))
+    for k in range(3):
+        vf[:,k] = diffeo.multilinInterp(vfld[k,...], fvDef.centers.T)
+    #vf = fvDef.centers/3 - 2*vf
+    #vf =  - 2*vf
+    #print 'volume: ', fvDef.surfVolume(), (vf*fvDef.surfel).sum()
+    return np.fabs(fvDef.surfVolume()) - 2*(vf*fvDef.surfel).sum()
+    
+def L2NormGradient(fvDef, vfld):
+    xDef = fvDef.vertices
+    c1 = fvDef.centers
+    cr1 = fvDef.surfel
+    dvf = np.zeros((fvDef.faces.shape[0], 3, 3))
+    for k in range(3):
+        dvf[:,k,:] = diffeo.multilinInterpGradient(vfld[k,...], c1.T).T
+    gradc = cr1/3
+    for k in range(3):
+        gradc[:,k] -= 2*(dvf[:,:,k]*cr1).sum(axis=1)
+    gradc = gradc/3
+    
+    gradn = np.zeros((fvDef.faces.shape[0],3))
+    for k in range(3):
+        gradn[:,k] = diffeo.multilinInterp(vfld[k,...], c1.T)
+    gradn = c1/3 - 2*gradn
+    gradn = gradn/2
+    
+    grad = np.zeros((xDef.shape[0], 3))
+    xDef0 = xDef[fvDef.faces[:, 0], :]
+    xDef1 = xDef[fvDef.faces[:, 1], :]
+    xDef2 = xDef[fvDef.faces[:, 2], :]
+
+    crs = np.cross(xDef2 - xDef1, gradn)
+    I = fvDef.faces[:,0]
+    for k in range(I.size):
+        grad[I[k], :] = grad[I[k], :] + gradc[k,:] - crs[k,:]
+
+    crs = np.cross(xDef0 - xDef2, gradn)
+    I = fvDef.faces[:,1]
+    for k in range(I.size):
+        grad[I[k], :] = grad[I[k], :] + gradc[k,:] - crs[k,:]
+
+    crs = np.cross(xDef1 - xDef0, gradn)
+    I = fvDef.faces[:,2]
+    for k in range(I.size):
+        grad[I[k], :] = grad[I[k], :] + gradc[k,:] - crs[k,:]
+        
+    return grad
+
+
+def normGrad(fv, phi):
+    v1 = fv.vertices[fv.faces[:,0],:]
+    v2 = fv.vertices[fv.faces[:,1],:]
+    v3 = fv.vertices[fv.faces[:,2],:]
+    l1 = ((v2-v3)**2).sum(axis=1)
+    l2 = ((v1-v3)**2).sum(axis=1)
+    l3 = ((v1-v2)**2).sum(axis=1)
+    phi1 = phi[fv.faces[:,0],:]
+    phi2 = phi[fv.faces[:,1],:]
+    phi3 = phi[fv.faces[:,2],:]
+    a = 4*np.sqrt((fv.surfel**2).sum(axis=1))
+    u = l1*((phi2-phi1)*(phi3-phi1)).sum(axis=1) + l2*((phi3-phi2)*(phi1-phi2)).sum(axis=1) + l3*((phi1-phi3)*(phi2-phi3)).sum(axis=1)
+    res = (u/a).sum()
+    return res
+
+def laplacian(fv, phi, weighted=False):
+    res = np.zeros(phi.shape)
+    v1 = fv.vertices[fv.faces[:,0],:]
+    v2 = fv.vertices[fv.faces[:,1],:]
+    v3 = fv.vertices[fv.faces[:,2],:]
+    l1 = (((v2-v3)**2).sum(axis=1))[...,np.newaxis]
+    l2 = (((v1-v3)**2).sum(axis=1))[...,np.newaxis]
+    l3 = (((v1-v2)**2).sum(axis=1))[...,np.newaxis]
+    phi1 = phi[fv.faces[:,0],:]
+    phi2 = phi[fv.faces[:,1],:]
+    phi3 = phi[fv.faces[:,2],:]
+    a = 8*(np.sqrt((fv.surfel**2).sum(axis=1)))[...,np.newaxis]
+    r1 = (l1 * (phi2 + phi3-2*phi1) + (l2-l3) * (phi2-phi3))/a
+    r2 = (l2 * (phi1 + phi3-2*phi2) + (l1-l3) * (phi1-phi3))/a
+    r3 = (l3 * (phi1 + phi2-2*phi3) + (l2-l1) * (phi2-phi1))/a
+    for k,f in enumerate(fv.faces):
+        res[f[0],:] += r1[k,:]
+        res[f[1],:] += r2[k,:]
+        res[f[2],:] += r3[k,:]
+    if weighted:
+        av = fv.computeVertexArea()
+        return res/av[0]
+    else:
+        return res
+
+def diffNormGrad(fv, phi, variables='both'):
+    v1 = fv.vertices[fv.faces[:,0],:]
+    v2 = fv.vertices[fv.faces[:,1],:]
+    v3 = fv.vertices[fv.faces[:,2],:]
+    l1 = (((v2-v3)**2).sum(axis=1))
+    l2 = (((v1-v3)**2).sum(axis=1))
+    l3 = (((v1-v2)**2).sum(axis=1))
+    phi1 = phi[fv.faces[:,0],:]
+    phi2 = phi[fv.faces[:,1],:]
+    phi3 = phi[fv.faces[:,2],:]
+    #a = ((fv.surfel**2).sum(axis=1))
+    a = 2*np.sqrt((fv.surfel**2).sum(axis=1))
+    a2 = 2*a[...,np.newaxis]
+    if variables == 'both' or variables == 'phi':
+        r1 = (l1[:, np.newaxis] * (phi2 + phi3-2*phi1) + (l2-l3)[:, np.newaxis] * (phi2-phi3))/a2
+        r2 = (l2[:, np.newaxis] * (phi1 + phi3-2*phi2) + (l1-l3)[:, np.newaxis] * (phi1-phi3))/a2
+        r3 = (l3[:, np.newaxis] * (phi1 + phi2-2*phi3) + (l2-l1)[:, np.newaxis] * (phi2-phi1))/a2
+        gradphi = np.zeros(phi.shape)
+        for k,f in enumerate(fv.faces):
+            gradphi[f[0],:] -= r1[k,:]
+            gradphi[f[1],:] -= r2[k,:]
+            gradphi[f[2],:] -= r3[k,:]
+
+    if variables == 'both' or variables == 'x':
+        gradx = np.zeros(fv.vertices.shape)
+        u = (l1*((phi2-phi1)*(phi3-phi1)).sum(axis=1) + l2*((phi3-phi2)*(phi1-phi2)).sum(axis=1) 
+        + l3*((phi1-phi3)*(phi2-phi3)).sum(axis=1))
+        #u = (2*u/a**2)[...,np.newaxis]
+        u = (u/(a**3))[...,np.newaxis]
+        r1 = (- u * np.cross(v2-v3,fv.surfel) + 2*((v1-v3) *(((phi3-phi2)*(phi1-phi2)).sum(axis=1))[:,np.newaxis]
+            + (v1-v2)*(((phi1-phi3)*(phi2-phi3)).sum(axis=1)[:,np.newaxis]))/a2)
+        r2 = (- u * np.cross(v3-v1,fv.surfel) + 2*((v2-v1) *(((phi1-phi3)*(phi2-phi3)).sum(axis=1))[:,np.newaxis]
+            + (v2-v3)*(((phi2-phi1)*(phi3-phi1)).sum(axis=1))[:,np.newaxis])/a2)
+        r3 = (- u * np.cross(v1-v2,fv.surfel) + 2*((v3-v2) *(((phi2-phi1)*(phi3-phi1)).sum(axis=1))[:,np.newaxis]
+            + (v3-v1)*(((phi3-phi2)*(phi1-phi2)).sum(axis=1)[:,np.newaxis]))/a2)
+        for k,f in enumerate(fv.faces):
+            gradx[f[0],:] += r1[k,:]
+            gradx[f[1],:] += r2[k,:]
+            gradx[f[2],:] += r3[k,:]
+
+    if variables == 'both':
+        return (gradphi, gradx)
+    elif variables == 'phi':
+        return gradphi
+    elif variables == 'x':
+        return gradx
+    else:
+        logging.info('Incorrect option in diffNormGrad')
+    
+
+
+
 
 
 def readskip(f, c):

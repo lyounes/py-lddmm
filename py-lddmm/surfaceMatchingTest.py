@@ -1,11 +1,13 @@
 import numpy as np
 import surfaces
+import loggingUtils
 from surfaces import *
 from kernelFunctions import *
 from surfaceMatching import *
 
 def compute(createSurfaces=True):
 
+    loggingUtils.setup_default_logging('', stdOutput = True)
     if createSurfaces:
         [x,y,z] = np.mgrid[0:200, 0:200, 0:200]/100.
         y = y-1
@@ -26,8 +28,8 @@ def compute(createSurfaces=True):
         fv2 = Surface() ;
         fv2.Isosurface(I1, value = 0, target=2000, scales=[1, 1, 1], smooth=0.01)
 
-        fv1.saveVTK('/Users/younes/Development/Results/Diffeons/fv1.vtk')
-        fv2.saveVTK('/Users/younes/Development/Results/Diffeons/fv2.vtk')
+        fv1.saveVTK('/cis/home/younes/MorphingData/fv1.vtk')
+        fv2.saveVTK('/cis/home/younes/MorphingData/fv2.vtk')
     else:
         if False:
             path = '/Users/younes/Development/project/ncbc/data/template/PDS-II/AllScan1_PDSII/shape_analysis/hippocampus/'
@@ -57,18 +59,22 @@ def compute(createSurfaces=True):
                     fv2.faces = fv2.faces[:, [0,2,1]]
             else:
                 #f1.append(surfaces.Surface(filename = path+'amygdala/biocardAmyg 2/'+sub2+'_amyg_L.byu'))
-                fv1 = Surface(filename='/Users/younes/Development/Results/Diffeons/fv1.vtk')
-                fv2  = Surface(filename='/Users/younes/Development/Results/Diffeons/fv2.vtk')
+                fv1 = Surface(filename='/cis/home/younes/MorphingData/fv1.vtk')
+                fv2 = Surface(filename='/cis/home/younes/MorphingData/fv2.vtk')
 
     ## Object kernel
     K1 = Kernel(name='gauss', sigma = 10.0)
 
-    sm = SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=10, sigmaError=1., errorType='varifold')
-    f = SurfaceMatching(Template=fv1, Target=fv2, outputDir='/Users/younes/Development/Results/Surface/Balls',param=sm, testGradient=True,
+    sm = SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=10, sigmaError=1., errorType='current')# internalCost='h1')
+    f = SurfaceMatching(Template=fv1, Target=fv2, outputDir='/cis/home/younes/Results/Balls',param=sm, testGradient=True,
                         #subsampleTargetSize = 500,
-                         maxIter=1000, affine= 'none', rotWeight=1., transWeight = 1., scaleWeight=10., affineWeight=100.)
+                         internalWeight=100, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)
 
     f.optimizeMatching()
 
 
     return f
+
+
+if __name__=="__main__":
+    compute(False)

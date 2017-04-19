@@ -2,6 +2,7 @@ import numpy as np
 import kernelFunctions as kfun
 import gaussianDiffeons as gd
 import numpy.linalg as LA
+import pointEvolution_fort as pfor
 import affineBasis
 
 def gaussianDiffeonsEvolutionEuler(c0, S0, at, sigma, affine = None, withJacobian=False, withPointSet=None, withNormals=None,
@@ -26,7 +27,6 @@ def gaussianDiffeonsEvolutionEuler(c0, S0, at, sigma, affine = None, withJacobia
     if not(withPointSet is None):
         simpleOutput = False
         x0 = withPointSet
-        N = x0.shape[0]
         xt = np.zeros(np.concatenate([[T], x0.shape]))
         xt[0, ...] = x0
         if type(withJacobian) == bool:
@@ -663,7 +663,7 @@ def landmarkEPDiff(T, x0, a0, KparDiff, affine = None, withJacobian=False, withN
 # affine: affine component [A, b] or None
 # if withJacobian =True: return Jacobian determinant
 # if withNormal = nu0, returns nu(t) evolving as dnu/dt = -Dv^{T} nu
-def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=False, withNormals=None, withPointSet=None):
+def landmarkDirectEvolutionEuler_py(x0, at, KparDiff, affine = None, withJacobian=False, withNormals=None, withPointSet=None):
     N = x0.shape[0]
     dim = x0.shape[-1]
     M = at.shape[0] + 1
@@ -737,6 +737,61 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=F
         return output
 
 
+def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=False, withNormals=None, withPointSet=None):
+    N = x0.shape[0]
+    dim = x0.shape[1]
+    M = at.shape[0] 
+    timeStep = 1.0/(M)
+#    xt = np.zeros([M, N, dim])
+    simpleOutput = True
+    withJ = 0
+    withnu = 0
+    if not (withNormals is None):
+        withnu = 1
+        simpleOutput = False
+        nt0 = withNormals
+    else:
+        nt0 = np.zeros([N,dim])
+        
+    if not(affine is None):
+        A0 = affine[0]
+        b = affine[1]
+        A = np.zeros([M,dim,dim])
+        for k in range(A0.shape[0]):
+            A[k,...] = affineBasis.getExponential(timeStep*A0[k]) 
+    else:
+        A = np.zeros([M,dim,dim])
+        b = np.zeros([M,dim])
+        for k in range(M):
+            A[k,...] = np.eye(dim) 
+        
+    if not (withPointSet is None):
+        simpleOutput = False
+        K = withPointSet.shape[0]
+        y0 = withPointSet
+        if withJacobian:
+            withJ = 1
+            simpleOutput = False
+    else:
+        K = 1
+        y0 = np.zeros([K,dim])
+        if withJacobian:
+            simpleOutput = False
+
+    foo = pfor.shoot1order(x0, at, y0, nt0, A, b, KparDiff.sigma, KparDiff.order, withJ, withnu,
+                           M, N, dim, K)
+    if simpleOutput:
+        return foo[0]
+    else:
+        output = [foo[0]]
+        if not (withPointSet is None):
+            output.append(foo[1])
+        if not (withNormals is None):
+            output.append(foo[3])
+        if withJacobian:
+            output.append(foo[2])
+        return output
+
 
 
 def landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine = None):
@@ -745,6 +800,26 @@ def landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine = None)
     M = at.shape[0]
     timeStep = 1.0/M
     xt = landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+    if not(affine is None):
+        A0 = affine[0]
+        A = np.zeros([M,dim,dim])
+        for k in range(A0.shape[0]):
+            A[k,...] = affineBasis.getExponential(timeStep*A0[k]) 
+    else:
+        A = np.zeros([M,dim,dim])
+        for k in range(M):
+            A[k,...] = np.eye(dim) 
+            
+    pxt = pfor.adjoint1order(xt, at, px1, A, KparDiff.sigma, KparDiff.order, regweight, M, N, dim)
+    return pxt, xt
+
+def landmarkHamiltonianCovector_py(x0, at, px1, KparDiff, regweight, affine = None):
+    N = x0.shape[0]
+    dim = x0.shape[1]
+    M = at.shape[0]
+    timeStep = 1.0/M
+    xt = landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+    
     pxt = np.zeros([M+1, N, dim])
     pxt[M, :, :] = px1
     if not(affine is None):
@@ -833,7 +908,7 @@ def timeSeriesCovector(x0, at, px1, KparDiff, regweight, affine = None, isjump =
     nTarg = len(px1)
     if isjump is None:
         Tsize1 = M/nTarg
-        isjump = np.array(M+1, dtype=bool_)
+        isjump = np.array(M+1, dtype=bool)
         for k in range(nTarg):
             isjump[(k+1)*Tsize1] = True
     timeStep = 1.0/M
@@ -903,13 +978,11 @@ def timeSeriesGradient(x0, at, px1, KparDiff, regweight, getCovector = False, af
         else:
             return dat, dA, db, xt, pxt
 
-def secondOrderEvolution(x0, a0, rhot, KparDiff, withJacobian=False, withPointSet=None, affine=None):
+def secondOrderEvolution(x0, a0, rhot, KparDiff, timeStep, withJacobian=False, withPointSet=None, affine=None):
     T = rhot.shape[0]
     N = x0.shape[0]
     #print M, N
     dim = x0.shape[1]
-    dim2 = dim*dim
-    timeStep = 1.0/T
     at = np.zeros([T+1, N, dim])
     xt = np.zeros([T+1, N, dim])
     xt[0, :, :] = x0
@@ -931,7 +1004,7 @@ def secondOrderEvolution(x0, a0, rhot, KparDiff, withJacobian=False, withPointSe
             Jt = np.zeros([T+1, K])
     elif withJacobian:
         simpleOutput = False
-        Jt = np.zeros([T+1, M])
+        Jt = np.zeros([T+1, N])
 
     for k in range(T):
         x = np.squeeze(xt[k, :, :])
@@ -941,7 +1014,8 @@ def secondOrderEvolution(x0, a0, rhot, KparDiff, withJacobian=False, withPointSe
         zx = KparDiff.applyK(x, a)
         za = -KparDiff.applyDiffKT(x, a[np.newaxis,...], a[np.newaxis,...]) + rho
         if aff_:
-            U = np.eye(dim) + timeStep * A[k]
+            #U = np.eye(dim) + timeStep * A[k]
+            U = affineBasis.getExponential(timeStep * A[k])
             xt[k+1, :, :] = np.dot(x + timeStep * zx, U.T) + timeStep * b[k]
             Ui = LA.inv(U)
             at[k+1, :, :] = np.dot(a + timeStep * za, Ui)
@@ -976,8 +1050,6 @@ def secondOrderEvolution(x0, a0, rhot, KparDiff, withJacobian=False, withPointSe
 
 
 def secondOrderHamiltonian(x, a, rho, px, pa, KparDiff, affine=None):
-
-
     Ht = (px * KparDiff.applyK(x, a)).sum() 
     Ht += (pa*(-KparDiff.applyDiffKT(x, a[np.newaxis,...], a[np.newaxis,...]) + rho)).sum()
     Ht -= (rho**2).sum()/2
@@ -988,35 +1060,38 @@ def secondOrderHamiltonian(x, a, rho, px, pa, KparDiff, affine=None):
     return Ht
 
     
-def secondOrderCovector(x0, a0, rhot, px1, pa1, KparDiff, affine = None, times= None):
+def secondOrderCovector(x0, a0, rhot, px1, pa1, KparDiff, timeStep, affine = None, isjump = None):
     T = rhot.shape[0]
     nTarg = len(px1)
-    Tsize1 = T/nTarg
     if not(affine is None):
         aff_ = True
         A = affine[0]
-        b = affine[1]
     else:
         aff_ = False
-    if times is None:
-        t1 = (float(T)/nTarg) * (range(nTarg)+1)
+        
+    if isjump is None:
+        isjump = np.zeros(T, dtype=bool)
+        for t in range(1,T):
+            if t%nTarg == 0:
+                isjump[t] = True
+
     N = x0.shape[0]
     dim = x0.shape[1]
-    timeStep = 1.0/T
-    [xt, at] = secondOrderEvolution(x0, a0, rhot, KparDiff)
+    [xt, at] = secondOrderEvolution(x0, a0, rhot, KparDiff, timeStep, affine=affine)
     pxt = np.zeros([T+1, N, dim])
     pxt[T, :, :] = px1[nTarg-1]
     pat = np.zeros([T+1, N, dim])
     pat[T, :, :] = pa1[nTarg-1]
+    jIndex = nTarg - 2
     for t in range(T):
         px = np.squeeze(pxt[T-t, :, :])
         pa = np.squeeze(pat[T-t, :, :])
         x = np.squeeze(xt[T-t-1, :, :])
         a = np.squeeze(at[T-t-1, :, :])
-        rho = np.squeeze(rhot[T-t-1, :, :])
+        #rho = np.squeeze(rhot[T-t-1, :, :])
         
         if aff_:
-            U = np.eye(dim) + timeStep * A[T-t-1]
+            U = affineBasis.getExponential(timeStep * A[T-t-1])
             px_ = np.dot(px, U)
             Ui = LA.inv(U)
             pa_ = np.dot(pa,Ui.T)
@@ -1059,16 +1134,17 @@ def secondOrderCovector(x0, a0, rhot, px1, pa1, KparDiff, affine = None, times= 
         #print 'zpa2', zpx.sum()
         pxt[T-t-1, :, :] = px_ + timeStep * zpx
         pat[T-t-1, :, :] = pa_ + timeStep * zpa
-        if (t<T-1) and ((T-1-t)%Tsize1 == 0):
+        if isjump[T-t-1]:
 #            print T-t-1, (T-t-1)/Tsize1
-            pxt[T-t-1, :, :] += px1[(T-t-1)/Tsize1 - 1]
-            pat[T-t-1, :, :] += pa1[(T-t-1)/Tsize1 - 1]
+            pxt[T-t-1, :, :] += px1[jIndex]
+            pat[T-t-1, :, :] += pa1[jIndex]
+            jIndex -= 1
 
     return pxt, pat, xt, at
 
 # Computes gradient after covariant evolution for deformation cost a^TK(x,x) a
-def secondOrderGradient(x0, a0, rhot, px1, pa1, KparDiff, times = None, getCovector = False, affine=None, controlWeight=1.0):
-    (pxt, pat, xt, at) = secondOrderCovector(x0, a0, rhot, px1, pa1, KparDiff, times=times,affine=affine)
+def secondOrderGradient(x0, a0, rhot, px1, pa1, KparDiff, timeStep, isjump = None, getCovector = False, affine=None, controlWeight=1.0):
+    (pxt, pat, xt, at) = secondOrderCovector(x0, a0, rhot, px1, pa1, KparDiff, timeStep, isjump=isjump,affine=affine)
     if not (affine is None):
         dA = np.zeros(affine[0].shape)
         db = np.zeros(affine[1].shape)
@@ -1076,21 +1152,23 @@ def secondOrderGradient(x0, a0, rhot, px1, pa1, KparDiff, times = None, getCovec
     timeStep = 1.0/Tsize
     drhot = np.zeros(rhot.shape)
     if not (affine is None):
-        dim = x0.shape[1]
         for k in range(Tsize):
             x = np.squeeze(xt[k, :, :])
             a = np.squeeze(at[k, :, :])
             rho = np.squeeze(rhot[k, :, :])
             px = np.squeeze(pxt[k+1, :, :])
             pa = np.squeeze(pat[k+1, :, :])
-            zx = x + timeStep*KparDiff.applyK(x, a)
+            zx = x + timeStep * KparDiff.applyK(x, a)
             za = a + timeStep * (-KparDiff.applyDiffKT(x, a[np.newaxis,...], a[np.newaxis,...]) + rho)
-            U = np.eye(dim) + timeStep * affine[0][k]
+            U = affineBasis.getExponential(timeStep * affine[0][k])
+            #U = np.eye(dim) + timeStep * affine[0][k]
             Ui = LA.inv(U)
             pa = np.dot(pa, Ui.T)
             za = np.dot(za, Ui)
-            dA[k,...] =  ((px[:,:,np.newaxis]*zx[:,np.newaxis,:]).sum(axis=0)
-                            - (za[:,:,np.newaxis]*pa[:,np.newaxis,:]).sum(axis=0))
+#            dA[k,...] =  ((px[:,:,np.newaxis]*zx[:,np.newaxis,:]).sum(axis=0)
+#                            - (za[:,:,np.newaxis]*pa[:,np.newaxis,:]).sum(axis=0))
+            dA[k,...] =  (affineBasis.gradExponential(timeStep*affine[0][k], px, zx) 
+                            - affineBasis.gradExponential(timeStep*affine[0][k], za, pa))
             drhot[k,...] = rho*controlWeight - pa
         db = pxt[1:Tsize+1,...].sum(axis=1)
         # for k in range(rhot.shape[0]):

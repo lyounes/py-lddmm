@@ -5,6 +5,7 @@ class AffineBasis:
         u = 1.0/np.sqrt(2.0)
         dimSym = (dim * (dim-1))/2
         affCode = 0
+        rotCode = 0 
         self.dim = dim
         self.rotComp = []
         self.simComp = []
@@ -12,16 +13,22 @@ class AffineBasis:
         self.transComp = []
         if affine == 'affine':
             affCode = 1
+            rotCode = 1
             self.affineDim = 2* (dimSym + dim)
         elif affine == 'similitude':
             affCode = 2
+            rotCode = 1
             self.affineDim = dimSym + 1 + dim
         elif affine == 'euclidean':
             affCode = 3
+            rotCode = 1
             self.affineDim = dimSym + dim
         elif affine == 'translation':
             affCode = 4
             self.affineDim = dim
+        elif affine == 'scale':
+            affCode = 2
+            self.affineDim = dim + 1
         else:
             affCode = 5
             self.basis = []
@@ -50,7 +57,7 @@ class AffineBasis:
                 self.basis[i*dim+i,k] = 1./np.sqrt(dim)
             k += 1
             self.simComp = range(k0, k)
-        if affCode <= 3:
+        if rotCode == 1:
             k0 = k
             for i in range(dim):
                 for j in range(i+1, dim):
@@ -81,7 +88,8 @@ class AffineBasis:
 
     def getExponential(self, A):
         if self.dim==3 and self.affCode==3:
-            t = np.sqrt(A[0,1]**2+A[0,2]**2 + A[1,2]**2)
+            #t = np.sqrt(A[0,1]**2+A[0,2]**2 + A[1,2]**2)
+            t = np.sqrt((A**2).sum()/2)
             R = np.eye(3)
             if t > 1e-10:
                 R += ((1-np.cos(t))/(t**2)) * (np.dot(A,A)) + (np.sin(t)/t)*A
@@ -93,15 +101,33 @@ class AffineBasis:
         dR = np.dot(p.T, x)
         if self.dim==3 and self.affCode==3:
             t = np.sqrt(A[0,1]**2+A[0,2]**2 + A[1,2]**2)
+            #s2 = np.sqrt(2.)
             if t > 1e-10:
                 st = np.sin(t)
                 ct = np.cos(t)
                 a1 = st/t
                 a2 = (1-ct)/(t**2)
-                da1 = (t*ct-st)/(8*t**3)
-                da2 = (t*st -2*(1-ct))/(8*t**4)
-                dR = (a1*dR + (da1 * (p*np.dot(x,A)).sum() + da2 * (p*np.dot(x,np.dot(A,A))).sum())*A
-                      - a2 * (np.dot(np.dot(p,A.T).T,x) + np.dot(p.T,np.dot(x,A))))
+                da1 = (t*ct-st)/(2*t**3)
+                da2 = (t*st -2*(1-ct))/(2*t**4)
+#                dR = (a1*dR + (da1 * (p*np.dot(x,A)).sum() + da2 * (p*np.dot(x,np.dot(A,A))).sum())*A
+#                      - a2 * (np.dot(np.dot(p,A.T).T,x) + np.dot(p.T,np.dot(x,A))))
+                dR = (a1*dR + (da1 * (p*np.dot(x,A.T)).sum() + da2 * (p*np.dot(x,np.dot(A,A).T)).sum())*A
+                  + a2 * (np.dot(np.dot(p,A).T,x) + np.dot(p.T,np.dot(x,A.T))))
+#            dA = np.random.normal(size=A.shape)
+#            dR2 = np.zeros([self.dim, self.dim])
+#            u0 = (p*np.dot(x,self.getExponential(A).T)).sum()
+#            ep = 1e-8
+#            for k in range(self.dim):
+#                for l in range(self.dim):
+#                    Atry = np.copy(A)
+#                    Atry[k,l] = Atry[k,l] + ep
+#                    dR2[k,l] = ((p*np.dot(x,self.getExponential(Atry).T)).sum() - u0)/ep
+#            #print t, A, dA
+#            print 'dR:', dR 
+#            print 'dR2:', dR2
+#            u1 = (p*np.dot(x,self.getExponential(A+ep*dA).T)).sum()
+#            print (u1-u0)/ep, (dR*dA).sum()
+#                  TEST OK
         return dR
 
                 
@@ -110,7 +136,7 @@ class AffineBasis:
             
     def integrateFlow(self, Afft):
         Tsize = Afft.shape[0]
-        dim2 = self.dim**2
+        #dim2 = self.dim**2
         X = [np.zeros([Tsize+1, self.dim, self.dim]), np.zeros([Tsize+1, self.dim])]
         A = self.getTransforms(Afft)
         dt = 1.0/Tsize
@@ -139,7 +165,7 @@ def getExponential(A):
         if t > 1e-10:
             R += ((1-np.cos(t))/(t**2)) * (np.dot(A,A)) + (np.sin(t)/t)*A
     else:
-        R = np.eye(self.dim) + A
+        R = np.eye(A.shape[0]) + A
     return R
 
 def gradExponential(A, p, x):
@@ -151,9 +177,11 @@ def gradExponential(A, p, x):
             ct = np.cos(t)
             a1 = st/t
             a2 = (1-ct)/(t**2)
-            da1 = (t*ct-st)/(8*t**3)
-            da2 = (t*st -2*(1-ct))/(8*t**4)
-            dR = (a1*dR + (da1 * (p*np.dot(x,A)).sum() + da2 * (p*np.dot(x,np.dot(A,A))).sum())*A
-                  - a2 * (np.dot(np.dot(p,A.T).T,x) + np.dot(p.T,np.dot(x,A))))
+            da1 = .5*(t*ct-st)/(t**3)
+            da2 = .5*(t*st -2*(1-ct))/(t**4)
+            dR = (a1*dR + (da1 * (p*np.dot(x,A.T)).sum() + da2 * (p*np.dot(x,np.dot(A,A).T)).sum())*A
+                  + a2 * (np.dot(np.dot(p,A).T,x) + np.dot(p.T,np.dot(x,A.T))))
+#            dR = (a1*dR + (da1 * (p*np.dot(x,A.T)).sum() + da2 * (p*np.dot(x,np.dot(A,A).T)).sum())*A
+#                  + a2 * (np.dot(np.dot(p,A).T,x) + np.dot(p.T,np.dot(x,A.T))))
     return dR
 

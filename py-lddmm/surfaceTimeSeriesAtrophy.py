@@ -1,10 +1,7 @@
-import os
 import numpy as np
 import numpy.linalg as la
-import scipy as sp
 import logging
 import surfaces
-import kernelFunctions as kfun
 import pointEvolution as evol
 #import pointEvolution_fort as evol_omp
 import conjugateGradient as cg
@@ -33,10 +30,10 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
     def __init__(self, Template=None, Targets=None, fileTempl=None, fileTarg=None, param=None, times = None,
                 maxIter_cg=1000, regWeight=1.0, affineWeight = 1.0, verb=True, affine='none', 
                 rotWeight = None, scaleWeight = None, transWeight = None,
-                subsampleTargetSize=-1, testGradient=True, saveFile = 'evolution', outputDir = '.',
+                rescaleTemplate=False, subsampleTargetSize=-1, testGradient=True, saveFile = 'evolution', outputDir = '.',
                 mu = 0.1, volumeOnly=False, maxIter_al=100):
         super(SurfaceMatching, self).__init__(Template, Targets, fileTempl, fileTarg, param, times, maxIter_cg, regWeight, affineWeight,
-                                                verb, affine, rotWeight, scaleWeight, transWeight, subsampleTargetSize, testGradient,
+                                                verb, affine, rotWeight, scaleWeight, transWeight, rescaleTemplate, subsampleTargetSize, testGradient,
                                                 saveFile, outputDir)
 
 
@@ -56,9 +53,16 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         self.nu = np.zeros([self.Tsize+1, self.npt, self.dim])
         
         self.mu = mu
-        self.useKernelDotProduct = True
-        self.dotProduct = self.kernelDotProduct
-        self.saveRate = 10
+        #self.useKernelDotProduct = True
+        #self.dotProduct = self.kernelDotProduct
+        #self.saveRate = 1
+        self.coeffAff1 = self.coeffAff2 ;
+        self.affBurnIn = 10
+        #self.volumeWeight = 1
+#        if self.affineDim > 0:
+#            self.affineBurnIn = True
+#        else:
+#            self.affineBurnIn = False
         #self.useKernelDotProduct = False
         #self.dotProduct = self.standardDotProduct
 
@@ -67,17 +71,17 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         timeStep = 1.0/self.Tsize
         obj=0
         cval = np.zeros(self.cval.shape)
-        dim2 = self.dim**2
+        #dim2 = self.dim**2
         for t in range(self.jumpIndex[0], self.Tsize):
             a = at[t]
             x = xt[t]
-            # if self.affineDim > 0:
-            #     AB = np.dot(self.affineBasis, Afft[t]) 
-            #     A = AB[0:dim2].reshape([self.dim, self.dim])
-            #     b = AB[dim2:dim2+self.dim]
-            # else:
-            #     A = np.zeros([self.dim, self.dim])
-            #     b = np.zeros(self.dim)
+#            if self.affineDim > 0:
+#                AB = np.dot(self.affineBasis, Afft[t]) 
+#                A = AB[0:dim2].reshape([self.dim, self.dim])
+#                b = AB[dim2:dim2+self.dim]
+#            else:
+#                A = np.zeros([self.dim,self.dim])
+#                b = np.zeros(self.dim)
             nu = np.zeros(x.shape)
             fk = self.fv0.faces
             xDef0 = x[fk[:, 0], :]
@@ -95,8 +99,9 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
             nu *= self.fv0ori
 
 
-            #r = self.param.KparDiff.applyK(x, a) + np.dot(x, A.T) + b
-            r = self.param.KparDiff.applyK(x, a) 
+            r = self.param.KparDiff.applyK(x, a)# + np.dot(x, A.T) + b
+                
+                
             self.nu[t,...] = nu
             self.v[t,...] = r
             if self.volumeOnly:
@@ -114,18 +119,22 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         lmb = np.zeros(self.cval.shape)
         dxcval = np.zeros(xt.shape)
         dacval = np.zeros(at.shape)
-        dAffcval = np.zeros(Afft.shape)
-        dim2 = self.dim**2
+        dAffcval = [] #np.zeros(Afft.shape)
+        #dim2 = self.dim**2
         for t in range(self.jumpIndex[0], self.Tsize):
+            #print t
             a = at[t]
             x = xt[t]
-            # if self.affineDim > 0:
-            #     AB = np.dot(self.affineBasis, Afft[t]) 
-            #     A = AB[0:dim2].reshape([self.dim, self.dim])
-            #     b = AB[dim2:dim2+self.dim]
-            # else:
-            #     A = np.zeros([self.dim, self.dim])
-            #     b = np.zeros(self.dim)
+#            if self.affineDim > 0:
+#                AB = np.dot(self.affineBasis, Afft[t]) 
+#                #print 'AB', AB.shape, dim2
+#                A = AB[0:dim2].reshape([self.dim, self.dim])
+#                #print 'A', A
+#                b = AB[dim2:dim2+self.dim]
+#                #print 'b', b
+#            else:
+#                A = np.zeros([self.dim, self.dim])
+#                b = np.zeros(self.dim)
             fk = self.fv0.faces
             nu = np.zeros(x.shape)
             xDef0 = x[fk[:, 0], :]
@@ -145,7 +154,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
             #r2 = self.param.KparDiffOut.applyK(zB, aB)
 
             #dv = self.param.KparDiff.applyK(x, a) + np.dot(x, A.T) + b
-            vt = self.param.KparDiff.applyK(x, a)
+            vt = self.param.KparDiff.applyK(x, a) # + np.dot(x, A.T) + b
             if self.volumeOnly:
                 lmb[t] = -np.maximum((nu*vt).sum() -self.lmb[t]*self.mu, 0)/self.mu
                 lnu = lmb[t]*nu
@@ -159,13 +168,14 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
             dxcval[t] = self.param.KparDiff.applyDiffKT(x, a[np.newaxis,...], lnu[np.newaxis,...])
             dxcval[t] += self.param.KparDiff.applyDiffKT(x, lnu[np.newaxis,...], a[np.newaxis,...])
             #dxcval[t] += np.dot(lnu, A)
-            if self.useKernelDotProduct:
-                dacval[t] = np.copy(lnu)
-            else:
-                dacval[t] = self.param.KparDiff.applyK(x, lnu)
-            dAffcval = []
-            # if self.affineDim > 0:
-            #     dAffcval[t, :] = (np.dot(self.affineBasis.T, np.vstack([np.dot(lnu.T, x).reshape([dim2,1]), lnu.sum(axis=0).reshape([self.dim,1])]))).flatten()
+            #if self.useKernelDotProduct:
+            dacval[t] = np.copy(lnu)
+            #else:
+                #dacval[t] = self.param.KparDiff.applyK(x, lnu)
+#            dAffcval = []
+#            if self.affineDim > 0:
+#                dAffcval[t, :] = (np.dot(self.affineBasis.T, np.vstack([np.dot(lnu.T, x).reshape([dim2,1]), lnu.sum(axis=0).reshape([self.dim,1])]))).flatten()
+                #print "done"
             if not self.volumeOnly:
                 lv /= normNu.reshape([nu.shape[0], 1])
                 lv -= np.multiply(nu, np.multiply(nu, lv).sum(axis=1).reshape([nu.shape[0], 1]))
@@ -195,8 +205,8 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         eps = 0.00000001
         xtTry = xt + eps*np.random.randn(self.Tsize+1, self.npt, self.dim)
         atTry = at + eps*np.random.randn(self.Tsize, self.npt, self.dim)
-        # if self.affineDim > 0:
-        #     AfftTry = Afft + eps*np.random.randn(self.Tsize, self.affineDim)
+#        if self.affineDim > 0:
+#            AfftTry = Afft + eps*np.random.randn(self.Tsize, self.affineDim)
             
 
         u0 = self.constraintTerm(xt, at, Afft)
@@ -208,10 +218,10 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         logging.info('Testing constraints:')
         logging.info('var x: %f %f' %( self.Tsize*(ux[0]-u0[0])/(eps), -vx)) 
         logging.info('var a: %f %f' %( self.Tsize*(ua[0]-u0[0])/(eps), -va)) 
-        # if self.affineDim > 0:
-        #     uA = self.constraintTerm(xt, at, AfftTry)
-        #     vA = np.multiply(dA, AfftTry-Afft).sum()/eps
-        #     logging.info('var affine: %f %f' %(self.Tsize*(uA[0]-u0[0])/(eps), -vA ))
+#        if self.affineDim > 0:
+#             uA = self.constraintTerm(xt, at, AfftTry)
+#             vA = np.multiply(dA, AfftTry-Afft).sum()/eps
+#             logging.info('var affine: %f %f' %(self.Tsize*(uA[0]-u0[0])/(eps), -vA ))
 
     def  objectiveFunDef(self, at, Afft, withTrajectory = False, withJacobian = False):
         f = super(SurfaceMatching, self).objectiveFunDef(at, Afft, withTrajectory=True, withJacobian=withJacobian)
@@ -232,7 +242,10 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
             (self.obj, self.xt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             self.obj0 = 0
             for k in range(self.nTarg):
-                self.obj0 += self.param.fun_obj0(self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
+                if self.param.errorType == 'L2Norm':
+                    self.obj0 += surfaces.L2Norm0(self.fv1[k])/(self.param.sigmaError**2)
+                else:   
+                    self.obj0 += self.param.fun_obj0(self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
                 foo = surfaces.Surface(surf=self.fvDef[k])
                 self.fvDef[k].updateVertices(np.squeeze(self.xt[self.jumpIndex[k], :, :]))
                 foo.computeCentersAreas()
@@ -287,7 +300,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         kj = self.nTarg - 2
 
         foo = self.constraintTermGrad(xt, at, Afft)
-        lmb = foo[0]
+        #lmb = foo[0]
         dxcval = foo[1]
         dacval = foo[2]
         dAffcval = foo[3]
@@ -327,15 +340,15 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
     def HamiltonianGradient(self, at, Afft, px1, getCovector = False):
         (pxt, xt, dacval, dAffcval) = self.covectorEvolution(at, Afft, px1)
 
-        if self.useKernelDotProduct:
-            dat = 2*self.regweight[:, np.newaxis, np.newaxis]*at - pxt[1:pxt.shape[0],...] - dacval
-        else:
-            dat = -dacval
-            for t in range(self.Tsize):
-                dat[t] += self.param.KparDiff.applyK(xt[t], 2*self.regweight[t]*at[t] - pxt[t+1])
+        #if self.useKernelDotProduct:
+        dat = 2*self.regweight[:, np.newaxis, np.newaxis]*at - pxt[1:pxt.shape[0],...] - dacval
+#        else:
+#            dat = -dacval
+#            for t in range(self.Tsize):
+#                dat[t] += self.param.KparDiff.applyK(xt[t], 2*self.regweight[t]*at[t] - pxt[t+1])
         if self.affineDim > 0:
             timeStep = 1.0/self.Tsize
-            dAfft = 2*np.multiply(self.affineWeight.reshape([1, self.affineDim]), Afft) 
+            dAfft = 2*np.multiply(self.affineWeight.reshape([1, self.affineDim]), Afft)
             #dAfft = 2*np.multiply(self.affineWeight, Afft) - dAffcval
             for t in range(self.Tsize):
                 AB = np.dot(self.affineBasis, Afft[t]) 
@@ -373,48 +386,64 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
     #     return dir
 
         
-    def kernelDotProduct(self, g1, g2):
-        res = np.zeros(len(g2))
-        for t in range(self.Tsize):
-            z = np.squeeze(self.xt[t, :, :])
-            gg = np.squeeze(g1.diff[t, :, :])
-            u = self.param.KparDiff.applyK(z, gg)
-            #if self.affineDim > 0:
-                #uu = np.multiply(g1.aff[t], self.affineWeight)
-            ll = 0
-            for gr in g2:
-                ggOld = np.squeeze(gr.diff[t, :, :])
-                res[ll]  +=  np.multiply(ggOld,u).sum()
-                if self.affineDim > 0:
-                    res[ll] += np.multiply(g1.aff[t], gr.aff[t]).sum() * self.coeffAff
-                    #res[ll] += np.multiply(uu, gr.aff[t]).sum()
-                ll = ll + 1
-      
-        return res
+#    def kernelDotProduct(self, g1, g2):
+#        res = np.zeros(len(g2))
+#        uu = g1.aff
+#        #print uu
+#        for t in range(self.Tsize):
+#            gg = self.param.KparDiff.applyK(self.xt[t,...], g1.diff[t,...])
+#            ll = 0
+#            for ll,gr in enumerate(g2):
+#                ggOld = gr.diff[t,...]
+#                res[ll]  += (ggOld*gg).sum()
+#        if not uu is None:
+#            for ll,gr in enumerate(g2):
+#                res[ll] += (uu * gr.aff).sum() * self.coeffAff
+#
+#        return res
+#        for t in range(self.Tsize):
+#            z = np.squeeze(self.xt[t, :, :])
+#            gg = np.squeeze(g1.diff[t, :, :])
+#            u = self.param.KparDiff.applyK(z, gg)
+#            #if self.affineDim > 0:
+#                #uu = np.multiply(g1.aff[t], self.affineWeight)
+#            ll = 0
+#            for gr in g2:
+#                ggOld = np.squeeze(gr.diff[t, :, :])
+#                res[ll]  +=  np.multiply(ggOld,u).sum()
+#                if self.affineDim > 0:
+#                    res[ll] += np.multiply(g1.aff[t], gr.aff[t]).sum() * self.coeffAff
+#                    #res[ll] += np.multiply(uu, gr.aff[t]).sum()
+#                ll = ll + 1
+#      
+#        return res
 
-    def standardDotProduct(self, g1, g2):
-        res = np.zeros(len(g2))
-        dim2 = self.dim**2
-        for ll,gr in enumerate(g2):
-            res[ll]=0
-            res[ll] += np.multiply(g1.diff, gr.diff).sum()
-            if self.affineDim > 0:
-                #uu = np.multiply(g1.aff, self.affineWeight.reshape([1, self.affineDim]))
-                #res[ll] += np.multiply(uu, gr.aff).sum() * self.coeffAff
-                res[ll] += np.multiply(g1.aff, gr.aff).sum() * self.coeffAff
-                #+np.multiply(g1[1][k][:, dim2:dim2+self.dim], gr[1][k][:, dim2:dim2+self.dim]).sum())
-
-
-        return res
-
+#    def standardDotProduct(self, g1, g2):
+#        res = np.zeros(len(g2))
+#        #dim2 = self.dim**2
+#        for ll,gr in enumerate(g2):
+#            res[ll]=0
+#            res[ll] += np.multiply(g1.diff, gr.diff).sum()
+#            if self.affineDim > 0:
+#                #uu = np.multiply(g1.aff, self.affineWeight.reshape([1, self.affineDim]))
+#                #res[ll] += np.multiply(uu, gr.aff).sum() * self.coeffAff
+#                res[ll] += np.multiply(g1.aff, gr.aff).sum() * self.coeffAff
+#                #+np.multiply(g1[1][k][:, dim2:dim2+self.dim], gr[1][k][:, dim2:dim2+self.dim]).sum())
+#
+#
+#        return res
+#
 
 
     def getGradient(self, coeff=1.0):
         px1 = self.endPointGradient()
+        #print "px1", (px1[0]**2).sum()
         #px1.append(np.zeros([self.npoints, self.dim]))
         foo = self.HamiltonianGradient(self.at, self.Afft, px1, getCovector=True)
         grd = surfaceTimeSeries.Direction()
         grd.diff = foo[0] / (coeff*self.Tsize)
+        if self.affineBurnIn:
+            grd.diff *= 0 
         if self.affineDim > 0:
             grd.aff = foo[1] / (self.coeffAff*coeff*self.Tsize)
         return grd
@@ -422,6 +451,8 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
     def randomDir(self):
         dirfoo = surfaceTimeSeries.Direction()
         dirfoo.diff = np.random.randn(self.Tsize, self.npt, self.dim)
+        if self.affineBurnIn:
+            dirfoo.diff *= 0 
         if self.affineDim > 0:
             dirfoo.aff = np.random.randn(self.Tsize, self.affineDim)
         return dirfoo
@@ -432,17 +463,21 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
     #     self.Afft = np.copy(self.AfftTry)
 
     def endOfIteration(self):
+        #self.testConstraintTerm(self.xt, self.at, self.Afft)
         self.iter += 1
         if self.iter >= self.affBurnIn:
-            self.coeffAff = self.coeffAff2
+            self.coeffAff = self.coeffAff2*self.coeffAff_
+            self.affineBurnIn = False
         if (self.iter % self.saveRate == 0):
             (obj1, self.xt, Jt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withJacobian=True)
             self.meanc = np.sqrt((self.cstr**2).sum()/self.cval.size)
             logging.info('mean constraint %f max constraint %f' %(np.sqrt((self.cstr**2).sum()/self.cval.size), np.fabs(self.cstr).max()))
             logging.info('Saving surfaces...')
-            print self.nTarg
+            #print self.nTarg
             for k in range(self.nTarg):
                 self.fvDef[k].updateVertices(np.squeeze(self.xt[self.jumpIndex[k], :, :]))
+                logging.info('volumes: Target %d %f -- trajectory %f' 
+                            %(k, self.fv1[k].surfVolume(), self.fvDef[k].surfVolume()))
             dim2 = self.dim**2
             A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
             if self.affineDim > 0:
@@ -506,8 +541,6 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
                 vf.scalars.append(np.exp(Jt[kk, :])/(AV[:,0]+1)-1)
                 vf.scalars.append('displacement')
                 vf.scalars.append(displ)
-                if t >= self.jumpIndex[0]:
-                    displ += dt * (v*nu).sum(axis=1)
                 if kk < self.Tsize:
                     nu = self.fv0ori*fvDef.computeVertexNormals()
                     v = self.param.KparDiff.applyK(ft[kk,...], self.at[kk,...], firstVar=self.xt[kk,...])
@@ -515,6 +548,8 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
                     kkm = kk
                 else:
                     kkm = kk-1
+                if kk >= self.jumpIndex[0]:
+                    displ += dt * (v*nu).sum(axis=1)
                 vf.vectors.append('velocity') ;
                 vf.vectors.append(self.v[kkm,:])
                 fvDef.saveVTK2(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', vf)
@@ -528,30 +563,37 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
     
     def optimizeMatching(self):
         self.coeffZ = 10.
-        self.coeffAff = self.coeffAff2
+        self.coeffAff = self.coeffAff2*self.coeffAff_
         grd = self.getGradient(self.gradCoeff)
         [grd2] = self.dotProduct(grd, [grd])
+        for k in range(self.nTarg):
+            #self.fvDef[k].updateVertices(np.squeeze(self.xt[self.jumpIndex[k], :, :]))
+            logging.info('volumes: Target %d %f -- trajectory %f' 
+                %(k, self.fv1[k].surfVolume(), self.fvDef[k].surfVolume()))
 
         self.gradEps = np.sqrt(grd2) / 100
-        self.coeffAff = self.coeffAff1
+        self.coeffAff = self.coeffAff1*self.coeffAff_
         self.muEps = 1.0
         it = 0
-        while (self.muEps > 0.001) & (it<self.maxIter_al)  :
+        itGrad = 0 ;
+        while (itGrad < 8 or (self.muEps > 0.001)) and (it<self.maxIter_al)  :
             logging.info('Starting Minimization: gradEps = %f muEps = %f mu = %f' %(self.gradEps, self.muEps,self.mu))
             #self.coeffZ = max(1.0, self.mu)
             cg.cg(self, verb = self.verb, maxIter = self.maxIter_cg, TestGradient = self.testGradient, epsInit=0.1)
-            self.coeffAff = self.coeffAff2
+            self.coeffAff = self.coeffAff2*self.coeffAff_
             for t in range(self.Tsize+1):
+                #self.lmb[t, ...] = np.maximum(self.lmb[t,...] - self.cval[t, ...]/self.mu, 0)
                 self.lmb[t, ...] = -self.cval[t, ...]/self.mu
             logging.info('mean lambdas %f' %(np.fabs(self.lmb).sum() / self.lmb.size))
             if self.converged:
                 self.gradEps *= .75
+                itGrad += 1 
                 if (((self.cstr**2).sum()/self.cval.size) > self.muEps**2):
                     self.mu *= 0.5
                 else:
                     self.muEps = self.muEps /2
-            else:
-                self.mu *= 0.9
+            #else:
+            #    self.mu *= 0.9
             if self.muEps > self.meanc:
                 self.muEps = 0.9 * self.meanc 
             self.obj = None

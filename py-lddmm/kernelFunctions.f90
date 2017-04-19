@@ -26,7 +26,7 @@ subroutine kernelmatrix(x, y, sig, ord, num_nodes, num_nodes_y, dim, f)
   !$omp& (num_nodes, num_nodes_y, f, sig, ord, c_)
   do k = 1, num_nodes, 1
      do l = 1, num_nodes_y, 1
-        ut = norm2(x(k,:) - y(l,:)) / sig
+        ut = sqrt(sum((x(k,:) - y(l,:))**2)) / sig
         if (ord > 4) then
            ut = ut * ut
            if (ut < 1e-8) then
@@ -81,7 +81,7 @@ subroutine applyk(x, y, beta, sig, ord, num_nodes, num_nodes_y, dim, dimb, f)
   do k = 1, num_nodes, 1
      df = 0
      do l = 1, num_nodes_y, 1
-        ut = norm2(x(k,:) - y(l,:)) / sig
+        ut = sqrt(sum((x(k,:) - y(l,:))**2)) / sig
         if (ord > 4) then
            ut = ut * ut
            if (ut < 1e-8) then
@@ -141,7 +141,7 @@ subroutine applykdifft(x, y, a1, a2, sig, ord, num_nodes, num_nodes_y, dim, dimb
   do k = 1, num_nodes, 1
      df = 0
      do l = 1, num_nodes_y, 1
-        ut = norm2(x(k,:) - y(l,:)) / sig
+        ut = sqrt(sum((x(k,:) - y(l,:))**2)) / sig
         if (ord > 4) then
            ut = ut * ut
            if (ut < 1e-8) then
@@ -199,7 +199,7 @@ subroutine applykdiff1(x, a1, a2, sig, ord, num_nodes,dim, f)
   do k = 1, num_nodes, 1
      df = 0
      do l = 1, num_nodes, 1
-        ut = norm2(x(k,:) - x(l,:)) / sig
+        ut = sqrt(sum((x(k,:) - x(l,:))**2)) / sig
         if (ord > 4) then
            ut = ut * ut
            if (ut < 1e-8) then
@@ -257,7 +257,7 @@ subroutine applykdiff2(x, a1, a2, sig, ord, num_nodes, dim, f)
   do k = 1, num_nodes, 1
      df = 0
      do l = 1, num_nodes, 1
-        ut = norm2(x(k,:) - x(l,:)) / sig
+        ut = sqrt(sum((x(k,:) - x(l,:))**2)) / sig
         if (ord > 4) then
            ut = ut * ut
            if (ut < 1e-8) then
@@ -317,7 +317,7 @@ subroutine applykdiff1and2(x, a1, a2, sig, ord, num_nodes,dim, f)
      df = 0
      do l = 1, num_nodes, 1
         dx=x(k,:) - x(l,:)
-        ut = norm2(dx) / sig
+        ut = sqrt(sum(dx**2)) / sig
         if (ord > 4) then
            ut = ut * ut
            if (ut < 1e-8) then
@@ -380,7 +380,7 @@ subroutine applykdiff11(x, a1, a2, p, sig, ord, num_nodes, dim, f)
   do k = 1, num_nodes, 1
      df = 0
      do l = 1, num_nodes_y, 1
-        ut = norm2(x(k,:) - y(l,:)) / sig
+        ut = sqrt(sum((x(k,:) - y(l,:))**2)) / sig
         if (ord > 4) then
            ut = ut * ut
            if (ut < 1e-8) then
@@ -448,7 +448,7 @@ subroutine applykdiff12(x, a1, a2, p, sig, ord, num_nodes, dim, f)
   do k = 1, num_nodes, 1
      df = 0
      do l = 1, num_nodes_y, 1
-        ut = norm2(x(k,:) - y(l,:)) / sig
+        ut = sqrt(sum((x(k,:) - y(l,:))**2)) / sig
         if (ord > 4) then
            ut = ut * ut
            if (ut < 1e-8) then
@@ -518,7 +518,7 @@ subroutine applykdiff11and12(x, a1, a2, p, sig, ord, num_nodes, dim, f)
      do l = 1, num_nodes, 1
         dx = x(k,:) - x(l,:)
         dp = p(k,:) - p(l,:)
-        ut = norm2(dx) / sig
+        ut = sqrt(sum(dx**2)) / sig
         if (ord > 4) then
            ut = ut * ut
            if (ut < 1e-8) then
@@ -579,7 +579,7 @@ subroutine applykmat(x, y, beta, sig, ord, num_nodes, num_nodes_y, dim, dimb, f)
   do k = 1, num_nodes, 1
      df = 0 
      do l = 1, num_nodes_y, 1
-        ut = norm2(x(k,:) - y(l,:)) / sig
+        ut = sqrt(sum((x(k,:) - y(l,:))**2)) / sig
         if (ord > 4) then
            ut = ut * ut
            if (ut < 1e-8) then
@@ -637,7 +637,7 @@ subroutine applykdiffmat(x, y, beta, sig, ord, num_nodes, num_nodes_y, dim, f)
   do k = 1, num_nodes, 1
      df = 0
      do l = 1, num_nodes_y, 1
-        ut = norm2(x(k,:) - y(l,:)) / sig
+        ut = sqrt(sum((x(k,:) - y(l,:))**2)) / sig
         if (ord > 4) then
            ut = ut * ut
            if (ut < 1e-8) then
@@ -659,3 +659,5 @@ subroutine applykdiffmat(x, y, beta, sig, ord, num_nodes, num_nodes_y, dim, f)
   end do
   !$omp end parallel do
 end subroutine applykdiffmat
+
+

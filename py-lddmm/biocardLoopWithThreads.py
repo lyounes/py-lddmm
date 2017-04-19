@@ -1,4 +1,3 @@
-#! /usr/bin/env python
 import csv
 import argparse
 import loggingUtils
@@ -6,8 +5,20 @@ import surfaces
 from surfaces import *
 from kernelFunctions import *
 import surfaceMatching
+import threading
+import Queue
 
-
+def threadfun(q):
+    while True:
+        print str(q.qsize())+' jobs left'
+        os.environ['OMP_NUM_THREADS'] = '4'
+        f = q.get()
+        try:
+            f.optimizeMatching()
+            #break
+        except NameError:
+            print 'Exception'
+        q.task_done()
 
 def runLongitudinalSurface(template, targetList, minL=3,atrophy=False, resultDir='.'):
     if atrophy:
@@ -15,8 +26,9 @@ def runLongitudinalSurface(template, targetList, minL=3,atrophy=False, resultDir
     else:
         import surfaceTimeSeries as match
 
+    max_proc = 12
     
-    with open(targetList,'r') as csvf:
+    with open('/cis/home/younes/MATLAB/shapeFun/CA_STUDIES/BIOCARD/filelist.txt','r') as csvf:
         rdr = list(csv.DictReader(csvf,delimiter=',',fieldnames=('lab','isleft','id','filename')))
         files = []
         previousLab = 0
@@ -35,52 +47,57 @@ def runLongitudinalSurface(template, targetList, minL=3,atrophy=False, resultDir
                 else:
                     currentFile = [] ;
                 previousLab = int(row['lab'])
-    print len(files)
-    return                  
+                
+    info_outputDir = '/cis/home/younes/Results/biocardTS/infoDir'
+    #outputDir = '/cis/home/younes/MorphingData/twoBallsStitched'
+    #outputDir = '/Users/younes/Development/Results/tight_stitched_rigid2_10'
 
-    fv0 = surfaces.Surface(filename=template)
+    fv0 = surfaces.Surface(filename='/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/4_create_population_based_template/newTemplate.byu')
     K1 = Kernel(name='laplacian', sigma = 6.5, order=4)
     sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=2.5, sigmaError=1., errorType='varifold')
 
+    q = Queue.Queue()
     #files = [files[1],files[5],files[8]]
-    #files = [files[9]]
-    #selected = range(len(files)) 
-    selected = (83,86,90) 
-    logset = False
+    selected = range(len(files)) 
+    #selected = (1,9) 
     for k in selected:
         s = files[k]
         fv = []
         print s[0]
         for fn in s:
                 try:
-                    #fv += [surfaces.Surface(filename=fn+'.byu')]
                     fv += [surfaces.Surface(filename=fn+'.byu')]
                 except NameError as e:
                     print e
   
 
-        outputDir = resultDir +str(k)
-        info_outputDir = outputDir
-        if __name__ == "__main__" and (not logset):
-            loggingUtils.setup_default_logging(info_outputDir, fileName='info', stdOutput=True)
+        outputDir = '/cis/home/younes/Results/biocardTS/piecewise_NA_'+str(k)
+        if __name__ == "__main__":
+            loggingUtils.setup_default_logging(info_outputDir, fileName='info', stdOutput=(k==selected[0]))
         else:
             loggingUtils.setup_default_logging(fileName='info')
 
         try:
             if atrophy:
                 f = match.SurfaceMatching(Template=fv0, Targets=fv, outputDir=outputDir, param=sm, regWeight=.1,
-                                            affine='euclidean', testGradient=False, affineWeight=.1,  maxIter_cg=50, maxIter_al=50, mu=0.0001)
+                                            affine='euclidean', testGradient=False, affineWeight=.1,  maxIter_cg=1000, mu=0.0001)
             else:
                 f = match.SurfaceMatching(Template=fv0, Targets=fv, outputDir=outputDir, param=sm, regWeight=.1,
                                         affine='euclidean', testGradient=False, affineWeight=.1,  maxIter=1000)
         except NameError:
             print 'exception'
  
-        try:
-            f.optimizeMatching()
-        except NameError:
-            print 'Exception'
- 
+        #, affine='none', rotWeight=0.1))
+        q.put(f)
+
+    for k in range(max_proc):
+        w = threading.Thread(target=threadfun, args=(q,))
+        w.setDaemon(True)
+        w.start()
+        #f.optimizeMatching()
+
+    q.join()
+
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description='runs longitudinal surface matching based on an input file')
@@ -89,9 +106,7 @@ if __name__=="__main__":
     parser.add_argument('--results', metavar = 'resultDir', type = str, dest = 'resultDir', default = '.', help='Output directory')
     args = parser.parse_args()
     
-    #template: /cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/4_create_population_based_template/newTemplate.byu'
-    #targetList: '/cis/home/younes/MATLAB/shapeFun/CA_STUDIES/BIOCARD/filelist.txt'
-    #Results: '/cis/home/younes/Results/biocardTS/withAtrophy'
+    # /cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/4_create_population_based_template/newTemplate.byu /cis/home/younes/MATLAB/shapeFun/CA_STUDIES/BIOCARD/filelist.txt --results /cis/home/younes/Results/biocardTS/withAtrophy
     
     
     runLongitudinalSurface(args.template, args.targetList, atrophy=True, resultDir=args.resultDir)
