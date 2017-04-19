@@ -457,7 +457,7 @@ def faces(sim):
     sim.kvn = 'laplacian'
     sim.khn = 'laplacian'
     sim.kvs = 3.
-    sim.khs = .5
+    sim.khs = 1.
     sim.kvo = 4
     sim.kho = 2
     logging.info("KV params: name=%s, sigma=%f, order=%f" \
