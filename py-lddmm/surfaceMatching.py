@@ -10,6 +10,8 @@ import surfaces
 import pointSets
 import kernelFunctions as kfun
 import pointEvolution as evol
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from affineBasis import AffineBasis, getExponential, gradExponential
 
 ## Parameter class for matching
@@ -85,7 +87,7 @@ class SurfaceMatching(object):
                  subsampleTargetSize=-1,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
                  testGradient=True, saveFile = 'evolution',
-                 saveTrajectories = False, affine = 'none', outputDir = '.'):
+                 saveTrajectories = False, affine = 'none', outputDir = '.',pplot=True):
         if param==None:
             self.param = SurfaceMatchingParam()
         else:
@@ -217,6 +219,18 @@ class SurfaceMatching(object):
         self.coeffAff = self.coeffAff1
         self.coeffInitx = .1
         self.affBurnIn = 25
+        self.pplot = pplot
+        if self.pplot:
+            fig=plt.figure(3)
+            fig.clf()
+            ax = fig.gca(projection='3d')
+            ax.plot_trisurf(self.fv1.vertices[self.fv1.faces[:,0],:], self.fv1.vertices[self.fv1.faces[:,1],:], 
+                           self.fv1.vertices[self.fv1.faces[:,2],:], color=[0,0,1])
+            ax.plot_trisurf(self.fvDef.vertices[self.fvDef.faces[:,0],:], self.fvDef.vertices[self.fvDef.faces[:,1],:], 
+                           self.fvDef.vertices[self.fvDef.faces[:,2],:], color=[0,0,1])
+            plt.axis('equal')
+            plt.pause(0.1)
+
 
     def setOutputDir(self, outputDir):
         self.outputDir = outputDir
