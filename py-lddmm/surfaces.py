@@ -47,12 +47,15 @@ class Surface:
                 self.component = np.zeros(self.faces.shape[0], dtype=int)
                 self.computeCentersAreas()
         else:
-            self.vertices = np.copy(surf.vertices)
-            self.faces = np.copy(surf.faces)
-            #self.surfel = np.copy(surf.surfel)
-            #self.centers = np.copy(surf.centers)
-            self.component = np.copy(surf.component)
-            self.computeCentersAreas()
+            if type(surf) is list:
+                self.concatenate(surf)
+            else:
+                self.vertices = np.copy(surf.vertices)
+                self.faces = np.copy(surf.faces)
+                #self.surfel = np.copy(surf.surfel)
+                #self.centers = np.copy(surf.centers)
+                self.component = np.copy(surf.component)
+                self.computeCentersAreas()
 
     def read(self, filename):
         (mainPart, ext) = os.path.splitext(filename)
@@ -281,7 +284,10 @@ class Surface:
         if gotVTK:
             polydata = self.toPolyData()
             subdivisionFilter = vtkLinearSubdivisionFilter()
-            subdivisionFilter.SetInput(polydata)
+            if vtkVersion.GetVTKMajorVersion() >= 6:
+                subdivisionFilter.SetInputData(polydata)
+            else:
+                subdivisionFilter.SetInput(polydata)
             subdivisionFilter.SetNumberOfSubdivisions(number)
             subdivisionFilter.Update()
             self.fromPolyData(subdivisionFilter.GetOutput())
@@ -1024,7 +1030,7 @@ class Surface:
     def readFromImage(self, fileName):
         self.img = diffeo.gridScalars(fileName=fileName)
         self.img.data /= self.img.data.max() + 1e-10
-        self.Isosurface(self.img.data)
+        self.Isosurface(self.img.data, smooth=0.001)
         smoothData = cg.linearcg(lambda x: -diffeo.laplacian(x), -self.img.data, iterMax=500)
         self.vfld = diffeo.gradient(smoothData)
     

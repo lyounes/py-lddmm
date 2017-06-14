@@ -12,6 +12,9 @@ import pointEvolution as evol
 import conjugateGradient as cg
 import surfaceMatching
 from affineBasis import *
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 
 ## Parameter class for matching
@@ -547,6 +550,16 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
             self.fvInit.updateVertices(self.x0)
             #self.testConstraintTerm(self.xt, self.at, self.Afft)
+        if self.pplot:
+            fig=plt.figure(4)
+            #fig.clf()
+            ax = Axes3D(fig)
+            lim0 = self.addSurfaceToPlot(self.fv1, ax, ec = 'k', fc = 'b')
+            lim1 = self.addSurfaceToPlot(self.fvDef, ax, ec='k', fc='r')
+            ax.set_xlim(min(lim0[0][0],lim1[0][0]), max(lim0[0][1],lim1[0][1]))
+            ax.set_ylim(min(lim0[1][0],lim1[1][0]), max(lim0[1][1],lim1[1][1]))
+            ax.set_zlim(min(lim0[2][0],lim1[2][0]), max(lim0[2][1],lim1[2][1]))
+            plt.pause(0.1)
 
     def optimizeMatching(self):
 	self.coeffZ = 10.
@@ -584,17 +597,19 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 if __name__=="__main__":
 
     #outputDir = '/cis/home/younes/Development/Results/ERC_Normals_ADNI_014_S_4058/'
-    outputDir = '/Users/younes/Development/Results/ALLIE/'
+    outputDir = '/Users/younes/Development/Results/SUE/'
 
     #fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/DH1MiddleOuter.byu')
     #fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/DH1MiddleInner.byu')
     #outputDir = '/cis/home/younes/Development/Results/tilakAW1Superior'
     loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput = True)
 
+    fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/SueExamples/top_041_S_4720_L_mo00_ERC_and_TEC.byu')
+    fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/SueExamples/bottom_041_S_4720_L_mo00_ERC_and_TEC.byu')
     #fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/NK1Inner.byu')
     #fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/NK1Outer.byu')
-    fv0 = surfaces.Surface(filename='/Users/younes/Development/Data/ALLIE/Template.vtk')
-    fv1 = surfaces.Surface(filename='/Users/younes/Development/Data/ALLIE/Target.vtk')
+    #fv0 = surfaces.Surface(filename='/Users/younes/Development/Data/ALLIE/Template.vtk')
+    #fv1 = surfaces.Surface(filename='/Users/younes/Development/Data/ALLIE/Target.vtk')
     #fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/NK1Outer.byu')
     fv0.removeIsolated()
     fv0.edgeRecover()
@@ -606,13 +621,13 @@ if __name__=="__main__":
     K1 = kfun.Kernel(name='laplacian', sigma = .5, order=3)
     #K2 = kfun.Kernel(sigma = 2.5)
     #print fv0.normGrad(fv0.vertices)
-    #fv0.subDivide(1)
+    fv0.subDivide(1)
     #print fv0.normGrad(fv0.vertices)
     sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=10, 
-                                              sigmaError=.1, errorType='varifold', internalCost = 'h1')
+                                              sigmaError=1., errorType='varifold', internalCost = 'h1')
                                              
     fv0.flipFaces()
     f = SurfaceMatching(Template=fv0, Target=fv1, outputDir=outputDir, param=sm, regWeight=1., saveTrajectories=True, symmetric = False,
-                        affine='none', testGradient=True, internalWeight=100., affineWeight=1e3,  maxIter_cg=200, maxIter_al=50, mu=1e-4)
+                        affine='none', testGradient=True, internalWeight=100., affineWeight=1e3,  maxIter_cg=200, maxIter_al=50, mu=1e-1)
     f.optimizeMatching()
 

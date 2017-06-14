@@ -12,6 +12,7 @@ import kernelFunctions as kfun
 import pointEvolution as evol
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from affineBasis import AffineBasis, getExponential, gradExponential
 
 ## Parameter class for matching
@@ -222,15 +223,33 @@ class SurfaceMatching(object):
         self.pplot = pplot
         if self.pplot:
             fig=plt.figure(3)
-            fig.clf()
-            ax = fig.gca(projection='3d')
-            ax.plot_trisurf(self.fv1.vertices[self.fv1.faces[:,0],:], self.fv1.vertices[self.fv1.faces[:,1],:], 
-                           self.fv1.vertices[self.fv1.faces[:,2],:], color=[0,0,1])
-            ax.plot_trisurf(self.fvDef.vertices[self.fvDef.faces[:,0],:], self.fvDef.vertices[self.fvDef.faces[:,1],:], 
-                           self.fvDef.vertices[self.fvDef.faces[:,2],:], color=[0,0,1])
-            plt.axis('equal')
+            #fig.clf()
+            ax = Axes3D(fig)
+            lim0 = self.addSurfaceToPlot(self.fv1, ax, ec = 'k', fc = 'b')
+            lim1 = self.addSurfaceToPlot(self.fvDef, ax, ec='k', fc='r')
+#            ax.plot_trisurf(self.fv1.vertices[self.fv1.faces[:,0],:], self.fv1.vertices[self.fv1.faces[:,1],:], 
+#                           self.fv1.vertices[self.fv1.faces[:,2],:])# color=[0,0,1])
+            #plt.axis('equal')
+            ax.set_xlim(min(lim0[0][0],lim1[0][0]), max(lim0[0][1],lim1[0][1]))
+            ax.set_ylim(min(lim0[1][0],lim1[1][0]), max(lim0[1][1],lim1[1][1]))
+            ax.set_zlim(min(lim0[2][0],lim1[2][0]), max(lim0[2][1],lim1[2][1]))
             plt.pause(0.1)
 
+
+    def addSurfaceToPlot(self, fv1, ax, ec = [0,0,1], fc = [1,0,0], al=.5, lw=1):
+        x = fv1.vertices[fv1.faces[:,0],:]
+        y = fv1.vertices[fv1.faces[:,1],:]
+        z = fv1.vertices[fv1.faces[:,2],:]
+        a = np.concatenate([x,y,z], axis=1)
+        poly = [ [a[i,j*3:j*3+3] for j in range(3)] for i in range(a.shape[0])]
+        tri = Poly3DCollection(poly, alpha=al, linewidths=lw)
+        tri.set_edgecolor(ec)
+        tri.set_facecolor(fc)
+        ax.add_collection3d(tri)
+        xlim = [fv1.vertices[:,0].min(),fv1.vertices[:,0].max()]
+        ylim = [fv1.vertices[:,1].min(),fv1.vertices[:,1].max()]
+        zlim = [fv1.vertices[:,2].min(),fv1.vertices[:,2].max()]
+        return [xlim, ylim, zlim]
 
     def setOutputDir(self, outputDir):
         self.outputDir = outputDir
@@ -674,6 +693,17 @@ class SurfaceMatching(object):
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
             self.fvInit.updateVertices(self.x0)
+        if self.pplot:
+            fig=plt.figure(4)
+            #fig.clf()
+            ax = Axes3D(fig)
+            lim0 = self.addSurfaceToPlot(self.fv1, ax, ec = 'k', fc = 'b')
+            lim1 = self.addSurfaceToPlot(self.fvDef, ax, ec='k', fc='r')
+            ax.set_xlim(min(lim0[0][0],lim1[0][0]), max(lim0[0][1],lim1[0][1]))
+            ax.set_ylim(min(lim0[1][0],lim1[1][0]), max(lim0[1][1],lim1[1][1]))
+            ax.set_zlim(min(lim0[2][0],lim1[2][0]), max(lim0[2][1],lim1[2][1]))
+            plt.pause(0.1)
+
 
 
     def endOfProcedure(self):
