@@ -38,17 +38,17 @@ def compute(model='default', dirOut='/cis/home/younes'):
         sigmaError = 0.1
         internalWeight = 1000        
     elif model == 'manyCurves':   
-        s = 0.1
-        nc = 25
+        s = 0.5
+        nc = 10
         ftemp = []
-        rad = np.arange(7, 10, 3./nc)
+        rad = np.arange(4, 7, 3./nc)
         for k,r in enumerate(rad):
 #            start = np.random.uniform(0, 2*np.pi)
 #            end = start + np.random.uniform(0, np.pi)
             start = k*np.pi/nc
             end = start + np.pi
             #rad = np.random.uniform(7,10)
-            t = np.arange(start, end+s, s)
+            t = np.arange(start, end+s/r, s/r)
             f = np.zeros([t.shape[0]-1,2], dtype=int)
             f[:,0] = range(0, t.shape[0]-1)
             f[:,1] = range(1, t.shape[0])
@@ -56,15 +56,16 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v[:,0] = r*np.cos(t)
             v[:,1] = r*np.sin(t)
             ftemp.append(Curve(FV=(f,v)))
+        s = 0.25
         ftarg = []
-        rad = np.arange(2, 5, 3./nc)
+        rad = np.sqrt(np.arange(2.**2, (6.)**2, ((6.)**2-(2.)**2)/nc))
         for k,r in enumerate(rad):
             #start = np.random.uniform(0, 2*np.pi)
             #end = start + np.random.uniform(0, np.pi)
             start = np.pi/6 + k*np.pi/nc
             end = start + np.pi
             #rad = np.random.uniform(2,5)
-            t = np.arange(start, end+s, s)
+            t = np.arange(start, end+s/r, s/r)
             f = np.zeros([t.shape[0]-1,2], dtype=int)
             f[:,0] = range(0, t.shape[0]-1)
             f[:,1] = range(1, t.shape[0])
@@ -72,13 +73,13 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v[:,0] = r*np.cos(t)
             v[:,1] = r*np.sin(t)
             ftarg.append(Curve(FV=(f,v)))
-        sigma = 2.0
+        sigma = 1.0
         sigmaDist = 2.5 
         sigmaError = 0.1
-        internalWeight = 1000        
+        internalWeight = 100        
     elif model == 'rays':
         nrays = 10
-        t = np.arange(0, 5, 0.25)
+        t = np.arange(0.25, 5, 0.25)
         ftemp = []
         x0 = 5
         y0 = 5
@@ -91,6 +92,17 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v[:,0] = x0 + np.cos(theta[k])*t
             v[:,1] = y0 + np.sin(theta[k])*t
             ftemp.append(Curve(FV=(f,v)))
+            
+        f = np.zeros([nrays,2], dtype=int)
+        f[0:nrays-1,0] = range(0, nrays-1)
+        f[0:nrays-1,1] = range(1, nrays)
+        f[nrays-1,0] = nrays-1
+        f[nrays-1,1] = 0
+        v = np.zeros([nrays,2])
+        for k in range(nrays):
+            v[k,0] = x0 + np.cos(theta[k])*t[0]
+            v[k,1] = y0 + np.sin(theta[k])*t[0]
+        ftemp.append(Curve(FV=(f,v)))
             
         ftarg = []
         x0 = 8
@@ -283,7 +295,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
                                        stdOutput = True)   
     
     sm = CurveMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError, errorType='varifold', internalCost='h1Invariant')
-    f = CurveMatching(Template=ftemp, Target=ftarg, outputDir=dirOut+'/Development/Results/curveMatching'+model+'HLDDMM_0p1_nocomp',param=sm, testGradient=False,
+    f = CurveMatching(Template=ftemp, Target=ftarg, outputDir=dirOut+'/Development/Results/curveMatching'+model+'HLDDMM_0p2_nocomp25',param=sm, testGradient=False,
                       regWeight=1., internalWeight=internalWeight, maxIter=10000, affine='none', rotWeight=1, transWeight = 1, scaleWeight=100., affineWeight=100.)
  
     f.optimizeMatching()
@@ -293,7 +305,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
     
 if __name__=="__main__":
     plt.ion()
-    compute(model='helixes', dirOut='/Users/younes')
+    compute(model='rays', dirOut='/Users/younes')
     plt.ioff()
     plt.show()
 

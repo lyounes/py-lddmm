@@ -186,7 +186,7 @@ class CurveMatching:
             fig=plt.figure(3)
             fig.clf()
             if self.dim==2:
-                ax = fig.gca(projection='2d')
+                ax = fig.gca()
                 for kf in range(self.fv1.faces.shape[0]):
                     ax.plot(self.fv1.vertices[self.fv1.faces[kf,:],0], self.fv1.vertices[self.fv1.faces[kf,:],1], color=[0,0,1])
                 for kf in range(self.fvDef.faces.shape[0]):
@@ -508,7 +508,7 @@ class CurveMatching:
             fig=plt.figure(4)
             fig.clf()
             if self.dim==2:
-                ax = fig.gca(projection='2d')
+                ax = fig.gca()
                 for kf in range(self.fv1.faces.shape[0]):
                     ax.plot(self.fv1.vertices[self.fv1.faces[kf,:],0], self.fv1.vertices[self.fv1.faces[kf,:],1], color=[0,0,1])
                 for kf in range(self.fvDef.faces.shape[0]):
