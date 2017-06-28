@@ -82,7 +82,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
                 dirfoo = opt.randomDir()
             else:
                 dirfoo = np.random.normal(size=grd.shape)
-            epsfoo = 1e-7
+            epsfoo = 1e-8
             objfoo = opt.updateTry(dirfoo, epsfoo, obj-1e10)
             if hasattr(opt, 'dotProduct'):
                 [grdfoo] = opt.dotProduct(grd, [dirfoo])
@@ -144,7 +144,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
         noUpdate = 0
         if objTry > obj:
             #fprintf(1, 'iteration %d: obj = %.5f, eps = %.5f\n', it, objTry, eps) ;
-            epsSmall = 0.000001/(grdTry)
+            epsSmall = 1e-8/(grdTry)
             #print 'Testing small variation, eps = {0: .10f}'.format(epsSmall)
             objTry0 = opt.updateTry(dir0, epsSmall, obj)
             if objTry0 > obj:

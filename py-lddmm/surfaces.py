@@ -47,12 +47,15 @@ class Surface:
                 self.component = np.zeros(self.faces.shape[0], dtype=int)
                 self.computeCentersAreas()
         else:
-            self.vertices = np.copy(surf.vertices)
-            self.faces = np.copy(surf.faces)
-            #self.surfel = np.copy(surf.surfel)
-            #self.centers = np.copy(surf.centers)
-            self.component = np.copy(surf.component)
-            self.computeCentersAreas()
+            if type(surf) is list:
+                self.concatenate(surf)
+            else:
+                self.vertices = np.copy(surf.vertices)
+                self.faces = np.copy(surf.faces)
+                #self.surfel = np.copy(surf.surfel)
+                #self.centers = np.copy(surf.centers)
+                self.component = np.copy(surf.component)
+                self.computeCentersAreas()
 
     def read(self, filename):
         (mainPart, ext) = os.path.splitext(filename)
@@ -62,6 +65,8 @@ class Surface:
             self.readOFF(filename)
         elif ext=='.vtk':
             self.readVTK(filename)
+        elif ext=='.stl':
+            self.readSTL(filename)
         elif ext=='.obj':
             self.readOBJ(filename)
         else:
@@ -281,7 +286,10 @@ class Surface:
         if gotVTK:
             polydata = self.toPolyData()
             subdivisionFilter = vtkLinearSubdivisionFilter()
-            subdivisionFilter.SetInput(polydata)
+            if vtkVersion.GetVTKMajorVersion() >= 6:
+                subdivisionFilter.SetInputData(polydata)
+            else:
+                subdivisionFilter.SetInput(polydata)
             subdivisionFilter.SetNumberOfSubdivisions(number)
             subdivisionFilter.Update()
             self.fromPolyData(subdivisionFilter.GetOutput())
@@ -1024,7 +1032,7 @@ class Surface:
     def readFromImage(self, fileName):
         self.img = diffeo.gridScalars(fileName=fileName)
         self.img.data /= self.img.data.max() + 1e-10
-        self.Isosurface(self.img.data)
+        self.Isosurface(self.img.data, smooth=0.001)
         smoothData = cg.linearcg(lambda x: -diffeo.laplacian(x), -self.img.data, iterMax=500)
         self.vfld = diffeo.gradient(smoothData)
     
@@ -1065,6 +1073,36 @@ class Surface:
             self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
         else:
             raise Exception('Cannot run readOBJ without VTK')
+
+    # Reads .stl file
+    def readSTL(self, fileName):
+        if gotVTK:
+            u = vtkSTLReader()
+            u.SetFileName(fileName)
+            u.Update()
+            v = u.GetOutput()
+            #print v
+            npoints = int(v.GetNumberOfPoints())
+            nfaces = int(v.GetNumberOfPolys())
+            V = np.zeros([npoints, 3])
+            for kk in range(npoints):
+                V[kk, :] = np.array(v.GetPoint(kk))
+    
+            F = np.zeros([nfaces, 3])
+            for kk in range(nfaces):
+                c = v.GetCell(kk)
+                for ll in range(3):
+                    F[kk,ll] = c.GetPointId(ll)
+            
+            self.vertices = V
+            self.faces = np.int_(F)
+            xDef1 = self.vertices[self.faces[:, 0], :]
+            xDef2 = self.vertices[self.faces[:, 1], :]
+            xDef3 = self.vertices[self.faces[:, 2], :]
+            self.centers = (xDef1 + xDef2 + xDef3) / 3
+            self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
+        else:
+            raise Exception('Cannot run readSTL without VTK')
 
     def concatenate(self, fvl):
         nv = 0

@@ -20,6 +20,6 @@ class MatchingParam:
         else:
             self.KparDiff = KparDiff
         if KparDist == None:
-            self.KparDist = kfun.Kernel(name = 'gauss', sigma = self.sigmaDist)
+            self.KparDist = kfun.Kernel(name = 'laplacian', order=1, sigma = self.sigmaDist)
         else:
             self.KparDist = KparDist

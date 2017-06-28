@@ -10,6 +10,8 @@ import pointSets
 import pointEvolution as evol
 import conjugateGradient as cg
 from affineBasis import *
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 ## Parameter class for matching
 #      timeStep: time discretization
@@ -40,6 +42,10 @@ class CurveMatchingParam(matchingParam.MatchingParam):
             self.fun_obj0 = curves.varifoldNorm0
             self.fun_obj = curves.varifoldNormDef
             self.fun_objGrad = curves.varifoldNormGradient
+        elif errorType=='varifoldComponent':
+            self.fun_obj0 = curves.varifoldNormComponent0
+            self.fun_obj = curves.varifoldNormComponentDef
+            self.fun_objGrad = curves.varifoldNormComponentGradient
         else:
             print 'Unknown error Type: ', self.errorType
 
@@ -65,10 +71,10 @@ class Direction:
 #        affine: 'affine', 'similitude', 'euclidean', 'translation' or 'none'
 #        maxIter: max iterations in conjugate gradient
 class CurveMatching:
-    def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000, regWeight = 1.0, affineWeight = 1.0, verb=True,
-                 gradLB = 0.001, saveRate=10, saveTrajectories=False,
+    def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000, regWeight = 1.0, affineWeight = 1.0, 
+                 verb=True, gradLB = 0.001, saveRate=10, saveTrajectories=False,
                  rotWeight = None, scaleWeight = None, transWeight = None, internalWeight=-1.0, 
-                 testGradient=False, saveFile = 'evolution', affine = 'none', outputDir = '.'):
+                 testGradient=False, saveFile = 'evolution', affine = 'none', outputDir = '.', pplot=True):
         if Template==None:
             if fileTempl==None:
                 print 'Please provide a template curve'
@@ -95,8 +101,8 @@ class CurveMatching:
             xmax = max(self.fv0.vertices[:,0].max(), self.fv1.vertices[:,0].max())
             ymin = min(self.fv0.vertices[:,1].min(), self.fv1.vertices[:,1].min())
             ymax = max(self.fv0.vertices[:,1].max(), self.fv1.vertices[:,1].max())
-            dx = 0.025*(xmax-xmin)
-            dy = 0.025*(ymax-ymin)
+            dx = 0.01*(xmax-xmin)
+            dy = 0.01*(ymax-ymin)
             dxy = min(dx,dy)
             #print xmin,xmax, dxy
             [x,y] = np.mgrid[(xmin-10*dxy):(xmax+10*dxy):dxy, (ymin-10*dxy):(ymax+10*dxy):dxy]
@@ -140,6 +146,14 @@ class CurveMatching:
         if self.param.internalCost == 'h1':
             self.internalCost = curves.normGrad 
             self.internalCostGrad = curves.diffNormGrad 
+        elif self.param.internalCost == 'h1Alpha':
+            self.internalCost = curves.h1AlphaNorm
+            self.internalCostGrad = curves.diffH1Alpha 
+            self.internalWeight *= self.fv0.length()/(self.fv0.component.max()+1)
+        elif self.param.internalCost == 'h1AlphaInvariant':
+            self.internalCost = curves.h1AlphaNormInvariant
+            self.internalCostGrad = curves.diffH1AlphaInvariant 
+            self.internalWeight *= self.fv0.length()/(self.fv0.component.max()+1)
         elif self.param.internalCost == 'h1Invariant':
             if self.fv0.vertices.shape[1] == 2:
                 self.internalCost = curves.normGradInvariant 
@@ -167,6 +181,27 @@ class CurveMatching:
         self.gradLB = gradLB
         self.saveRate = saveRate 
         self.saveTrajectories = saveTrajectories
+        self.pplot = pplot
+        if self.pplot:
+            fig=plt.figure(3)
+            fig.clf()
+            if self.dim==2:
+                ax = fig.gca()
+                for kf in range(self.fv1.faces.shape[0]):
+                    ax.plot(self.fv1.vertices[self.fv1.faces[kf,:],0], self.fv1.vertices[self.fv1.faces[kf,:],1], color=[0,0,1])
+                for kf in range(self.fvDef.faces.shape[0]):
+                    ax.plot(self.fvDef.vertices[self.fvDef.faces[kf,:],0], self.fvDef.vertices[self.fvDef.faces[kf,:],1], color=[1,0,0], marker='*')
+            elif self.dim==3:
+                ax = fig.gca(projection='3d')
+                for kf in range(self.fv1.faces.shape[0]):
+                    ax.plot(self.fv1.vertices[self.fv1.faces[kf,:],0], self.fv1.vertices[self.fv1.faces[kf,:],1], 
+                               self.fv1.vertices[self.fv1.faces[kf,:],2], color=[0,0,1])
+                for kf in range(self.fvDef.faces.shape[0]):
+                    ax.plot(self.fvDef.vertices[self.fvDef.faces[kf,:],0], self.fvDef.vertices[self.fvDef.faces[kf,:],1], 
+                             self.fvDef.vertices[self.fvDef.faces[kf,:],2], color=[1,0,0], marker='*')
+            plt.axis('equal')
+            plt.pause(0.1)
+
 #        om = np.random.uniform(-1,1,[1,self.fv0.vertices.shape[1]])
 #        v1 = np.cross(om, self.fv0.vertices)
 #        #om = np.random.uniform(-1,1,[1,3])
@@ -442,7 +477,7 @@ class CurveMatching:
             Phi = np.random.normal(size=self.x0.shape)
             dPhi1 = np.random.normal(size=self.x0.shape)
             dPhi2 = np.random.normal(size=self.x0.shape)
-            eps = 1e-6
+            eps = 1e-10
             fv22 = curves.Curve(curve=self.fvDef)
             fv22.updateVertices(self.fvDef.vertices+eps*dPhi2)
             e0 = self.internalCost(self.fvDef, Phi)
@@ -468,6 +503,26 @@ class CurveMatching:
                     self.gridDef.saveVTK(self.outputDir +'/grid'+str(kk)+'.vtk')
         else:
             self.fvDef.updateVertices(np.squeeze(self.xt[self.Tsize, :, :]))
+
+        if self.pplot:
+            fig=plt.figure(4)
+            fig.clf()
+            if self.dim==2:
+                ax = fig.gca()
+                for kf in range(self.fv1.faces.shape[0]):
+                    ax.plot(self.fv1.vertices[self.fv1.faces[kf,:],0], self.fv1.vertices[self.fv1.faces[kf,:],1], color=[0,0,1])
+                for kf in range(self.fvDef.faces.shape[0]):
+                    ax.plot(self.fvDef.vertices[self.fvDef.faces[kf,:],0], self.fvDef.vertices[self.fvDef.faces[kf,:],1], color=[1,0,0], marker='*')
+            elif self.dim==3:
+                ax = fig.gca(projection='3d')
+                for kf in range(self.fv1.faces.shape[0]):
+                    ax.plot(self.fv1.vertices[self.fv1.faces[kf,:],0], self.fv1.vertices[self.fv1.faces[kf,:],1], 
+                               self.fv1.vertices[self.fv1.faces[kf,:],2], color=[0,0,1])
+                for kf in range(self.fvDef.faces.shape[0]):
+                    ax.plot(self.fvDef.vertices[self.fvDef.faces[kf,:],0], self.fvDef.vertices[self.fvDef.faces[kf,:],1], 
+                               self.fvDef.vertices[self.fv1.faces[kf,:],2], color=[1,0,0], marker='*')
+            plt.axis('equal')
+            plt.pause(0.1)
                 
 
     def endOptim(self):
