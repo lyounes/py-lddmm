@@ -58,13 +58,13 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
     def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, verb=True,
                  internalWeight=0.0, regWeight=1.0, affineWeight=1.0,
                  testGradient=False, mu=0.1, outputDir='.', saveFile='evolution', affine='none', saveTrajectories=False,
-                 rotWeight=None, scaleWeight=None, transWeight=None, symmetric=False, maxIter_cg=1000, maxIter_al=100):
+                 rotWeight=None, scaleWeight=None, transWeight=None, symmetric=False, pplot = True, maxIter_cg=1000, maxIter_al=100):
         super(SurfaceMatching, self).__init__(Template=Template, Target=Target, fileTempl=fileTempl,
                                               fileTarg=fileTarg, param=param, maxIter=maxIter_cg, regWeight=regWeight,
                                               internalWeight=internalWeight, affineWeight=affineWeight,
                                               verb=verb, subsampleTargetSize=-1, rotWeight=rotWeight,
                                               scaleWeight=scaleWeight, transWeight=transWeight,
-                                              symmetric=symmetric, testGradient=testGradient,
+                                              symmetric=symmetric, testGradient=testGradient, pplot = pplot,
                                               saveFile=saveFile, saveTrajectories=saveTrajectories, affine=affine,
                                               outputDir=outputDir)
 
@@ -595,7 +595,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
 if __name__ == "__main__":
     # outputDir = '/cis/home/younes/Development/Results/ERC_Normals_ADNI_014_S_4058/'
-    outputDir = '/Users/younes/Development/Results/SUE/fromTop'
+    outputDir = '/Users/younes/Development/Results/SUE/fromTop2'
 
     # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/DH1MiddleOuter.byu')
     # fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/DH1MiddleInner.byu')
@@ -627,7 +627,7 @@ if __name__ == "__main__":
                                               sigmaError=.1, errorType='varifold', internalCost='h1')
 
     f = SurfaceMatching(Template=fvTop, Target=fvBottom, outputDir=outputDir, param=sm, regWeight=1.,
-                        saveTrajectories=True, symmetric=False,
+                        saveTrajectories=True, symmetric=False, pplot=False,
                         affine='none', testGradient=False, internalWeight=100., affineWeight=1e3, maxIter_cg=50,
                         maxIter_al=50, mu=1e-3)
     f.optimizeMatching()

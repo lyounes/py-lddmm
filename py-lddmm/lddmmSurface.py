@@ -23,7 +23,7 @@ def main():
     parser.add_argument('--sigmaKernel', metavar='sigmaKernel', type=float, dest='sigmaKernel', default = 6.5, help='kernel width') 
     parser.add_argument('--sigmaDist', metavar='sigmaDist', type=float, dest='sigmaDist', default = 2.5, help='kernel width (error term); (default = 2.5)') 
     parser.add_argument('--sigmaError', metavar='sigmaError', type=float, dest='sigmaError', default = 1.0, help='std error; (default = 1.0)') 
-    parser.add_argument('--internalWeight', metavar='internalWeight', type=float, dest='internalWeight', default = -1.0, help='wight for the internal energy term; (default = -1.0)') 
+    parser.add_argument('--internalWeight', metavar='internalWeight', type=float, dest='internalWeight', default = -1.0, help='weight for the internal energy term; (default = -1.0)') 
     parser.add_argument('--typeError', metavar='typeError', type=str, dest='typeError', default = 'varifold', help='type error term (default: varifold)') 
     parser.add_argument('--dirOut', metavar = 'dirOut', type = str, dest = 'dirOut', default = '.', help='Output directory')
     parser.add_argument('--tmpOut', metavar = 'tmpOut', type = str, dest = 'tmpOut', default = '', help='info files directory')
@@ -65,7 +65,10 @@ def main():
     tmpl = surfaces.Surface(filename=args.template)
     tmpl.vertices *= args.scaleFactor
     K1 = Kernel(name=args.typeKernel, sigma = args.sigmaKernel)
-    sm = smt.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=args.sigmaDist, sigmaError=args.sigmaError, errorType=args.typeError)
+    if args.internalWeight >  0:
+        sm = smt.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=args.sigmaDist, sigmaError=args.sigmaError, errorType=args.typeError, internalCost = 'h1')
+    else:
+        sm = smt.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=args.sigmaDist, sigmaError=args.sigmaError, errorType=args.typeError, internalCost = None)
     fv = surfaces.Surface(filename=args.target)
     fv.vertices *= args.scaleFactor
     if args.flipTarget:
