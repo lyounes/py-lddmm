@@ -461,7 +461,7 @@ def faces(sim):
 
     sim.kvn = 'laplacian'
     sim.khn = 'laplacian'
-    sim.kvs = 10.
+    sim.kvs = 3.
     sim.khs = 1.
     sim.kvo = 4
     sim.kho = 2

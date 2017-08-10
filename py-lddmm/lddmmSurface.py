@@ -19,6 +19,7 @@ def main():
     #parser.add_argument('template', metavar='template', type = str, help='template')
     #parser.add_argument('target', metavar='target', type = str, help='target')
     parser.add_argument('--typeKernel', metavar='typeKernel', type=str, dest='typeKernel', default = 'gauss', help='kernel type') 
+    parser.add_argument('--maxIter', metavar='maxIter', type=int, dest='maxIter', default = 2000, help='Maximum number of iterations') 
     parser.add_argument('--sigmaKernel', metavar='sigmaKernel', type=float, dest='sigmaKernel', default = 6.5, help='kernel width') 
     parser.add_argument('--sigmaDist', metavar='sigmaDist', type=float, dest='sigmaDist', default = 2.5, help='kernel width (error term); (default = 2.5)') 
     parser.add_argument('--sigmaError', metavar='sigmaError', type=float, dest='sigmaError', default = 1.0, help='std error; (default = 1.0)') 
