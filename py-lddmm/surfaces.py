@@ -65,9 +65,15 @@ class Surface:
             self.readOFF(filename)
         elif ext=='.vtk':
             self.readVTK(filename)
+<<<<<<< HEAD
+        elif ext == '.stl':
+            self.readSTL(filename)
+        elif ext == '.obj':
+=======
         elif ext=='.stl':
             self.readSTL(filename)
         elif ext=='.obj':
+>>>>>>> bb4670a33dcb25ee41ca6a6f87cb2c91d96d9157
             self.readOBJ(filename)
         else:
             raise NameError('Unknown Surface Extension: '+filename) 
@@ -1081,26 +1087,43 @@ class Surface:
             u.SetFileName(fileName)
             u.Update()
             v = u.GetOutput()
+<<<<<<< HEAD
+            # print v
+=======
             #print v
+>>>>>>> bb4670a33dcb25ee41ca6a6f87cb2c91d96d9157
             npoints = int(v.GetNumberOfPoints())
             nfaces = int(v.GetNumberOfPolys())
             V = np.zeros([npoints, 3])
             for kk in range(npoints):
                 V[kk, :] = np.array(v.GetPoint(kk))
+<<<<<<< HEAD
+
+=======
     
+>>>>>>> bb4670a33dcb25ee41ca6a6f87cb2c91d96d9157
             F = np.zeros([nfaces, 3])
             for kk in range(nfaces):
                 c = v.GetCell(kk)
                 for ll in range(3):
+<<<<<<< HEAD
+                    F[kk, ll] = c.GetPointId(ll)
+
+=======
                     F[kk,ll] = c.GetPointId(ll)
             
+>>>>>>> bb4670a33dcb25ee41ca6a6f87cb2c91d96d9157
             self.vertices = V
             self.faces = np.int_(F)
             xDef1 = self.vertices[self.faces[:, 0], :]
             xDef2 = self.vertices[self.faces[:, 1], :]
             xDef3 = self.vertices[self.faces[:, 2], :]
             self.centers = (xDef1 + xDef2 + xDef3) / 3
+<<<<<<< HEAD
+            self.surfel = np.cross(xDef2 - xDef1, xDef3 - xDef1) / 2
+=======
             self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
+>>>>>>> bb4670a33dcb25ee41ca6a6f87cb2c91d96d9157
         else:
             raise Exception('Cannot run readSTL without VTK')
 

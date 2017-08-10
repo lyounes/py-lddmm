@@ -168,7 +168,7 @@ class SurfaceMatching(object):
             v0 = self.fv0.surfVolume()
             if self.param.errorType == 'L2Norm' and v0 < 0:
                 self.fv0.flipFaces()
-                v0 = -v0 ;
+                v0 = -v0
             v1 = self.fv1.surfVolume()
             if (v0*v1 < 0):
                 self.fv1.flipFaces()
