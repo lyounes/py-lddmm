@@ -62,7 +62,9 @@ class Surface:
             self.readOFF(filename)
         elif ext=='.vtk':
             self.readVTK(filename)
-        elif ext=='.obj':
+        elif ext == '.stl':
+            self.readSTL(filename)
+        elif ext == '.obj':
             self.readOBJ(filename)
         else:
             raise NameError('Unknown Surface Extension: '+filename) 
@@ -1065,6 +1067,36 @@ class Surface:
             self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
         else:
             raise Exception('Cannot run readOBJ without VTK')
+
+    # Reads .stl file
+    def readSTL(self, fileName):
+        if gotVTK:
+            u = vtkSTLReader()
+            u.SetFileName(fileName)
+            u.Update()
+            v = u.GetOutput()
+            # print v
+            npoints = int(v.GetNumberOfPoints())
+            nfaces = int(v.GetNumberOfPolys())
+            V = np.zeros([npoints, 3])
+            for kk in range(npoints):
+                V[kk, :] = np.array(v.GetPoint(kk))
+
+            F = np.zeros([nfaces, 3])
+            for kk in range(nfaces):
+                c = v.GetCell(kk)
+                for ll in range(3):
+                    F[kk, ll] = c.GetPointId(ll)
+
+            self.vertices = V
+            self.faces = np.int_(F)
+            xDef1 = self.vertices[self.faces[:, 0], :]
+            xDef2 = self.vertices[self.faces[:, 1], :]
+            xDef3 = self.vertices[self.faces[:, 2], :]
+            self.centers = (xDef1 + xDef2 + xDef3) / 3
+            self.surfel = np.cross(xDef2 - xDef1, xDef3 - xDef1) / 2
+        else:
+            raise Exception('Cannot run readSTL without VTK')
 
     def concatenate(self, fvl):
         nv = 0

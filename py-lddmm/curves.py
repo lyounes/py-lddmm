@@ -14,10 +14,10 @@ except ImportError:
 # General surface class
 class Curve:
     def __init__(self, curve=None, filename=None, FV = None, pointSet=None, isOpen=False):
-        if curve == None:
+        if curve is None:
             if FV == None:
-                if filename == None:
-                    if pointSet == None:
+                if filename is None:
+                    if pointSet is None:
                         self.vertices = np.empty(0)
                         self.centers = np.empty(0)
                         self.faces = np.empty(0)
@@ -620,40 +620,42 @@ class Curve:
 
 def remesh(x, N=100, closed=True):
     if closed:
-        x1 = x
-        x2 = np.roll(x,-1, axis=0)
+        x1 = np.insert(np.copy(x), -1, x[0,:], axis=0)
     else:
-        x1 = x[0:-2]
-        x2 = x[1:-1]
-    linel = x2-x1
+        x1 = x
+    linel = x1[1:-1]-x1[0:-2]
     ll = np.sqrt((linel**2).sum(axis=1))
     s = np.insert(ll.cumsum(),0,0,axis=0)
     L = s[-1]
-    ds = L/(N-1)
+    if closed:
+        ds = L/N
+    else:
+        ds = L/(N-1)
     v = np.zeros((N,2))
     v[0,:] = x[0,:]
     kx = 0
     n = s.shape[0]
+    nx = x1.shape[0]
     for k in range(1,N):
         pred = v[k-1,:]
-        ls = np.sqrt(((x[kx,:]-v[k-1,:])**2).sum())
-        while kx < n-2 and ls < ds:
-            pred = x[kx,:]
+        ls = np.sqrt(((x1[kx,:]-v[k-1,:])**2).sum())
+        while kx < nx-2 and ls < ds:
+            pred = x1[kx,:]
             kx += 1
-            ls += ll[kx]
-        if kx < n:
-            b = ((pred-v[k-1,:])*(x[kx,:]-pred)).sum()
-            a = ((x[kx,:]-pred)**2).sum()
-            c = ((pred-v[k-1,:])**2).sum() - ds**2
-            aa = (-b + np.sqrt(b**2-a*c))/a
-            #print k,aa
-            if aa<0:
-                v[k,:] = pred
-            elif aa > 1:
-                v[k,:] = x[kx,:]
-            else:
-                v[k,:] = pred + aa * (x[kx,:]-pred)
-    
+            if kx < n-1:
+                ls += ll[kx]
+        b = ((pred-v[k-1,:])*(x1[kx,:]-pred)).sum()
+        a = ((x1[kx,:]-pred)**2).sum()
+        c = ((pred-v[k-1,:])**2).sum() - ds**2
+        aa = (-b + np.sqrt(b**2-a*c))/a
+        #print k,aa
+        if aa<0:
+            v[k,:] = pred
+        elif aa > 1:
+            v[k,:] = x1[kx,:]
+        else:
+            v[k,:] = pred + aa * (x1[kx,:]-pred)
+
     return v
 
 
