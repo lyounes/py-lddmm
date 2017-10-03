@@ -189,7 +189,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
                     contt=0
 
             #print obj+obj0, objTry+obj0
-            if (np.fabs(obj-objTry) < .000001):
+            if (np.fabs(obj-objTry) < 1e-10):
                 if (skipCG==1) | (beta < 1e-10) :
                     logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, beta = {3:.5f}, gradient: {4:.5f}'.format(it+1, obj, eps, beta, np.sqrt(grd2)))
                     logging.info('Stopping Gradient Descent: small variation')
@@ -278,7 +278,7 @@ def linearcg(op, b, iterMax=100, x0=None, param = None, verb=False):
                 logging.info('iter {0:d} ener = {1:.6f} error = {2:.15f}'.format(i2+1, ener, error))
             f = 1
             return x
-        oldEner = ener ;
+        oldEner = ener
 
     if verb:
         logging.info('iter {0:d} ener = {1:.6f} error = {2:.15f}'.format(i2+1, ener, error))
