@@ -10,8 +10,9 @@ except ImportError:
     gotVTK = False
     
 #import kernelFunctions as kfun
+import matplotlib.pyplot as plt
 
-# General surface class
+# General curve class
 class Curve:
     def __init__(self, curve=None, filename=None, FV = None, pointSet=None, isOpen=False):
         if curve is None:
@@ -618,43 +619,81 @@ class Curve:
 
 
 
-def remesh(x, N=100, closed=True):
+def remesh(x, N=100, closed=True, rhoTol=0.9):
     if closed:
-        x1 = np.insert(np.copy(x), -1, x[0,:], axis=0)
+        x1 = np.append(np.copy(x), [x[0,:]], axis=0)
     else:
         x1 = x
-    linel = x1[1:-1]-x1[0:-2]
+    linel = x1[1:x1.shape[0], :]-x1[0:x1.shape[0]-1, :]
     ll = np.sqrt((linel**2).sum(axis=1))
-    s = np.insert(ll.cumsum(),0,0,axis=0)
+    s = np.insert(ll.cumsum(),0,[0],axis=0)
     L = s[-1]
     if closed:
         ds = L/N
     else:
         ds = L/(N-1)
-    v = np.zeros((N,2))
+    v = np.zeros((1000,2))
     v[0,:] = x[0,:]
+    lsofar = 0
     kx = 0
     n = s.shape[0]
-    nx = x1.shape[0]
-    for k in range(1,N):
+    nx = x.shape[0]
+    #fig = plt.figure(2)
+    for k in range(1,1000):
         pred = v[k-1,:]
         ls = np.sqrt(((x1[kx,:]-v[k-1,:])**2).sum())
-        while kx < nx-2 and ls < ds:
+        rhos = 1.
+        while kx < nx-1 and ls <= ds and rhos>=rhoTol:
             pred = x1[kx,:]
             kx += 1
-            if kx < n-1:
-                ls += ll[kx]
-        b = ((pred-v[k-1,:])*(x1[kx,:]-pred)).sum()
-        a = ((x1[kx,:]-pred)**2).sum()
-        c = ((pred-v[k-1,:])**2).sum() - ds**2
-        aa = (-b + np.sqrt(b**2-a*c))/a
-        #print k,aa
-        if aa<0:
-            v[k,:] = pred
-        elif aa > 1:
-            v[k,:] = x1[kx,:]
+            if kx < n:
+                ls += ll[kx-1]
+                lsofar += ll[kx - 1]
+            rhos = np.sqrt(((x1[kx,:]-v[k-1,:])**2).sum())/ls
+        if rhos < rhoTol:
+            kx -= 1
+            lsofar -= ll[kx - 1]
+            v[k, :] = x1[kx,:]
+            # fig.clf()
+            # plt.plot(v[0:k+1, 0], v[0:k+1,1], color=[1,0,0], marker='*')
+            # plt.plot(x1[0:kx+1, 0], x1[0:kx+1,1], color=[0,0,1], marker='o')
+        elif ls > ds:
+            b = ((pred-v[k-1,:])*(x1[kx,:]-pred)).sum()
+            a = ((x1[kx,:]-pred)**2).sum()
+            c = ((pred-v[k-1,:])**2).sum() - ds**2
+            aa = (-b + np.sqrt(b**2-a*c))/a
+            #print k,aa
+            if aa<0:
+                v[k,:] = pred
+            elif aa > 1:
+                v[k,:] = x1[kx,:]
+            else:
+                v[k,:] = pred + aa * (x1[kx,:]-pred)
+            # fig.clf()
+            # plt.plot(v[0:k+1, 0], v[0:k+1, 1], color=[1, 0, 0], marker='*')
+            # plt.plot(x1[0:kx+1, 0], x1[0:kx+1, 1], color=[0, 0, 1], marker='o')
         else:
-            v[k,:] = pred + aa * (x1[kx,:]-pred)
+            if not closed:
+                v[k,:] = x1[kx, :]
+                v = v[0:k+1, :]
+                # fig.clf()
+                # plt.plot(v[0:k+1, 0], v[0:k+1,1], color=[1,0,0], marker='*')
+            else:
+                ls = np.sqrt(((x1[-1, :] - v[k-1, :]) ** 2).sum())
+                q = int(np.floor(ls/ds))
+                for kk in range(0,q):
+                    v[k+kk,:] = v[k-1,:] + (kk+1)*(ds/ls)*(x1[-1,:] - v[k-1,:])
+                ls = np.sqrt(((x1[-1, :] - v[k+q-1, :]) ** 2).sum())
+                if ls < ds/2:
+                    v = v[0:k+q-1, :]
+                else:
+                    v = v[0:k+q, :]
+            #     fig.clf()
+            #     plt.plot(v[:, 0], v[:, 1], color=[1, 0, 0], marker='*')
+            # plt.plot(x1[0:kx+1, 0], x1[0:kx+1,1], color=[0,0,1], marker='o')
+            break
+        #lsofar += np.sqrt(((v[k, :] - v[k-1, :]) ** 2).sum())
+
 
     return v
 

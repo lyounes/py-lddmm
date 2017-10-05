@@ -127,7 +127,7 @@ class CurveMatchingRigid:
         self.regweight = regWeight
         self.minEig = 1e-8
         self.parpot = parpot
-        self.rpot = 4.
+        self.rpot = 2.
 
         if param==None:
             self.param = CurveMatchingRigidParam()
@@ -364,11 +364,15 @@ class CurveMatchingRigid:
         return theta
 
     def solveMKM2(self, z, rho):
-        K = self.param.KparDiff.getK(z)
-        eK = la.eigh(K)
+        zc = np.concatenate([z,self.xc])
+        K = self.param.KparDiff.getK(zc)
+        try:
+            eK = la.eigh(K)
+        except Exception:
+            raise Exception('Bad Value in solveMKM2')
         J = np.nonzero(eK[0] > self.minEig)[0]
         Ki = np.dot(eK[1][:, J], eK[1][:, J].T/eK[0][J, np.newaxis])
-        M = np.zeros([self.npt*self.dim, self.ncomponent*(1+self.dim)])
+        M = np.zeros([self.nptc*self.dim, self.ncomponent*(1+self.dim)])
         k1 = 0
         for k in range(self.ncomponent):
             I = np.nonzero(self.component==k)[0]
@@ -381,13 +385,17 @@ class CurveMatchingRigid:
             k1 += self.dim*zk.shape[0]
 
         MKM = np.dot(M.T, np.dot(np.kron(Ki,np.eye(self.dim)),M))
-        theta = la.solve(MKM, rho)
+        try:
+            theta = la.solve(MKM, rho)
+        except Exception:
+            raise Exception('Bad Value in solveMKM2')
         return theta
 
 
 
 
-    def geodesicEquation2(self, Tsize, fv0, a0, tau0):
+    def geodesicEquation2(self, Tsize, a0, tau0, pplot = False):
+        fv0 = self.fv0
         x0 = fv0.vertices
         xt = np.zeros([Tsize+1, x0.shape[0], x0.shape[1]])
         xt[0,:,:] = np.copy(x0)
@@ -441,14 +449,20 @@ class CurveMatchingRigid:
             Jz[:,1] = -z[:,0]
             v = a[self.component, np.newaxis] * Jz + tau[self.component,:]
             #xt[t+1, :, :] = xt[t, :, :] + timeStep * v
-            mu = self.solveK(z,v)
+            try:
+                mu = self.solveK(z,v)
+            except Exception:
+                print 'solved until t=',t*timeStep
+                return xt[0:t,...], at[0:t,...], taut[0:t,...]
+
             a1 = self.regweight*mu[np.newaxis,...]
             a2 = mu[np.newaxis,...]
             zpx = self.param.KparDiff.applyDiffKT(z, a1, a2)
-            Jz[:, 0] = -mu[:, 1]
-            Jz[:, 1] = mu[:, 0]
+            Jz[:, 0] = mu[:, 1]
+            Jz[:, 1] = -mu[:, 0]
             dv = a[self.component, np.newaxis] * Jz
-            zpx -= dv
+            zpot = self.gradPotential(z)
+            zpx += dv - zpot
             drho = np.zeros(ncomponent * (dim + 1))
             for k in range(ncomponent):
                 J = np.nonzero(component == k)[0]
@@ -459,26 +473,49 @@ class CurveMatchingRigid:
                 drho[k * (dim + 1) + 1:(k + 1) * (dim + 1)] = zpx[J, :].sum(axis=0)
             for k in range(ncomponent):
                 pt = rho[k * (dim + 1) + 1:(k + 1) * (dim + 1)]
-                drho[k * (dim + 1)] = pt[0]*tau[k,1] - pt[1]*tau[k,0]
-                drho[k * (dim + 1)+1] = -a[k] * pt[1]
-                drho[k * (dim + 1)+2] = a[k] * pt[0]
+                drho[k * (dim + 1)] += -pt[0]*tau[k,1] + pt[1]*tau[k,0]
+                drho[k * (dim + 1)+1] += -a[k] * pt[1]
+                drho[k * (dim + 1)+2] += a[k] * pt[0]
             rho -= timeStep * drho
             theta = self.solveMKM2(z,rho)
             at[t+1,:] = theta[range(0,len(theta),self.dim+1)]
             taut[t+1, :, 0] = theta[range(1, len(theta), self.dim + 1)]
             taut[t+1, :, 1] = theta[range(2, len(theta), self.dim + 1)]
             fvDef.updateVertices(xt[t+1,:,:])
-            if self.pplot:
+            if pplot:
                 fig=plt.figure(2)
                 fig.clf()
                 ax = fig.gca()
+                if len(self.xc) > 0:
+                    for kf in range(self.fvc.faces.shape[0]):
+                        ax.plot(self.fvc.vertices[self.fvc.faces[kf, :], 0],
+                                self.fvc.vertices[self.fvc.faces[kf, :], 1], color=[0, 0, 0])
+                for kf in range(self.fv1.faces.shape[0]):
+                    ax.plot(self.fv1.vertices[self.fv1.faces[kf, :], 0], self.fv1.vertices[self.fv1.faces[kf, :], 1],
+                            color=[0, 0, 1])
                 for kf in range(fvDef.faces.shape[0]):
-                    ax.plot(fvDef.vertices[fvDef.faces[kf,:],0], fvDef.vertices[fvDef.faces[kf,:],1], color=[1,0,0], marker='*')
+                    ax.plot(fvDef.vertices[fvDef.faces[kf,:],0], fvDef.vertices[fvDef.faces[kf,:],1], color=[1,0,0])
+                for k in range(fvDef.component.max() + 1):
+                    I = np.nonzero(fvDef.component == k)[0]
+                    xDef = fvDef.vertices[I, :]
+                    ax.plot(np.array([np.mean(xDef[:, 0]), xDef[0, 0]]),
+                            np.array([np.mean(xDef[:, 1]), xDef[0, 1]]),
+                            color=[0, 0, 1])
+                    ax.plot(np.mean(xt[0:t, I, 0], axis=1), np.mean(xt[0:t, I, 1], axis=1))
+                plt.title('t={0:.4f}'.format(t*timeStep))
                 plt.axis('equal')
-                plt.pause(0.1)
+                plt.pause(0.001)
+        if self.pplot:
+            fig=plt.figure(2)
+            fig.clf()
+            ax = fig.gca()
+            for kf in range(fvDef.faces.shape[0]):
+                ax.plot(fvDef.vertices[fvDef.faces[kf,:],0], fvDef.vertices[fvDef.faces[kf,:],1], color=[1,0,0], marker='*')
+            plt.axis('equal')
+            plt.pause(0.1)
         return xt, at, taut
 
-    def geodesicEquation(self, Tsize, a0, tau0, pplot = False):
+    def geodesicEquation(self, Tsize, a0, tau0, pplot = False, symplectic=False):
         fv0 = self.fv0
         x0 = fv0.vertices
         xt = np.zeros([Tsize+1, x0.shape[0], x0.shape[1]])
@@ -516,16 +553,24 @@ class CurveMatchingRigid:
             px = np.squeeze(pxt[t, :, :])
             a = np.squeeze(at[t, :])
             tau = np.squeeze(taut[t, :, :])
+            ca = np.cos(timeStep*a)
+            sa = np.sin(timeStep*a)
+            if symplectic:
+                z2 = z + timeStep * tau[self.component,:]
+                Jz[:,0] = ca[self.component]*z2[:,0] + sa[self.component]*z2[:,1]
+                Jz[:,1] = -sa[self.component]*z2[:,0] + ca[self.component]*z2[:,1]
+                znew = np.copy(Jz)
+                z = np.copy(znew)
+            else:
+                Jz[:,0] = ca[self.component]*z[:,0] + sa[self.component]*z[:,1]
+                Jz[:,1] = -sa[self.component]*z[:,0] + ca[self.component]*z[:,1]
+                #v = a[self.component, np.newaxis] * Jz + tau[self.component,:]
+                znew = Jz + timeStep * tau[self.component,:]
+            xt[t+1, :, :] = znew
+            #xt[t+1, :, :] = xt[t, :, :] + timeStep * v
             Jz[:,0] = z[:,1]
             Jz[:,1] = -z[:,0]
             v = a[self.component, np.newaxis] * Jz + tau[self.component,:]
-            ca = np.cos(timeStep*a)
-            sa = np.sin(timeStep*a)
-            Jz[:,0] = ca[self.component]*z[:,0] + sa[self.component]*z[:,1]
-            Jz[:,1] = -sa[self.component]*z[:,0] + ca[self.component]*z[:,1]
-            #v = a[self.component, np.newaxis] * Jz + tau[self.component,:]
-            xt[t+1, :, :] = Jz + timeStep * tau[self.component,:]
-            #xt[t+1, :, :] = xt[t, :, :] + timeStep * v
             try:
                 mu = self.solveK(z,v)
             except Exception:
@@ -580,6 +625,7 @@ class CurveMatchingRigid:
                             np.array([np.mean(xDef[:, 1]), xDef[0, 1]]),
                             color=[0, 0, 1])
                     ax.plot(np.mean(xt[0:t, I, 0], axis=1), np.mean(xt[0:t, I, 1], axis=1))
+                plt.title('t={0:.4f}'.format(t*timeStep))
                 plt.axis('equal')
                 plt.pause(0.001)
         if self.pplot:
@@ -948,14 +994,14 @@ class CurveMatchingRigid:
                                    regWeight=1., maxIter=10000)
             return f, T*a0, T*tau0
 
-    def runShoot(self):
+    def runShoot(self, dt=0.01):
         plt.ion()
-        S = self.shootingScenario(1)
+        S = self.shootingScenario(1,dt=dt, T=20)
         f = S[0]
         a0 = S[1]
         tau0 = S[2]
-        f.parpot = -.1
-        geod = f.geodesicEquation(f.Tsize, a0, tau0,pplot=False)
+        f.parpot = -.05
+        geod = f.geodesicEquation2(f.Tsize, a0, tau0,pplot=True)
         # f.__geodesicEquation__(f.Tsize, f.fv0, f.pxt[0,:,:])
         fig = plt.figure(2)
         fvDef = curves.Curve(curve=f.fv0)
@@ -964,7 +1010,8 @@ class CurveMatchingRigid:
         metadata = dict(title='Movie Test', artist='Matplotlib',
                         comment='Movie support!')
         writer = FFMpegWriter(fps=5, metadata=metadata)
-        with writer.saving(fig, "threeBallPotential01.mp4", 100):
+        dirMov = '/Users/younes/OneDrive - Johns Hopkins University/TALKS/MECHANICAL/Videos/'
+        with writer.saving(fig, dirMov+"threeBallPotential01Try.mp4", 100):
             for t in range(0,xt.shape[0], xt.shape[0]/100):
                 fig.clf()
                 ax = fig.gca()

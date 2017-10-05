@@ -221,11 +221,11 @@ def compute(model='default', dirOut='/cis/home/younes'):
         I1 = .06 - ((x-.30)**2 + 0.5*y**2)  
         I2 = .008 - ((x-.16)**2 + y**2)  
         I3 = .006 - ((x-.4)**2 + 2*y**2)  
-        fv1 = Curve() ;
+        fv1 = Curve()
         fv1.Isocontour(I1, value = 0, target=100, scales=scl)
-        fv11 = Curve() ;
+        fv11 = Curve()
         fv11.Isocontour(I2, value = 0, target=100, scales=scl)
-        fv12 = Curve() ;
+        fv12 = Curve()
         fv12.Isocontour(I3, value = 0, target=100, scales=scl)
         ftemp = [fv1, fv11, fv12]
     
@@ -236,11 +236,11 @@ def compute(model='default', dirOut='/cis/home/younes'):
         v = (x -.35 - y)/s2
         I2 = .01 - ((u-.12)**2 + 0.5*v**2) 
         I3 = .01 - (2*(u+.10)**2 + 0.8*v**2) 
-        fv2 = Curve() ;
+        fv2 = Curve()
         fv2.Isocontour(I1, value = 0, target=100, scales=scl)
-        fv22 = Curve() ;
+        fv22 = Curve()
         fv22.Isocontour(I2, value = 0, target=100, scales=scl)
-        fv23 = Curve() ;
+        fv23 = Curve()
         fv23.Isocontour(I3, value = 0, target=100, scales=scl)
         ftarg = [fv2, fv22, fv23]
         sigma = 0.2

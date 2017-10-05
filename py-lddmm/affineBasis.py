@@ -160,10 +160,14 @@ class AffineBasis:
 
 def getExponential(A):
     if (A.shape[0]==3) and (np.fabs(A.T+A).max() < 1e-8):
-        t = np.sqrt(A[0,1]**2+A[0,2]**2 + A[1,2]**2)
+        t = np.sqrt((A ** 2).sum() / 2)
         R = np.eye(3)
         if t > 1e-10:
-            R += ((1-np.cos(t))/(t**2)) * (np.dot(A,A)) + (np.sin(t)/t)*A
+            R += ((1 - np.cos(t)) / (t ** 2)) * (np.dot(A, A)) + (np.sin(t) / t) * A
+    elif (A.shape[0]==2) and (np.fabs(A.T+A).max() < 1e-8):
+        ct = np.cos(A[0,1])
+        st = np.sin(A[0,1])
+        R = np.array([[ct,st],[-st,ct]])
     else:
         R = np.eye(A.shape[0]) + A
     return R

@@ -3,6 +3,10 @@ import os
 
 def setup_default_logging(output_dir=None, config=None, fileName=None, stdOutput=True):
     logger = logging.getLogger()
+    #print 'Before', logger.handlers
+    for h in logger.handlers:
+        logger.removeHandler(h)
+    #print 'After', logger.handlers
     logger.setLevel(logging.INFO)
     #formatter = logging.Formatter("%(asctime)s-%(levelname)s: %(message)s")
     formatter = logging.Formatter("%(message)s")

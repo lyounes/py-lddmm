@@ -1,5 +1,12 @@
 import numpy as np
-#from vtk import *
+import scipy as sp
+import scipy.interpolate as interp
+try:
+    from vtk import *
+    gotVTK = True
+except ImportError:
+    print 'could not import VTK functions'
+    gotVTK = False
 import os
 
 # General surface class
@@ -8,6 +15,8 @@ class Grid:
         if gridPoints == None:
             self.vertices = []
             self.faces = []
+            self.nrow = 0
+            self.ncol = 0
         else:
             x = gridPoints[0]
             y = gridPoints[1]
@@ -17,6 +26,8 @@ class Grid:
             self.vertices[:, 1] = y.flatten()
             n = x.shape[0]
             m = x.shape[1]
+            self.nrow = n
+            self.ncol = m
             self.faces = np.zeros([n*(m-1)+m*(n-1), 2])
             j = 0 
             for k in range(n):
@@ -32,7 +43,49 @@ class Grid:
     def copy(self, src):
         self.vertices = np.copy(src.vertices)
         self.faces = np.copy(src.faces)
-        
+
+    def resample(self, rate=2.):
+        if type(rate) != list:
+            ratec = rate
+            rater = rate
+        else:
+            ratec = rate[1]
+            rater = rate[0]
+
+        x0 = np.reshape(self.vertices[:,0], (self.nrow, self.ncol))
+        y0 = np.reshape(self.vertices[:,1], (self.nrow, self.ncol))
+        v = sp.arange(0,self.nrow,1.)
+        u = sp.arange(0,self.ncol,1.)
+        fx = interp.interp2d(u,v,x0)
+        fy = interp.interp2d(u,v,y0)
+        nr = np.ceil(self.nrow/rater)
+        nc = np.ceil(self.ncol/ratec)
+        v = sp.arange(0,rater*nr,rater)
+        u = sp.arange(0,ratec*nc,ratec)
+        x = fx(u,v)
+        y = fy(u,v)
+        return Grid(gridPoints=(x,y))
+
+    def skipLines(self, gap=1):
+        nr = gap*np.ceil((self.nrow-1.)/gap) + 1
+        nc = gap*np.ceil((self.ncol-1.)/gap) + 1
+        g1 = self.resample([self.nrow/nr,self.ncol/nc])
+        nr = g1.nrow
+        nc = g1.ncol
+        nrg = (nr-1)/gap + 1
+        ncg = (nc-1)/gap + 1
+        g1.faces = np.zeros([nrg*(nc-1)+ncg*(nr-1), 2], dtype=int)
+        j = 0
+        for k in range(0, nr, gap):
+            for l in range(0, nc-1):
+                g1.faces[j, :] = (k * nc + l, k * nc + l + 1)
+                j += 1
+        for k in range(0, nr-1):
+            for l in range(0, nc, gap):
+                g1.faces[j, :] = (k * nc + l, (k + 1) * nc + l)
+                j += 1
+        return g1
+
     # Saves in .vtk format
     def saveVTK(self, fileName):
         F = self.faces
@@ -47,6 +100,41 @@ class Grid:
             for ll in range(F.shape[0]):
                 fvtkout.write('\n2 {0: d} {1: d}'.format(F[ll,0], F[ll,1]))
             fvtkout.write('\n')
+
+    # Reads .vtk file
+    def readVTK(self, fileName):
+        if gotVTK:
+            u = vtkPolyDataReader()
+            u.SetFileName(fileName)
+            try:
+                u.Update()
+            except VTK_ERROR:
+                print 'error'
+
+            v = u.GetOutput()
+            npoints = int(v.GetNumberOfPoints())
+            nfaces = int(v.GetNumberOfLines())
+            V = np.zeros([npoints, 3])
+            for kk in range(npoints):
+                V[kk, :] = np.array(v.GetPoint(kk))
+            V = V[:, 0:2]
+
+            F = np.zeros([nfaces, 2], dtype=int)
+            for kk in range(nfaces):
+                c = v.GetCell(kk)
+                for ll in range(2):
+                    F[kk, ll] = c.GetPointId(ll)
+            m = 0
+            while F[m,0] == m:
+                m += 1
+            self.ncol = m+1
+            self.nrow = npoints/self.ncol
+            print npoints, self.ncol*self.nrow
+
+            self.vertices = V
+            self.faces = np.int_(F)
+        else:
+            raise Exception('Cannot read VTK files without VTK functions')
 
     def restrict(self, keepVert):
         V = np.copy(self.vertices)
