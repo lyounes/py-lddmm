@@ -14,6 +14,7 @@ import matplotlib.animation as manimation
 from kernelFunctions import Kernel
 import logging
 import loggingUtils
+from tqdm import *
 
 ## Parameter class for matching
 #      timeStep: time discretization
@@ -127,7 +128,7 @@ class CurveMatchingRigid:
         self.regweight = regWeight
         self.minEig = 1e-8
         self.parpot = parpot
-        self.rpot = 2.
+        self.rpot = 3.
 
         if param==None:
             self.param = CurveMatchingRigidParam()
@@ -435,7 +436,7 @@ class CurveMatchingRigid:
             plt.pause(0.1)
 
         timeStep = 1.0/Tsize
-        for t in range(Tsize):
+        for t in tqdm(range(Tsize)):
             z = np.squeeze(xt[t, :, :])
             a = np.squeeze(at[t, :])
             tau = np.squeeze(taut[t, :, :])
@@ -994,14 +995,14 @@ class CurveMatchingRigid:
                                    regWeight=1., maxIter=10000)
             return f, T*a0, T*tau0
 
-    def runShoot(self, dt=0.01):
+    def runShoot(self, dt=0.001):
         plt.ion()
         S = self.shootingScenario(1,dt=dt, T=20)
         f = S[0]
         a0 = S[1]
         tau0 = S[2]
         f.parpot = -.05
-        geod = f.geodesicEquation2(f.Tsize, a0, tau0,pplot=True)
+        geod = f.geodesicEquation2(f.Tsize, a0, tau0,pplot=False)
         # f.__geodesicEquation__(f.Tsize, f.fv0, f.pxt[0,:,:])
         fig = plt.figure(2)
         fvDef = curves.Curve(curve=f.fv0)
