@@ -464,11 +464,11 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
     def endOfIteration(self):
         self.iter += 1
-        self.meanc = np.sqrt((self.cval ** 2).sum() / 2)
         if self.iter >= self.affBurnIn:
             self.coeffAff = self.coeffAff2
         if (self.iter % self.saveRate == 0):
             (obj1, self.xt, Jt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withJacobian=True)
+            self.meanc = np.sqrt((self.cval ** 2).sum() / 2)
             logging.info('mean constraint %f max constraint %f' % (self.meanc, np.fabs(self.cval).max()))
             logging.info('saving data')
             self.fvInit.updateVertices(self.x0)
@@ -508,7 +508,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             nu = self.fv0ori * self.fvInit.computeVertexNormals()
             v = self.v[0, ...]
             displ = np.zeros(self.npt)
-            dt = 1.0 / self.Tsize;
+            dt = 1.0 / self.Tsize
             # n1 = self.xt.shape[1] ;
             for kk in range(self.Tsize):
                 self.fvDef.updateVertices(np.squeeze(self.xt[kk, :, :]))
@@ -519,12 +519,12 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 self.fvDef.updateVertices(np.squeeze(self.xt[kk, :, :]))
                 AV = self.fvDef.computeVertexArea()
                 AV = (AV[0] / AV0[0]) - 1
-                vf = surfaces.vtkFields();
-                vf.scalars.append('Jacobian');
+                vf = surfaces.vtkFields()
+                vf.scalars.append('Jacobian')
                 vf.scalars.append(np.exp(Jt[kk, :]))
-                vf.scalars.append('Jacobian_T');
+                vf.scalars.append('Jacobian_T')
                 vf.scalars.append(AV[:, 0])
-                vf.scalars.append('Jacobian_N');
+                vf.scalars.append('Jacobian_N')
                 vf.scalars.append(np.exp(Jt[kk, :]) / (AV[:, 0] + 1) - 1)
                 vf.scalars.append('displacement')
                 vf.scalars.append(displ)
@@ -534,15 +534,16 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                     kkm = kk
                 else:
                     kkm = kk - 1
-                vf.scalars.append('constraint');
+                vf.scalars.append('constraint')
                 vf.scalars.append(self.cstr[kkm, :])
-                vf.vectors.append('velocity');
+                vf.vectors.append('velocity')
                 vf.vectors.append(self.v[kkm, :])
-                vf.vectors.append('normals');
+                vf.vectors.append('normals')
                 vf.vectors.append(self.nu[kkm, :])
                 self.fvDef.saveVTK2(self.outputDir + '/' + self.saveFile + str(kk) + '.vtk', vf)
         else:
             (obj1, self.xt, Jt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withJacobian=True)
+            self.meanc = np.sqrt((self.cval ** 2).sum() / 2)
             logging.info('mean constraint %f max constraint %f' % (self.meanc, np.fabs(self.cval).max()))
             # logging.info('mean constraint %f max constraint %f' %(np.sqrt((self.cstr**2).sum()/self.cval.size), np.fabs(self.cstr).max()))
             self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
@@ -595,28 +596,30 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
 if __name__ == "__main__":
     # outputDir = '/cis/home/younes/Development/Results/ERC_Normals_ADNI_014_S_4058/'
-    outputDir = '/Users/younes/Development/Results/SUE/fromTop2'
+    outputDir = '/Users/younes/Development/Results/SUE/Problems1'
 
     # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/DH1MiddleOuter.byu')
     # fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/DH1MiddleInner.byu')
     # outputDir = '/cis/home/younes/Development/Results/tilakAW1Superior'
     loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput=True)
 
-    fvTop = surfaces.Surface(filename='/cis/home/younes/MorphingData/SueExamples/top_041_S_4720_L_mo00_ERC_and_TEC.byu')
-    fvBottom = surfaces.Surface(
-        filename='/cis/home/younes/MorphingData/SueExamples/bottom_041_S_4720_L_mo00_ERC_and_TEC.byu')
+    probDir = '/cis/home/younes/MorphingData/SUE/023_S_4035_L_mo00_ERC_and_TEC/'
+    fvTop = surfaces.Surface(filename=probDir + 'Template.vtk')
+    fvBottom = surfaces.Surface(filename=probDir + 'Target.vtk')
+    #fvBottom = surfaces.Surface(
+    #    filename='/cis/home/younes/MorphingData/SueExamples/bottom_041_S_4720_L_mo00_ERC_and_TEC.byu')
     # fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/NK1Inner.byu')
     # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/NK1Outer.byu')
     # fv0 = surfaces.Surface(filename='/Users/younes/Development/Data/ALLIE/Template.vtk')
     # fv1 = surfaces.Surface(filename='/Users/younes/Development/Data/ALLIE/Target.vtk')
     # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/NK1Outer.byu')
-    fvTop.removeIsolated()
-    fvTop.edgeRecover()
-    fvTop.subDivide(1)
-    fvBottom.removeIsolated()
-    fvBottom.edgeRecover()
-    fvBottom.flipFaces()
-    # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Surfaces/chelsea/bottom_surface_smooth.byu')
+    # fvTop.removeIsolated()
+    # fvTop.edgeRecover()
+    # fvTop.subDivide(1)
+    # fvBottom.removeIsolated()
+    # fvBottom.edgeRecover()
+    # fvBottom.flipFaces()
+    # # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Surfaces/chelsea/bottom_surface_smooth.byu')
     # fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Surfaces/chelsea/top_surface_smooth.byu')
 
     K1 = kfun.Kernel(name='laplacian', sigma=.5, order=3)
@@ -628,6 +631,6 @@ if __name__ == "__main__":
 
     f = SurfaceMatching(Template=fvTop, Target=fvBottom, outputDir=outputDir, param=sm, regWeight=1.,
                         saveTrajectories=True, symmetric=False, pplot=False,
-                        affine='none', testGradient=False, internalWeight=100., affineWeight=1e3, maxIter_cg=50,
-                        maxIter_al=50, mu=1e-3)
+                        affine='none', testGradient=False, internalWeight=1000., affineWeight=1e3, maxIter_cg=50,
+                        maxIter_al=50, mu=1e-5)
     f.optimizeMatching()

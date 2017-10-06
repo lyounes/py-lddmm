@@ -14,6 +14,7 @@ import matplotlib.animation as manimation
 from kernelFunctions import Kernel
 import logging
 import loggingUtils
+from tqdm import *
 
 ## Parameter class for matching
 #      timeStep: time discretization
@@ -163,6 +164,10 @@ class CurveMatchingRigid:
             fig=plt.figure(1)
             fig.clf()
             ax = fig.gca()
+            if len(self.xc) > 0:
+                for kf in range(self.fvc.faces.shape[0]):
+                    ax.plot(self.fvc.vertices[self.fvc.faces[kf ,:] ,0] ,
+                            self.fvc.vertices[self.fvc.faces[kf ,:] ,1] ,color=[0 ,0 ,0])
             for kf in range(self.fv1.faces.shape[0]):
                 ax.plot(self.fv1.vertices[self.fv1.faces[kf,:],0], self.fv1.vertices[self.fv1.faces[kf,:],1], color=[0,0,1])
             for kf in range(self.fvDef.faces.shape[0]):
@@ -207,11 +212,12 @@ class CurveMatchingRigid:
         else:
             return obj
 
-    def objectiveFunPotential(self, xt):
+    def objectiveFunPotential(self, xt, timeStep=None):
         if self.parpot is None:
             return 0
         obj = 0
-        timeStep = 1.0/self.Tsize
+        if timeStep is None:
+            timeStep = 1.0/self.Tsize
         for k in range(self.ncomponent):
             Ik = np.nonzero(self.component == k)[0]
             xk = xt[:,Ik,:]
@@ -391,10 +397,203 @@ class CurveMatchingRigid:
             raise Exception('Bad Value in solveMKM2')
         return theta
 
+    def computeHamiltonian(self, x0, a0, tau0, rho, component):
+        Jz = np.zeros(x0.shape)
+        Jz[:, 0] = x0[:, 1]
+        Jz[:, 1] = -x0[:, 0]
+        v = a0[component, np.newaxis] * Jz + tau0[component, :]
+        mu0 = self.solveK(x0,v)
+        theta = np.zeros(self.ncomponent*(self.dim+1))
+        theta[range(0 ,len(theta) ,self.dim + 1)] = a0
+        theta[range(1 ,len(theta) ,self.dim + 1)] = tau0[:,0]
+        theta[range(2 ,len(theta) ,self.dim + 1)] = tau0[:,1]
+        H0 = (rho*theta).sum() - (v*mu0).sum()/2 - self.objectiveFunPotential(x0, timeStep=1.)
+
+        return H0
 
 
+    def geodesicEquation2(self, Tsize, a0, tau0, pplot = False, nsymplectic = 0):
+        fv0 = self.fv0
+        x0 = fv0.vertices
+        xt = np.zeros([Tsize+1, x0.shape[0], x0.shape[1]])
+        xt[0,:,:] = np.copy(x0)
+        ncomponent = fv0.component.max() + 1
+        dim = x0.shape[1]
+        component = np.zeros(x0.shape[0], dtype=int)
+        for k in range(fv0.faces.shape[0]):
+            component[fv0.faces[k,0]] = fv0.component[k]
+            component[fv0.faces[k,1]] = fv0.component[k]
+        at = np.zeros([Tsize+1, ncomponent])
+        at[0,:] = np.copy(a0)
+        taut = np.zeros([Tsize+1, ncomponent, dim])
+        taut[0,:,:] = np.copy(tau0)
+        alpha = np.zeros(ncomponent)
+        T = np.zeros([ncomponent, dim])
+        rho = np.zeros(ncomponent*(dim + 1))
+        Jz = np.zeros(x0.shape)
+        Jz[:, 0] = x0[:, 1]
+        Jz[:, 1] = -x0[:, 0]
+        v = a0[component, np.newaxis] * Jz + tau0[component, :]
+        mu0 = self.solveK(x0,v)
+        for k in range(ncomponent):
+            J = np.nonzero(component==k)[0]
+            u = np.zeros([len(J),dim])
+            u[:,0] = x0[J,1]
+            u[:,1] = -x0[J,0]
+            rho[k * (dim + 1)] = (mu0[J, :] * u).sum()
+            rho[k * (dim + 1)+1:(k+1)*(dim+1)] = mu0[J, :].sum(axis=0)
+        psi = np.copy(rho)
+        theta = np.zeros(self.ncomponent*(self.dim+1))
+        theta[range(0 ,len(theta) ,self.dim + 1)] = a0
+        theta[range(1 ,len(theta) ,self.dim + 1)] = tau0[:,0]
+        theta[range(2 ,len(theta) ,self.dim + 1)] = tau0[:,1]
+        H0 = (rho*theta).sum()/2 + self.objectiveFunPotential(x0[np.newaxis, :,:], timeStep=1.)
 
-    def geodesicEquation2(self, Tsize, a0, tau0, pplot = False):
+        fvDef = curves.Curve(curve=fv0)
+        # if self.pplot:
+        #     fig = plt.figure(2)
+        #     fig.clf()
+        #     ax = fig.gca()
+        #     for kf in range(fvDef.faces.shape[0]):
+        #         ax.plot(fvDef.vertices[fvDef.faces[kf, :], 0], fvDef.vertices[fvDef.faces[kf, :], 1], color=[1, 0, 0],
+        #                 marker='*')
+        #     plt.axis('equal')
+        #     plt.pause(0.1)
+
+        timeStep = 1.0/Tsize
+        for t in tqdm(range(Tsize)):
+            a = at[t, :]
+            tau = taut[t, :, :]
+            T2 = np.zeros(T.shape)
+            alpha2 = alpha + timeStep * a
+            ca = np.cos(timeStep*a)
+            sa = np.sin(timeStep*a)
+            T2[:,0] = ca*T[:,0] + sa * T[:,1] + timeStep * tau[:,0]
+            T2[:,1] = -sa*T[:,0] + ca * T[:,1] + timeStep * tau[:,1]
+            ca = np.cos(alpha2)
+            sa = np.sin(alpha2)
+            z2 = np.zeros(x0.shape)
+            z2[:,0] = ca[component]*x0[:,0] + sa[component]*x0[:,1] + T2[component,0]
+            z2[:,1] = -sa[component]*x0[:,0] + ca[component]*x0[:,1] + T2[component,1]
+            a2 = np.copy(a)
+            tau2 = np.copy(tau)
+            for ks in range(nsymplectic):
+                rho = np.copy(psi)
+                for k in range(ncomponent):
+                    rho[k * (dim + 1)] += psi[k * (dim + 1)+1]*T2[k,1] - psi[k * (dim + 1)+2]*T2[k,0]
+                try:
+                    theta = self.solveMKM2(z2 ,rho)
+                except Exception:
+                    print 'solved until t=' ,t * timeStep
+                    return xt[0:t ,...] ,at[0:t ,...] ,taut[0:t ,...]
+                a2 = theta[range(0 ,len(theta) ,self.dim + 1)]
+                tau2[:,0] = theta[range(1 ,len(theta) ,self.dim + 1)]
+                tau2[:,1] = theta[range(2 ,len(theta) ,self.dim + 1)]
+                alpha2old = np.copy(alpha2)
+                T2old = np.copy(T2)
+                alpha2 = alpha + timeStep * a2
+                ca = np.cos(timeStep * a2)
+                sa = np.sin(timeStep * a2)
+                T2[: ,0] = ca * T[: ,0] + sa * T[: ,1] + timeStep * tau2[: ,0]
+                T2[: ,1] = -sa * T[: ,0] + ca * T[: ,1] + timeStep * tau2[: ,1]
+                ca = np.cos(alpha2)
+                sa = np.sin(alpha2)
+                z2[: ,0] = ca[component] * x0[: ,0] + sa[component] * x0[: ,1] + T2[component ,0]
+                z2[: ,1] = -sa[component] * x0[: ,0] + ca[component] * x0[: ,1] + T2[component ,1]
+                err = np.sqrt(((alpha2-alpha2old)**2).sum()) + np.sqrt(((T2-T2old)**2).sum())
+                if err < 0.000001:
+                    break
+            xt[t + 1 ,: ,:] = np.copy(z2)
+
+            if nsymplectic > 0:
+                z = np.copy(z2)
+                a = np.copy(a2)
+                tau = np.copy(tau2)
+                alpha = np.copy(alpha2)
+                T = np.copy(T2)
+            else:
+                z = xt[t,:,:]
+
+            Jz[:,0] = z[:,1]
+            Jz[:,1] = -z[:,0]
+            v = a[self.component, np.newaxis] * Jz + tau[self.component,:]
+
+            try:
+                mu = self.solveK(z,v)
+            except Exception:
+                print 'solved until t=',t*timeStep
+                return xt[0:t,...], at[0:t,...], taut[0:t,...]
+
+
+            a_1 = self.regweight*mu[np.newaxis,...]
+            a_2 = mu[np.newaxis,...]
+            zpx = self.param.KparDiff.applyDiffKT(z, a_1, a_2)
+            Jz[:, 0] = mu[:, 1]
+            Jz[:, 1] = -mu[:, 0]
+            dv = a[self.component, np.newaxis] * Jz
+            zpot = self.gradPotential(z)
+            zpx += dv + zpot
+            dpsi = np.zeros(ncomponent * (dim + 1))
+            for k in range(ncomponent):
+                J = np.nonzero(component == k)[0]
+                u = np.zeros([len(J), dim])
+                u[:,0] = z[J, 1] - T[k,1]
+                u[:,1] = -z[J, 0] + T[k,0]
+                dpsi[k * (dim + 1)] = (zpx[J, :] * u).sum() #- a[k] * (T[k,0]*psi[k* (dim + 1) + 1] + T[k,1]*psi[k * (dim + 1) + 2])
+                dpsi[k * (dim + 1) + 1] = zpx[J, 0].sum() - a[k] * psi[k * (dim + 1) + 2]
+                dpsi[k * (dim + 1) + 2] = zpx[J ,1].sum() + a[k] * psi[k * (dim + 1) + 1]
+            psi -= timeStep * dpsi
+            rho = np.copy(psi)
+            for k in range(ncomponent):
+                rho[k * (dim + 1)] += psi[k * (dim + 1) + 1] * T[k ,1] - psi[k * (dim + 1) + 2] * T[k ,0]
+            try:
+                theta = self.solveMKM2(z,rho)
+            except Exception:
+                print 'solved until t=',t*timeStep
+                return xt[0:t,...], at[0:t,...], taut[0:t,...]
+            at[t+1,:] = theta[range(0,len(theta),self.dim+1)]
+            taut[t+1, :, 0] = theta[range(1, len(theta), self.dim + 1)]
+            taut[t+1, :, 1] = theta[range(2, len(theta), self.dim + 1)]
+            if nsymplectic == 0:
+                alpha = np.copy(alpha2)
+                T = np.copy(T2)
+            H = (rho * theta).sum() / 2 + self.objectiveFunPotential(z[np.newaxis, :, :], timeStep=1.)
+            fvDef.updateVertices(xt[t+1,:,:])
+            if pplot:
+                fig=plt.figure(2)
+                fig.clf()
+                ax = fig.gca()
+                if len(self.xc) > 0:
+                    for kf in range(self.fvc.faces.shape[0]):
+                        ax.plot(self.fvc.vertices[self.fvc.faces[kf, :], 0],
+                                self.fvc.vertices[self.fvc.faces[kf, :], 1], color=[0, 0, 0])
+                for kf in range(self.fv1.faces.shape[0]):
+                    ax.plot(self.fv1.vertices[self.fv1.faces[kf, :], 0], self.fv1.vertices[self.fv1.faces[kf, :], 1],
+                            color=[0, 0, 1])
+                for kf in range(fvDef.faces.shape[0]):
+                    ax.plot(fvDef.vertices[fvDef.faces[kf,:],0], fvDef.vertices[fvDef.faces[kf,:],1], color=[1,0,0])
+                for k in range(fvDef.component.max() + 1):
+                    I = np.nonzero(fvDef.component == k)[0]
+                    xDef = fvDef.vertices[I, :]
+                    ax.plot(np.array([np.mean(xDef[:, 0]), xDef[0, 0]]),
+                            np.array([np.mean(xDef[:, 1]), xDef[0, 1]]),
+                            color=[0, 0, 1])
+                    ax.plot(np.mean(xt[0:t+2, I, 0], axis=1), np.mean(xt[0:t+2, I, 1], axis=1))
+                plt.title('t={0:.4f}, H= {1:.4f}; {2:.4f}'.format(t*timeStep, H, H0))
+                plt.axis('equal')
+                plt.pause(0.001)
+            #H0 = H
+        if self.pplot:
+            fig=plt.figure(2)
+            fig.clf()
+            ax = fig.gca()
+            for kf in range(fvDef.faces.shape[0]):
+                ax.plot(fvDef.vertices[fvDef.faces[kf,:],0], fvDef.vertices[fvDef.faces[kf,:],1], color=[1,0,0], marker='*')
+            plt.axis('equal')
+            plt.pause(0.1)
+        return xt, at, taut
+
+    def geodesicEquation3(self, Tsize, a0, tau0, pplot = False, nsymplectic = 0):
         fv0 = self.fv0
         x0 = fv0.vertices
         xt = np.zeros([Tsize+1, x0.shape[0], x0.shape[1]])
@@ -422,29 +621,60 @@ class CurveMatchingRigid:
             u[:,1] = -x0[J,0]
             rho[k * (dim + 1)] = (mu0[J, :] * u).sum()
             rho[k * (dim + 1)+1:(k+1)*(dim+1)] = mu0[J, :].sum(axis=0)
+        theta = np.zeros(self.ncomponent*(self.dim+1))
+        theta[range(0 ,len(theta) ,self.dim + 1)] = a0
+        theta[range(1 ,len(theta) ,self.dim + 1)] = tau0[:,0]
+        theta[range(2 ,len(theta) ,self.dim + 1)] = tau0[:,1]
+        H0 = (rho*theta).sum()/2 + self.objectiveFunPotential(x0[np.newaxis, :,:], timeStep=1.)
 
         fvDef = curves.Curve(curve=fv0)
-        if self.pplot:
-            fig = plt.figure(2)
-            fig.clf()
-            ax = fig.gca()
-            for kf in range(fvDef.faces.shape[0]):
-                ax.plot(fvDef.vertices[fvDef.faces[kf, :], 0], fvDef.vertices[fvDef.faces[kf, :], 1], color=[1, 0, 0],
-                        marker='*')
-            plt.axis('equal')
-            plt.pause(0.1)
+        # if self.pplot:
+        #     fig = plt.figure(2)
+        #     fig.clf()
+        #     ax = fig.gca()
+        #     for kf in range(fvDef.faces.shape[0]):
+        #         ax.plot(fvDef.vertices[fvDef.faces[kf, :], 0], fvDef.vertices[fvDef.faces[kf, :], 1], color=[1, 0, 0],
+        #                 marker='*')
+        #     plt.axis('equal')
+        #     plt.pause(0.1)
 
         timeStep = 1.0/Tsize
-        for t in range(Tsize):
-            z = np.squeeze(xt[t, :, :])
-            a = np.squeeze(at[t, :])
-            tau = np.squeeze(taut[t, :, :])
+        for t in tqdm(range(Tsize)):
+            z = xt[t, :, :]
+            a = at[t, :]
+            tau = taut[t, :, :]
             ca = np.cos(timeStep*a)
             sa = np.sin(timeStep*a)
             Jz[:,0] = ca[self.component]*z[:,0] + sa[self.component]*z[:,1]
             Jz[:,1] = -sa[self.component]*z[:,0] + ca[self.component]*z[:,1]
             #v = a[self.component, np.newaxis] * Jz + tau[self.component,:]
-            xt[t+1, :, :] = Jz + timeStep * tau[self.component,:]
+            z2 = Jz + timeStep * tau[self.component,:]
+            a2 = a
+            tau2 = tau
+            #a2 = np.zeros(a.shape)
+            for ks in range(nsymplectic):
+                try:
+                    theta = self.solveMKM2(z2 ,rho)
+                except Exception:
+                    print 'solved until t=' ,t * timeStep
+                    return xt[0:t ,...] ,at[0:t ,...] ,taut[0:t ,...]
+                a2 = theta[range(0 ,len(theta) ,self.dim + 1)]
+                tau2[:,0] = theta[range(1 ,len(theta) ,self.dim + 1)]
+                tau2[:,1] = theta[range(2 ,len(theta) ,self.dim + 1)]
+                ca = np.cos(timeStep*a2)
+                sa = np.sin(timeStep*a2)
+                Jz[:,0] = ca[self.component]*z[:,0] + sa[self.component]*z[:,1]
+                Jz[:,1] = -sa[self.component]*z[:,0] + ca[self.component]*z[:,1]
+                z2old = z2
+                z2 = Jz + timeStep * tau2[self.component,:]
+                err = np.sqrt(((z2-z2old)**2).sum())
+                if err < 0.000001:
+                    break
+            xt[t + 1 ,: ,:] = z2
+
+            z = z2
+            a = a2
+            tau = tau2
             Jz[:,0] = z[:,1]
             Jz[:,1] = -z[:,0]
             v = a[self.component, np.newaxis] * Jz + tau[self.component,:]
@@ -455,6 +685,8 @@ class CurveMatchingRigid:
                 print 'solved until t=',t*timeStep
                 return xt[0:t,...], at[0:t,...], taut[0:t,...]
 
+            #print (rho * theta).sum(), (v * mu).sum()
+
             a1 = self.regweight*mu[np.newaxis,...]
             a2 = mu[np.newaxis,...]
             zpx = self.param.KparDiff.applyDiffKT(z, a1, a2)
@@ -462,7 +694,7 @@ class CurveMatchingRigid:
             Jz[:, 1] = -mu[:, 0]
             dv = a[self.component, np.newaxis] * Jz
             zpot = self.gradPotential(z)
-            zpx += dv - zpot
+            zpx += dv + zpot
             drho = np.zeros(ncomponent * (dim + 1))
             for k in range(ncomponent):
                 J = np.nonzero(component == k)[0]
@@ -477,10 +709,15 @@ class CurveMatchingRigid:
                 drho[k * (dim + 1)+1] += -a[k] * pt[1]
                 drho[k * (dim + 1)+2] += a[k] * pt[0]
             rho -= timeStep * drho
-            theta = self.solveMKM2(z,rho)
+            try:
+                theta = self.solveMKM2(z,rho)
+            except Exception:
+                print 'solved until t=',t*timeStep
+                return xt[0:t,...], at[0:t,...], taut[0:t,...]
             at[t+1,:] = theta[range(0,len(theta),self.dim+1)]
             taut[t+1, :, 0] = theta[range(1, len(theta), self.dim + 1)]
             taut[t+1, :, 1] = theta[range(2, len(theta), self.dim + 1)]
+            H = (rho * theta).sum() / 2 + self.objectiveFunPotential(z[np.newaxis, :, :], timeStep=1.)
             fvDef.updateVertices(xt[t+1,:,:])
             if pplot:
                 fig=plt.figure(2)
@@ -501,10 +738,11 @@ class CurveMatchingRigid:
                     ax.plot(np.array([np.mean(xDef[:, 0]), xDef[0, 0]]),
                             np.array([np.mean(xDef[:, 1]), xDef[0, 1]]),
                             color=[0, 0, 1])
-                    ax.plot(np.mean(xt[0:t, I, 0], axis=1), np.mean(xt[0:t, I, 1], axis=1))
-                plt.title('t={0:.4f}'.format(t*timeStep))
+                    ax.plot(np.mean(xt[0:t+2, I, 0], axis=1), np.mean(xt[0:t+2, I, 1], axis=1))
+                plt.title('t={0:.4f}, H= {1:.4f}; {2:.4f}'.format(t*timeStep, H, H0))
                 plt.axis('equal')
                 plt.pause(0.001)
+            #H0 = H
         if self.pplot:
             fig=plt.figure(2)
             fig.clf()
@@ -589,7 +827,7 @@ class CurveMatchingRigid:
             Jz[:,1] = -mu[:,0]
             dv = a[self.component, np.newaxis] * Jz
             zpot = self.gradPotential(z)
-            zpx += dv - zpot
+            zpx += dv + zpot
             px2 = px - timeStep * zpx
             #ca = np.cos(timeStep*a)
             #sa = np.sin(timeStep*a)
@@ -969,39 +1207,52 @@ class CurveMatchingRigid:
             os.remove(dirOut + '/Development/Results/curveMatchingRigid/info.tex')
         loggingUtils.setup_default_logging(dirOut + '/Development/Results/curveMatchingRigid', fileName='info.txt',
                                            stdOutput=True)
-        sigma = .05
-        K1 = Kernel(name='laplacian', sigma=sigma)
         sigmaDist = 2.0
         sigmaError = 0.01
 
-        sm = CurveMatchingRigidParam(timeStep=dt / T, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
-                                     errorType='varifold')
         if scenario == 1:
+            sigma = .05
+            K1 = Kernel(name='laplacian' ,sigma=sigma)
+            sm = CurveMatchingRigidParam(timeStep=dt / T ,KparDiff=K1 ,sigmaDist=sigmaDist ,sigmaError=sigmaError ,
+                                         errorType='varifold')
             x = self.__circle(50, 0.25)
+            x1 = self.__circle(25, 0.1)
             # x = self.__square(50, 0.25)
             fv0 = [curves.Curve(pointSet=x + np.array([-1, 0])),
                    curves.Curve(pointSet=x + np.array([.9, 1.])),
+                   curves.Curve(pointSet=x + np.array([.7, -1.])),
                    curves.Curve(pointSet=x + np.array([.8, 0]))]
             x = self.__square(200, 2)
             # fvc = curves.Curve(pointSet=x + np.array([.3, 1]))
+            fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,.5])), curves.Curve(pointSet=x1 + np.array([0,-.5]))])
+            a0 = np.array([5, 0, 0, 0])
+            tau0 = np.array([[1, -5], [0, 0], [0,0], [0, 0]])
+        elif scenario == 2:
+            sigma = 1.
+            K1 = Kernel(name='laplacian' ,sigma=sigma)
+            sm = CurveMatchingRigidParam(timeStep=dt / T ,KparDiff=K1 ,sigmaDist=sigmaDist ,sigmaError=sigmaError ,
+                                         errorType='varifold')
+            x = self.__circle(25, 0.25)
+            fv0 = curves.Curve(pointSet=x + np.array([-1 ,0]))
+            x = self.__square(200, 2)
             fvc = curves.Curve(pointSet=x)
-            a0 = np.array([.05, 0, 0])
-            tau0 = np.array([[1, -.05], [0, 0], [0, 0]])
+            a0 = np.array([5])
+            tau0 = np.array([[1,-5]])
 
-            f = CurveMatchingRigid(Template=fv0, Target=fv0, Clamped=fvc,
-                                   outputDir=dirOut + '/Development/Results/curveRigid', param=sm,
-                                   testGradient=True, gradLB=1e-5, saveTrajectories=True,
-                                   regWeight=1., maxIter=10000)
-            return f, T*a0, T*tau0
+        f = CurveMatchingRigid(Template=fv0 ,Target=fv0 ,Clamped=fvc ,
+                               outputDir=dirOut + '/Development/Results/curveRigid' ,param=sm ,
+                               testGradient=True ,gradLB=1e-5 ,saveTrajectories=True ,
+                               regWeight=1. ,maxIter=10000)
+        return f, T*a0, T*tau0
 
-    def runShoot(self, dt=0.01):
+    def runShoot(self, dt=0.0005):
         plt.ion()
-        S = self.shootingScenario(1,dt=dt, T=20)
+        S = self.shootingScenario(2,dt=dt, T=20)
         f = S[0]
         a0 = S[1]
         tau0 = S[2]
-        f.parpot = -.05
-        geod = f.geodesicEquation2(f.Tsize, a0, tau0,pplot=True)
+        f.parpot = .0
+        geod = f.geodesicEquation3(f.Tsize, a0, tau0,pplot=False, nsymplectic=0)
         # f.__geodesicEquation__(f.Tsize, f.fv0, f.pxt[0,:,:])
         fig = plt.figure(2)
         fvDef = curves.Curve(curve=f.fv0)
@@ -1011,8 +1262,8 @@ class CurveMatchingRigid:
                         comment='Movie support!')
         writer = FFMpegWriter(fps=5, metadata=metadata)
         dirMov = '/Users/younes/OneDrive - Johns Hopkins University/TALKS/MECHANICAL/Videos/'
-        with writer.saving(fig, dirMov+"threeBallPotential01Try.mp4", 100):
-            for t in range(0,xt.shape[0], xt.shape[0]/100):
+        with writer.saving(fig, dirMov+"threeBallPotential01TryAgain.mp4", 100):
+            for t in range(0,xt.shape[0], np.maximum(1,xt.shape[0]/100)):
                 fig.clf()
                 ax = fig.gca()
                 fvDef.updateVertices(xt[t,:,:])
@@ -1027,7 +1278,7 @@ class CurveMatchingRigid:
                     ax.plot(np.array([np.mean(xDef[:,0]),xDef[0, 0]]),
                             np.array([np.mean(xDef[:,1]), xDef[0, 1]]),
                             color = [0,0,1])
-                    ax.plot(np.mean(xt[0:t,I,0], axis=1), np.mean(xt[0:t,I,1], axis=1))
+                    ax.plot(np.mean(xt[0:t+1,I,0], axis=1), np.mean(xt[0:t+1,I,1], axis=1))
                 plt.axis('equal')
                 plt.title('t={0:.3f}'.format(t*dt))
                 writer.grab_frame()
