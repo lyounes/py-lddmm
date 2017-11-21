@@ -7,7 +7,7 @@ import scipy.linalg as la
 import scipy.optimize as sopt
 import matchingParam
 import curves
-import grid
+import pointEvolution as evol
 import conjugateGradient as cg
 from affineBasis import *
 import matplotlib.pyplot as plt
@@ -133,6 +133,7 @@ class CurveMatchingRigid:
         self.parRot = 0.
         self.parTrans = 0.
         self.paramRepell = paramRepell
+        self.repellCosine = 0.
 
         if param==None:
             self.param = CurveMatchingRigidParam()
@@ -166,6 +167,8 @@ class CurveMatchingRigid:
         self.saveFile = saveFile
         self.fv0.saveVTK(self.outputDir+'/Template.vtk')
         self.fv1.saveVTK(self.outputDir+'/Target.vtk')
+        if not (Clamped is None):
+            self.fvc.saveVTK(self.outputDir+'/Clamped.vtk')
         self.gradLB = gradLB
         self.saveRate = saveRate 
         self.saveTrajectories = saveTrajectories
@@ -203,6 +206,9 @@ class CurveMatchingRigid:
             zc = np.concatenate([z,self.xc])
             a = np.squeeze(at[t, :])
             tau = np.squeeze(taut[t, :, :])
+            if self.ncomponent == 1:
+                a = a[np.newaxis]
+                tau = tau[np.newaxis, :]
             Jz = np.zeros(z.shape)
             Jz[:,0] = z[:,1]
             Jz[:,1] = -z[:,0]
@@ -226,22 +232,30 @@ class CurveMatchingRigid:
 
     def costRepell(self, z, v):
         obj = 0
-        if not (self.paramRepell is None):
-            for k in range(self.ncomponent):
-                Ik = self.Ic[k]
-                for l in range(self.ncomponent):
-                    if l != k:
-                        Il = self.Ic[l]
-                        delta = z[Il, np.newaxis, :] - z[np.newaxis, Ik, :]
-                        d = np.sqrt((delta ** 2).sum(axis=2))
-                        dv = np.maximum((v[np.newaxis, Ik, :] * delta).sum(axis=2), 0)
-                        obj += ((dv ** 2) * (d ** (-self.rpot))).sum()
-                if (len(self.xc) > 0):
-                    delta = self.xc[:, np.newaxis, :] - z[np.newaxis, Ik, :]
+        if self.paramRepell is None:
+            return obj
+        nv = np.sqrt((v ** 2).sum(axis=1))
+        for k in range(self.ncomponent):
+            Ik = self.Ic[k]
+            for l in range(self.ncomponent):
+                if l != k:
+                    Il = self.Ic[l]
+                    delta = z[Il, np.newaxis, :] - z[np.newaxis, Ik, :]
                     d = np.sqrt((delta ** 2).sum(axis=2))
-                    dv = np.maximum((v[np.newaxis, Ik, :] * delta).sum(axis=2), 0)
+                    nvd = nv[np.newaxis,Ik]*d
+                    dv = np.maximum((v[np.newaxis, Ik, :] * delta).sum(axis=2) - self.repellCosine * nvd, 0)
                     obj += ((dv ** 2) * (d ** (-self.rpot))).sum()
-            obj *= self.paramRepell/2
+                    # dv = (v[np.newaxis, Ik, :] * delta).sum(axis=2)
+                    # obj += (dv * (d ** (-self.rpot))).sum()
+            if (len(self.xc) > 0):
+                delta = self.xc[:, np.newaxis, :] - z[np.newaxis, Ik, :]
+                d = np.sqrt((delta ** 2).sum(axis=2))
+                nvd = nv[np.newaxis, Ik] * d
+                dv = np.maximum((v[np.newaxis, Ik, :] * delta).sum(axis=2) - self.repellCosine * nvd, 0)
+                obj += ((dv ** 2) * (d ** (-self.rpot))).sum()
+                # dv = (v[np.newaxis, Ik, :] * delta).sum(axis=2)
+                # obj += (dv * (d ** (-self.rpot))).sum()
+        obj *= self.paramRepell /2
         return obj
 
     def gradRepell(self, z, a, tau):
@@ -253,47 +267,83 @@ class CurveMatchingRigid:
 
     def gradRepellZ(self, z, v):
         grad = np.zeros(z.shape)
-        if not (self.paramRepell is None):
-            #v = np.concatenate([v,np.zeros([self.xc.shape[0], self.dim])])
-            for k in range(self.ncomponent):
-                Ik = self.Ic[k]
-                for l in range(self.ncomponent):
-                    if l != k:
-                        Il = self.Ic[l]
-                        delta = z[Il, np.newaxis, :] - z[np.newaxis, Ik, :]
-                        d = np.sqrt(((delta) ** 2).sum(axis=2))[:,:,np.newaxis]
-                        dvk = np.maximum((v[np.newaxis, Ik, :] * delta).sum(axis=2),0)
-                        dvl = np.maximum(-(v[Il, np.newaxis, :] * delta).sum(axis=2),0)
-                        grad[Ik,:] += (0.5 * self.rpot) * ((dvk**2+dvl**2)[:,:,np.newaxis]
-                                                           * (delta / (d ** (self.rpot + 2)))).sum(axis=0)
-                        grad[Ik, :] -= ((dvk[:,:,np.newaxis]*v[np.newaxis, Ik, :] - dvl[:,:,np.newaxis]*v[Il, np.newaxis,:])
-                                        / (d ** (self.rpot))).sum(axis=0)
-                if len(self.xc)>0:
-                    delta = self.xc[:, np.newaxis, :] - z[np.newaxis, Ik, :]
-                    d = np.sqrt(((delta) ** 2).sum(axis=2))[:,:,np.newaxis]
-                    dv = np.maximum((v[np.newaxis, Ik, :] * delta).sum(axis=2), 0)
-                    grad[Ik,:] -= (0.5*self.rpot) * ((dv[:,:,np.newaxis]**2) * (delta/(d ** (self.rpot+2)))).sum(axis=0)
-                    grad[Ik,:] -= ((dv[:, :, np.newaxis] * v[np.newaxis, Ik, :]) / (d ** (self.rpot))).sum(axis=0)
+        if self.paramRepell is None:
+            return grad
+        #v = np.concatenate([v,np.zeros([self.xc.shape[0], self.dim])])
+        nv = np.sqrt((v ** 2).sum(axis=1))
+        for k in range(self.ncomponent):
+            Ik = self.Ic[k]
+            for l in range(self.ncomponent):
+                if l != k:
+                    Il = self.Ic[l]
+                    delta = z[Il, np.newaxis, :] - z[np.newaxis, Ik, :]
+                    d = np.sqrt((delta ** 2).sum(axis=2))
+                    deltan = delta / np.maximum(d[:,:,np.newaxis], 1e-8)
+                    nvdk = nv[np.newaxis, Ik] * d
+                    nvdl = nv[Il, np.newaxis] * d
+                    dvk = np.maximum((v[np.newaxis, Ik, :] * delta).sum(axis=2) - self.repellCosine * nvdk, 0)
+                    dvl = np.maximum((-v[Il, np.newaxis, :] * delta).sum(axis=2) - self.repellCosine * nvdl, 0)
+                    # dvk = (v[np.newaxis, Ik, :] * delta).sum(axis=2)
+                    # dvl = (-v[Il, np.newaxis, :] * delta).sum(axis=2)
+                    gvk = v[np.newaxis, Ik, :] - self.repellCosine * nv[np.newaxis, Ik, np.newaxis] * deltan
+                    gvl = v[Il, np.newaxis,:] + self.repellCosine * nv[Il, np.newaxis, np.newaxis] * deltan
+                    # gvk = v[np.newaxis, Ik, :]
+                    # gvl = v[Il, np.newaxis,:]
+                    d = d[:,:,np.newaxis]
+                    grad[Ik,:] += (0.5 * self.rpot) * ((dvk**2+dvl**2)[:,:,np.newaxis]
+                                                        * (delta / (d ** (self.rpot + 2)))).sum(axis=0)
+                    grad[Ik, :] -= ((dvk[:,:,np.newaxis]*gvk - dvl[:,:,np.newaxis]*gvl)
+                                     / (d ** (self.rpot))).sum(axis=0)
+                    # grad[Ik,:] += self.rpot * ((dvk+dvl)[:,:,np.newaxis]
+                    #                                    * (delta / (d ** (self.rpot + 2)))).sum(axis=0)
+                    # grad[Ik, :] -= ((gvk - gvl) / (d ** (self.rpot))).sum(axis=0)
+            if len(self.xc)>0:
+                delta = self.xc[:, np.newaxis, :] - z[np.newaxis, Ik, :]
+                d = np.sqrt((delta ** 2).sum(axis=2))
+                deltan = delta / np.maximum(d[:, :, np.newaxis], 1e-8)
+                nvdk = nv[np.newaxis, Ik] * d
+                dvk = np.maximum((v[np.newaxis, Ik, :] * delta).sum(axis=2) - self.repellCosine * nvdk, 0)
+                gvk = v[np.newaxis, Ik, :] - self.repellCosine * nv[np.newaxis, Ik, np.newaxis] * deltan
+                # dvk = (v[np.newaxis, Ik, :] * delta).sum(axis=2)
+                # gvk = v[np.newaxis, Ik, :]
+                dv = np.maximum((v[np.newaxis, Ik, :] * delta).sum(axis=2), 0)
+                d = d[:, :, np.newaxis]
+                # grad[Ik,:] += self.rpot * (dvk[:,:,np.newaxis] * (delta/(d ** (self.rpot+2)))).sum(axis=0)
+                # grad[Ik,:] -= (gvk / (d ** (self.rpot))).sum(axis=0)
+                grad[Ik,:] += (0.5*self.rpot) * ((dvk[:,:,np.newaxis]**2) * (delta/(d ** (self.rpot+2)))).sum(axis=0)
+                grad[Ik,:] -= ((dvk[:, :, np.newaxis] * gvk) / (d ** (self.rpot))).sum(axis=0)
             grad *= self.paramRepell
         return grad
 
     def gradRepellV(self, z, v):
         jac = np.zeros(v.shape)
-        if not (self.paramRepell is None):
-            for k in range(self.ncomponent):
-                Ik = self.Ic[k]
-                for l in range(self.ncomponent):
-                    if k != l:
-                        Il = self.Ic[l]
-                        delta = z[Il, np.newaxis, :] - z[np.newaxis, Ik, :]
-                        d = np.sqrt((delta ** 2).sum(axis=2))
-                        dv = (v[np.newaxis, Ik, :] * delta).sum(axis=2)
-                        jac[Ik, :] += ((np.maximum(dv, 0) / (d ** self.rpot))[..., np.newaxis] * delta).sum(axis=0)
-                    if len(self.xc>0):
-                        delta = self.xc[:, np.newaxis, :] - z[np.newaxis, Ik, :]
-                        d = np.sqrt((delta ** 2).sum(axis=2))
-                        dv = (v[np.newaxis, Ik, :] * delta).sum(axis=2)
-                        jac[Ik, :] += ((np.maximum(dv, 0) / (d ** self.rpot))[..., np.newaxis] * delta).sum(axis=0)
+        if self.paramRepell is None:
+            return jac
+
+        nv = np.sqrt((v ** 2).sum(axis=1))
+        vn = v / np.maximum(nv[:, np.newaxis], 1e-8)
+        for k in range(self.ncomponent):
+            Ik = self.Ic[k]
+            for l in range(self.ncomponent):
+                if k != l:
+                    Il = self.Ic[l]
+                    delta = z[Il, np.newaxis, :] - z[np.newaxis, Ik, :]
+                    d = np.sqrt((delta ** 2).sum(axis=2))
+                    nvdk = nv[np.newaxis, Ik] * d
+                    dvk = np.maximum((v[np.newaxis, Ik, :] * delta).sum(axis=2) - self.repellCosine * nvdk, 0)
+                    gvk = delta - self.repellCosine * d[:,:,np.newaxis] * vn[np.newaxis,Ik,:]
+                    dvk = (v[np.newaxis, Ik, :] * delta).sum(axis=2)
+                    #gvk = delta
+                    jac[Ik, :] += ((dvk[:, :, np.newaxis] * gvk) / (d ** self.rpot)[..., np.newaxis]).sum(axis=0)
+                    # jac[Ik, :] += (gvk / (d ** self.rpot)[..., np.newaxis]).sum(axis=0)
+            if len(self.xc>0):
+                delta = self.xc[:, np.newaxis, :] - z[np.newaxis, Ik, :]
+                d = np.sqrt((delta ** 2).sum(axis=2))
+                nvdk = nv[np.newaxis, Ik] * d
+                dvk = np.maximum((v[np.newaxis, Ik, :] * delta).sum(axis=2) - self.repellCosine * nvdk, 0)
+                gvk = delta - self.repellCosine * d[:,:,np.newaxis] * vn[np.newaxis, Ik, :]
+                jac[Ik, :] += ((dvk[:, :, np.newaxis] * gvk) / (d ** self.rpot)[..., np.newaxis]).sum(axis=0)
+                # jac[Ik, :] += (delta / (d ** self.rpot)[..., np.newaxis]).sum(axis=0)
 
             jac *= self.paramRepell
         return jac
@@ -449,10 +499,15 @@ class CurveMatchingRigid:
             Jz = np.zeros(z.shape)
             ca = np.cos(timeStep*a)
             sa = np.sin(timeStep*a)
-            Jz[:,0] = ca[self.component]*z[:,0] + sa[self.component]*z[:,1]
-            Jz[:,1] = -sa[self.component]*z[:,0] + ca[self.component]*z[:,1]
+            if self.ncomponent == 1:
+                Jz[:,0] = ca*z[:,0] + sa*z[:,1]
+                Jz[:,1] = -sa*z[:,0] + ca*z[:,1]
+                xt[t+1, :, :] = Jz + timeStep * tau
+            else:
+                Jz[:,0] = ca[self.component]*z[:,0] + sa[self.component]*z[:,1]
+                Jz[:,1] = -sa[self.component]*z[:,0] + ca[self.component]*z[:,1]
             #v = a[self.component, np.newaxis] * Jz + tau[self.component,:]
-            xt[t+1, :, :] = Jz + timeStep * tau[self.component,:]
+                xt[t+1, :, :] = Jz + timeStep * tau[self.component,:]
         return xt
 
     def solveK(self,z, v):
@@ -464,9 +519,15 @@ class CurveMatchingRigid:
         except Exception:
             raise Exception('Bad value in SolveK')
         J = np.nonzero(eK[0] > self.minEig)[0]
+        #D = np.maximum(eK[0], self.minEig)
         w = np.dot(vc.T, eK[1][:, J]).T / eK[0][J, np.newaxis]
+        #w = np.dot(vc.T, eK[1]).T / D[:, np.newaxis]
         mu = np.dot(eK[1][:, J], w)
+        #mu = np.dot(eK[1], w)
+
         #mu = mu[0:self.npt,:]
+        #print np.fabs(np.dot(K,mu)-v).max()
+        #mu = la.solve(K,vc, sym_pos=True)
         return mu
 
     def solveMKM(self, z, p):
@@ -702,13 +763,6 @@ class CurveMatchingRigid:
             drho[k * (self.dim + 1) + 2] += a[k] * pt[0]
         return drho
 
-    # def testGradHamiltonian(self, z, rho, a, tau):
-    #     obj0 = self.computeHamiltonian(z, rho, a, tau)
-    #     eps = 1e-8
-    #     dz = np.random.normal(0,1,z.shape)
-    #     obj1 = self.computeHamiltonian(z+eps*dz, rho, a, tau)
-    #     grad = self.gradHamiltonianQ(z, rho, a, tau)
-    #     print 'Test Hamiltonian:', (obj1-obj0)/eps, (grad*dz).sum()
 
     def applyXiT(self, z, mu):
         rho = np.zeros(self.ncomponent*(self.dim + 1))
@@ -931,34 +985,35 @@ class CurveMatchingRigid:
             #v = a[self.component, np.newaxis] * Jz + tau[self.component,:]
             xt[t+1,:,:] = Jz + timeStep * tau[self.component,:]
 
-            Jz[:,0] = z[:,1]
-            Jz[:,1] = -z[:,0]
-            v = a[self.component, np.newaxis] * Jz + tau[self.component,:]
-            #K = self.param.KparDiff.getK(z)
-            mu = self.solveK(z,v)
-            zc = np.concatenate([z, self.xc])
-            a1 = self.regweight*mu[np.newaxis,...]
-            a2 = mu[np.newaxis,...]
-            zpx = self.param.KparDiff.applyDiffKT(zc, a1, a2)[0:self.npt,:] - self.gradRepellZ(z,v) - self.gradRigid(z, a, tau) \
-                    + self.gradPotential(z)
-
-            #pm = px-mu
-            mu *= self.regweight
-            mu = mu[0:self.npt, :] + self.gradRepellV(z,v)
-            Jz[:,0] = mu[:,1]
-            Jz[:,1] = -mu[:,0]
-            dv = a[self.component, np.newaxis] * Jz
-            #self.testGradPotential(z)
-            #zpx += dv + self.gradPotential(z) - self.gradRepellZ(z,v)
-            zpx += dv
-            ca = np.cos(timeStep*a)
-            sa = np.sin(timeStep*a)
-            pt -= timeStep * zpx
-            pt0 = ca[self.component]*pt[:,0] + sa[self.component]*pt[:,1]
-            pt[:,1] = -sa[self.component]*pt[:,0] + ca[self.component]*pt[:,1]
-            pt[:,0] = pt0
+            # Jz[:,0] = z[:,1]
+            # Jz[:,1] = -z[:,0]
+            # v = a[self.component, np.newaxis] * Jz + tau[self.component,:]
+            # #K = self.param.KparDiff.getK(z)
+            # mu = self.solveK(z,v)
+            # zc = np.concatenate([z, self.xc])
+            # a1 = self.regweight*mu[np.newaxis,...]
+            # a2 = mu[np.newaxis,...]
+            # zpx = self.param.KparDiff.applyDiffKT(zc, a1, a2)[0:self.npt,:] - self.gradRepellZ(z,v) - self.gradRigid(z, a, tau) \
+            #         + self.gradPotential(z)
+            #
+            # #pm = px-mu
+            # mu *= self.regweight
+            # mu = mu[0:self.npt, :] + self.gradRepellV(z,v)
+            # Jz[:,0] = mu[:,1]
+            # Jz[:,1] = -mu[:,0]
+            # dv = a[self.component, np.newaxis] * Jz
+            # #self.testGradPotential(z)
+            # #zpx += dv + self.gradPotential(z) - self.gradRepellZ(z,v)
+            # zpx += dv
+            # ca = np.cos(timeStep*a)
+            # sa = np.sin(timeStep*a)
+            # pt -= timeStep * zpx
+            # pt0 = ca[self.component]*pt[:,0] + sa[self.component]*pt[:,1]
+            # pt[:,1] = -sa[self.component]*pt[:,0] + ca[self.component]*pt[:,1]
+            # pt[:,0] = pt0
+            pt = self.gradHamiltonianQ_(pt, z, a, tau, timeStep, dir = 1)
             fvDef.updateVertices(xt[t+1,:,:])
-            if pplot and t%lag==0:
+            if pplot and (t%lag==0 or t==Tsize-1):
                 fig=plt.figure(2)
                 fig.clf()
                 ax = fig.gca()
@@ -981,7 +1036,130 @@ class CurveMatchingRigid:
                 plt.title('t={0:.4f}, H= {1:.4f}; {2:.4f}'.format((t+1)*timeStep, H, H0))
                 plt.axis('equal')
                 plt.pause(0.001)
+        return xt, at, taut
 
+
+    def computeHamiltonian_(self, p, z, a, tau, timeStep):
+        Jz = np.zeros(z.shape)
+        Jz[:, 0] = z[:, 1]
+        Jz[:, 1] = -z[:, 0]
+        v = a[self.component, np.newaxis] * Jz + tau[self.component, :]
+        mu0 = self.regweight*self.solveK(z,v)
+        theta = np.zeros(self.ncomponent*(self.dim+1))
+        theta[range(0 ,len(theta) ,self.dim + 1)] = a
+        theta[range(1 ,len(theta) ,self.dim + 1)] = tau[:,0]
+        theta[range(2 ,len(theta) ,self.dim + 1)] = tau[:,1]
+        ca = np.cos(timeStep * a)
+        sa = np.sin(timeStep * a)
+        Jz[:, 0] = ca[self.component] * z[:, 0] + sa[self.component] * z[:, 1]
+        Jz[:, 1] = -sa[self.component] * z[:, 0] + ca[self.component] * z[:, 1]
+        Jz += tau[self.component, :]*timeStep
+        H = (p*Jz).sum() - timeStep*(mu0[0:self.npt, :]*v).sum()/2 - timeStep*self.costRepell(z,v) \
+            + timeStep* self.objectiveFunPotential(z)
+        return H
+
+    # def __minifun__(self, z, v):
+    #     mu = self.solveK(z,v)
+    #     return (mu*v).sum()/2
+    #
+    # def __minigrad__(self, z, v):
+    #     mu = self.solveK(z,v)
+    #     a1 = np.copy(mu[np.newaxis, ...])
+    #     a2 = np.copy(mu[np.newaxis, ...])
+    #     zpx = -self.param.KparDiff.applyDiffKT(z, a1, a2)
+    #     return zpx
+    #
+    # def __minitest__(self, z, a, tau):
+    #     Jz = np.zeros(z.shape)
+    #     Jz[:, 0] = z[:, 1]
+    #     Jz[:, 1] = -z[:, 0]
+    #     v = a[self.component, np.newaxis] * Jz + tau[self.component, :]
+    #     obj0 = self.__minifun__(z,v)
+    #     eps = 1e-10
+    #     dz = np.random.normal(0,1,z.shape)
+    #     obj1 = self.__minifun__(z+eps*dz,v)
+    #     grad = self.__minigrad__(z,v)
+    #     print 'Minitest:', (obj1-obj0)/eps, (grad*dz).sum()
+
+    def gradHamiltonianQ_(self, p, z, a, tau, timeStep, dir = -1):
+        zc = np.concatenate([z, self.xc])
+        Jz = np.zeros(z.shape)
+        Jz[:, 0] = z[:, 1]
+        Jz[:, 1] = -z[:, 0]
+        if type(a) is float:
+            a = a[np.newaxis]
+            tau = tau[np.newaxis,:]
+        v = a[self.component, np.newaxis] * Jz + tau[self.component, :]
+        # K = self.param.KparDiff.getK(z)
+        mu = self.solveK(z, v)
+        a1 = self.regweight * mu[np.newaxis, ...]
+        a2 = mu[np.newaxis, ...]
+        zpx = self.param.KparDiff.applyDiffKT(zc, a1, a2)[0:self.npt, :] - self.gradRepellZ(z, v) \
+            + self.gradPotential(z)
+
+        # pm = px-mu
+        mu = self.regweight * mu[0:self.npt, :]
+        mu += self.gradRepellV(z, v)
+        Jz[:, 0] = mu[:, 1]
+        Jz[:, 1] = -mu[:, 0]
+        dv = a[self.component, np.newaxis] * Jz
+        # self.testGradPotential(z)
+        # zpx += dv + self.gradPotential(z) - self.gradRepellZ(z,v)
+        zpx += dv
+        ca = np.cos(timeStep * a)
+        sa = np.sin(timeStep * a)
+        if dir < 0:
+            Jz[:, 0] = ca[self.component] * p[:, 0] - sa[self.component] * p[:, 1]
+            Jz[:, 1] = sa[self.component] * p[:, 0] + ca[self.component] * p[:, 1]
+            return Jz + timeStep * zpx
+        else:
+            p -= timeStep * zpx
+            Jz[:, 0] = ca[self.component] * p[:, 0] + sa[self.component] * p[:, 1]
+            Jz[:, 1] = -sa[self.component] * p[:, 0] + ca[self.component] * p[:, 1]
+            return Jz
+
+    def gradHamiltonianTheta_(self, p, z, a, tau, timeStep):
+        # if self.ncomponent==1:
+        #     a = a[np.newaxis]
+        #     tau = tau[np.newaxis,:]
+        da = np.zeros(a.shape)
+        dtau = np.zeros(tau.shape)
+        Jz = np.zeros(z.shape)
+        Jz[:, 0] = z[:, 1]
+        Jz[:, 1] = -z[:, 0]
+        v = a[self.component, np.newaxis] * Jz + tau[self.component, :]
+        #self.testRepellGrad(z,v)
+        mu = self.regweight * self.solveK(z, v)[0:self.npt, :]
+        if not (self.paramRepell is None):
+            mu += self.gradRepellV(z, v)
+            # self.testRepellGrad(z,v)
+        p1 = mu * Jz
+        ca = np.cos(timeStep * a)
+        sa = np.sin(timeStep * a)
+        Jz[:, 0] = -sa[self.component] * z[:, 0] + ca[self.component] * z[:, 1]
+        Jz[:, 1] = -ca[self.component] * z[:, 0] + -sa[self.component] * z[:, 1]
+        p1 -= p * Jz
+        for j in range(self.ncomponent):
+            I = self.Ic[j]
+            da[j] = p1[I, :].sum()
+            dtau[j, :] = (mu - p)[I, :].sum(axis=0)
+        return da, dtau
+
+    def testGradHamiltonian_(self, p, z, a, tau, timeStep):
+        obj0 = self.computeHamiltonian_(p, z, a, tau, timeStep)
+        eps = 1e-10
+        dz = np.random.normal(0,1,z.shape)
+        da = np.random.normal(0,1,a.shape)
+        dtau = np.random.normal(0,1,tau.shape)
+        obj1 = self.computeHamiltonian_(p, z+eps*dz, a, tau, timeStep)
+        obj2 = self.computeHamiltonian_(p, z, a+eps*da, tau, timeStep)
+        obj3 = self.computeHamiltonian_(p, z, a, tau+eps*dtau, timeStep)
+        gradQ = self.gradHamiltonianQ_(p, z, a, tau, timeStep)
+        gradTh = self.gradHamiltonianTheta_(p, z, a, tau, timeStep)
+        print 'Test Hamiltonian, Q:', (obj1-obj0)/eps, (gradQ*dz).sum()
+        print 'Test Hamiltonian, a:', (obj2-obj0)/eps, -timeStep*(gradTh[0]*da).sum()
+        print 'Test Hamiltonian, tau:', (obj3-obj0)/eps, -timeStep*(gradTh[1]*dtau).sum()
+        #self.__minitest__(z,a,tau)
 
     def hamiltonianCovector(self, px1, affine = None):
         x0 = self.x0
@@ -999,36 +1177,38 @@ class CurveMatchingRigid:
         pxt[M, :, :] = px1
         foo = curves.Curve(curve=self.fv0)
         for t in range(M):
-            px = np.squeeze(pxt[M-t, :, :])
-            z = np.squeeze(xt[M-t-1, :, :])
-            zc = np.concatenate([z, self.xc])
-            a = np.squeeze(at[M-t-1, :])
-            tau = np.squeeze(taut[M-t-1, :, :])
-            Jz = np.zeros(z.shape)
-            Jz[:,0] = z[:,1]
-            Jz[:,1] = -z[:,0]
-            v = a[self.component, np.newaxis] * Jz + tau[self.component,:]
-            #K = self.param.KparDiff.getK(z)
-            mu = self.solveK(z,v)
-            foo.updateVertices(z)
-            a1 = self.regweight*mu[np.newaxis,...]
-            a2 = mu[np.newaxis,...]
-            zpx = self.param.KparDiff.applyDiffKT(zc, a1, a2)[0:self.npt, :] - self.gradRepellZ(z,v)
-
-            #pm = px-mu
-            mu = self.regweight * mu[0:self.npt, :]
-            mu += self.gradRepellV(z,v)
-            Jz[:,0] = mu[:,1]
-            Jz[:,1] = -mu[:,0]
-            dv = a[self.component, np.newaxis] * Jz
-            #self.testGradPotential(z)
-            #zpx += dv + self.gradPotential(z) - self.gradRepellZ(z,v)
-            zpx += dv
-            ca = np.cos(timeStep*a)
-            sa = np.sin(timeStep*a)
-            Jz[:,0] = ca[self.component]*px[:,0] - sa[self.component]*px[:,1]
-            Jz[:,1] = sa[self.component]*px[:,0] + ca[self.component]*px[:,1]
-            pxt[M-t-1, :, :] = Jz + timeStep * zpx
+            px = pxt[M-t, :, :]
+            z = xt[M-t-1, :, :]
+            #zc = np.concatenate([z, self.xc])
+            a = at[M-t-1, :]
+            tau = taut[M-t-1, :, :]
+            #self.testGradHamiltonian_(px, z, a, tau, timeStep)
+            # Jz = np.zeros(z.shape)
+            # Jz[:,0] = z[:,1]
+            # Jz[:,1] = -z[:,0]
+            # v = a[self.component, np.newaxis] * Jz + tau[self.component,:]
+            # #K = self.param.KparDiff.getK(z)
+            # mu = self.solveK(z,v)
+            # foo.updateVertices(z)
+            # a1 = self.regweight*mu[np.newaxis,...]
+            # a2 = mu[np.newaxis,...]
+            # zpx = self.param.KparDiff.applyDiffKT(zc, a1, a2)[0:self.npt, :] - self.gradRepellZ(z,v)
+            #
+            # #pm = px-mu
+            # mu = self.regweight * mu[0:self.npt, :]
+            # mu += self.gradRepellV(z,v)
+            # Jz[:,0] = mu[:,1]
+            # Jz[:,1] = -mu[:,0]
+            # dv = a[self.component, np.newaxis] * Jz
+            # #self.testGradPotential(z)
+            # #zpx += dv + self.gradPotential(z) - self.gradRepellZ(z,v)
+            # zpx += dv
+            # ca = np.cos(timeStep*a)
+            # sa = np.sin(timeStep*a)
+            # Jz[:,0] = ca[self.component]*px[:,0] - sa[self.component]*px[:,1]
+            # Jz[:,1] = sa[self.component]*px[:,0] + ca[self.component]*px[:,1]
+            #pxt[M-t-1, :, :] = Jz + timeStep * zpx
+            pxt[M-t-1, :, :] = self.gradHamiltonianQ_(px, z, a, tau, timeStep)
         return pxt, xt
 
 
@@ -1043,27 +1223,30 @@ class CurveMatchingRigid:
         for k in range(at.shape[0]):
             z = np.squeeze(xt[k,...])
             foo.updateVertices(z)
-            a = np.squeeze(at[k, :])
-            tau = np.squeeze(taut[k, :, :])
-            px = np.squeeze(pxt[k+1, :, :])
-            Jz = np.zeros(z.shape)
-            Jz[:,0] = z[:,1]
-            Jz[:,1] = -z[:,0]
-            v = a[self.component, np.newaxis] * Jz + tau[self.component,:]
-            mu = self.regweight * self.solveK(z,v)[0:self.npt,:]
-            if not (self.paramRepell is None):
-                mu += self.gradRepellV(z, v)
-                #self.testRepellGrad(z,v)
-            p1 = mu * Jz
-            ca = np.cos(timeStep*a)
-            sa = np.sin(timeStep*a)
-            Jz[:,0] = -sa[self.component]*z[:,0] + ca[self.component]*z[:,1]
-            Jz[:,1] = -ca[self.component]*z[:,0] + -sa[self.component]*z[:,1]
-            p1 -= px*Jz
-            for j in range(self.ncomponent):
-                I = self.Ic[j]
-                dat[k, j] = p1[I,:].sum()
-                dtaut[k,j,:] = (mu-px)[I,:].sum(axis=0)
+            a = at[k, :]
+            tau = taut[k, :, :]
+            px = pxt[k+1, :, :]
+            grd = self.gradHamiltonianTheta_(px, z, a, tau, timeStep)
+            # Jz = np.zeros(z.shape)
+            # Jz[:,0] = z[:,1]
+            # Jz[:,1] = -z[:,0]
+            # v = a[self.component, np.newaxis] * Jz + tau[self.component,:]
+            # mu = self.regweight * self.solveK(z,v)[0:self.npt,:]
+            # if not (self.paramRepell is None):
+            #     mu += self.gradRepellV(z, v)
+            #     #self.testRepellGrad(z,v)
+            # p1 = mu * Jz
+            # ca = np.cos(timeStep*a)
+            # sa = np.sin(timeStep*a)
+            # Jz[:,0] = -sa[self.component]*z[:,0] + ca[self.component]*z[:,1]
+            # Jz[:,1] = -ca[self.component]*z[:,0] + -sa[self.component]*z[:,1]
+            # p1 -= px*Jz
+            # for j in range(self.ncomponent):
+            #     I = self.Ic[j]
+            #     dat[k, j] = p1[I,:].sum()
+            #     dtaut[k,j,:] = (mu-px)[I,:].sum(axis=0)
+            dat[k,:] = grd[0]
+            dtaut[k,:] = grd[1]
 
         return dat, dtaut, xt, pxt
 
@@ -1130,7 +1313,7 @@ class CurveMatchingRigid:
             for kk in range(self.Tsize+1):
                 self.fvDef.updateVertices(np.squeeze(self.xt[kk, :, :]))
                 self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk')
-            self.geodesicEquation__(1., 1./self.Tsize, self.at[0, :], self.taut[0, :, :], pplot=True, plotRatio=self.Tsize)
+            self.geodesicEquation__(1., 1./self.Tsize, self.at[0, :], self.taut[0, :, :], pplot=True, plotRatio=10)
             #self.__geodesicEquation__(self.Tsize, self.pxt[0, :,:])
         else:
             self.fvDef.updateVertices(np.squeeze(self.xt[self.Tsize, :, :]))
@@ -1139,11 +1322,47 @@ class CurveMatchingRigid:
             fig=plt.figure(1)
             fig.clf()
             ax = fig.gca()
-            if len(self.xc)>0:
+            if self.saveRate > 0 and self.iter%self.saveRate==0:
+                FFMpegWriter = manimation.writers['ffmpeg']
+                metadata = dict(title='Euclidean LDDMM')
+                writer = FFMpegWriter(fps=5, metadata=metadata)
+                with writer.saving(fig, self.outputDir +'/'+ self.saveFile+ ".mp4", 100):
+                    for t in range(self.Tsize+1):
+                        self.fvDef.updateVertices(self.xt[t, :, :])
+                        fig.clf()
+                        ax = fig.gca()
+                        if len(self.xc) > 0:
+                            for kf in range(self.fvc.faces.shape[0]):
+                                ax.plot(self.fvc.vertices[self.fvc.faces[kf, :], 0],
+                                        self.fvc.vertices[self.fvc.faces[kf, :], 1], color=[1, 0, 0])
+                        for kf in range(self.fv0.faces.shape[0]):
+                            ax.plot(self.fv0.vertices[self.fv0.faces[kf, :], 0],
+                                    self.fv0.vertices[self.fv0.faces[kf, :], 1], color=[0, 0, 1])
+                        for kf in range(self.fv1.faces.shape[0]):
+                            ax.plot(self.fv1.vertices[self.fv1.faces[kf, :], 0],
+                                    self.fv1.vertices[self.fv1.faces[kf, :], 1], color=[0, 0, 1])
+                        for kf in range(self.fvDef.faces.shape[0]):
+                            ax.plot(self.fvDef.vertices[self.fvDef.faces[kf, :], 0],
+                                    self.fvDef.vertices[self.fvDef.faces[kf, :], 1],
+                                    color=[1, 0, 0], linewidth=3)
+                        for k in range(self.ncomponent):
+                            I = self.Ic[k]
+                            xDef = self.fvDef.vertices[I, :]
+                            ax.plot(np.array([np.mean(xDef[:, 0]), xDef[0, 0]]),
+                                    np.array([np.mean(xDef[:, 1]), xDef[0, 1]]),
+                                    color=[0, .5, 0], linewidth=2)
+                            ax.plot(np.mean(self.xt[0:t + 1, I, 0], axis=1), np.mean(self.xt[0:t + 1, I, 1], axis=1))
+                        plt.axis('equal')
+                        plt.title('t={0:.3f}'.format(float(t)/self.Tsize))
+                        writer.grab_frame()
+                        plt.pause(0.001)
+            if len(self.xc) > 0:
                 for kf in range(self.fvc.faces.shape[0]):
-                    ax.plot(self.fvc.vertices[self.fvc.faces[kf, :], 0], self.fvc.vertices[self.fvc.faces[kf, :], 1], color=[1, 0, 0])
+                    ax.plot(self.fvc.vertices[self.fvc.faces[kf, :], 0],
+                            self.fvc.vertices[self.fvc.faces[kf, :], 1], color=[1, 0, 0])
             for kf in range(self.fv1.faces.shape[0]):
-                ax.plot(self.fv1.vertices[self.fv1.faces[kf,:],0], self.fv1.vertices[self.fv1.faces[kf,:],1], color=[0,0,1])
+                ax.plot(self.fv1.vertices[self.fv1.faces[kf, :], 0],
+                        self.fv1.vertices[self.fv1.faces[kf, :], 1], color=[0, 0, 1])
             for kf in range(self.fvDef.faces.shape[0]):
                 ax.plot(self.fvDef.vertices[self.fvDef.faces[kf,:],0], self.fvDef.vertices[self.fvDef.faces[kf,:],1], color=[1,0,0], marker='*')
             plt.axis('equal')
@@ -1158,7 +1377,13 @@ class CurveMatchingRigid:
         self.defCost = self.obj - self.obj0 - self.dataTerm(self.fvDef)   
 
 
-    def optimizeMatching(self):
+    def optimizeMatching(self, a0=None, tau0= None):
+        if a0 is not None and tau0 is not None:
+            traj = self.geodesicEquation__(1.0, 1.0/self.Tsize, a0, tau0)
+            self.xt = traj[0]
+            self.at = traj[1]
+            self.taut = traj[2]
+
         grd = self.getGradient(self.gradCoeff)
         [grd2] = self.dotProduct(grd, [grd])
 
@@ -1171,40 +1396,6 @@ class CurveMatchingRigid:
         cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient)
         #return self.at, self.xt
 
-    def run(self):
-        plt.ion()
-        N = 50
-        t = np.arange(0., 2 * np.pi, 2*np.pi/N)
-        r = 0.25
-        x = np.zeros((len(t), 2))
-        x[:,0] = r*np.cos(t)
-        x[:,1] = r*np.sin(t)
-        fv0 = [curves.Curve(pointSet=x+np.array([0.5,0.5])), curves.Curve(pointSet=x+np.array([0, 1]))]
-        fv1 = [curves.Curve(pointSet=x+np.array([1.5, 0.5])), curves.Curve(pointSet=x+np.array([1, 1]))]
-        fvc = curves.Curve(pointSet=0.1*x+np.array([1,1]))
-
-        sigma = .1
-        K1 = Kernel(name='laplacian', sigma=sigma)
-        sigmaDist = 2.0
-        sigmaError = 0.01
-        dirOut = '/Users/younes'
-
-        if os.path.isfile(dirOut + '/Development/Results/curveMatchingRigid/info.tex'):
-            os.remove(dirOut + '/Development/Results/curveMatchingRigid/info.tex')
-        loggingUtils.setup_default_logging(dirOut + '/Development/Results/curveMatchingRigid', fileName='info.txt',
-                                           stdOutput=True)
-
-        sm = CurveMatchingRigidParam(timeStep=0.1, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError, errorType='varifold')
-        f = CurveMatchingRigid(Template=fv0, Target=fv1, Clamped=fvc ,outputDir=dirOut + '/Development/Results/curveRigid', param=sm,
-                          testGradient=True, gradLB=1e-5, saveTrajectories=True, regWeight=1., maxIter=10000,paramRepell=.001)
-        f.optimizeMatching()
-        #f.geodesicEquation(f.Tsize, f.at[0,:], f.taut[0,:,:])
-        #f.__geodesicEquation__(f.Tsize, f.fv0, f.pxt[0,:,:])
-
-        logging.shutdown()
-        plt.ioff()
-        plt.show()
-        return f
 
     def __circle(self,N,r):
         t = np.arange(0., 2 * np.pi, 2*np.pi/N)
@@ -1213,11 +1404,29 @@ class CurveMatchingRigid:
         x[:, 1] = r * np.sin(t)
         return x
 
-    def __ellipse(self,N,a,b,theta):
+    def __bunny(self, N0, r, a1, th1, a2, th2):
+        N = 500
+        t = np.arange(0., 2 * np.pi, 2*np.pi/N)
+        rho = r*np.ones(t.shape)
+        j1 = int(np.floor(N*(th1 - 0.2)/(2*np.pi)))
+        j2 = int(np.ceil(N*(th1 + 0.2)/(2*np.pi)))
+        rho[j1:j2] += a1 * np.sin(np.pi*(t[j1:j2]-t[j1])/(t[j2]-t[j1]))
+        j1 = int(np.floor(N*(th2 - 0.2)/(2*np.pi)))
+        j2 = int(np.ceil(N*(th2 + 0.2)/(2*np.pi)))
+        rho[j1:j2] += a2 * np.sin(np.pi*(t[j1:j2]-t[j1])/(t[j2]-t[j1]))
+        x = np.zeros((len(t), 2))
+        x[:, 0] = rho * np.cos(t)
+        x[:, 1] = rho * np.sin(t)
+        x = curves.remesh(x, N0)
+        return x
+
+    def __ellipse(self, N0,a,b,theta):
+        N = 500
         t = np.arange(0., 2 * np.pi, 2*np.pi/N)
         x = np.zeros((len(t), 2))
         x[:, 0] = a * np.cos(theta) * np.cos(t) + b * np.sin(theta) * np.sin(t)
         x[:, 1] = -a * np.sin(theta) * np.cos(t) + b * np.cos(theta) * np.sin(t)
+        x = curves.remesh(x, N0)
         return x
 
     def __square(self,N,r):
@@ -1234,7 +1443,7 @@ class CurveMatchingRigid:
 
     def __vline(self,N,r):
         t = np.arange(0., 1., 1./N)[:,np.newaxis]
-        x = t*[0,2] - 1
+        x = t*[0,2] - [0,1]
         return r*x
 
     def __line(self,N,r, theta):
@@ -1250,6 +1459,7 @@ class CurveMatchingRigid:
                                            stdOutput=True)
         sigmaDist = 2.0
         sigmaError = 0.01
+        fileName = 'Shooting'
 
         if scenario == 1:
             sigma = .05
@@ -1268,37 +1478,70 @@ class CurveMatchingRigid:
             fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,1])), curves.Curve(pointSet=x1 + np.array([0,-1]))])
             a0 = np.array([5, 0, 0, 0])
             tau0 = np.array([[10, -5], [0, 0], [0,0], [0, 0]])
+            fileName = 'ballsAnsBumps'
         elif scenario == 2:
             sigma = .5
             K1 = Kernel(name='laplacian' ,sigma=sigma, order=1)
             sm = CurveMatchingRigidParam(timeStep=dt / T ,KparDiff=K1 ,sigmaDist=sigmaDist ,sigmaError=sigmaError ,
                                          errorType='varifold')
-            x = self.__circle(25, 0.1)
-            fv0 = curves.Curve(pointSet=x + np.array([-3 ,0]))
+            #x = self.__circle(25, 0.1)
+            x = self.__bunny(50, 0.1, 0.15, 0.5*np.pi, 0.15, 0.75*np.pi)
+            fv0 = curves.Curve(pointSet=x + np.array([-2 ,0]))
             x = self.__square(200, 2)
             #x1 = self.__circle(25, 0.1)
-            x1 = self.__vline(25, 0.5)
+            x1 = self.__vline(50, 0.5)
             #fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,-.5]))])
             fvc = curves.Curve(pointSet=x1 + np.array([0,-.65]))
+            #fvc = curves.Curve(pointSet=x1 + np.array([0,-1.5]))
             a0 = np.array([0])
             tau0 = np.array([[5.,0]])
+            fileName = 'oneBunnyAttractor'
         elif scenario == 3:
             sigma = .2
-            K1 = Kernel(name='laplacian' ,sigma=sigma)
-            sm = CurveMatchingRigidParam(timeStep=dt / T ,KparDiff=K1 ,sigmaDist=sigmaDist ,sigmaError=sigmaError ,
+            K1 = Kernel(name='laplacian', sigma=sigma)
+            sm = CurveMatchingRigidParam(timeStep=dt / T, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
                                          errorType='varifold')
-            x = self.__circle(50, 0.25)
+            #x = self.__circle(50, 0.1)
+            x = self.__bunny(50, 0.05, 0.1, 0.5*np.pi, 0.1, 0.75*np.pi)
             x1 = self.__circle(25, 0.1)
             # x = self.__square(50, 0.25)
-            fv0 = [curves.Curve(pointSet=x + np.array([-1, 0])),
-                   curves.Curve(pointSet=x + np.array([.9, 1.])),
-                   curves.Curve(pointSet=x + np.array([.7, -1.])),
+            fv0 = [curves.Curve(pointSet=x + np.array([-1, 1.35])),
+                   #                   curves.Curve(pointSet=x + np.array([.9, 1.])),
+                   #                   curves.Curve(pointSet=x + np.array([.7, -1.])),
                    curves.Curve(pointSet=x + np.array([.8, 0]))]
             x = self.__square(200, 4)
             fvc = curves.Curve(pointSet=x)
-            #fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,1])), curves.Curve(pointSet=x1 + np.array([0,-1]))])
-            a0 = np.array([0, 0, 0, 0])
-            tau0 = np.array([[10, 0], [0, 0], [0,0], [0, 0]])
+            fvc = None
+            fileName = "twoBunniesDanse"
+            # fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,1])), curves.Curve(pointSet=x1 + np.array([0,-1]))])
+            # a0 = np.array([0, 0, 0, 0])
+            # tau0 = np.array([[10, 0], [0, 0], [0,0], [0, 0]])
+            a0 = np.array([0, 0])
+            tau0 = np.array([[10, 0], [-10, 0]])
+        elif scenario == 30:
+            sigma = 2.
+            K1 = Kernel(name='laplacian', sigma=sigma)
+            sm = CurveMatchingRigidParam(timeStep=dt / T, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
+                                         errorType='varifold')
+            #x = self.__bunny(50, 0.25, 0.5, 0.5*np.pi, 0.5, 0.75*np.pi)
+            x = self.__ellipse(500, 0.5, 0.2, 0)
+            # x = self.__square(50, 0.25)
+            x = curves.remesh(x, 50)
+            fv0 = curves.Curve(pointSet=x + np.array([-1, 0]))
+            #fv0.resample(0.1)
+            mx = np.mean(fv0.vertices, axis=0)
+            #fv0 = curves.Curve(pointSet= fv0.vertices)
+                   #                   curves.Curve(pointSet=x + np.array([.9, 1.])),
+                   #                   curves.Curve(pointSet=x + np.array([.7, -1.])),
+            x = self.__square(200, 4)
+            fvc = curves.Curve(pointSet=x)
+            fvc = None
+            fileName = "oneEllipse"
+            # fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,1])), curves.Curve(pointSet=x1 + np.array([0,-1]))])
+            # a0 = np.array([0, 0, 0, 0])
+            # tau0 = np.array([[10, 0], [0, 0], [0,0], [0, 0]])
+            a0 = np.array([10])
+            tau0 = np.array([[10 - 10*mx[1], 0 + 10*mx[0]]])
         elif scenario == 4:
             sigma = .75
             K1 = Kernel(name='laplacian' ,sigma=sigma)
@@ -1342,15 +1585,48 @@ class CurveMatchingRigid:
                                outputDir=dirOut + '/Development/Results/curveRigid' ,param=sm ,
                                testGradient=True ,gradLB=1e-5 ,saveTrajectories=True ,
                                regWeight=1. ,maxIter=10000)
-        return f, a0, tau0
+        return f, a0, tau0, fileName
 
-    def runShoot(self, dt=0.00001, T=10.):
+
+    def runLandmarks(self, dt=0.001, T=1.):
+        fig = plt.figure(5)
+        x0 = np.array([[0,.28], [1,0]])
+        a0 = np.array([[2.75,0], [-2.75,0]])
+        sigma = .2
+        K1 = Kernel(name='gauss', sigma=sigma, order=1)
+        L = evol.landmarkEPDiff(int(np.ceil(T/dt)), x0, a0, K1)
+        xt = L[0]
+        FFMpegWriter = manimation.writers['ffmpeg']
+        metadata = dict(title='Euclidean LDDMM')
+        writer = FFMpegWriter(fps=5, metadata=metadata)
+        dirMov = '/Users/younes/OneDrive - Johns Hopkins University/TALKS/MECHANICAL/Videos/'
+        with writer.saving(fig, dirMov + "LandmarksDanse.mp4", 100):
+            for t in range(0,xt.shape[0], np.maximum(1,xt.shape[0]/100)):
+                fig.clf()
+                ax = fig.gca()
+                for k in range(xt.shape[1]):
+                    ax.plot(xt[0:t+1,k,0], xt[0:t+1,k,1], markersize=10)
+                    ax.plot(xt[t, k, 0], xt[t, k, 1], markersize=10, marker='o')
+                plt.axis('equal')
+                plt.title('t={0:.3f}'.format(t*dt))
+                writer.grab_frame()
+                plt.pause(0.001)
+
+        logging.shutdown()
+        plt.ioff()
+        plt.show()
+
+
+
+    def runShoot(self, dt=0.0001, T=.5):
         plt.ion()
-        S = self.shootingScenario(2,dt=dt, T=T)
+        S = self.shootingScenario(3,dt=dt, T=T)
         f = S[0]
         a0 = S[1]
         tau0 = S[2]
-        f.paramRepell = 0.001
+        fileName = S[3] + 'LDDMM'
+        f.parpot = None
+        f.paramRepell = None
         geod = f.geodesicEquation__(T, dt, a0, tau0, pplot=True, nsymplectic=0)
         # f.__geodesicEquation__(f.Tsize, f.fv0, f.pxt[0,:,:])
         fig = plt.figure(2)
@@ -1360,7 +1636,7 @@ class CurveMatchingRigid:
         metadata = dict(title='Euclidean LDDMM')
         writer = FFMpegWriter(fps=5, metadata=metadata)
         dirMov = '/Users/younes/OneDrive - Johns Hopkins University/TALKS/MECHANICAL/Videos/'
-        with writer.saving(fig, dirMov+"oneBall2.mp4", 100):
+        with writer.saving(fig, dirMov+ fileName + ".mp4", 100):
             for t in range(0,xt.shape[0], np.maximum(1,xt.shape[0]/100)):
                 fig.clf()
                 ax = fig.gca()
@@ -1370,8 +1646,8 @@ class CurveMatchingRigid:
                         ax.plot(f.fvc.vertices[f.fvc.faces[kf, :], 0], f.fvc.vertices[f.fvc.faces[kf, :], 1], color=[0, 0, 0], linewidth=5)
                 for kf in range(fvDef.faces.shape[0]):
                     ax.plot(fvDef.vertices[fvDef.faces[kf, :], 0], fvDef.vertices[fvDef.faces[kf, :], 1], color=[1, 0, 0], linewidth=3)
-                for k in range(fvDef.component.max()+1):
-                    I = np.nonzero(fvDef.component==k)[0]
+                for k in range(self.ncomponent):
+                    I = self.Ic[k]
                     xDef = fvDef.vertices[I, :]
                     ax.plot(np.array([np.mean(xDef[:,0]),xDef[0, 0]]),
                             np.array([np.mean(xDef[:,1]), xDef[0, 1]]),
@@ -1387,6 +1663,42 @@ class CurveMatchingRigid:
         plt.show()
         return f
 
+    def runMatch(self):
+        plt.ion()
+        N = 50
+        r = 0.25
+        x = self.__circle(N,r )
+        #fv0 = [curves.Curve(pointSet=x+np.array([0.5,0.5])), curves.Curve(pointSet=x+np.array([0, 1]))]
+        #fv1 = [curves.Curve(pointSet=x+np.array([1.5, 0.5])), curves.Curve(pointSet=x+np.array([1, 1]))]
+        #fvc = curves.Curve(pointSet=0.25*x+np.array([1,0.5]))
+        fv0 = curves.Curve(pointSet=x+np.array([-1.0,0]))
+        fv1 = curves.Curve(pointSet=x+np.array([1, .1]))
+        x = self.__vline(100, .5)
+        fvc = curves.Curve(pointSet=x)
+
+        sigma = .2
+        K1 = Kernel(name='laplacian', sigma=sigma)
+        sigmaDist = 2.0
+        sigmaError = 0.01
+        dirOut = '/Users/younes'
+        fileOut = '/Development/Results/curveMatchingRigidObstacleRepell'
+
+        if os.path.isfile(dirOut + '/Development/Results/curveMatchingRigid/info.tex'):
+            os.remove(dirOut + '/Development/Results/curveMatchingRigid/info.tex')
+        loggingUtils.setup_default_logging(dirOut + fileOut, fileName='info.txt',
+                                           stdOutput=True)
+
+        sm = CurveMatchingRigidParam(timeStep=0.05, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError, errorType='varifold')
+        f = CurveMatchingRigid(Template=fv0, Target=fv1, Clamped=fvc ,outputDir=dirOut + fileOut, param=sm,
+                          testGradient=True, gradLB=1e-5, saveTrajectories=True, regWeight=1., maxIter=10000,paramRepell= None)
+        f.optimizeMatching(a0=np.array([0]), tau0=np.array([[0,2]]))
+        #f.geodesicEquation(f.Tsize, f.at[0,:], f.taut[0,:,:])
+        #f.__geodesicEquation__(f.Tsize, f.fv0, f.pxt[0,:,:])
+
+        logging.shutdown()
+        plt.ioff()
+        plt.show()
+        return f
 
 if __name__ == "__main__":
-    CurveMatchingRigid().run()
+    CurveMatchingRigid().runMatch()
