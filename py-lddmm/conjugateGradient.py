@@ -29,7 +29,7 @@ import logging
 # TestGradient evaluate accracy of first order approximation (debugging)
 # epsInit: initial gradient step
 
-def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
+def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01):
 
     if (hasattr(opt, 'getVariable')==False | hasattr(opt, 'objectiveFun')==False | hasattr(opt, 'updateTry')==False | hasattr(opt, 'acceptVarTry')==False | hasattr(opt, 'getGradient')==False):
         logging.error('Error: required functions are not provided')
@@ -60,6 +60,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
 
     eps = epsInit
     epsMin = 1e-10
+    epsMax = 1.
     opt.converged = False
 
     obj = opt.objectiveFun()
@@ -69,20 +70,23 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
 
 
     skipCG = 0
-    for it  in range(maxIter):
+    noUpdate = 0
+    it = 0
+    while it < maxIter:
         if it % restartRate == 0:
             skipCG = 1
 
         if hasattr(opt, 'startOfIteration'):
             opt.startOfIteration()
-        grd = opt.getGradient(gradCoeff)
+        if noUpdate==0:
+            grd = opt.getGradient(gradCoeff)
 
         if TestGradient:
             if hasattr(opt, 'randomDir'):
                 dirfoo = opt.randomDir()
             else:
                 dirfoo = np.random.normal(size=grd.shape)
-            epsfoo = 1e-6
+            epsfoo = 1e-8
             objfoo = opt.updateTry(dirfoo, epsfoo, obj-1e10)
             if hasattr(opt, 'dotProduct'):
                 [grdfoo] = opt.dotProduct(grd, [dirfoo])
@@ -119,7 +123,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
                 beta = 0
 
             grdOld2 = grd2
-            grdTry = np.sqrt(max(1e-20,grd2 + beta * grd12))
+            grdTry = np.sqrt(np.maximum(1e-20,grd2 + beta * grd12))
 
             if hasattr(opt, 'addProd'):
                 dir0 = opt.addProd(grd, oldDir, beta)
@@ -142,6 +146,9 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
         objTry = opt.updateTry(dir0, eps, obj)
 
         noUpdate = 0
+        epsBig = epsMax / (grdTry)
+        if eps > epsBig:
+            eps = epsBig
         if objTry > obj:
             #fprintf(1, 'iteration %d: obj = %.5f, eps = %.5f\n', it, objTry, eps) ;
             epsSmall = np.maximum(1e-6/(grdTry), epsMin)
@@ -179,7 +186,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
         # increasing step if improves
             contt = 5
             #eps0 = eps / 4
-            while contt>=1:
+            while contt>=1 and eps<epsBig:
                 objTry2 = opt.updateTry(dir0, 1.25*eps, objTry)
                 if objTry > objTry2:
                     eps *= 1.25
@@ -216,10 +223,12 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=10.):
                 if hasattr(opt, 'endOfIteration'):
                     opt.endOfIteration()
                 break
-            eps = 100*eps
+            eps = np.minimum(100*eps, epsMax)
 
-            if hasattr(opt, 'endOfIteration'):
+            if noUpdate==0 and hasattr(opt, 'endOfIteration'):
                 opt.endOfIteration()
+            if noUpdate==0:
+                it += 1
 
     if hasattr(opt, 'endOptim'):
         opt.endOptim()

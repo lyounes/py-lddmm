@@ -105,8 +105,8 @@ class Surface:
         F = self.faces
         nv = V.shape[0]
         nf = F.shape[0]
-        AF = np.zeros([nf,1])
-        AV = np.zeros([nv, 1])
+        AF = np.zeros(nf)
+        AV = np.zeros(nv)
         for k in range(nf):
             # determining if face is obtuse
             x12 = V[F[k,1], :] - V[F[k,0], :]
@@ -756,7 +756,7 @@ class Surface:
                 kk += 1
         idx = I[idx]
         if idx.max() < (k-1):
-            loggin.info('Warning: kmeans convergence with %d clusters instead of %d' %(idx.max(), k))
+            logging.info('Warning: kmeans convergence with %d clusters instead of %d' %(idx.max(), k))
             #ml = w.sum(axis=1)/N
         nc = idx.max()+1
         C = np.zeros([nc, self.vertices.shape[1]])
@@ -767,7 +767,7 @@ class Surface:
             #print a.shape, nI
             aI = a[I]
             ak = aI.sum()
-            C[k, :] = (self.vertices[I, :]*aI).sum(axis=0)/ak ; 
+            C[k, :] = (self.vertices[I, :]*aI).sum(axis=0)/ak
         
         
 
@@ -940,8 +940,8 @@ class Surface:
 
     # Saves in .vtk format
     def saveVTK2(self, fileName, vtkFields = None):
-        F = self.faces ;
-        V = self.vertices ;
+        F = self.faces
+        V = self.vertices
 
         with open(fileName, 'w') as fvtkout:
             fvtkout.write('# vtk DataFile Version 3.0\nSurface Data\nASCII\nDATASET POLYDATA\n') 

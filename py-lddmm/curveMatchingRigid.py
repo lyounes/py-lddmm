@@ -7,6 +7,7 @@ import scipy.linalg as la
 import scipy.optimize as sopt
 import matchingParam
 import curves
+import grid
 import pointEvolution as evol
 import conjugateGradient as cg
 from affineBasis import *
@@ -75,9 +76,23 @@ class Direction:
 #        affine: 'affine', 'similitude', 'euclidean', 'translation' or 'none'
 #        maxIter: max iterations in conjugate gradient
 class CurveMatchingRigid:
-    def __init__(self, Template=None, Target=None, Clamped=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000, regWeight = 1.0,
+    def __init__(self, Template=None, Target=None, Clamped=None, pltFrame = None,
+                 fileTempl=None, fileTarg=None, param=None, maxIter=1000, regWeight = 1.0,
                  verb=True, gradLB = 0.001, saveRate=10, saveTrajectories=False, parpot = None, paramRepell = None,
                  testGradient=False, saveFile = 'evolution', outputDir = '.', pplot=True):
+        self.iter = 0
+        self.maxIter = maxIter
+        self.verb = verb
+        self.testGradient = testGradient
+        self.regweight = regWeight
+        self.minEig = 1e-10
+        self.parpot = parpot
+        self.rpot = 4.
+        self.parRot = 0.
+        self.parTrans = 0.
+        self.paramRepell = paramRepell
+        self.repellCosine = 0.
+        self.pltFrame = pltFrame
         if Template is None:
             if fileTempl is None:
                 #print 'Please provide a template curve'
@@ -99,13 +114,34 @@ class CurveMatchingRigid:
 
         self.npt = self.fv0.vertices.shape[0]
         self.dim = self.fv0.vertices.shape[1]
-
         if not(Clamped is None):
             self.fvc = curves.Curve(curve=Clamped)
             self.xc = self.fvc.vertices
         else:
             self.fvc = curves.Curve()
             self.xc = np.zeros([0, self.dim])
+        if self.dim == 2:
+            xmin = min(self.fv0.vertices[:,0].min(), self.fv1.vertices[:,0].min())
+            xmax = max(self.fv0.vertices[:,0].max(), self.fv1.vertices[:,0].max())
+            ymin = min(self.fv0.vertices[:,1].min(), self.fv1.vertices[:,1].min())
+            ymax = max(self.fv0.vertices[:,1].max(), self.fv1.vertices[:,1].max())
+            if Clamped is not None:
+                xmin = min(xmin, self.fvc.vertices[:,0].min())
+                xmax = max(xmax, self.fvc.vertices[:,0].max())
+                ymin = min(ymin, self.fvc.vertices[:,1].min())
+                ymax = max(ymax, self.fvc.vertices[:,1].max())
+            dx =  xmax-xmin
+            dy = ymax-ymin
+            self.gsize = 0.005
+            self.gskip = int(0.1/self.gsize)
+            DXY = 0.25 * max(dx, dy)
+            dxy = self.gsize * min(dx,dy)
+            #print xmin,xmax, dxy
+            [x,y] = np.mgrid[(xmin-DXY):(xmax+DXY):dxy, (ymin-DXY):(ymax+DXY):dxy]
+            #print x.shape
+            self.gridDef = grid.Grid(gridPoints=[x,y])
+            self.gridxy = np.copy(self.gridDef.vertices)
+
 
         self.nptc = self.fv0.vertices.shape[0] + self.xc.shape[0]
         if not(self.dim == 2):
@@ -122,18 +158,6 @@ class CurveMatchingRigid:
         for f in glob.glob(outputDir+'/*.vtk'):
             os.remove(f)
         self.fvDef = curves.Curve(curve=self.fv0)
-        self.iter = 0
-        self.maxIter = maxIter
-        self.verb = verb
-        self.testGradient = testGradient
-        self.regweight = regWeight
-        self.minEig = 1e-10
-        self.parpot = parpot
-        self.rpot = 6.
-        self.parRot = 0.
-        self.parTrans = 0.
-        self.paramRepell = paramRepell
-        self.repellCosine = 0.
 
         if param==None:
             self.param = CurveMatchingRigidParam()
@@ -452,13 +476,13 @@ class CurveMatchingRigid:
             return obj+obj0+obj3
 
     def objectiveFun(self):
-        if self.obj == None:
+        if self.obj is None:
             self.obj0 = self.param.fun_obj0(self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
             (self.obj, self.xt) = self.objectiveFunDef(self.at, self.taut, withTrajectory=True)
             self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
             self.obj += self.obj0 + self.dataTerm(self.fvDef) #+ self.objectiveFunPotential(self.xt)
             self.obj += self.objectiveFunRigid(self.xt, self.at, self.taut)
-            print self.obj0, self.obj
+            #print self.obj0, self.obj
 
         return self.obj
 
@@ -488,27 +512,36 @@ class CurveMatchingRigid:
 
         return objTry
 
-    def directEvolutionEuler(self, x0, at, taut):
+    def directEvolutionEuler(self, x0, at, taut, grid=None):
         xt = np.zeros([self.Tsize+1, x0.shape[0], x0.shape[1]])
         xt[0,:,:] = np.copy(x0)
         timeStep = 1.0/self.Tsize
+        if grid is not None:
+            yt = np.copy(grid)
         for t in range(self.Tsize):
             z = np.squeeze(xt[t, :, :])
             a = np.squeeze(at[t, :])
             tau = np.squeeze(taut[t, :, :])
             Jz = np.zeros(z.shape)
-            ca = np.cos(timeStep*a)
-            sa = np.sin(timeStep*a)
+            ca = (np.cos(timeStep*a) - 1)/timeStep
+            sa = np.sin(timeStep*a)/timeStep
             if self.ncomponent == 1:
                 Jz[:,0] = ca*z[:,0] + sa*z[:,1]
                 Jz[:,1] = -sa*z[:,0] + ca*z[:,1]
-                xt[t+1, :, :] = Jz + timeStep * tau
+                vt = Jz+tau
             else:
                 Jz[:,0] = ca[self.component]*z[:,0] + sa[self.component]*z[:,1]
                 Jz[:,1] = -sa[self.component]*z[:,0] + ca[self.component]*z[:,1]
             #v = a[self.component, np.newaxis] * Jz + tau[self.component,:]
-                xt[t+1, :, :] = Jz + timeStep * tau[self.component,:]
-        return xt
+                vt = Jz+tau[self.component,:]
+            xt[t + 1, :, :] = z + timeStep * vt
+            if grid is not None:
+                ax = self.solveK(z, vt)
+                yt += timeStep*self.param.KparDiff.applyK(np.concatenate((z, self.xc)), ax, firstVar=yt)
+        if grid is None:
+            return xt
+        else:
+            return xt, yt
 
     def solveK(self,z, v):
         zc = np.concatenate([z,self.xc])
@@ -529,6 +562,29 @@ class CurveMatchingRigid:
         #print np.fabs(np.dot(K,mu)-v).max()
         #mu = la.solve(K,vc, sym_pos=True)
         return mu
+
+    def center(self,z, kernel = None):
+        if kernel is None:
+            K = self.param.KparDiff.getK(z)
+        else:
+            K = kernel.getK(z)
+        try:
+            eK = la.eigh(K)
+        except Exception:
+            raise Exception('Bad value in SolveK')
+        J = np.nonzero(eK[0] > self.minEig)[0]
+        #D = np.maximum(eK[0], self.minEig)
+        w = np.dot(z.T, eK[1][:, J]).T / eK[0][J, np.newaxis]
+        #w = np.dot(vc.T, eK[1]).T / D[:, np.newaxis]
+        mu = np.dot(eK[1][:, J], w)
+        s = ((eK[1][:,J].sum(axis=0)**2)/eK[0][J]).sum()
+        c = mu.sum(axis=0)/s
+        #mu = np.dot(eK[1], w)
+
+        #mu = mu[0:self.npt,:]
+        #print np.fabs(np.dot(K,mu)-v).max()
+        #mu = la.solve(K,vc, sym_pos=True)
+        return c
 
     def solveMKM(self, z, p):
         zc = np.concatenate([z,self.xc])
@@ -953,6 +1009,8 @@ class CurveMatchingRigid:
         pt = mu00 + self.gradRepellV(x0,v)
         timeStep = dt
         lag = int(np.floor(Tsize/plotRatio))
+        #lag2 = int(np.floor(Tsize/20))
+        lag2 = int(np.ceil(plotRatio/20.))*lag
         fvDef = curves.Curve(curve=fv0)
         H0 = 0
         for t in tqdm(range(Tsize)):
@@ -1017,24 +1075,32 @@ class CurveMatchingRigid:
                 fig=plt.figure(2)
                 fig.clf()
                 ax = fig.gca()
+                if self.pltFrame is not None:
+                    ax.plot(self.pltFrame[:, 0],self.pltFrame[:, 1], color=[1, 1, 1])
                 if len(self.xc) > 0:
                     for kf in range(self.fvc.faces.shape[0]):
                         ax.plot(self.fvc.vertices[self.fvc.faces[kf, :], 0],
-                                self.fvc.vertices[self.fvc.faces[kf, :], 1], color=[0, 0, 0], linewidth=5)
+                                self.fvc.vertices[self.fvc.faces[kf, :], 1], color=[1, .5, 0], linewidth=5)
                 for kf in range(self.fv1.faces.shape[0]):
                     ax.plot(self.fv1.vertices[self.fv1.faces[kf, :], 0], self.fv1.vertices[self.fv1.faces[kf, :], 1],
-                            color=[0, 0, 1])
+                            color=[.25, .25, .25])
                 for kf in range(fvDef.faces.shape[0]):
                     ax.plot(fvDef.vertices[fvDef.faces[kf,:],0], fvDef.vertices[fvDef.faces[kf,:],1], color=[1,0,0], linewidth=3)
                 for k in range(fvDef.component.max() + 1):
                     I = self.Ic[k]
                     xDef = fvDef.vertices[I, :]
-                    ax.plot(np.array([np.mean(xDef[:, 0]), xDef[0, 0]]),
-                            np.array([np.mean(xDef[:, 1]), xDef[0, 1]]),
+                    center = np.zeros((t + 2, self.dim))
+                    for tt in range(t + 2):
+                        center[tt, :] = self.center(xt[tt, I, :])
+                    ax.plot(np.array([center[t+1, 0], xDef[0, 0]]),
+                            np.array([center[t+1, 1], xDef[0, 1]]),
                             color=[0, .5, 0], linewidth=2)
-                    ax.plot(np.mean(xt[0:t+2, I, 0], axis=1), np.mean(xt[0:t+2, I, 1], axis=1))
+                    ax.plot(center[0:t + 2, 0], center[0:t + 2, 1])
                 plt.title('t={0:.4f}, H= {1:.4f}; {2:.4f}'.format((t+1)*timeStep, H, H0))
                 plt.axis('equal')
+                if t%lag2==0 or t==Tsize - 1:
+                    plt.title('t={0:.4f}'.format((t + 1) * timeStep))
+                    plt.savefig(self.outputDir+'/'+ self.saveFile+str(int(t/lag2))+'.png')
                 plt.pause(0.001)
         return xt, at, taut
 
@@ -1313,7 +1379,35 @@ class CurveMatchingRigid:
             for kk in range(self.Tsize+1):
                 self.fvDef.updateVertices(np.squeeze(self.xt[kk, :, :]))
                 self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk')
-            self.geodesicEquation__(1., 1./self.Tsize, self.at[0, :], self.taut[0, :, :], pplot=True, plotRatio=10)
+            yy = self.directEvolutionEuler(self.x0, self.at, self.taut, grid=self.gridxy)
+            self.gridDef.vertices = np.copy(yy[1][:, :])
+            if self.pplot:
+                plt.axis('equal')
+                plt.savefig(self.outputDir +'/'+ self.saveFile+'.png')
+                plt.pause(0.1)
+                fig=plt.figure(2)
+                fig.clf()
+                ax = fig.gca()
+                nr = self.gridDef.nrow
+                nc = self.gridDef.ncol
+                for k in range(0, nr, self.gskip):
+                    I = np.array(range(0,nc), dtype=int)
+                    xg = self.gridDef.vertices[k*nc + I,0]
+                    yg = self.gridDef.vertices[k*nc + I,1]
+                    ax.plot(xg, yg, color=[0,0,0])
+                for k in range(0, nc, self.gskip):
+                    I = np.array(range(0,nr), dtype=int)
+                    xg = self.gridDef.vertices[I*nc + k,0]
+                    yg = self.gridDef.vertices[I*nc + k,1]
+                    ax.plot(xg, yg, color=[0,0,0])
+                for kf in range(self.fvDef.faces.shape[0]):
+                    ax.plot(self.fvDef.vertices[self.fvDef.faces[kf, :], 0],
+                            self.fvDef.vertices[self.fvDef.faces[kf, :], 1],
+                            color=[1, 0, 0], linewidth=1)
+                plt.axis('equal')
+                plt.savefig(self.outputDir +'/'+ self.saveFile+'Grid.png')
+                plt.pause(0.1)
+            #self.geodesicEquation__(1., 1./self.Tsize, self.at[0, :], self.taut[0, :, :], pplot=True, plotRatio=10)
             #self.__geodesicEquation__(self.Tsize, self.pxt[0, :,:])
         else:
             self.fvDef.updateVertices(np.squeeze(self.xt[self.Tsize, :, :]))
@@ -1322,54 +1416,91 @@ class CurveMatchingRigid:
             fig=plt.figure(1)
             fig.clf()
             ax = fig.gca()
-            if self.saveRate > 0 and self.iter%self.saveRate==0:
-                FFMpegWriter = manimation.writers['ffmpeg']
-                metadata = dict(title='Euclidean LDDMM')
-                writer = FFMpegWriter(fps=5, metadata=metadata)
-                with writer.saving(fig, self.outputDir +'/'+ self.saveFile+ ".mp4", 100):
-                    for t in range(self.Tsize+1):
-                        self.fvDef.updateVertices(self.xt[t, :, :])
-                        fig.clf()
-                        ax = fig.gca()
-                        if len(self.xc) > 0:
-                            for kf in range(self.fvc.faces.shape[0]):
-                                ax.plot(self.fvc.vertices[self.fvc.faces[kf, :], 0],
-                                        self.fvc.vertices[self.fvc.faces[kf, :], 1], color=[1, 0, 0])
-                        for kf in range(self.fv0.faces.shape[0]):
-                            ax.plot(self.fv0.vertices[self.fv0.faces[kf, :], 0],
-                                    self.fv0.vertices[self.fv0.faces[kf, :], 1], color=[0, 0, 1])
-                        for kf in range(self.fv1.faces.shape[0]):
-                            ax.plot(self.fv1.vertices[self.fv1.faces[kf, :], 0],
-                                    self.fv1.vertices[self.fv1.faces[kf, :], 1], color=[0, 0, 1])
-                        for kf in range(self.fvDef.faces.shape[0]):
-                            ax.plot(self.fvDef.vertices[self.fvDef.faces[kf, :], 0],
-                                    self.fvDef.vertices[self.fvDef.faces[kf, :], 1],
-                                    color=[1, 0, 0], linewidth=3)
-                        for k in range(self.ncomponent):
-                            I = self.Ic[k]
-                            xDef = self.fvDef.vertices[I, :]
-                            ax.plot(np.array([np.mean(xDef[:, 0]), xDef[0, 0]]),
-                                    np.array([np.mean(xDef[:, 1]), xDef[0, 1]]),
-                                    color=[0, .5, 0], linewidth=2)
-                            ax.plot(np.mean(self.xt[0:t + 1, I, 0], axis=1), np.mean(self.xt[0:t + 1, I, 1], axis=1))
-                        plt.axis('equal')
-                        plt.title('t={0:.3f}'.format(float(t)/self.Tsize))
-                        writer.grab_frame()
-                        plt.pause(0.001)
+            t = self.Tsize
+            if self.pltFrame is not None:
+                ax.plot(self.pltFrame[:, 0], self.pltFrame[:, 1], color=[1, 1, 1])
             if len(self.xc) > 0:
                 for kf in range(self.fvc.faces.shape[0]):
                     ax.plot(self.fvc.vertices[self.fvc.faces[kf, :], 0],
-                            self.fvc.vertices[self.fvc.faces[kf, :], 1], color=[1, 0, 0])
+                            self.fvc.vertices[self.fvc.faces[kf, :], 1], color= [1, .5, 0], linewidth=5)
+            for kf in range(self.fv0.faces.shape[0]):
+                ax.plot(self.fv0.vertices[self.fv0.faces[kf, :], 0],
+                        self.fv0.vertices[self.fv0.faces[kf, :], 1], color=[.25, .25, .25])
             for kf in range(self.fv1.faces.shape[0]):
                 ax.plot(self.fv1.vertices[self.fv1.faces[kf, :], 0],
-                        self.fv1.vertices[self.fv1.faces[kf, :], 1], color=[0, 0, 1])
+                        self.fv1.vertices[self.fv1.faces[kf, :], 1], color=[.25, .25, .25])
             for kf in range(self.fvDef.faces.shape[0]):
-                ax.plot(self.fvDef.vertices[self.fvDef.faces[kf,:],0], self.fvDef.vertices[self.fvDef.faces[kf,:],1], color=[1,0,0], marker='*')
-            plt.axis('equal')
-            plt.pause(0.1)
+                ax.plot(self.fvDef.vertices[self.fvDef.faces[kf, :], 0],
+                        self.fvDef.vertices[self.fvDef.faces[kf, :], 1],
+                        color=[1, 0, 0], linewidth=3)
+            for k in range(self.ncomponent):
+                I = self.Ic[k]
+                xDef = self.fvDef.vertices[I, :]
+                center = np.zeros((t+1,self.dim))
+                for tt in range(t+1):
+                    center[tt,:] = self.center(self.xt[tt,I,:])
+                ax.plot(np.array([center[t,0], xDef[0, 0]]),
+                        np.array([center[t,1], xDef[0, 1]]),
+                        color=[0, .5, 0], linewidth=2)
+                ax.plot(center[0:t+1,0], center[0:t + 1, 1])
+
+                # ax.plot(np.array([np.mean(xDef[:, 0]), xDef[0, 0]]),
+                #         np.array([np.mean(xDef[:, 1]), xDef[0, 1]]),
+                #         color=[0, .5, 0], linewidth=2)
+                # ax.plot(np.mean(self.xt[0:t + 1, I, 0], axis=1), np.mean(self.xt[0:t + 1, I, 1], axis=1))
+            #plt.axis('equal')
+            #plt.title('t={0:.3f}'.format(float(t) / self.Tsize))
+            # if len(self.xc) > 0:
+            #     for kf in range(self.fvc.faces.shape[0]):
+            #         ax.plot(self.fvc.vertices[self.fvc.faces[kf, :], 0],
+            #                 self.fvc.vertices[self.fvc.faces[kf, :], 1], color=[1, 0, 0])
+            # for kf in range(self.fv1.faces.shape[0]):
+            #     ax.plot(self.fv1.vertices[self.fv1.faces[kf, :], 0],
+            #             self.fv1.vertices[self.fv1.faces[kf, :], 1], color=[0, 0, 1])
+            # for kf in range(self.fvDef.faces.shape[0]):
+            #     ax.plot(self.fvDef.vertices[self.fvDef.faces[kf,:],0], self.fvDef.vertices[self.fvDef.faces[kf,:],1], color=[1,0,0], marker='*')
+
+
                 
 
     def endOptim(self):
+        fig = plt.figure(10)
+        FFMpegWriter = manimation.writers['ffmpeg']
+        metadata = dict(title='Euclidean LDDMM')
+        writer = FFMpegWriter(fps=5, metadata=metadata)
+        with writer.saving(fig, self.outputDir + '/' + self.saveFile + ".mp4", 100):
+            for t in range(self.Tsize + 1):
+                self.fvDef.updateVertices(self.xt[t, :, :])
+                fig.clf()
+                ax = fig.gca()
+                if self.pltFrame is not None:
+                    ax.plot(self.pltFrame[:, 0], self.pltFrame[:, 1], color=[1, 1, 1])
+                if len(self.xc) > 0:
+                    for kf in range(self.fvc.faces.shape[0]):
+                        ax.plot(self.fvc.vertices[self.fvc.faces[kf, :], 0],
+                                self.fvc.vertices[self.fvc.faces[kf, :], 1], color=[1, .5, 0], linewidth=5)
+                for kf in range(self.fv0.faces.shape[0]):
+                    ax.plot(self.fv0.vertices[self.fv0.faces[kf, :], 0],
+                            self.fv0.vertices[self.fv0.faces[kf, :], 1], color=[.25, .25, .25])
+                for kf in range(self.fv1.faces.shape[0]):
+                    ax.plot(self.fv1.vertices[self.fv1.faces[kf, :], 0],
+                            self.fv1.vertices[self.fv1.faces[kf, :], 1], color=[.25, .25, .25])
+                for kf in range(self.fvDef.faces.shape[0]):
+                    ax.plot(self.fvDef.vertices[self.fvDef.faces[kf, :], 0],
+                            self.fvDef.vertices[self.fvDef.faces[kf, :], 1],
+                            color=[1, 0, 0], linewidth=3)
+                for k in range(self.ncomponent):
+                    I = self.Ic[k]
+                    xDef = self.fvDef.vertices[I, :]
+                    ax.plot(np.array([np.mean(xDef[:, 0]), xDef[0, 0]]),
+                            np.array([np.mean(xDef[:, 1]), xDef[0, 1]]),
+                            color=[0, .5, 0], linewidth=2)
+                    ax.plot(np.mean(self.xt[0:t + 1, I, 0], axis=1), np.mean(self.xt[0:t + 1, I, 1], axis=1))
+                plt.axis('equal')
+                plt.title('t={0:.3f}'.format(float(t) / self.Tsize))
+                writer.grab_frame()
+                plt.savefig(self.outputDir +'/'+ self.saveFile+str(t)+'.png')
+                plt.pause(0.001)
         if self.saveRate==0 or self.iter%self.saveRate > 0:
             for kk in range(self.Tsize+1):
                 self.fvDef.updateVertices(np.squeeze(self.xt[kk, :, :]))
@@ -1378,11 +1509,45 @@ class CurveMatchingRigid:
 
 
     def optimizeMatching(self, a0=None, tau0= None):
-        if a0 is not None and tau0 is not None:
-            traj = self.geodesicEquation__(1.0, 1.0/self.Tsize, a0, tau0)
-            self.xt = traj[0]
-            self.at = traj[1]
-            self.taut = traj[2]
+        if a0 is not None:
+            self.at = a0
+        if tau0 is not None:
+            self.taut = tau0
+
+        if a0 is not None or tau0 is not None:
+            self.xt = self.directEvolutionEuler(self.x0, self.at, self.taut)
+            self.fvDef.updateVertices((self.xt[-1,:,:]))
+            if self.pplot:
+                fig=plt.figure(5)
+                fig.clf()
+                t = self.Tsize
+                fig.clf()
+                ax = fig.gca()
+                if len(self.xc) > 0:
+                    for kf in range(self.fvc.faces.shape[0]):
+                        ax.plot(self.fvc.vertices[self.fvc.faces[kf, :], 0],
+                                self.fvc.vertices[self.fvc.faces[kf, :], 1], color=[1, .5, 0], linewidth=5)
+                for kf in range(self.fv0.faces.shape[0]):
+                    ax.plot(self.fv0.vertices[self.fv0.faces[kf, :], 0],
+                            self.fv0.vertices[self.fv0.faces[kf, :], 1], color=[0, 0, 1])
+                for kf in range(self.fv1.faces.shape[0]):
+                    ax.plot(self.fv1.vertices[self.fv1.faces[kf, :], 0],
+                            self.fv1.vertices[self.fv1.faces[kf, :], 1], color=[0, 0, 1])
+                for kf in range(self.fvDef.faces.shape[0]):
+                    ax.plot(self.fvDef.vertices[self.fvDef.faces[kf, :], 0],
+                            self.fvDef.vertices[self.fvDef.faces[kf, :], 1],
+                            color=[1, 0, 0], linewidth=3)
+                for k in range(self.ncomponent):
+                    I = self.Ic[k]
+                    xDef = self.fvDef.vertices[I, :]
+                    center = np.zeros((t+1,self.dim))
+                    for tt in range(t+1):
+                        center[tt,:] = self.center(self.xt[tt,I,:])
+                    ax.plot(np.array([center[t,0], xDef[0, 0]]),
+                            np.array([center[t,1], xDef[0, 1]]),
+                            color=[0, .5, 0], linewidth=2)
+                    ax.plot(center[0:t+1,0], center[0:t + 1, 1])
+                plt.axis('equal')
 
         grd = self.getGradient(self.gradCoeff)
         [grd2] = self.dotProduct(grd, [grd])
@@ -1397,11 +1562,36 @@ class CurveMatchingRigid:
         #return self.at, self.xt
 
 
+    def move(self, x, theta=0, b=(0,0)):
+        y = np.zeros(x.shape)
+        y[:,0] = np.cos(theta) * x[:,0] + np.sin(theta)*x[:,1] + b[0]
+        y[:,1] = -np.sin(theta) * x[:,0] + np.cos(theta)*x[:,1] + b[1]
+        return y
+
+
+
     def __circle(self,N,r):
         t = np.arange(0., 2 * np.pi, 2*np.pi/N)
         x = np.zeros((len(t), 2))
         x[:, 0] = r * np.cos(t)
         x[:, 1] = r * np.sin(t)
+        return x
+
+    def __c(self,N,r, d):
+        t1 = 7 * np.pi / 4
+        t0 = np.pi / 4
+
+        t = np.arange(t0, t1, (t1-t0)/(10*N))
+        x1 = np.zeros((len(t), 2))
+        rx = r + d * (1 - np.exp(-100 * (t - t0) * (t1 - t)))
+        x1[:, 0] = rx * np.cos(t)
+        x1[:, 1] = rx * np.sin(t)
+        t = np.arange(t1, t0, -(t1-t0)/(10*N))
+        x2 = np.zeros((len(t), 2))
+        rx = r - d * (1 - np.exp(-100 * (t - t0) * (t1 - t)))
+        x2[:, 0] = rx * np.cos(t)
+        x2[:, 1] = rx * np.sin(t)
+        x = curves.remesh(np.concatenate((x1,x2)), N)
         return x
 
     def __bunny(self, N0, r, a1, th1, a2, th2):
@@ -1436,6 +1626,14 @@ class CurveMatchingRigid:
         x *= 2*r
         return x
 
+    def __rectangle(self,N, r1, r2):
+        t = np.arange(0., 1., 4./N)[:,np.newaxis]
+        x = np.concatenate([t*[1,0], [1,0] + t*[0,-1], [1,-1] + t*[-1,0], [0,-1]+t*[0,1]])
+        x -= [.5,-.5]
+        x[:,0] *= 2*r1
+        x[:,1] *= 2*r2
+        return x
+
     def __hline(self,N,r):
         t = np.arange(0., 1., 1./N)[:,np.newaxis]
         x = t*[2,0] - 1
@@ -1453,62 +1651,69 @@ class CurveMatchingRigid:
 
     def shootingScenario(self, scenario = 1, T=5., dt=0.001):
         dirOut = '/Users/younes'
-        if os.path.isfile(dirOut + '/Development/Results/curveMatchingRigid/info.tex'):
-            os.remove(dirOut + '/Development/Results/curveMatchingRigid/info.tex')
-        loggingUtils.setup_default_logging(dirOut + '/Development/Results/curveMatchingRigid', fileName='info.txt',
+        if os.path.isfile(dirOut + '/Development/Results/curveShootingRigid/info.tex'):
+            os.remove(dirOut + '/Development/Results/curveShootingRigid/info.tex')
+        loggingUtils.setup_default_logging(dirOut + '/Development/Results/curveShootingRigid', fileName='info.txt',
                                            stdOutput=True)
         sigmaDist = 2.0
         sigmaError = 0.01
         fileName = 'Shooting'
+        xframe = None
+        fvc = None
 
         if scenario == 1:
-            sigma = .05
+            sigma = .2
             K1 = Kernel(name='laplacian' ,sigma=sigma)
             sm = CurveMatchingRigidParam(timeStep=dt / T ,KparDiff=K1 ,sigmaDist=sigmaDist ,sigmaError=sigmaError ,
                                          errorType='varifold')
             x = self.__circle(50, 0.25)
             x1 = self.__circle(25, 0.1)
             # x = self.__square(50, 0.25)
-            fv0 = [curves.Curve(pointSet=x + np.array([-1, 0])),
-                   curves.Curve(pointSet=x + np.array([.9, 1.])),
-                   curves.Curve(pointSet=x + np.array([.7, -1.])),
-                   curves.Curve(pointSet=x + np.array([.8, 0]))]
-            x = self.__square(200, 2)
-            # fvc = curves.Curve(pointSet=x + np.array([.3, 1]))
-            fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,1])), curves.Curve(pointSet=x1 + np.array([0,-1]))])
-            a0 = np.array([5, 0, 0, 0])
-            tau0 = np.array([[10, -5], [0, 0], [0,0], [0, 0]])
-            fileName = 'ballsAnsBumps'
+            fv0 = curves.Curve(curve=[curves.Curve(pointSet=x + np.array([-3, 0])),
+                   curves.Curve(pointSet=x + np.array([-1.1, 1.])),
+                   curves.Curve(pointSet=x + np.array([-1.3, -1.])),
+                   curves.Curve(pointSet=x + np.array([-1.2, 0]))])
+            xframe = self.__rectangle(200, 4, 3)
+            fvc = curves.Curve(pointSet=xframe)
+            #fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,1])), curves.Curve(pointSet=x1 + np.array([0,-1]))])
+            mx = self.center(x + np.array([-3, 0]), kernel=K1)
+            a0 = np.array([15, 0, 0, 0])
+            tau0 = np.array([[20-15*mx[1], 15*mx[0]], [0, 0], [0,0], [0, 0]])
+            fileName = 'balls'
         elif scenario == 2:
             sigma = .5
             K1 = Kernel(name='laplacian' ,sigma=sigma, order=1)
             sm = CurveMatchingRigidParam(timeStep=dt / T ,KparDiff=K1 ,sigmaDist=sigmaDist ,sigmaError=sigmaError ,
                                          errorType='varifold')
-            #x = self.__circle(25, 0.1)
-            x = self.__bunny(50, 0.1, 0.15, 0.5*np.pi, 0.15, 0.75*np.pi)
-            fv0 = curves.Curve(pointSet=x + np.array([-2 ,0]))
-            x = self.__square(200, 2)
+            x = self.__circle(25, 0.1)
+            #x = self.__bunny(50, 0.1, 0.15, 0.5*np.pi, 0.15, 0.75*np.pi)
+            fv0 = curves.Curve(pointSet=x + np.array([-1 ,.25]))
+            xframe = self.__rectangle(200, 1.0, 0.5)
             #x1 = self.__circle(25, 0.1)
-            x1 = self.__vline(50, 0.5)
+            x1 = self.__vline(50, 0.25)
             #fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,-.5]))])
-            fvc = curves.Curve(pointSet=x1 + np.array([0,-.65]))
+            fvc = curves.Curve(pointSet=x1 + np.array([0, -.45]))
+            #fvc = curves.Curve(curve=[curves.Curve(pointSet=x1 + np.array([0, -.45])), curves.Curve(pointSet=x)])
             #fvc = curves.Curve(pointSet=x1 + np.array([0,-1.5]))
             a0 = np.array([0])
             tau0 = np.array([[5.,0]])
-            fileName = 'oneBunnyAttractor'
+            fileName = 'oneBallAttractor'
         elif scenario == 3:
             sigma = .2
             K1 = Kernel(name='laplacian', sigma=sigma)
             sm = CurveMatchingRigidParam(timeStep=dt / T, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
                                          errorType='varifold')
-            #x = self.__circle(50, 0.1)
-            x = self.__bunny(50, 0.05, 0.1, 0.5*np.pi, 0.1, 0.75*np.pi)
+            x = self.__circle(25, 0.1)
+            mx = self.center(x, kernel=K1)
+            #x = self.__bunny(50, 0.05, 0.1, 0.5*np.pi, 0.1, 0.75*np.pi)
             x1 = self.__circle(25, 0.1)
             # x = self.__square(50, 0.25)
-            fv0 = [curves.Curve(pointSet=x + np.array([-1, 1.35])),
+            offset = np.array([-1, 0.5318])
+            fv0 = [curves.Curve(pointSet=x + offset ),
                    #                   curves.Curve(pointSet=x + np.array([.9, 1.])),
                    #                   curves.Curve(pointSet=x + np.array([.7, -1.])),
-                   curves.Curve(pointSet=x + np.array([.8, 0]))]
+                   curves.Curve(pointSet=x - offset)]
+            xframe = self.__rectangle(200, 2, 1.5)
             x = self.__square(200, 4)
             fvc = curves.Curve(pointSet=x)
             fvc = None
@@ -1516,27 +1721,31 @@ class CurveMatchingRigid:
             # fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,1])), curves.Curve(pointSet=x1 + np.array([0,-1]))])
             # a0 = np.array([0, 0, 0, 0])
             # tau0 = np.array([[10, 0], [0, 0], [0,0], [0, 0]])
-            a0 = np.array([0, 0])
-            tau0 = np.array([[10, 0], [-10, 0]])
+            mx1 = mx + offset
+            mx2 = mx - offset
+
+            a0 = -10*np.array([1, 1])
+            #a0 = np.array([0,0])
+            tau0 = np.array([[10-a0[0]*mx1[1], a0[0]*mx1[0]], [-10-a0[1]*mx2[1], a0[1]*mx2[0]]])
         elif scenario == 30:
-            sigma = 2.
+            sigma = 1.
             K1 = Kernel(name='laplacian', sigma=sigma)
             sm = CurveMatchingRigidParam(timeStep=dt / T, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
                                          errorType='varifold')
             #x = self.__bunny(50, 0.25, 0.5, 0.5*np.pi, 0.5, 0.75*np.pi)
-            x = self.__ellipse(500, 0.5, 0.2, 0)
+            x = self.__c(50, 0.5, 0.2)
             # x = self.__square(50, 0.25)
-            x = curves.remesh(x, 50)
+            #x = curves.remesh(x, 50)
             fv0 = curves.Curve(pointSet=x + np.array([-1, 0]))
             #fv0.resample(0.1)
-            mx = np.mean(fv0.vertices, axis=0)
+            mx = self.center(fv0.vertices, kernel=K1)
             #fv0 = curves.Curve(pointSet= fv0.vertices)
                    #                   curves.Curve(pointSet=x + np.array([.9, 1.])),
                    #                   curves.Curve(pointSet=x + np.array([.7, -1.])),
-            x = self.__square(200, 4)
-            fvc = curves.Curve(pointSet=x)
+            xframe = self.__square(200, 6)
+            fvc = curves.Curve(pointSet=xframe)
             fvc = None
-            fileName = "oneEllipse"
+            fileName = "oneC"
             # fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,1])), curves.Curve(pointSet=x1 + np.array([0,-1]))])
             # a0 = np.array([0, 0, 0, 0])
             # tau0 = np.array([[10, 0], [0, 0], [0,0], [0, 0]])
@@ -1581,14 +1790,14 @@ class CurveMatchingRigid:
             fvc = None
             sm = CurveMatchingRigidParam()
 
-        f = CurveMatchingRigid(Template=fv0 ,Target=fv0 ,Clamped=fvc ,
+        f = CurveMatchingRigid(Template=fv0 ,Target=fv0 ,Clamped=fvc , pltFrame = xframe,
                                outputDir=dirOut + '/Development/Results/curveRigid' ,param=sm ,
                                testGradient=True ,gradLB=1e-5 ,saveTrajectories=True ,
                                regWeight=1. ,maxIter=10000)
         return f, a0, tau0, fileName
 
 
-    def runLandmarks(self, dt=0.001, T=1.):
+    def runLandmarks(self, dt=0.001, T=.5):
         fig = plt.figure(5)
         x0 = np.array([[0,.28], [1,0]])
         a0 = np.array([[2.75,0], [-2.75,0]])
@@ -1618,9 +1827,9 @@ class CurveMatchingRigid:
 
 
 
-    def runShoot(self, dt=0.0001, T=.5):
+    def runShoot(self, dt=0.001, T=.5):
         plt.ion()
-        S = self.shootingScenario(3,dt=dt, T=T)
+        S = self.shootingScenario(30,dt=dt, T=T)
         f = S[0]
         a0 = S[1]
         tau0 = S[2]
@@ -1636,6 +1845,11 @@ class CurveMatchingRigid:
         metadata = dict(title='Euclidean LDDMM')
         writer = FFMpegWriter(fps=5, metadata=metadata)
         dirMov = '/Users/younes/OneDrive - Johns Hopkins University/TALKS/MECHANICAL/Videos/'
+        center = np.zeros((xt.shape[0], f.ncomponent, f.dim))
+        for k in range(f.ncomponent):
+            I = f.Ic[k]
+            for tt in range(xt.shape[0]):
+                center[tt, k, :] = f.center(xt[tt, I, :])
         with writer.saving(fig, dirMov+ fileName + ".mp4", 100):
             for t in range(0,xt.shape[0], np.maximum(1,xt.shape[0]/100)):
                 fig.clf()
@@ -1646,13 +1860,17 @@ class CurveMatchingRigid:
                         ax.plot(f.fvc.vertices[f.fvc.faces[kf, :], 0], f.fvc.vertices[f.fvc.faces[kf, :], 1], color=[0, 0, 0], linewidth=5)
                 for kf in range(fvDef.faces.shape[0]):
                     ax.plot(fvDef.vertices[fvDef.faces[kf, :], 0], fvDef.vertices[fvDef.faces[kf, :], 1], color=[1, 0, 0], linewidth=3)
-                for k in range(self.ncomponent):
-                    I = self.Ic[k]
+                for k in range(f.ncomponent):
+                    I = f.Ic[k]
                     xDef = fvDef.vertices[I, :]
-                    ax.plot(np.array([np.mean(xDef[:,0]),xDef[0, 0]]),
-                            np.array([np.mean(xDef[:,1]), xDef[0, 1]]),
-                            color = [0,.5, 0], linewidth=2)
-                    ax.plot(np.mean(xt[0:t+1,I,0], axis=1), np.mean(xt[0:t+1,I,1], axis=1))
+                    ax.plot(np.array([center[t, k, 0], xDef[0, 0]]),
+                            np.array([center[t, k, 1], xDef[0, 1]]),
+                            color=[0, .5, 0], linewidth=2)
+                    ax.plot(center[0:t, k, 0], center[0:t, k, 1])
+                    # ax.plot(np.array([np.mean(xDef[:,0]),xDef[0, 0]]),
+                    #         np.array([np.mean(xDef[:,1]), xDef[0, 1]]),
+                    #         color = [0,.5, 0], linewidth=2)
+                    # ax.plot(np.mean(xt[0:t+1,I,0], axis=1), np.mean(xt[0:t+1,I,1], axis=1))
                 plt.axis('equal')
                 plt.title('t={0:.3f}'.format(t*dt))
                 writer.grab_frame()
@@ -1667,31 +1885,90 @@ class CurveMatchingRigid:
         plt.ion()
         N = 50
         r = 0.25
+        #x = self.move(self.__circle(N,r ), b=(-1.5,1))
         x = self.__circle(N,r )
-        #fv0 = [curves.Curve(pointSet=x+np.array([0.5,0.5])), curves.Curve(pointSet=x+np.array([0, 1]))]
-        #fv1 = [curves.Curve(pointSet=x+np.array([1.5, 0.5])), curves.Curve(pointSet=x+np.array([1, 1]))]
+        #y = self.move(self.__c(N,2*r, r/4 ), b = (-1.2,0.8))
+        fv0 = curves.Curve(pointSet=x+np.array([-0.5,0.5]))
+        fv1 = curves.Curve(pointSet=x+np.array([0.5, 0.5]))
         #fvc = curves.Curve(pointSet=0.25*x+np.array([1,0.5]))
-        fv0 = curves.Curve(pointSet=x+np.array([-1.0,0]))
-        fv1 = curves.Curve(pointSet=x+np.array([1, .1]))
+        # fv0 = curves.Curve(curve=[curves.Curve(pointSet=x),
+        #                           curves.Curve(pointSet=y)])
+        # fv1 = curves.Curve(curve=[curves.Curve(pointSet=self.move(x, theta = 3*np.pi/4, b=(-0.5,1))),
+        #                           curves.Curve(pointSet=self.move(y, theta = 3*np.pi/4, b=(1.5,1)))])
+        # #fv1 = curves.Curve(pointSet=x+np.array([1.5, 0]))
+        #fv0.component = np.zeros(fv0.component.shape, dtype=int)
+        #fv1.component = np.zeros(fv1.component.shape, dtype=int)
         x = self.__vline(100, .5)
-        fvc = curves.Curve(pointSet=x)
+        fvc = curves.Curve(pointSet=x + [0,0])
+        xframe = self.__rectangle(100, 1.5, 1.0) + [0, 0.5]
+        #fvc = curves.Curve(curve=[curves.Curve(pointSet=x - [.5,.75]),curves.Curve(pointSet=x + [.5,.75])])
+        #fvc = None
 
-        sigma = .2
+        sigma = .1
         K1 = Kernel(name='laplacian', sigma=sigma)
-        sigmaDist = 2.0
-        sigmaError = 0.01
+        sigmaDist = 2.
+        sigmaError = .01
+        prec = 0.05
         dirOut = '/Users/younes'
-        fileOut = '/Development/Results/curveMatchingRigidObstacleRepell'
+        fileOut = '/Development/Results/curveMatchingRigidObstacle'
 
         if os.path.isfile(dirOut + '/Development/Results/curveMatchingRigid/info.tex'):
             os.remove(dirOut + '/Development/Results/curveMatchingRigid/info.tex')
         loggingUtils.setup_default_logging(dirOut + fileOut, fileName='info.txt',
                                            stdOutput=True)
 
-        sm = CurveMatchingRigidParam(timeStep=0.05, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError, errorType='varifold')
-        f = CurveMatchingRigid(Template=fv0, Target=fv1, Clamped=fvc ,outputDir=dirOut + fileOut, param=sm,
-                          testGradient=True, gradLB=1e-5, saveTrajectories=True, regWeight=1., maxIter=10000,paramRepell= None)
-        f.optimizeMatching(a0=np.array([0]), tau0=np.array([[0,2]]))
+        sm = CurveMatchingRigidParam(timeStep=prec, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError, errorType='varifoldComponent')
+        f = CurveMatchingRigid(Template=fv0, Target=fv1, Clamped=fvc, pltFrame=xframe, outputDir=dirOut + fileOut, param=sm,
+                          testGradient=False, gradLB=1e-5, saveTrajectories=True, regWeight=1., maxIter=10000,paramRepell= None)
+
+        c0 = f.center(fv0.vertices)
+        c1 = f.center(fv1.vertices)
+        tau0 = c1 - c0
+        fvTmp = curves.Curve(curve=fv0)
+        fvTmp1 = curves.Curve(curve=fv1)
+        x0 = fv0.vertices - c0
+        x1 = fv1.vertices - c1
+        fvTmp1.updateVertices(x1)
+        d0 = 0
+        a0 = 0
+        for k in range(100):
+            a = 2*np.pi*k/100
+            c = np.cos(a)
+            s = np.sin(a)
+            x = np.zeros(fv0.vertices.shape)
+            x[:,0] = c*x0[:,0] + s*x0[:,1]
+            x[:,1] = -s*x0[:,0] + c*x0[:,1]
+            fvTmp.updateVertices(x)
+            d = curves.varifoldNorm(fvTmp,fvTmp1,f.param.KparDist)
+            if k==0 or d<d0:
+                a0 = a
+                d0 = d
+
+        tau = np.zeros((f.Tsize, f.ncomponent, 2))
+        cos0 = (np.cos(prec*a0) - 1)/prec
+        sin0 = np.sin(prec*a0)/prec
+        ac0 = np.array([cos0 *c0[0] + sin0*c0[1],
+                        -sin0 * c0[0] + cos0 * c0[1]])
+        ac1 = np.array([cos0 *c1[0] + sin0*c1[1],
+                        -sin0 * c1[0] + cos0 * c1[1]])
+        for k in range(tau.shape[0]):
+            t = (k)*prec
+            tau[k,:,:] = tau0 - t*ac1 - (1-t)*ac0
+
+        a0 = np.tile(a0, (f.Tsize, f.ncomponent))
+
+        #f.optimizeMatching(tau0=tau, a0 = a0)
+        f.optimizeMatching()
+        # f.optimizeMatching(a0=np.array([0, 0]), tau0=0 * np.array([[1, -1], [0, 0]]))
+        # f.param.sigmaError = 0.02
+        # f.obj = None
+        # f.optimizeMatching()
+        # # f.optimizeMatching(a0=np.array([0, 0]), tau0=0 * np.array([[1, -1], [0, 0]]))
+        # f.param.sigmaError = 0.004
+        # f.maxIter = 1000
+        # f.obj = None
+        # f.optimizeMatching()
+
         #f.geodesicEquation(f.Tsize, f.at[0,:], f.taut[0,:,:])
         #f.__geodesicEquation__(f.Tsize, f.fv0, f.pxt[0,:,:])
 
@@ -1701,4 +1978,4 @@ class CurveMatchingRigid:
         return f
 
 if __name__ == "__main__":
-    CurveMatchingRigid().runMatch()
+    CurveMatchingRigid().runShoot()
