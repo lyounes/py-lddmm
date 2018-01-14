@@ -14,7 +14,7 @@ import surfaceMatching
 from affineBasis import *
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+#from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 
 ## Parameter class for matching
