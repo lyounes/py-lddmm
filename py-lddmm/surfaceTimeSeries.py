@@ -456,19 +456,19 @@ class SurfaceMatching(object):
             nu = self.fv0ori*self.fv0Fine.computeVertexNormals()
             #v = self.v[0,...]
             displ = np.zeros(self.npt)
-            dt = 1.0 /self.Tsize ;
+            dt = 1.0 /self.Tsize
             v = self.param.KparDiff.applyK(ft[0,...], self.at[0,...], firstVar=self.xt[0,...])
             for kk in range(self.Tsize+1):
                 fvDef.updateVertices(np.squeeze(ft[kk, :, :]))
                 AV = fvDef.computeVertexArea()
                 AV = (AV[0]/AV0[0])-1
-                vf = surfaces.vtkFields() ;
-                vf.scalars.append('Jacobian') ;
+                vf = surfaces.vtkFields()
+                vf.scalars.append('Jacobian')
                 vf.scalars.append(np.exp(Jt[kk, :])-1)
-                vf.scalars.append('Jacobian_T') ;
-                vf.scalars.append(AV[:,0])
-                vf.scalars.append('Jacobian_N') ;
-                vf.scalars.append(np.exp(Jt[kk, :])/(AV[:,0]+1)-1)
+                vf.scalars.append('Jacobian_T')
+                vf.scalars.append(AV)
+                vf.scalars.append('Jacobian_N')
+                vf.scalars.append(np.exp(Jt[kk, :])/(AV+1)-1)
                 vf.scalars.append('displacement')
                 vf.scalars.append(displ)
                 if kk < self.Tsize:
@@ -480,7 +480,7 @@ class SurfaceMatching(object):
                     kkm = kk-1
                 if kk >= self.jumpIndex[0]:
                     displ += dt * (v*nu).sum(axis=1)
-                vf.vectors.append('velocity') ;
+                vf.vectors.append('velocity')
                 vf.vectors.append(self.v[kkm,:])
                 fvDef.saveVTK2(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', vf)
         else:

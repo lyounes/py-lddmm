@@ -749,12 +749,12 @@ class SurfaceMatching:
                         vt = self.param.KparDiff0.applyK(yyt, a, firstVar=zt)
                         vt = np.dot(vt, U0.T)
                     f.updateVertices(zt)
-                    vf = surfaces.vtkFields() ;
-                    vf.scalars.append('Jacobian') ;
+                    vf = surfaces.vtkFields()
+                    vf.scalars.append('Jacobian')
                     vf.scalars.append(displ)
                     vf.scalars.append('displacement')
                     vf.scalars.append(displ)
-                    vf.vectors.append('velocity') ;
+                    vf.vectors.append('velocity')
                     vf.vectors.append(vt)
                     f.saveVTK2(self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.vtk', vf)
 
@@ -773,12 +773,12 @@ class SurfaceMatching:
                         vt = self.param.KparDiff.applyK(yyt, a, firstVar=zt)
                         vt = np.dot(vt, U.T)
                     f.updateVertices(zt)
-                    vf = surfaces.vtkFields() ;
-                    vf.scalars.append('Jacobian') ;
+                    vf = surfaces.vtkFields()
+                    vf.scalars.append('Jacobian')
                     vf.scalars.append(np.exp(Jt[t, :])-1)
                     vf.scalars.append('displacement')
                     vf.scalars.append(displ)
-                    vf.vectors.append('velocity') ;
+                    vf.vectors.append('velocity')
                     vf.vectors.append(vt)
                     nu = self.fv0ori*f.computeVertexNormals()
                     displ += dt * (vt*nu).sum(axis=1)
@@ -813,11 +813,11 @@ class SurfaceMatching:
                 AV = fvDef.computeVertexArea()
                 AV = (AV[0]/AV0[0])-1
                 vf = surfaces.vtkFields()
-                vf.scalars.append('Jacobian') ;
+                vf.scalars.append('Jacobian')
                 vf.scalars.append(displ)
-                vf.scalars.append('Jacobian_T') ;
+                vf.scalars.append('Jacobian_T')
                 vf.scalars.append(displ)
-                vf.scalars.append('Jacobian_N') ;
+                vf.scalars.append('Jacobian_N')
                 vf.scalars.append(displ)
                 vf.scalars.append('displacement')
                 vf.scalars.append(displ)
@@ -826,7 +826,7 @@ class SurfaceMatching:
                     kkm = kk
                 else:
                     kkm = kk-1
-                vf.vectors.append('velocity') ;
+                vf.vectors.append('velocity')
                 vf.vectors.append(np.copy(v))
                 fvDef.saveVTK2(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', vf)
 
@@ -836,13 +836,13 @@ class SurfaceMatching:
                 fvDef.updateVertices(np.squeeze(ft[kk, :, :]))
                 AV = fvDef.computeVertexArea()
                 AV = (AV[0]/AV0[0])-1
-                vf = surfaces.vtkFields() ;
-                vf.scalars.append('Jacobian') ;
+                vf = surfaces.vtkFields()
+                vf.scalars.append('Jacobian')
                 vf.scalars.append(np.exp(Jt[kk, :])-1)
-                vf.scalars.append('Jacobian_T') ;
-                vf.scalars.append(AV[:,0])
-                vf.scalars.append('Jacobian_N') ;
-                vf.scalars.append(np.exp(Jt[kk, :])/(AV[:,0]+1)-1)
+                vf.scalars.append('Jacobian_T')
+                vf.scalars.append(AV)
+                vf.scalars.append('Jacobian_N')
+                vf.scalars.append(np.exp(Jt[kk, :])/(AV+1)-1)
                 vf.scalars.append('displacement')
                 vf.scalars.append(displ)
                 displ += dt * (v*nu).sum(axis=1)
@@ -853,7 +853,7 @@ class SurfaceMatching:
                     kkm = kk
                 else:
                     kkm = kk-1
-                vf.vectors.append('velocity') ;
+                vf.vectors.append('velocity')
                 vf.vectors.append(np.copy(v))
                 fvDef.saveVTK2(self.outputDir +'/'+ self.saveFile+str(kk+self.Tsize0)+'.vtk', vf)
         else:
