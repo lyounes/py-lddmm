@@ -1228,7 +1228,7 @@ class CurveMatchingRigid:
             a0 = np.array([5, 0, 0, 0])
             tau0 = np.array([[1, -5], [0, 0], [0,0], [0, 0]])
         elif scenario == 2:
-            sigma = 1.
+            sigma = .5
             K1 = Kernel(name='laplacian' ,sigma=sigma)
             sm = CurveMatchingRigidParam(timeStep=dt / T ,KparDiff=K1 ,sigmaDist=sigmaDist ,sigmaError=sigmaError ,
                                          errorType='varifold')
@@ -1245,9 +1245,9 @@ class CurveMatchingRigid:
                                regWeight=1. ,maxIter=10000)
         return f, T*a0, T*tau0
 
-    def runShoot(self, dt=0.0005):
+    def runShoot(self, dt=0.0001):
         plt.ion()
-        S = self.shootingScenario(2,dt=dt, T=20)
+        S = self.shootingScenario(2,dt=dt, T=1)
         f = S[0]
         a0 = S[1]
         tau0 = S[2]
