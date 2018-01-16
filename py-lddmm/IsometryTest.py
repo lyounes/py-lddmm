@@ -1,21 +1,25 @@
 import numpy as np
-from numpy import *
+from numpy import (sin, cos, sqrt, nonzero, pi)
+import matplotlib
+matplotlib.use("TKAgg")
 import surfaces
 from surfaces import *
 from kernelFunctions import *
 import surfaceMatching
 from surfaceWithIsometries import *
+import logging
+import loggingUtils
 
 
-def branches(angles, lengths = .75, radii=.1, center = [0,0,0],
+def branches(angles, lengths = .75, radii=.05, center = [0,0,0],
              ImageSize = 100, npt = 100):
 
     [x,y,z] = np.mgrid[-ImageSize:ImageSize+1, -ImageSize:ImageSize+1, -ImageSize:ImageSize+1]/float(ImageSize)
 
     if (type(lengths) is int) | (type(lengths) is float):
-        lengths = tile(lengths, len(angles))
+        lengths = np.tile(lengths, len(angles))
     if (type(radii) is int) | (type(radii) is float):
-        radii = tile(radii, len(angles))
+        radii = np.tile(radii, len(angles))
 
     t = np.mgrid[0:npt+1]/float(npt)
     img = np.zeros(x.shape)
@@ -45,15 +49,23 @@ def compute():
 
     fv1 = branches([[pi/8,pi/4], [pi/4, pi/2.5], [-pi/4, -3*pi/4]])
     fv2 = branches([[pi/8,pi/4], [pi/2.5, pi/4], [-pi/2, -0.7*pi]])
-    K1 = Kernel(name='laplacian', sigma = 20.0, order=3)
+    K1 = Kernel(name='laplacian', sigma = 2.0, order=3)
 
-    sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.05, KparDiff=K1, sigmaDist=10, sigmaError=1., errorType='measure')
-    f = SurfaceWithIsometries(Template=fv1, Target=fv2, outputDir='/Users/younes/Development/Results/IsometriesShortNorm1', centerRadius = [100., 100., 100., 30.],
-                               param=sm, mu=.001, testGradient=False, maxIter_cg=1000, maxIter_al=100, affine='none', rotWeight=1.,
-    transWeight=1.)
+    sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.05, KparDiff=K1, sigmaDist=20, sigmaError=1.,
+                                              errorType='varifold', internalCost='h1')
+    dirOut = '/Users/younes/Development/Results/IsometriesShortNorm1'
+    loggingUtils.setup_default_logging(dirOut, fileName='info.txt',
+                                       stdOutput=True)
+    f = SurfaceWithIsometries(Template=fv1, Target=fv2, outputDir=dirOut, centerRadius = [100., 100., 100., 30.],
+                              param=sm, mu=.001, testGradient=True, maxIter_cg=100, maxIter_al=100, affine='none', rotWeight=1.,
+                              transWeight=1., internalWeight=50.)
     print f.gradCoeff
     f.optimizeMatching()
 
 
     return f
+
+if __name__ == "__main__":
+    compute()
+
 

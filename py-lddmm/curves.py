@@ -568,6 +568,7 @@ class Curve:
         self.vertices = np.copy(v[0:lv,:])
         self.faces = np.copy(f[0:lf,:])
         self.computeCentersLengths()
+        self.component = np.zeros(self.faces.shape[0], dtype=int)
         print 'resampling', self.length(), self.vertices.shape[0]
         self.resample(ds)
 

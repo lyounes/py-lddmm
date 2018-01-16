@@ -10,10 +10,13 @@ import surfaces
 import pointSets
 import kernelFunctions as kfun
 import pointEvolution as evol
+from affineBasis import AffineBasis, getExponential, gradExponential
+import matplotlib
+matplotlib.use("TKAgg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from affineBasis import AffineBasis, getExponential, gradExponential
+
 
 ## Parameter class for matching
 #      timeStep: time discretization

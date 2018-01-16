@@ -6,6 +6,9 @@ import kernelFunctions as kfun
 import pointEvolution as evol
 import conjugateGradient as cg
 import surfaceMatching
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from affineBasis import *
 
 
@@ -27,8 +30,11 @@ from affineBasis import *
 #        maxIter_al: max interation for augmented lagrangian
 
 class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
-    def __init__(self, Template=None, Target=None, Isometries = None, centerRadius = None, fileTempl=None, fileTarg=None, param = None, verb = True, regWeight=1.0, at = None,
+    def __init__(self, Template=None, Target=None, Isometries = None, centerRadius = None, fileTempl=None,
+                 fileTarg=None, param = None,
+                 verb = True, regWeight=1.0, at = None,
                  affineWeight = 1.0, testGradient=False, mu = 0.1, outputDir='.', saveFile = 'evolution',
+                 internalWeight=1.0, pplot=True,
                  affine='none', rotWeight = None, scaleWeight = None, transWeight = None,  maxIter_cg=1000, maxIter_al=100):
         print 'Initializing class'
         if Template==None:
@@ -149,7 +155,15 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
         self.fv0.saveVTK(self.outputDir+'/Template.vtk',
         scalars=self.color, scal_name='constraints')
         self.fv1.saveVTK(self.outputDir+'/Target.vtk')
-
+        self.symmetric = False
+        self.pplot = pplot
+        self.internalWeight = internalWeight
+        if self.param.internalCost == 'h1':
+            self.internalCost = surfaces.normGrad
+            self.internalCostGrad = surfaces.diffNormGrad
+        else:
+            self.internalCost = None
+        self.it=0
 
     def constraintTerm(self, xt):
         obj = 0
@@ -196,6 +210,7 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
         timeStep = 1.0/at.shape[0]
         dim2 = self.dim**2
         A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+        Jt = None
         if self.affineDim > 0:
             for t in range(self.Tsize):
                 AB = np.dot(self.affineBasis, Afft[t]) 
@@ -208,12 +223,16 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
         else:
             xt  = evol.landmarkDirectEvolutionEuler(self.fv0.vertices, at, param.KparDiff, affine=A)
 
+        foo = surfaces.Surface(surf=self.fv0)
         obj=0
         for t in range(at.shape[0]):
             z = np.squeeze(xt[t, :, :]) 
             a = np.squeeze(at[t, :, :]) 
             ra = self.param.KparDiff.applyK(z, a)
             obj += self.regweight*timeStep*np.multiply(a, ra).sum()
+            if self.internalCost:
+                foo.updateVertices(z)
+                obj += self.internalWeight*self.regweight*self.internalCost(foo, ra)*timeStep
             if self.affineDim > 0:
                 obj +=  timeStep * np.multiply(self.affineWeight.reshape(Afft[t].shape), Afft[t]**2).sum()
 
@@ -254,7 +273,7 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
         objTry +=  self.param.fun_obj(ff, self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
         #self.fvDef.vertices = ff
 
-        if (objRef == None) | (objTry < objRef):
+        if (objRef is None) | (objTry < objRef):
             self.atTry = atTry
             self.AfftTry = AfftTry
             self.objTry = objTry
@@ -262,6 +281,11 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
 
         return objTry
 
+    def acceptVarTry(self):
+        self.obj = self.objTry
+        self.at = np.copy(self.atTry)
+        self.Afft = np.copy(self.AfftTry)
+        #print self.at
 
     def covectorEvolution(self, at, Afft, px1):
         N = self.npt
@@ -286,6 +310,7 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
         else:
             pxt[M-1, :, :] = px1
         # print c
+        foo = surfaces.Surface(surf=self.fv0)
         for t in range(M-1):
             px = np.squeeze(pxt[M-t-1, :, :])
             z = np.squeeze(xt[M-t-1, :, :])
@@ -295,9 +320,28 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
             else:
                 zpx = np.zeros(px1.shape)
 
-            a1 = [px, a, -2*self.regweight*a]
-            a2 = [a, px, a]
-            zpx += self.param.KparDiff.applyDiffKT(z, a1, a2)
+            #a1 = np.concatenate((px[np.newaxis, ...], a[np.newaxis, ...], -2 * self.regweight * a[np.newaxis, ...]))
+            #a2 = np.concatenate((a[np.newaxis, ...], px[np.newaxis, ...], a[np.newaxis, ...]))
+            #a1 = [px, a, -2*self.regweight*a]
+            #a2 = [a, px, a]
+            foo.updateVertices(z)
+            v = self.param.KparDiff.applyK(z, a)
+            if self.internalCost:
+                grd = self.internalCostGrad(foo, v)
+                Lv = grd[0]
+                DLv = self.internalWeight * self.regweight * grd[1]
+                #                Lv = -2*foo.laplacian(v)
+                #                DLv = self.internalWeight*foo.diffNormGrad(v)
+                a1 = np.concatenate((px[np.newaxis, ...], a[np.newaxis, ...], -2 * self.regweight * a[np.newaxis, ...],
+                                     -self.internalWeight * self.regweight * a[np.newaxis, ...], Lv[np.newaxis, ...]))
+                a2 = np.concatenate((a[np.newaxis, ...], px[np.newaxis, ...], a[np.newaxis, ...], Lv[np.newaxis, ...],
+                                     -self.internalWeight * self.regweight * a[np.newaxis, ...]))
+                zpx += self.param.KparDiff.applyDiffKT(z, a1, a2) - DLv
+            else:
+                a1 = np.concatenate((px[np.newaxis, ...], a[np.newaxis, ...], -2 * self.regweight * a[np.newaxis, ...]))
+                a2 = np.concatenate((a[np.newaxis, ...], px[np.newaxis, ...], a[np.newaxis, ...]))
+                zpx += self.param.KparDiff.applyDiffKT(z, a1, a2)
+            #zpx += self.param.KparDiff.applyDiffKT(z, a1, a2)
             if self.affineDim > 0:
                 zpx += np.dot(px, A[0][M-t-1])
             pxt[M-t-2, :, :] = np.squeeze(pxt[M-t-1, :, :]) + timeStep * zpx
@@ -317,10 +361,20 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
                 A[1][t] = AB[dim2:dim2+self.dim]
         dA = np.zeros(A[0].shape)
         db = np.zeros(A[1].shape)
+        foo = surfaces.Surface(surf=self.fv0)
         for t in range(self.Tsize):
+            z = np.squeeze(xt[t,...])
             a = np.squeeze(at[t, :, :])
             px = np.squeeze(pxt[t, :, :])
-            dat[t, :, :] = (2*self.regweight*a-px)
+            foo.updateVertices(z)
+            v = self.param.KparDiff.applyK(z,a)
+            if self.internalCost:
+                Lv = self.internalCostGrad(foo, v, variables='phi')
+                #Lv = -foo.laplacian(v)
+                dat[t, :, :] = 2*self.regweight*a-px + self.internalWeight * self.regweight * Lv
+            else:
+                dat[t, :, :] = 2*self.regweight*a-px
+            #dat[t, :, :] = (2*self.regweight*a-px)
             if not (self.affine == None):
                 dA[t] = np.dot(pxt[t].T, xt[t])
                 db[t] = pxt[t].sum(axis=0)
@@ -352,6 +406,7 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
         
 
     def endOfIteration(self):
+        self.it += 1
         (obj1, self.xt, Jt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True, withJacobian=True)
         #self.testConstraintTerm(self.xt)
         if self.nconstr > 0:
@@ -364,11 +419,22 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
             JJ = np.log(np.maximum(1e-10, np.divide(ak,a0+1e-10)))
             #print ak.shape, a0.shape, JJ.shape
             self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = JJ.flatten(), scal_name='Jacobian')
+        if self.it%10 == 0:
+            if self.pplot:
+                fig=plt.figure(4)
+                #fig.clf()
+                ax = Axes3D(fig)
+                lim0 = self.addSurfaceToPlot(self.fv1, ax, ec = 'k', fc = 'b')
+                lim1 = self.addSurfaceToPlot(self.fvDef, ax, ec='k', fc='r')
+                ax.set_xlim(min(lim0[0][0],lim1[0][0]), max(lim0[0][1],lim1[0][1]))
+                ax.set_ylim(min(lim0[1][0],lim1[1][0]), max(lim0[1][1],lim1[1][1]))
+                ax.set_zlim(min(lim0[2][0],lim1[2][0]), max(lim0[2][1],lim1[2][1]))
+                plt.pause(0.1)
 
 
     def optimizeMatching(self):
-	grd = self.getGradient(self.gradCoeff)
-	[grd2] = self.dotProduct(grd, [grd])
+        grd = self.getGradient(self.gradCoeff)
+        [grd2] = self.dotProduct(grd, [grd])
 
         self.gradEps = np.sqrt(grd2) / 1000
         self.muEps = 1.0
