@@ -91,7 +91,7 @@ if __name__=="__main__":
         targetList = []
         for k in range(1,11,3):
             targetList.append('/Users/younes/Development/Data/sculptris/AtrophyLargeNoise/followUp'+str(k)+'.vtk')
-        resultDir = '/Users/younes/Development/Results/TimeSeriesSimulationGeodesic'
+        resultDir = '/Users/younes/Development/Results/TimeSeriesSimulationLDDMM'
     else:
         template = args.template
         targetList = args.targetList
@@ -104,4 +104,4 @@ if __name__=="__main__":
     #Results: '/cis/home/younes/Results/biocardTS/withAtrophyRerun'
     
     
-    runLongitudinalSurface(template, targetList, atrophy=False, splines=True, resultDir=resultDir)
+    runLongitudinalSurface(template, targetList, atrophy=False, splines=False, resultDir=resultDir)

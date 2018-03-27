@@ -236,7 +236,8 @@ def  kernelMatrix(Kpar, x, firstVar=None, grid=None, diff = False, diff2=False, 
 # w1: weight for linear part; w2: weight for translation part; center: origin
 # dim: dimension
 class KernelSpec:
-    def __init__(self, name='gauss', affine = 'none', sigma = 6.5, order = 10, w1 = 1.0, w2 = 1.0, dim = 3, center = [0,0,0], weight = 1.0):
+    def __init__(self, name='gauss', affine = 'none', sigma = 6.5, order = 10, w1 = 1.0,
+                 w2 = 1.0, dim = 3, center = [0,0,0], weight = 1.0, localMaps=None):
         self.name = name
         self.sigma = sigma
         self.order = order
@@ -253,6 +254,7 @@ class KernelSpec:
         self._hold = False
         self._state = False
         self.affine = affine
+        self.localMaps = localMaps
         if name == 'laplacian':
             self.kernelMatrix = kernelMatrixLaplacian
             if self.order > 4:
@@ -326,6 +328,10 @@ class Kernel(KernelSpec):
                 #z = np.zeros([x.shape[0],a.shape[1]])
                 if matrixWeights:
                     z = kff.applykmat(x, x, a, self.sigma, self.order, x.shape[0], x.shape[0], x.shape[1], a.shape[2])
+                elif self.localMaps:
+                    z = kff.applylocalk(x, x, a, self.sigma, self.order, 1+self.localMaps[0], self.localMaps[1],
+                                        x.shape[0], x.shape[0],
+                                        x.shape[1], self.localMaps[0].size)
                 else:
                     z = kff.applyk(x, x, a, self.sigma, self.order, x.shape[0], x.shape[0], x.shape[1], a.shape[1])
                 # for k in range(a.shape[1]):
@@ -333,6 +339,10 @@ class Kernel(KernelSpec):
             else:
                 if matrixWeights:
                     z = kff.applykmat(firstVar, x, a, self.sigma, self.order, firstVar.shape[0], x.shape[0], x.shape[1], a.shape[2])
+                elif self.localMaps:
+                    z = kff.applylocalk(firstVar, x, a, self.sigma, self.order, 1+self.localMaps[0], self.localMaps[1],
+                                        firstVar.shape[0], x.shape[0],
+                                        x.shape[1], self.localMaps[0].size)
                 else:
                     z = kff.applyk(firstVar, x, a, self.sigma, self.order, firstVar.shape[0], x.shape[0], x.shape[1], a.shape[1])
                 # z = np.zeros([firstVar.shape[0],a.shape[1]])
@@ -428,9 +438,20 @@ class Kernel(KernelSpec):
         if not (self.kernelMatrix is None):
             #print a1.shape
             if firstVar is None:
-                zpx = kff.applykdifft(x,x,a1,a2,self.sigma, self.order, x.shape[0], x.shape[0], x.shape[1], a1.shape[2], a1.shape[0])
+                if self.localMaps:
+                    zpx = kff.applylocalkdifft(x, x, a1, a2, self.sigma, self.order, 1+self.localMaps[0], self.localMaps[1],
+                                               x.shape[0], x.shape[0], x.shape[1],
+                                               self.localMaps[0].size, a1.shape[0])
+                else:
+                    zpx = kff.applykdifft(x,x,a1,a2,self.sigma, self.order, x.shape[0],
+                                          x.shape[0], x.shape[1], a1.shape[2], a1.shape[0])
             else:
-                zpx = kff.applykdifft(firstVar,x,a1,a2,self.sigma, self.order, firstVar.shape[0], x.shape[0], x.shape[1], a1.shape[2], a1.shape[0])
+                if self.localMaps:
+                    zpx = kff.applylocalkdifft(firstVar, x, a1, a2, self.sigma, self.order, 1+self.localMaps[0], self.localMaps[1],
+                                               firstVar.shape[0], x.shape[0],
+                                               x.shape[1], self.localMaps[0].size, a1.shape[0])
+                else:
+                    zpx = kff.applykdifft(firstVar,x,a1,a2,self.sigma, self.order, firstVar.shape[0], x.shape[0], x.shape[1], a1.shape[2], a1.shape[0])
             # r = self.precompute(x, diff=True, firstVar=firstVar)
             # g1 =  r*a
             # #print a.shape, r.shape, g1.shape

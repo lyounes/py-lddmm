@@ -6,7 +6,7 @@ def read3DVector(filename):
     try:
         with open(filename, 'r') as fn:
             ln0 = fn.readline()
-            N = int(ln[0])
+            N = int(ln0[0])
             #print 'reading ', filename, ':', N, ' landmarks'
             v = np.zeros([N, 3])
 
@@ -175,4 +175,23 @@ def epsilonNet(x, rate):
         
         #print idx
     return net, idx
-        
+
+
+def L2Norm0(x1):
+    return (x1**2).sum()
+
+def L2NormDef(xDef, x1):
+    return -2*(xDef*x1).sum() + (xDef**2).sum()
+
+def L2NormGradient(xDef,x1):
+    return 2*(xDef-x1)
+
+def classScore(xDef, c1, u=None):
+    if u is None:
+        u = np.ones((xDef.shape[1],1))
+    return np.exp(-(np.dot(xDef,u)*c1)).sum()
+
+def classScoreGradient(xDef, c1, u = None):
+    if u is None:
+        u = np.ones((xDef.shape[1],1))
+    return -c1*np.exp(-np.dot(xDef,u)*c1) * u.T
