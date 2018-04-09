@@ -10,7 +10,10 @@ import pointEvolution as evol
 from affineBasis import AffineBasis, getExponential, gradExponential
 import matplotlib
 matplotlib.use("TKAgg")
+from sklearn import svm
+import scipy.stats as stats
 import matplotlib.pyplot as plt
+import pygraph
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import csv
@@ -101,7 +104,7 @@ class PointSetMatching(object):
 
             #print np.fabs(self.fv1.surfel-self.fv0.surfel).max()
 
-        self.saveRate = 1
+        self.saveRate = 10
         self.iter = 0
         self.setOutputDir(outputDir)
         self.dim = self.fv0.shape[1]
@@ -132,7 +135,7 @@ class PointSetMatching(object):
         # self.u[0:2] = 1/np.sqrt(2.)
 
         self.Tsize = int(round(1.0/self.param.timeStep))
-        self.at = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
+        self.at = np.random.normal(0, 0.01, [self.Tsize, self.x0.shape[0], self.x0.shape[1]])
         self.atTry = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
         self.Afft = np.zeros([self.Tsize, self.affineDim])
         self.AfftTry = np.zeros([self.Tsize, self.affineDim])
@@ -152,42 +155,45 @@ class PointSetMatching(object):
         self.affBurnIn = 25
         self.pplot = pplot
         self.testSet = testSet
-        self.l1Cost = 100
+        self.l1Cost = 0
 
         if self.param.errorType == 'classification':
-            J1 = self.fv1 > 0
-            J2 = self.fv1 < 0
-            self.u = (np.mean(self.fv0[J1[:,0], :], axis=0) - np.mean(self.fv0[J2[:,0], :], axis=0))[:, np.newaxis]
-            self.u /= np.sqrt((self.u ** 2).sum())
-            for k in range(250):
-                g = (self.fvDef *
-                     (self.fv1 * np.exp(-(np.dot(self.fvDef, self.u) * self.fv1)))).sum(axis=0)[:, np.newaxis]
-                #g -= (g * self.u).sum() * self.u
-                ep = .1/self.fvDef.size
-                fu = self.u + ep * g
-                ll = ep*self.l1Cost
-                fu = np.sign(fu) * np.maximum(np.fabs(fu) - ll, 0)
-                # fu = (fu / np.sqrt((fu ** 2).sum()))
-                # cl0 = pointSets.classScore(self.fvDef, self.fv1, self.u)
-                # while ep > 1e-10 and pointSets.classScore(self.fvDef, self.fv1, fu) > cl0:
-                #     ep *= 0.5
-                #     fu = self.u + ep * g
-                #     fu = fu / np.sqrt((fu ** 2).sum())
-                self.u = fu
+            self.nclasses = self.fv1.max()+1
+            nTr = np.zeros(self.nclasses)
+            for k in range (self.nclasses):
+                nTr[k] = (self.fv1==k).sum()
+            #self.wtr = np.zeros(self.fv1.shape)
+            self.wTr = float(self.fv1.size)/(nTr[self.fv1[:,0]]*self.nclasses)[:, np.newaxis]
+            self.swTr = self.wTr.sum()
+            #self.wTr *= self.swTr
+            self.u = self.learnLogistic()
+            print "Non-negative coefficients", (np.fabs(self.u) > 1e-10).sum()
+            gu = np.argmax(np.dot(self.fvDef, self.u), axis=1)[:,np.newaxis]
+            err = np.sum(np.not_equal(gu, self.fv1)*self.wTr)/self.swTr
+            logging.info('Training Error {0:0f}'.format(err))
+            if self.testSet is not None:
+                nTe = np.zeros(self.nclasses)
+                for k in range(self.nclasses):
+                    nTe[k] = (self.testSet[1] == k).sum()
+                self.wTe = float(self.testSet[1].size)/(nTe[self.testSet[1][:, 0]]*self.nclasses)[:, np.newaxis]
+                self.swTe = self.wTe.sum()
+                #self.wTe *= self.swTe
+                testRes = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff,
+                                                            withPointSet=self.testSet[0])
+                gu = np.argmax(np.dot(testRes[1][-1, ...], self.u), axis=1)[:,np.newaxis]
+                test_err = np.sum(np.not_equal(gu, self.testSet[1])*self.wTe)/self.swTe
+                logging.info('Testing Error {0:0f}'.format(test_err))
             if self.pplot:
+                self.colors = ['red', 'blue', 'coral', 'green', 'gold', 'marron']
                 fig = plt.figure(2)
                 fig.clf()
                 for k in range(self.npt):
-                    if self.fv1[k] > 0:
-                        plt.plot([self.fvDef[k, 0]], [self.fvDef[k, 1]], 'ro')
-                    else:
-                        plt.plot([self.fvDef[k, 0]], [self.fvDef[k, 1]], 'bo')
+                    plt.plot([self.fvDef[k, 0]], [self.fvDef[k, 1]], marker='o',
+                             color=self.colors[self.fv1[k,0]])
                 if self.testSet is not None:
                     for k in range(self.testSet[0].shape[0]):
-                        if self.testSet[1][k] > 0:
-                            plt.plot([self.testSet[0][k, 0]], [self.testSet[0][k, 1]], 'r*')
-                        else:
-                            plt.plot([self.testSet[0][k, 0]], [self.testSet[0][k, 1]], 'b*')
+                        plt.plot([self.testSet[0][k, 0]], [self.testSet[0][k, 1]], marker='*',
+                                 color=self.colors[self.testSet[1][k,0]])
                 plt.pause(0.1)
 
     #     if self.pplot:
@@ -232,7 +238,8 @@ class PointSetMatching(object):
 
     def dataTerm(self, _fvDef, _fvInit = None):
         if self.param.errorType == 'classification':
-            obj = pointSets.classScore(_fvDef, self.fv1, u=self.u) / (self.param.sigmaError**2)
+            obj = pointSets.LogisticScore(_fvDef, self.fv1, self.u, w=self.wTr) / (self.param.sigmaError**2)
+            #obj = pointSets.LogisticScore(_fvDef, self.fv1, self.u) / (self.param.sigmaError**2)
         else:
             obj = self.param.fun_obj(_fvDef, self.fv1) / (self.param.sigmaError**2)
         return obj
@@ -341,7 +348,8 @@ class PointSetMatching(object):
 
     def endPointGradient(self):
         if self.param.errorType == 'classification':
-            px = pointSets.classScoreGradient(self.fvDef, self.fv1, u= self.u)
+            px = pointSets.LogisticScoreGradient(self.fvDef, self.fv1, self.u, w=self.wTr)
+            #px = pointSets.LogisticScoreGradient(self.fvDef, self.fv1, self.u)
         else:
             px = self.param.fun_objGrad(self.fvDef, self.fv1)
         return px / self.param.sigmaError**2
@@ -471,14 +479,14 @@ class PointSetMatching(object):
         self.x0 = np.copy(self.x0Try)
         #print self.at
 
-    def endOfIteration(self):
+    def endOfIteration(self, endP=False):
         self.iter += 1
         if self.testGradient:
             self.testEndpointGradient()
 
         if self.iter >= self.affBurnIn:
             self.coeffAff = self.coeffAff2
-        if (self.iter % self.saveRate == 0) :
+        if (self.iter % self.saveRate == 0 or endP) :
             logging.info('Saving surfaces...')
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             # if self.affineDim <=0:
@@ -515,44 +523,53 @@ class PointSetMatching(object):
                     # vf.vectors.append('velocity') ;
                     # vf.vectors.append(vt)
                     # nu = self.fv0ori*f.computeVertexNormals()
-                    pointSets.savelmk(f, self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.vtk')
+                    pointSets.savelmk(f, self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.lmk')
                 f = np.copy(self.fv1)
                 yyt = np.dot(f - X[1][-1, ...], U.T)
                 f = np.copy(yyt)
-                pointSets.savelmk(f, self.outputDir +'/TargetCorrected.vtk')
+                pointSets.savelmk(f, self.outputDir +'/TargetCorrected.lmk')
             for kk in range(self.Tsize+1):
                 fvDef = np.copy(np.squeeze(xt[kk, :, :]))
-                pointSets.savelmk(fvDef, self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk')
+                pointSets.savelmk(fvDef, self.outputDir +'/'+ self.saveFile+str(kk)+'.lmk')
             if self.param.errorType == 'classification':
                 # J1 = np.nonzero(self.fv1>0)[0]
                 # J2 = np.nonzero(self.fv1<0)[0]
                 # self.u = np.mean(self.fvDef[J1, :], axis=0) - np.mean(self.fvDef[J2, :], axis=0)
                 # self.u = (self.u/np.sqrt((self.u**2).sum()))[:, np.newaxis]
-                err = (1 - np.sign(np.dot(self.fvDef, self.u) * self.fv1)).sum() / (2*self.npt)
+                gu = np.argmax(np.dot(self.fvDef, self.u), axis=1)[:,np.newaxis]
+                err = np.sum(np.not_equal(gu, self.fv1) * self.wTr)/self.swTr
                 logging.info('Training Error {0:0f}'.format(err))
                 if self.testSet is not None:
                     testRes = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, withPointSet=self.testSet[0])
-                    test_err = (1 - np.sign(np.dot(testRes[1][-1,...], self.u) * self.testSet[1])).sum() \
-                               / (2*self.testSet[0].shape[0])
+                    gu = np.argmax(np.dot(testRes[1][-1,...], self.u), axis=1)[:,np.newaxis]
+                    test_err = np.sum(np.not_equal(gu, self.testSet[1])*self.wTe)/self.swTe
                     logging.info('Testing Error {0:0f}'.format(test_err))
                 if self.pplot:
-                    JJ = np.argpartition(np.ravel(self.u), self.dim-2)
+                    JJ = np.argpartition(np.ravel((self.u**2).sum(axis=1)), self.dim-2)
                     fig = plt.figure(4)
                     fig.clf()
                     i1 = JJ[self.dim-2]
                     i2 = JJ[self.dim-1]
                     for k in range(self.npt):
-                        if self.fv1[k] > 0:
-                            plt.plot([self.fvDef[k, i1]], [self.fvDef[k, i2]], 'ro')
-                        else:
-                            plt.plot([self.fvDef[k, i1]], [self.fvDef[k, i2]], 'bo')
+                        plt.plot([self.fvDef[k, i1]], [self.fvDef[k, i2]], marker='o',
+                                 color=self.colors[self.fv1[k,0]])
                     if self.testSet is not None:
                         for k in range(self.testSet[0].shape[0]):
-                            if self.testSet[1][k] > 0:
-                                plt.plot([testRes[1][-1, k, i1]], [testRes[1][-1, k, i2]], 'r*')
-                            else:
-                                plt.plot([testRes[1][-1, k, i1]], [testRes[1][-1, k, i2]], 'b*')
+                            plt.plot([testRes[1][-1, k, i1]], [testRes[1][-1, k, i2]], marker='*',
+                                     color=self.colors[self.testSet[1][k,0]])
                     plt.pause(0.1)
+                JJ = np.argpartition(np.ravel((self.u**2).sum(axis=1)), self.dim - 3)
+                I = JJ[self.dim-3:self.dim]
+                for kk in range(self.Tsize + 1):
+                    fvDef = np.copy(np.squeeze(xt[kk, :, :]))
+                    pointSets.savePoints(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', fvDef[:,I],
+                                         scalars=np.ravel(self.fv1))
+                if self.testSet is not None:
+                    for kk in range(self.Tsize + 1):
+                        fvDef = np.copy(np.squeeze(testRes[1][kk, :, :]))
+                        pointSets.savePoints(self.outputDir +'/'+ self.saveFile+'Test'+str(kk)+'.vtk', fvDef[:,I],
+                                             scalars=np.ravel(self.testSet[1]))
+
 
         else:
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
@@ -561,7 +578,7 @@ class PointSetMatching(object):
 
 
     def endOfProcedure(self):
-        self.endOfIteration()
+        self.endOfIteration(endP=True)
 
     def optimizeMatching(self):
         #print 'dataterm', self.dataTerm(self.fvDef)
@@ -576,6 +593,9 @@ class PointSetMatching(object):
         cg.cg(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
         #return self.at, self.xt
 
+    def learnLogistic(self, u0=None):
+        return pointSets.learnLogistic(self.fvDef, self.fv1, w= self.wTr, u0=u0, l1Cost=self.l1Cost)
+
 
 if __name__=="__main__":
 
@@ -584,18 +604,21 @@ if __name__=="__main__":
 
     N = 100
     d = 10
-    #typeData = 'helixes'
-    typeData = 'csv1'
+    l1Cost = 5.
+    #typeData = 'csv1'
+    typeData = 'RBF'
 
     if typeData == 'helixes':
+        N = 100
+        d = 50
         h = 0
         x0Tr = 0.05*np.random.randn(2*N,d)
         x0Te = 0.05*np.random.randn(2*N,d)
         #x1 = np.random.randn(100,2)
-        x1Tr = np.ones((2*N,1))
-        x1Te = np.ones((2*N,1))
-        x1Tr[N:2*N] = -1
-        x1Te[N:2*N] = -1
+        x1Tr = np.ones((2*N,1), dtype = int)
+        x1Te = np.ones((2*N,1), dtype=int)
+        x1Tr[N:2*N] = 0
+        x1Te[N:2*N] = 0
         t = 2*np.pi*np.random.rand(N)
         x0Tr[0:N,2] += np.cos(t)
         x0Tr[0:N,3] += np.sin(t)
@@ -615,19 +638,25 @@ if __name__=="__main__":
         x0Te[N:2*N,2] += h*t
         x0Te[N:2*N,3] += 1 + np.cos(t)
         x0Te[N:2*N,4] += np.sin(t)
+        sigma = .5
+        l1Cost = 0
     elif typeData == 'csv1':
         nv = -1
         X = np.genfromtxt('/Users/younes/Development/Data/Classification/BRCA1_q2_HW2.csv', delimiter=',')
-        x1 = 2*X[0,:].T -1
+        x1 = np.array(X[0,:].T, dtype=int)
         x0 = X[1:nv,:].T
-        J = np.random.random(x0.shape[0])
-        x0Tr = x0[J>0.5,:]
-        x1Tr = x1[J>0.5, np.newaxis]
-        s = np.sqrt((x0Tr**2).sum(axis=0))
-        x0Tr /= s
-        x0Te = x0[J<=0.5,:]/s
-        x1Te = x1[J<=0.5, np.newaxis]
+        for k in range(x0.shape[0]):
+            x0[k,:] = stats.rankdata(np.ravel(x0[k,:]), method='average')/float(x0.shape[1])
+        I1 = np.nonzero(x1==1)[0]
+        I2 = np.nonzero(x1==0)[0]
+        J1 = np.random.random(I1.size)
+        J2 = np.random.random(I2.size)
+        x0Tr = np.concatenate((x0[I1[J1>0.33],:], x0[I2[J2>0.33],:]))
+        x0Te = np.concatenate((x0[I1[J1<0.33],:], x0[I2[J2<0.33],:]))
+        x1Tr = np.concatenate((x1[I1[J1>0.33]], x1[I2[J2>0.33]]))[:, np.newaxis]
+        x1Te = np.concatenate((x1[I1[J1<0.33]], x1[I2[J2<0.33]]))[:, np.newaxis]
         d = x0Tr.shape[1]
+        sigma = 2.5
         # xTmp = np.zeros((x0Tr.shape[0],2*d))
         # xTmp[:,range(0,2*d,2)] = x0Tr
         # xTmp[:,range(1,2*d,2)] = 0.1 * np.random.randn(x0Tr.shape[0],d)
@@ -636,88 +665,165 @@ if __name__=="__main__":
         # xTmp[:,range(0,2*d,2)] = x0Te
         # x0Te = xTmp
         # d *= 2
+    elif typeData == 'RBF':
+        d = 10
+        d1 = 10
+        nc = 50
+        NTr = 500
+        NTe = 500
+        centers = np.random.normal(0, 1, (nc, d))
+        c = 5*np.random.random(nc) -1
+        x0Tr = np.random.normal(0,1, (NTr,d))
+        K = np.exp(- ((x0Tr[:,np.newaxis,:] - centers[np.newaxis,:,:])**2).sum(axis=2)/np.sqrt(d))
+        m = np.median(np.sin(np.dot(K,c)))
+        x0Tr = np.random.normal(0,1, (NTr,d))
+        K = np.exp(- ((x0Tr[:,np.newaxis,:] - centers[np.newaxis,:,:])**2).sum(axis=2)/np.sqrt(d))
+        x1Tr = np.array((np.sin(np.dot(K,c))-m)[:, np.newaxis] > 0, dtype=int)
+        x0Te = np.random.normal(0,1, (NTe,d))
+        K = np.exp(- ((x0Te[:,np.newaxis,:] - centers[np.newaxis,:,:])**2).sum(axis=2)/np.sqrt(d))
+        x1Te = np.array((np.sin(np.dot(K,c))-m)[:, np.newaxis] > 0, dtype=int)
+        #x0Tr = np.concatenate((x0Tr,0.5*np.random.normal(0,1,(NTr,d1))), axis=1)
+        #x0Te = np.concatenate((x0Te,0.5*np.random.normal(0,1,(NTe,d1))), axis=1)
+        #d += d1
+        l1Cost = 0
+        sigma = 2.5
+    elif typeData == 'MoG':
+        NTr = 100
+        NTe = 500
+        N = NTr + NTe
+        d = 10
+        Cov0 = np.eye(d)
+        m0 = np.concatenate((np.ones(3), np.zeros(d - 3)))
+        q = np.arange(0, 1, 1.0 / d)
+        Cov1 = 2*np.exp(-np.abs(q[:,np.newaxis]-q[np.newaxis,:]))
+        #Cov1 = np.eye(d)
+        Cov2 = 2*np.exp(-np.abs(q[:,np.newaxis]-q[np.newaxis,:])/3.)
+        m1 = np.concatenate((-np.ones(3), np.zeros(d - 3)))
+        m2 = np.concatenate((-np.array([1,-1,1]), np.zeros(d - 3)))
+        x0Tr = np.zeros((3 * NTr, d))
+        x0Te = np.zeros((3 * NTe, d))
+        x0Tr[0:NTr, :] = np.random.multivariate_normal(m0, Cov0, size=NTr)
+        x0Te[0:NTe, :] = np.random.multivariate_normal(m0, Cov0, size=NTe)
+        x0Tr[NTr:2 * NTr, :] = np.random.multivariate_normal(m1, Cov1, size=NTr)
+        x0Te[NTe:2 * NTe, :] = np.random.multivariate_normal(m1, Cov1, size=NTe)
+        x0Tr[2*NTr:3 * NTr, :] = np.random.multivariate_normal(m2, Cov2, size=NTr)
+        x0Te[2*NTe:3 * NTe, :] = np.random.multivariate_normal(m2, Cov2, size=NTe)
+        x1Tr = np.zeros((3 * NTr, 1), dtype=int)
+        x1Te = np.zeros((3 * NTe, 1), dtype=int)
+        x1Tr[NTr:2 * NTr] = 1
+        x1Te[NTe:2 * NTe] = 1
+        x1Tr[2*NTr:3 * NTr] = 2
+        x1Te[2*NTe:3 * NTe] = 2
+        sigma = 5
     else:
+        NTr = 100
+        NTe = 1000
+        N = NTr + NTe
+        d = 10
         Cov0 = np.eye(d)
         m0 = np.concatenate((np.ones(3), np.zeros(d-3)))
         q = np.arange(0,1,1.0/d)
         Cov1 = 2*np.exp(-np.abs(q[:,np.newaxis]-q[np.newaxis,:]))
         #Cov1 = np.eye(d)
         m1 = np.concatenate((-np.ones(3), np.zeros(d-3)))
-        x0Tr = np.zeros((2*N,d))
-        x0Te = np.zeros((2*N,d))
-        x0Tr[0:N, :] = np.random.multivariate_normal(m0, Cov0, size=N)
-        x0Te[0:N, :] = np.random.multivariate_normal(m0, Cov0, size=N)
-        x0Tr[N:2*N, :] = np.random.multivariate_normal(m1, Cov1, size=N)
-        x0Te[N:2*N, :] = np.random.multivariate_normal(m1, Cov1, size=N)
-        x1Tr = np.ones((2 * N,1))
-        x1Te = np.ones((2 * N,1))
-        x1Tr[N:2 * N] = -1
-        x1Te[N:2 * N] = -1
+        x0Tr = np.zeros((2*NTr,d))
+        x0Te = np.zeros((2*NTe,d))
+        x0Tr[0:NTr, :] = np.random.multivariate_normal(m0, Cov0, size=NTr)
+        x0Te[0:NTe, :] = np.random.multivariate_normal(m0, Cov0, size=NTe)
+        x0Tr[NTr:2*NTr, :] = np.random.multivariate_normal(m1, Cov1, size=NTr)
+        x0Te[NTe:2*NTe, :] = np.random.multivariate_normal(m1, Cov1, size=NTe)
+        x1Tr = np.ones((2 * NTr,1), dtype=int)
+        x1Te = np.ones((2 * NTe,1), dtype=int)
+        x1Tr[NTr:2 * NTr] = 0
+        x1Te[NTe:2 * NTe] = 0
+        sigma = 2.5
         #err0 = (1 - (np.sign(x0Te*x1Te))).sum()/(4*N)
-        u = np.mean(x0Tr[0:N,:], axis=0) - np.mean(x0Tr[N:2*N, :], axis=0)
-        err1 = (1 - np.sign(np.dot(x0Te, u[:, np.newaxis]) * x1Te)).sum() / (4*N)
-        print 'LDA Error: {0:2f}'.format(err1)
 
     #x0[:,2] = 0
 
-    K1 = kfun.Kernel(name='laplacian', sigma=.25, order=3)
-    sm = PointSetMatchingParam(timeStep=0.1, KparDiff = K1, sigmaError=.5, errorType='classification')
 
-    f = PointSetMatching(Template=x0Tr, Target=x1Tr, outputDir=outputDir, param=sm, regWeight=1.,
-                        saveTrajectories=True, pplot=True, testSet=(x0Te, x1Te),
-                        affine='none', testGradient=True, affineWeight=1e3,
-                        maxIter=5)
-    K1.localMaps = (np.zeros(3*d-2, dtype=int), 3*np.ones(d, dtype=int))
-    K1.localMaps[1][0] = 2
-    K1.localMaps[1][d-1] = 2
-    KJ = np.random.permutation(d)
-    jK=0
-    for k in range(d):
-        if k>0:
-            K1.localMaps[0][jK] = KJ[k-1]
-            jK += 1
-        K1.localMaps[0][jK] = KJ[k]
-        jK += 1
-        if k<d-1:
-            K1.localMaps[0][jK] = KJ[k+1]
-            jK += 1
+    nclasses = x1Tr.max() + 1
+    nTr = np.zeros(nclasses)
+    for k in range(nclasses):
+        nTr[k] = (x1Tr == k).sum()
+    wTr = float(x1Tr.size) / (nTr[x1Tr[:, 0]] * nclasses)[:, np.newaxis]
+    #s = 1e-5 + np.std(x0Tr, axis=0)
+    #x0Tr /= s
+    #x0Te /=s
+
+    fu = pointSets.learnLogistic(x0Tr, x1Tr, w=wTr, l1Cost=l1Cost)
+    #x0Tr *= s
+    #x0Te *=s
+
+    J = np.nonzero(np.fabs(fu).sum(axis=1) > 1e-8)[0]
+    x0Tr0 = x0Tr[:,J]
+    x0Te0 = x0Te[:,J]
+
+    K1 = kfun.Kernel(name='laplacian', sigma=sigma, order=3)
+    sm = PointSetMatchingParam(timeStep=0.05, KparDiff = K1, sigmaError=.1, errorType='classification')
+
+    f = PointSetMatching(Template=x0Tr0, Target=x1Tr, outputDir=outputDir, param=sm, regWeight=1.,
+                        saveTrajectories=True, pplot=True, testSet=(x0Te0, x1Te),
+                        affine='none', testGradient=False, affineWeight=1e3,
+                        maxIter=1000)
+
+    clf = svm.SVC(class_weight='balanced')
+    clf.fit(x0Tr, np.ravel(x1Tr))
+    yTr = clf.predict(x0Tr)
+    yTe = clf.predict(x0Te)
+    print 'SVM prediction:', np.sum(np.not_equal(yTr, np.ravel(x1Tr))*np.ravel(f.wTr))/f.swTr, \
+        np.sum(np.not_equal(yTe, np.ravel(x1Te))*np.ravel(f.wTe))/f.swTe
+    clf = svm.LinearSVC(class_weight='balanced')
+    clf.fit(x0Tr, np.ravel(x1Tr))
+    yTe = clf.predict(x0Te)
+    print 'Linear SVM prediction:', np.sum(np.not_equal(yTe, np.ravel(x1Te))*np.ravel(f.wTe))/f.swTe
+
+
+    pr = 50./d
+    u = np.random.rand(d*(d - 1)/2) < pr
+    M = np.zeros((d,d), dtype=int)
+
+    KL1 = np.zeros(d, dtype=int)
+    ii = 0
+    for i in range(d):
+        for j in range(i+1,d):
+            if u[ii]:
+                M[i,j] = 1
+                M[j,i] = 1
+            ii += 1
+    KL0 = np.zeros(M.sum(), dtype=int)
+    ii = 0
+    for i in range(d):
+        I = np.nonzero(M[i,:])[0]
+        KL1[i] = I.size
+        KL0[ii:ii+KL1[i]] = I+1
+        ii += KL1[i]
+    #K1.localMaps = (KL0, KL1)
+
+
+
+    #K1.localMaps = (np.zeros(3*d-2, dtype=int), 3*np.ones(d, dtype=int))
+    # K1.localMaps[1][0] = 2
+    # K1.localMaps[1][d-1] = 2
+    # KJ = np.random.permutation(d)
+    # jK=0
+    # for k in range(d):
+    #     if k>0:
+    #         K1.localMaps[0][jK] = KJ[k-1]
+    #         jK += 1
+    #     K1.localMaps[0][jK] = KJ[k]
+    #     jK += 1
+    #     if k<d-1:
+    #         K1.localMaps[0][jK] = KJ[k+1]
+    #         jK += 1
         # K1.localMaps[0][4*k] = 2*k+1
         # K1.localMaps[0][4 * k+1] = 2 * k + 2
         # K1.localMaps[0][4 * k + 2] = 2 * k + 2
         # K1.localMaps[0][4 * k + 3] = 2 * k + 1
 
-    for k in range(10):
+    for k in range(1):
         f.optimizeMatching()
-        J1 = x1Tr > 0
-        J2 = x1Tr < 0
-        for k in range(250):
-            g = (f.fvDef *
-                 (f.fv1 * np.exp(-(np.dot(f.fvDef, f.u) * f.fv1)))).sum(axis=0)[:, np.newaxis]
-            # g -= (g * self.u).sum() * self.u
-            ep = .1 / f.fvDef.size
-            fu = f.u + ep * g
-            ll = ep * f.l1Cost
-            fu = np.sign(fu) * np.maximum(np.fabs(fu) - ll, 0)
-            # fu = (fu / np.sqrt((fu ** 2).sum()))
-            # cl0 = pointSets.classScore(self.fvDef, self.fv1, self.u)
-            # while ep > 1e-10 and pointSets.classScore(self.fvDef, self.fv1, fu) > cl0:
-            #     ep *= 0.5
-            #     fu = self.u + ep * g
-            #     fu = fu / np.sqrt((fu ** 2).sum())
-            f.u = fu
-        # g = (f.fvDef *(x1Tr*np.exp(-(np.dot(f.fvDef,f.u)*x1Tr)))).sum(axis = 0)[:, np.newaxis]
-        # g -= (g*f.u).sum()*f.u
-        # ep = 1.
-        # fu = f.u + ep * g
-        # fu = (fu / np.sqrt((fu**2).sum()))
-        # cl0 = pointSets.classScore(f.fvDef, x1Tr, f.u)
-        # while ep >1e-10 and pointSets.classScore(f.fvDef, x1Tr, fu) > cl0:
-        #     ep *= 0.5
-        #     fu = f.u + ep * g
-        #     fu = fu / np.sqrt((fu**2).sum())
-        # f.u = fu
-        print 'ep = ', ep
-        #f.u = (np.mean(f.fvDef[J1[:,0], :], axis=0) - np.mean(f.fvDef[J2[:,0], :], axis=0))[:, np.newaxis]
+        f.u = f.learnLogistic(u0=f.u)
         f.obj = None
         f.objectiveFun()
     plt.pause(1000)

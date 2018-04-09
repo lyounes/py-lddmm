@@ -220,8 +220,8 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01):
             if np.sqrt(grd2) <gradEps and it>cgBurnIn:
                 logging.info('Stopping Gradient Descent: small gradient')
                 opt.converged = True 
-                if hasattr(opt, 'endOfIteration'):
-                    opt.endOfIteration()
+                if hasattr(opt, 'endOfProcedure'):
+                    opt.endOfProcedure()
                 break
             eps = np.minimum(100*eps, epsMax)
 
