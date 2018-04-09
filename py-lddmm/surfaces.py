@@ -858,8 +858,8 @@ class Surface:
             kf = 0
             j = 0
             while ln:
-		if kf >= nfaces:
-		    break
+                if kf >= nfaces:
+                    break
 		#print nfaces, kf, ln
                 for s in ln:
                     self.faces[kf,j] = int(sp.fabs(int(s)))
@@ -1029,12 +1029,13 @@ class Surface:
             raise Exception('Cannot run readVTK without VTK')
     
     # Reads .vtk file
-    def readFromImage(self, fileName):
+    def readFromImage(self, fileName, with_vfld = True):
         self.img = diffeo.gridScalars(fileName=fileName)
         self.img.data /= self.img.data.max() + 1e-10
         self.Isosurface(self.img.data, smooth=0.001)
-        smoothData = cg.linearcg(lambda x: -diffeo.laplacian(x), -self.img.data, iterMax=500)
-        self.vfld = diffeo.gradient(smoothData)
+        if with_vfld:
+            smoothData = cg.linearcg(lambda x: -diffeo.laplacian(x), -self.img.data, iterMax=500)
+            self.vfld = diffeo.gradient(smoothData)
     
     # Reads .vtk file
     def initFromImage(self, img):
