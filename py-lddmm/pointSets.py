@@ -6,7 +6,7 @@ def read3DVector(filename):
     try:
         with open(filename, 'r') as fn:
             ln0 = fn.readline()
-            N = int(ln[0])
+            N = int(ln0[0])
             #print 'reading ', filename, ':', N, ' landmarks'
             v = np.zeros([N, 3])
 
@@ -105,14 +105,21 @@ def  savelmk(x, filename):
 
         
 # Saves in .vtk format
-def savePoints(fileName, x, vector=None):
+def savePoints(fileName, x, vector=None, scalars=None):
     with open(fileName, 'w') as fvtkout:
         fvtkout.write('# vtk DataFile Version 3.0\nSurface Data\nASCII\nDATASET UNSTRUCTURED_GRID\n') 
         fvtkout.write('\nPOINTS {0: d} float'.format(x.shape[0]))
         for ll in range(x.shape[0]):
             fvtkout.write('\n{0: f} {1: f} {2: f}'.format(x[ll,0], x[ll,1], x[ll,2]))
-        if vector != None:
-            fvtkout.write(('\nPOINT_DATA {0: d}').format(x.shape[0]))
+        if vector is None and scalars is None:
+            return
+        fvtkout.write(('\nPOINT_DATA {0: d}').format(x.shape[0]))
+        if scalars is not None:
+            fvtkout.write('\nSCALARS scalars float 1\nLOOKUP_TABLE default')
+            for ll in range(x.shape[0]):
+                fvtkout.write('\n {0: .5f} '.format(scalars[ll]))
+
+        if vector is not None:
             fvtkout.write('\nVECTORS vector float')
             for ll in range(x.shape[0]):
                 fvtkout.write('\n {0: .5f} {1: .5f} {2: .5f}'.format(vector[ll, 0], vector[ll, 1], vector[ll, 2]))
@@ -175,4 +182,84 @@ def epsilonNet(x, rate):
         
         #print idx
     return net, idx
-        
+
+
+def L2Norm0(x1):
+    return (x1**2).sum()
+
+def L2NormDef(xDef, x1):
+    return -2*(xDef*x1).sum() + (xDef**2).sum()
+
+def L2NormGradient(xDef,x1):
+    return 2*(xDef-x1)
+
+def classScore(xDef, c1, u=None):
+    if u is None:
+        u = np.ones((xDef.shape[1],1))
+    return np.exp(-(np.dot(xDef,u)*c1)).sum()
+
+def classScoreGradient(xDef, c1, u = None):
+    if u is None:
+        u = np.ones((xDef.shape[1],1))
+    return -c1*np.exp(-np.dot(xDef,u)*c1) * u.T
+
+def LogisticScore(xDef, c1, u, w = None):
+    if w is None:
+        w = np.ones((xDef.shape[0],1))
+    gu = np.dot(xDef,u)
+    res = (np.ravel(w)*(- gu[np.arange(gu.shape[0])[:,np.newaxis],c1].sum(axis=1) + np.log(np.exp(gu).sum(axis=1)))).sum()
+    return res
+
+def LogisticScoreGradient(xDef, c1, u, w = None):
+    if w is None:
+        w = np.ones((xDef.shape[0],1))
+    gu = np.exp(np.dot(xDef,u))
+    pu = gu/gu.sum(axis=1)[:,np.newaxis]
+    m = np.dot(pu, u.T)
+    return (-u[np.arange(u.shape[0]), c1] +m)*w
+
+def LogisticScoreGradientInU(xDef, c1, u, w=None):
+    if w is None:
+        w = np.ones((xDef.shape[0],1))/xDef.shape[0]
+    gu = np.exp(np.dot(xDef,u))
+    pu = gu/gu.sum(axis=1)[:, np.newaxis]
+    wxDef = w*xDef
+    r = np.dot((wxDef).T, pu)
+    grad = np.zeros(u.shape)
+    for k in range(1, u.shape[1]):
+        grad[:,k] = - (wxDef)[np.ravel(c1)==k,:].sum(axis=0) + r[:,k]
+    return grad
+
+def learnLogistic(x, y, w=None, u0=None, l1Cost = 0):
+    J1 = []
+    dim = x.shape[1]
+    nclasses = y.max()+1
+    for k in range(nclasses):
+        J1.append(y == k)
+    if u0 is None:
+        fu = np.zeros((dim, nclasses))
+    else:
+        fu = u0
+    for k in range(1000):
+        fuOld = fu
+        obj0 = LogisticScore(x, y, fu, w=w)
+        g = LogisticScoreGradientInU(x, y, fu, w=w)
+        # ep = 1e-8
+        # fu1 = fu - ep * g
+        # obj1 = pointSets.LogisticScore(self.fvDef, self.fv1, fu1, w=self.wTr)
+        # print (obj1-obj0)/ep, (g**2).sum()
+
+        ep = .01
+        fu1 = fu - ep * g
+        obj1 = LogisticScore(x, y, fu1, w=w)
+        while obj1 > obj0:
+            ep /= 2
+            fu1 = fu - ep * g
+            obj1 = LogisticScore(x, y, fu1, w=w)
+        fu = fu1
+        ll = ep * l1Cost
+        fu = np.sign(fu) * np.maximum(np.fabs(fu) - ll, 0)
+        if np.fabs(fu-fuOld).max() < 1e-8:
+            break
+        #print 'Iteration ', k, ': ',  pointSets.LogisticScore(self.fvDef, self.fv1, fu), ' ep: ', ep
+    return fu

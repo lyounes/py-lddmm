@@ -65,7 +65,7 @@ def runLongitudinalSurface(template, targetList, minL=3, atrophy=False, splines=
                                         affine='euclidean', testGradient=True, affineWeight=.1,  maxIter_cg=50, maxIter_al=50, mu=0.0001)
         elif splines:
             f = match.SurfaceMatching(Template=fv0, Targets=fv, outputDir=outputDir, param=sm, regWeight=.1,
-                                      affine='none', typeRegression='splines2',
+                                      affine='none', typeRegression='geodesic',
                                       testGradient=False, affineWeight=.1,  maxIter=1000)
         else:
             f = match.SurfaceMatching(Template=fv0, Targets=fv, outputDir=outputDir, param=sm, regWeight=.1,
@@ -87,11 +87,11 @@ if __name__=="__main__":
     args = parser.parse_args()
 
     if len(args.template) == 0:
-        template = '/cis/home/younes/MorphingData/sculptris/AtrophyLargeNoise/baseline.vtk'
+        template = '/Users/younes/Development/Data/sculptris/AtrophyLargeNoise/baseline.vtk'
         targetList = []
         for k in range(1,11,3):
-            targetList.append('/cis/home/younes/MorphingData/sculptris/AtrophyLargeNoise/followUp'+str(k)+'.vtk')
-        resultDir = '/Users/younes/Development/Results/TimeSeriesSimulationSplines'
+            targetList.append('/Users/younes/Development/Data/sculptris/AtrophyLargeNoise/followUp'+str(k)+'.vtk')
+        resultDir = '/Users/younes/Development/Results/TimeSeriesSimulationLDDMM'
     else:
         template = args.template
         targetList = args.targetList
@@ -104,4 +104,4 @@ if __name__=="__main__":
     #Results: '/cis/home/younes/Results/biocardTS/withAtrophyRerun'
     
     
-    runLongitudinalSurface(template, targetList, atrophy=False, splines=True, resultDir=resultDir)
+    runLongitudinalSurface(template, targetList, atrophy=False, splines=False, resultDir=resultDir)
