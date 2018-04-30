@@ -88,10 +88,10 @@ subroutine shoot1orderlocal(x0, alpha, y0, nu0, a, b, sig, ord, neighbors, num_n
             dnu=0
             djac = 0
             do l=1, numx, 1
-                i0 = 0
+                i0 = 1
                 do j = 1, dimx, 1
                     ut = 0
-                    do jj =1, num_neighbors(j), 1
+                    do jj =0, num_neighbors(j)-1, 1
                         ut = ut + (xt(k,neighbors(i0+jj)) - xt(l,neighbors(i0+jj)))**2
                     end do
                     ut = sqrt(ut)/sig
@@ -170,10 +170,10 @@ subroutine shoot1orderlocal(x0, alpha, y0, nu0, a, b, sig, ord, neighbors, num_n
         do k = 1, numy, 1
             dy=0
             do l=1, numx, 1
-                i0 = 0
+                i0 = 1
                 do j = 1, dimx, 1
                     ut = 0
-                    do jj =1, num_neighbors(j), 1
+                    do jj =0, num_neighbors(j)-1, 1
                         ut = ut + (yt(k,neighbors(i0+jj)) - xt(l,neighbors(i0+jj)))**2
                     end do
                     ut = sqrt(ut)/sig
@@ -193,6 +193,7 @@ subroutine shoot1orderlocal(x0, alpha, y0, nu0, a, b, sig, ord, neighbors, num_n
                         end if
                     end if
                     dy(j) = dy(j) + Kv*alphat(l, j)
+                    i0 = i0 + num_neighbors(j)
 
                 end do !j
             end do !l
@@ -263,10 +264,10 @@ subroutine adjoint1orderlocal(xt, alpha, px1, a, sig, ord, neighbors, num_neighb
         do k = 1, numx, 1
             dpx=0
             do l=1, numx, 1
-                i0 = 0
+                i0 = 1
                 do j = 1, dimx, 1
                     ut = 0
-                    do jj =1, num_neighbors(j), 1
+                    do jj =0, num_neighbors(j)-1, 1
                         ut = ut + (xtt(k,neighbors(i0+jj)) - xtt(l,neighbors(i0+jj)))**2
                     end do
                     ut = sqrt(ut)/sig
@@ -287,7 +288,7 @@ subroutine adjoint1orderlocal(xt, alpha, px1, a, sig, ord, neighbors, num_neighb
                     end if
                     ut = 2*Kv_diff * (pxt(k,j)*alphat(l, j) + pxt(l, j)*alphat(k, j)&
                                 - 2*regweight*alphat(k,j)*alphat(l, j))
-                    do jj =1, num_neighbors(j), 1
+                    do jj =0, num_neighbors(j)-1, 1
                         ii = neighbors(i0+jj)
                         dpx(ii) = dpx(ii) + ut * (xtt(k,ii) - xtt(l,ii))
                     end do !jj

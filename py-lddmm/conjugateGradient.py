@@ -75,6 +75,10 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01):
     while it < maxIter:
         if it % restartRate == 0:
             skipCG = 1
+        if hasattr(opt, 'reset') and opt.reset:
+            opt.obj = None
+            obj = opt.objectiveFun()
+            opt.reset = False
 
         if hasattr(opt, 'startOfIteration'):
             opt.startOfIteration()
