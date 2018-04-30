@@ -106,6 +106,8 @@ def  savelmk(x, filename):
         
 # Saves in .vtk format
 def savePoints(fileName, x, vector=None, scalars=None):
+    if x.shape[1] <3:
+        x = np.concatenate((x, np.zeros((x.shape[0],3-x.shape[1]))), axis=1)
     with open(fileName, 'w') as fvtkout:
         fvtkout.write('# vtk DataFile Version 3.0\nSurface Data\nASCII\nDATASET UNSTRUCTURED_GRID\n') 
         fvtkout.write('\nPOINTS {0: d} float'.format(x.shape[0]))
@@ -203,59 +205,89 @@ def classScoreGradient(xDef, c1, u = None):
         u = np.ones((xDef.shape[1],1))
     return -c1*np.exp(-np.dot(xDef,u)*c1) * u.T
 
-def LogisticScore(xDef, c1, u, w = None):
+def LogisticScore(xDef, c1, u, w = None, intercept=True):
     if w is None:
         w = np.ones((xDef.shape[0],1))
-    gu = np.dot(xDef,u)
-    res = (np.ravel(w)*(- gu[np.arange(gu.shape[0])[:,np.newaxis],c1].sum(axis=1) + np.log(np.exp(gu).sum(axis=1)))).sum()
+    if intercept:
+        xDef1 = np.concatenate((np.ones((xDef.shape[0], 1)), xDef), axis=1)
+        gu = np.dot(xDef1,u)
+    else:
+        gu = np.dot(xDef, u)
+    res = (np.ravel(w) * (- gu[np.arange(gu.shape[0])[:, np.newaxis], c1].sum(axis=1) + np.log(np.exp(gu).sum(axis=1)))).sum()
     return res
 
-def LogisticScoreGradient(xDef, c1, u, w = None):
+def LogisticScoreGradient(xDef, c1, u, w = None, intercept=True):
     if w is None:
         w = np.ones((xDef.shape[0],1))
-    gu = np.exp(np.dot(xDef,u))
-    pu = gu/gu.sum(axis=1)[:,np.newaxis]
-    m = np.dot(pu, u.T)
-    return (-u[np.arange(u.shape[0]), c1] +m)*w
+    if intercept:
+        xDef1 = np.concatenate((np.ones((xDef.shape[0], 1)), xDef), axis=1)
+        gu = np.exp(np.dot(xDef1, u))
+        pu = gu/gu.sum(axis=1)[:,np.newaxis]
+        m = np.dot(pu, u[np.arange(1,u.shape[0]),:].T)
+        return (-u[np.arange(1,u.shape[0]), c1] +m)*w
+    else:
+        gu = np.exp(np.dot(xDef, u))
+        pu = gu/gu.sum(axis=1)[:,np.newaxis]
+        m = np.dot(pu, u.T)
+        return (-u[np.arange(u.shape[0]), c1] +m)*w
 
-def LogisticScoreGradientInU(xDef, c1, u, w=None):
+def LogisticScoreGradientInU(xDef, c1, u, w=None, intercept=True):
     if w is None:
         w = np.ones((xDef.shape[0],1))/xDef.shape[0]
-    gu = np.exp(np.dot(xDef,u))
-    pu = gu/gu.sum(axis=1)[:, np.newaxis]
-    wxDef = w*xDef
-    r = np.dot((wxDef).T, pu)
-    grad = np.zeros(u.shape)
-    for k in range(1, u.shape[1]):
-        grad[:,k] = - (wxDef)[np.ravel(c1)==k,:].sum(axis=0) + r[:,k]
+    if intercept:
+        xDef1 = np.concatenate((np.ones((xDef.shape[0], 1)), xDef), axis=1)
+        gu = np.exp(np.dot(xDef1,u))
+        pu = gu/gu.sum(axis=1)[:, np.newaxis]
+
+        wxDef = w*xDef1
+        r = np.dot((wxDef).T, pu)
+        grad = np.zeros(u.shape)
+        for k in range(1, u.shape[1]):
+            grad[:,k] = - (wxDef)[np.ravel(c1)==k,:].sum(axis=0) + r[:,k]
+    else:
+        gu = np.exp(np.dot(xDef, u))
+        pu = gu / gu.sum(axis=1)[:, np.newaxis]
+
+        wxDef = w * xDef
+        r = np.dot((wxDef).T, pu)
+        grad = np.zeros(u.shape)
+        for k in range(1, u.shape[1]):
+            grad[:, k] = - (wxDef)[np.ravel(c1) == k, :].sum(axis=0) + r[:, k]
     return grad
 
-def learnLogistic(x, y, w=None, u0=None, l1Cost = 0):
+def learnLogistic(x, y, w=None, u0=None, l1Cost = 0, intercept=True, random = 1.):
     J1 = []
     dim = x.shape[1]
     nclasses = y.max()+1
     for k in range(nclasses):
         J1.append(y == k)
     if u0 is None:
-        fu = np.zeros((dim, nclasses))
+        if intercept:
+            fu = np.zeros((dim+1, nclasses))
+        else:
+            fu = np.zeros((dim, nclasses))
     else:
         fu = u0
+    J = np.random.rand(x.shape[0]) < random
+    x0 = x[J,:]
+    y0 = y[J]
+    w0 = w[J]
     for k in range(1000):
         fuOld = fu
-        obj0 = LogisticScore(x, y, fu, w=w)
-        g = LogisticScoreGradientInU(x, y, fu, w=w)
+        obj0 = LogisticScore(x0, y0, fu, w=w0, intercept=intercept)
+        g = LogisticScoreGradientInU(x0, y0, fu, w=w0, intercept=intercept)
         # ep = 1e-8
-        # fu1 = fu - ep * g
-        # obj1 = pointSets.LogisticScore(self.fvDef, self.fv1, fu1, w=self.wTr)
+        # fu1 = fu + ep * g
+        # obj1 = LogisticScore(x, y, fu1, w=w)
         # print (obj1-obj0)/ep, (g**2).sum()
 
         ep = .01
         fu1 = fu - ep * g
-        obj1 = LogisticScore(x, y, fu1, w=w)
+        obj1 = LogisticScore(x0, y0, fu1, w=w0, intercept=intercept)
         while obj1 > obj0:
             ep /= 2
             fu1 = fu - ep * g
-            obj1 = LogisticScore(x, y, fu1, w=w)
+            obj1 = LogisticScore(x0, y0, fu1, w=w0, intercept=intercept)
         fu = fu1
         ll = ep * l1Cost
         fu = np.sign(fu) * np.maximum(np.fabs(fu) - ll, 0)
