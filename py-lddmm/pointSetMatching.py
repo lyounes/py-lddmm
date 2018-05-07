@@ -285,7 +285,7 @@ class PointSetMatching(object):
 
     def dataTerm(self, _fvDef, _fvInit = None):
         if self.param.errorType == 'classification':
-            obj = pointSets.LogisticScore(_fvDef, self.fv1, self.u, w=self.wTr, intercept=self.intercept) \
+            obj = pointSets.LogisticScore(_fvDef, self.fv1, self.u, w=self.wTr, intercept=self.intercept, l1Cost=self.l1Cost) \
                   / (self.param.sigmaError**2)
             #obj = pointSets.LogisticScore(_fvDef, self.fv1, self.u) / (self.param.sigmaError**2)
         else:
@@ -946,7 +946,7 @@ if __name__=="__main__":
         N0 = len(images)
         d = len(images[0])
         NTr = 1500
-        NTe = 1500 #len(imTest)
+        NTe = 2000 #len(imTest)
         cls = [3,5,8]
         x0Tr = np.zeros((NTr,d))
         x1Tr = np.zeros((NTr,1), dtype=int)
@@ -962,8 +962,12 @@ if __name__=="__main__":
             NTr = kk
             x0Tr = x0Tr[0:NTr,:]
             x1Tr = x1Tr[0:NTr]
-        pca = PCA(n_components=0.95)
-        x0Tr = pca.fit_transform(x0Tr)
+        #std = np.std(x0Tr, axis=0)
+        #print sum(std > 0.05)
+        #pca = PCA(n_components=0.90)
+        #x0Tr = pca.fit_transform(x0Tr)
+        #x0Tr = x0Tr / np.sqrt(pca.singular_values_)
+        #x0Tr = x0Tr[:,std>0.05]
 
         x0Te = np.zeros((NTe, d))
         x1Te = np.zeros((NTe,1), dtype=int)
@@ -979,9 +983,14 @@ if __name__=="__main__":
             NTe = kk
             x0Te = x0Te[0:NTe,:]
             x1Te = x1Te[0:NTe]
-        x0Te = pca.transform(x0Te)
-        sigma = 5.
-        l1Cost = 1.
+        #x0Te = pca.transform(x0Te) #/np.sqrt(pca.singular_values_)
+        #x0Te = x0Te[:,std>0.05]
+        sigma = 2.5
+        l1Cost = 0.5
+        sigError = 0.005
+        addDim = 0
+        #pca.inverse_transform(x0Tr).tofile(outputDir + '/mnistOutTrain.txt')
+        #pca.inverse_transform(x0Te).tofile(outputDir + '/mnistOutTest.txt')
     elif typeData == 'Dolls':
         d = 3
         NTr = 100
@@ -1176,6 +1185,11 @@ if __name__=="__main__":
 
         fl.write('Initial: '+testInit.__repr__())
         fl.write('Final: ' +f.testError.__repr__())
+    if typeData=='MNIST':
+        pca.inverse_transform(f.fvDef[:,0:f.fvDef.shape[1]- addDim]).tofile(outputDir + '/mnistOutTrainDef.txt')
+        pca.inverse_transform(f.testDef[:,0:f.fvDef.shape[1]- addDim]).tofile(outputDir + '/mnistOutTestDef.txt')
+
+
 
     plt.pause(1000)
 
