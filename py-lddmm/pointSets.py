@@ -205,7 +205,7 @@ def classScoreGradient(xDef, c1, u = None):
         u = np.ones((xDef.shape[1],1))
     return -c1*np.exp(-np.dot(xDef,u)*c1) * u.T
 
-def LogisticScore(xDef, c1, u, w = None, intercept=True):
+def LogisticScore(xDef, c1, u, w = None, intercept=True, l1Cost=0):
     if w is None:
         w = np.ones((xDef.shape[0],1))
     if intercept:
@@ -214,7 +214,7 @@ def LogisticScore(xDef, c1, u, w = None, intercept=True):
     else:
         gu = np.dot(xDef, u)
     res = (np.ravel(w) * (- gu[np.arange(gu.shape[0])[:, np.newaxis], c1].sum(axis=1) + np.log(np.exp(gu).sum(axis=1)))).sum()
-    return res
+    return res + l1Cost*np.fabs(u).sum()
 
 def LogisticScoreGradient(xDef, c1, u, w = None, intercept=True):
     if w is None:
