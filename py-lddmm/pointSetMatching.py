@@ -605,7 +605,7 @@ class PointSetMatching(object):
                 xRes = np.dot(self.fvDef, U)
                 if self.nclasses < 4:
                     xTr3 = xRes[:, 0:self.nclasses-1]
-                    xRes = xRes[:,self.nclasses:self.dim]
+                    xRes = xRes[:,self.nclasses-1:self.dim]
                         #np.dot(np.concatenate((xTr3,np.zeros((xTr3.shape[0], self.dim-self.nclasses+1))),axis=1), U)
                     if xRes.shape[1] > 4-self.nclasses:
                         pca = PCA(4-self.nclasses)
@@ -629,12 +629,12 @@ class PointSetMatching(object):
                     self.testError.logistic = test_err
                     logging.info('Testing Error {0:0f}'.format(test_err))
                     xRes = np.dot(x0Te, U)
-                    if self.nclasses < 3:
+                    if self.nclasses < 4:
                         xTe3 = xRes[:, 0:self.nclasses - 1]
-                        if xRes.shape[1] > 4:
-                            xRes = pca.transform(xRes[:, self.nclasses:xRes.shape[1]])
+                        if xRes.shape[1] > 3:
+                            xRes = pca.transform(xRes[:, self.nclasses-1:xRes.shape[1]])
                         else:
-                            xRes = xRes[:, self.nclasses:xRes.shape[1]]
+                            xRes = xRes[:, self.nclasses-1:xRes.shape[1]]
                         xTe3 = np.concatenate((xTe3, xRes), axis=1)
                     else:
                         xTe3 = xRes[:, 0:3]
@@ -697,9 +697,9 @@ class PointSetMatching(object):
                     if self.nclasses < 4:
                         x3 = xRes[:, 0:self.nclasses - 1]
                         if xRes.shape[1] > 4:
-                            xRes = pca.transform(xRes[:, self.nclasses:xRes.shape[1]])
+                            xRes = pca.transform(xRes[:, self.nclasses-1:xRes.shape[1]])
                         else:
-                            xRes = xRes[:, self.nclasses:xRes.shape[1]]
+                            xRes = xRes[:, self.nclasses-1:xRes.shape[1]]
                         x3 = np.concatenate((x3, xRes), axis=1)
                     else:
                         x3 = xRes[:, 0:3]
@@ -712,9 +712,9 @@ class PointSetMatching(object):
                         if self.nclasses < 4:
                             x3 = xRes[:, 0:self.nclasses - 1]
                             if xRes.shape[1] > 4:
-                                xRes = pca.transform(xRes[:, self.nclasses:xRes.shape[1]])
+                                xRes = pca.transform(xRes[:, self.nclasses-1:xRes.shape[1]])
                             else:
-                                xRes = xRes[:, self.nclasses:xRes.shape[1]]
+                                xRes = xRes[:, self.nclasses-1:xRes.shape[1]]
                             x3 = np.concatenate((x3, xRes), axis=1)
                         else:
                             x3 = xRes[:, 0:3]
@@ -788,17 +788,17 @@ if __name__=="__main__":
     sigError = 0.01
     addDim = 0
     #typeData = 'Dolls'
-    typeData = 'Segments'
+    typeData = 'helixes'
     localMaps = None
     removeNullDirs = False
     relearnRate = 1
     u0 = None
 
     if typeData == 'helixes':
-        NTr = 100
+        NTr = 1000
         NTe = 2000
-        d = 3
-        h = 0
+        d = 20
+        h = 0.25
         x0Tr = 0.05*np.random.randn(2*NTr,d)
         x0Te = 0.05*np.random.randn(2*NTe,d)
         #x1 = np.random.randn(100,2)
@@ -807,35 +807,39 @@ if __name__=="__main__":
         x1Tr[NTr:2*NTr] = 0
         x1Te[NTe:2*NTe] = 0
         t = 2*np.pi*np.random.rand(NTr)
-        x0Tr[0:NTr,0] += np.cos(t)
-        x0Tr[0:NTr,1] += np.sin(t)
-        x0Tr[0:NTr,2] += h*t
+        s = 2*np.pi*np.random.rand(NTr)
+        x0Tr[0:NTr,0] += np.cos(t) + h*np.cos(s)
+        x0Tr[0:NTr,1] += np.sin(t) + h*np.cos(s)
+        x0Tr[0:NTr,2] += h*np.sin(s)
 
         t = 2*np.pi*np.random.rand(NTe)
-        x0Te[0:NTe,0] += np.cos(t)
-        x0Te[0:NTe,1] += np.sin(t)
-        x0Te[0:NTe,2] += h*t
+        s = 2*np.pi*np.random.rand(NTe)
+        x0Te[0:NTe,0] += np.cos(t) + h*np.cos(s)
+        x0Te[0:NTe,1] += np.sin(t) + h*np.cos(s)
+        x0Te[0:NTe,2] += h*np.sin(s)
 
         t = 2*np.pi*np.random.rand(NTr)
-        x0Tr[NTr:2*NTr,0] += h*t
-        x0Tr[NTr:2*NTr,1] += 1 + np.cos(t)
-        x0Tr[NTr:2*NTr,2] += np.sin(t)
+        s = 2*np.pi*np.random.rand(NTr)
+        x0Tr[NTr:2*NTr,0] += h*np.sin(s)
+        x0Tr[NTr:2*NTr,1] += 1 + np.cos(t) + h*np.cos(s)
+        x0Tr[NTr:2*NTr,2] += np.sin(t) + h*np.cos(s)
 
         t = 2*np.pi*np.random.rand(NTe)
-        x0Te[NTe:2*NTe,0] += h*t
-        x0Te[NTe:2*NTe,1] += 1 + np.cos(t)
-        x0Te[NTe:2*NTe,2] += np.sin(t)
+        s = 2*np.pi*np.random.rand(NTe)
+        x0Te[NTe:2*NTe,0] += h*np.sin(s)
+        x0Te[NTe:2*NTe,1] += 1 + np.cos(t) + h*np.cos(s)
+        x0Te[NTe:2*NTe,2] += np.sin(t) + h*np.cos(s)
 
         x0Tr[:, 3:d] += 1.*np.random.randn(2*NTr,d-3)
         x0Te[:, 3:d] += 1.*np.random.randn(2*NTe,d-3)
         A = np.random.randn(d,d)
         R = la.expm((A-A.T)/2)
-        x0Tr = np.dot(x0Tr, R)
-        x0Te = np.dot(x0Te, R)
+        #x0Tr = np.dot(x0Tr, R)
+        #x0Te = np.dot(x0Te, R)
         sigma = 2.5
-        addDim = 1
+        addDim = 0
         l1Cost = 2.
-        #localMaps = PointSetMatching().localMaps1D(d)
+        localMaps = PointSetMatching().localMaps1D(d)
         #u0 = np.random.randn(d+1, 2)
         #removeNullDirs = False
     elif typeData == 'csv1':
@@ -904,12 +908,12 @@ if __name__=="__main__":
         NTe = 2000
         N = NTr + NTe
         d = 10
-        Cov0 = np.eye(d)/2
+        Cov0 = np.eye(d)
         m0 = np.concatenate((np.ones(3), np.zeros(d - 3)))
         q = np.arange(0, 1, 1.0 / d)
         Cov1 = 2*np.exp(-np.abs(q[:,np.newaxis]-q[np.newaxis,:]))
         #Cov1 = np.eye(d)
-        Cov2 = np.exp(-np.abs(q[:,np.newaxis]-q[np.newaxis,:])/3.)
+        Cov2 = 2*np.exp(-np.abs(q[:,np.newaxis]-q[np.newaxis,:])/3.)
         #Cov2 = np.eye(d)
         m1 = np.concatenate((-np.ones(3), np.zeros(d - 3)))
         m2 = np.concatenate((-np.array([1,-1,1]), np.zeros(d - 3)))
@@ -933,7 +937,7 @@ if __name__=="__main__":
         x0Te = np.dot(x0Te, R)
         l1Cost = 2.0
         sigma = 2.5
-        addDim = 0
+        addDim = 2
         sigError = .01
     elif typeData=='MNIST':
         mndata = MNIST('/cis/home/younes/MNIST')
@@ -1034,7 +1038,7 @@ if __name__=="__main__":
         NTe = 1000
         N = NTr + NTe
         d = 10
-        Cov0 = np.eye(d)
+        Cov0 = 2*np.eye(d)
         m0 = np.concatenate((np.ones(3), np.zeros(d-3)))
         q = np.arange(0,1,1.0/d)
         Cov1 = 2*np.exp(-np.abs(q[:,np.newaxis]-q[np.newaxis,:]))
