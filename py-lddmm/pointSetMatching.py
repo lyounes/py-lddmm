@@ -15,6 +15,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neural_network import MLPClassifier
 import scipy.stats as stats
 import matplotlib.pyplot as plt
 import pygraph
@@ -30,9 +31,10 @@ class TestErrors:
         self.SVM = 1.
         self.RF = 1.
         self.logistic = 1
+        self.mlp = 1
     def __repr__(self):
-        rates = 'logistic: {0:f}, linSVM: {1:f}, SVM: {2:f}, RF: {3:f}, kNN: {4:f}\n'.format(self.logistic,
-                                        self.linSVM, self.SVM, self.RF, self.knn)
+        rates = 'logistic: {0:f}, linSVM: {1:f}, SVM: {2:f}, RF: {3:f}, kNN: {4:f}, MLP {5:f}\n'.format(self.logistic,
+                                        self.linSVM, self.SVM, self.RF, self.knn, self.mlp)
         return rates
 
 
@@ -91,7 +93,7 @@ class PointSetMatching(object):
     def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000,
                  regWeight = 1.0, affineWeight = 1.0, verb=True, testSet = None, addDim = 0, intercept=True,
                  u0 = None, normalizeInput = True, l1Cost = 0, relearnRate = 1,
-                 rotWeight = None, scaleWeight = None, transWeight = None,
+                 rotWeight = None, scaleWeight = None, transWeight = None, randomInit = 0,
                  testGradient=True, saveFile = 'evolution',
                  saveTrajectories = False, affine = 'none', outputDir = '.',pplot=True):
         if param is None:
@@ -162,7 +164,7 @@ class PointSetMatching(object):
         # self.u[0:2] = 1/np.sqrt(2.)
 
         self.Tsize = int(round(1.0/self.param.timeStep))
-        self.at = np.random.normal(0, 0.01, [self.Tsize, self.x0.shape[0], self.x0.shape[1]])
+        self.at = np.random.normal(0, randomInit, [self.Tsize, self.x0.shape[0], self.x0.shape[1]])
         self.atTry = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
         self.Afft = np.zeros([self.Tsize, self.affineDim])
         self.AfftTry = np.zeros([self.Tsize, self.affineDim])
@@ -200,6 +202,7 @@ class PointSetMatching(object):
                 self.u = self.learnLogistic()
             else:
                 self.u = u0
+            #print self.u
             print "Non-negative coefficients", (np.fabs(self.u).sum(axis=1) > 1e-10).sum()
             if self.intercept:
                 xDef1 = np.concatenate((np.ones((self.fvDef.shape[0], 1)), self.fvDef), axis=1)
@@ -396,7 +399,7 @@ class PointSetMatching(object):
 
     def endPointGradient(self):
         if self.param.errorType == 'classification':
-            px = pointSets.LogisticScoreGradient(self.fvDef, self.fv1, self.u, w=self.wTr, intercept=self.intercept)
+            px = pointSets.LogisticScoreGradient(self.fvDef, self.fv1, self.u, w=self.wTr, intercept=self.intercept, l1Cost=self.l1Cost)
             #px = pointSets.LogisticScoreGradient(self.fvDef, self.fv1, self.u)
         else:
             px = self.param.fun_objGrad(self.fvDef, self.fv1)
@@ -598,13 +601,17 @@ class PointSetMatching(object):
 
                 if self.intercept:
                     ofs = 1
+                    b = 0
+                    #b = -self.u[0,:]/(self.u[1:self.dim+1, :]**2).sum(axis=0)
                 else:
                     ofs = 0
+                    b = 0
 
                 U,S,V = la.svd(self.u[ofs:self.dim+ofs,:])
+
                 xRes = np.dot(self.fvDef, U)
                 if self.nclasses < 4:
-                    xTr3 = xRes[:, 0:self.nclasses-1]
+                    xTr3 = xRes[:, 0:self.nclasses-1] - b
                     xRes = xRes[:,self.nclasses-1:self.dim]
                         #np.dot(np.concatenate((xTr3,np.zeros((xTr3.shape[0], self.dim-self.nclasses+1))),axis=1), U)
                     if xRes.shape[1] > 4-self.nclasses:
@@ -612,7 +619,7 @@ class PointSetMatching(object):
                         xRes = pca.fit_transform(xRes)
                     xTr3 = np.concatenate((xTr3, xRes), axis=1)
                 else:
-                    xTr3 = xRes[:, 0:3]
+                    xTr3 = xRes[:, 0:3] - b[0:3]
                 if self.testSet is not None:
                     testRes = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, withPointSet=self.testSet[0])
                     x0Tr = self.fvDef
@@ -630,14 +637,14 @@ class PointSetMatching(object):
                     logging.info('Testing Error {0:0f}'.format(test_err))
                     xRes = np.dot(x0Te, U)
                     if self.nclasses < 4:
-                        xTe3 = xRes[:, 0:self.nclasses - 1]
+                        xTe3 = xRes[:, 0:self.nclasses - 1] - b
                         if xRes.shape[1] > 3:
                             xRes = pca.transform(xRes[:, self.nclasses-1:xRes.shape[1]])
                         else:
                             xRes = xRes[:, self.nclasses-1:xRes.shape[1]]
                         xTe3 = np.concatenate((xTe3, xRes), axis=1)
                     else:
-                        xTe3 = xRes[:, 0:3]
+                        xTe3 = xRes[:, 0:3] - b[0:3]
                     clf = svm.SVC(class_weight='balanced')
                     clf.fit(x0Tr, np.ravel(x1Tr))
                     yTr = clf.predict(x0Tr)
@@ -665,6 +672,14 @@ class PointSetMatching(object):
                     yTe = clf.predict(x0Te)
                     self.testError.knn = np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(self.wTe)) / self.swTe
                     logging.info('kNN prediction: {0:f} {1:f}'.format(np.sum(np.not_equal(yTr, np.ravel(x1Tr)) * np.ravel(self.wTr)) / self.swTr, \
+                        np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(self.wTe)) / self.swTe))
+
+                    clf = MLPClassifier(max_iter=10000)
+                    clf.fit(x0Tr, np.ravel(x1Tr))
+                    yTr = clf.predict(x0Tr)
+                    yTe = clf.predict(x0Te)
+                    self.testError.mlp = np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(self.wTe)) / self.swTe
+                    logging.info('MLP prediction: {0:f} {1:f}'.format(np.sum(np.not_equal(yTr, np.ravel(x1Tr)) * np.ravel(self.wTr)) / self.swTr, \
                         np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(self.wTe)) / self.swTe))
 
                 if self.pplot:
@@ -729,10 +744,10 @@ class PointSetMatching(object):
             logging.info('Resetting weights: delta u = {0:f}, norm u = {1:f} '.format(np.sqrt(((self.u - u0) ** 2).sum()),
                                                                                       np.sqrt(((self.u) ** 2).sum())))
             self.reset = True
-            # print self.obj
+            # logging.info('Before {0:f}'.format(self.obj))
             # self.obj = None
             # self.obj = self.objectiveFun()
-            # print self.obj
+            # logging.info('After {0:f}'.format(self.obj))
 
     def endOfProcedure(self):
         self.endOfIteration(endP=True)
@@ -747,6 +762,7 @@ class PointSetMatching(object):
         self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
         logging.info('Gradient lower bound: %f' %(self.gradEps))
         self.coeffAff = self.coeffAff1
+        #self.restartRate = self.relearnRate
         cg.cg(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
         #return self.at, self.xt
 
@@ -755,10 +771,8 @@ class PointSetMatching(object):
                                        intercept=self.intercept, random=random)
 
     def localMaps1D(self, d):
-        KL1 = 3*np.ones(d, dtype=int)
-        KL1[0] = 2
-        KL1[-1] = 2
-        KL0 = np.zeros(KL1.sum(), dtype=int)
+        KL1 = np.arange(0, d, dtype=int)
+        KL0 = np.zeros(4*d-2, dtype=int)
         ii = 0
         for i in range(d):
             if i>0:
@@ -769,12 +783,57 @@ class PointSetMatching(object):
             if i<d-1:
                 KL0[ii] = i+1
                 ii += 1
+            KL0[ii] = -1
+            if i < d-1:
+                ii += 1
+        return (KL0, KL1)
+
+    def localMapsCircle(self, d):
+        KL1 = np.arange(0, d, dtype=int)
+        KL0 = np.zeros(4*d, dtype=int)
+        ii = 0
+        for i in range(d):
+            KL0[ii] = (i-1)%d
+            ii += 1
+            KL0[ii] = i
+            ii += 1
+            KL0[ii] = (i+1)%d
+            ii += 1
+            KL0[ii] = -1
+            if i < d-1:
+                ii += 1
         return (KL0, KL1)
 
     def localMapsNaive(self, d):
-        KL1 = np.ones(d, dtype=int)
-        KL0 = np.arange(d, dtype=int)
+        KL1 = np.arange(0, d, dtype=int)
+        KL0 = np.zeros(2*d, dtype=int)
+        ii = 0
+        for i in range(d):
+            KL0[ii] = i
+            ii += 1
+            KL0[ii] = -1
+            if i < d-1:
+                ii += 1
+
         return (KL0, KL1)
+
+    def localMapsPredict(self, d, i0):
+        KL1 = np.zeros(d, dtype=int)
+        KL0 = np.zeros(2*d + 1, dtype=int)
+        ii = 0
+        for i in range(d):
+            if i != i0:
+                KL0[ii] = i
+                ii += 1
+            else:
+                KL1[i] = 1
+        KL0[ii] = -1
+        ii += 1
+        for i in range(d):
+            KL0[ii] = i
+            ii += 1
+        KL0[ii] = -1
+
 
 if __name__=="__main__":
 
@@ -787,8 +846,8 @@ if __name__=="__main__":
     sigma = 1.
     sigError = 0.01
     addDim = 0
-    #typeData = 'Dolls'
-    typeData = 'helixes'
+    #typeData = 'TwoSegments'
+    typeData = 'RBF'
     localMaps = None
     removeNullDirs = False
     relearnRate = 1
@@ -834,12 +893,16 @@ if __name__=="__main__":
         x0Te[:, 3:d] += 1.*np.random.randn(2*NTe,d-3)
         A = np.random.randn(d,d)
         R = la.expm((A-A.T)/2)
-        #x0Tr = np.dot(x0Tr, R)
-        #x0Te = np.dot(x0Te, R)
-        sigma = 2.5
-        addDim = 0
-        l1Cost = 2.
-        localMaps = PointSetMatching().localMaps1D(d)
+        x0Tr = np.dot(x0Tr, R)
+        x0Te = np.dot(x0Te, R)
+        sigma = 1.
+        addDim = 1
+        l1Cost = np.log10(NTr)
+        sigError = 0.01
+        #localMaps = PointSetMatching().localMapsPredict(d+addDim, d)
+        #relearnRate = 10000
+        #u0 = np.zeros((d+2,2))
+        #u0[d+1,1] = 5
         #u0 = np.random.randn(d+1, 2)
         #removeNullDirs = False
     elif typeData == 'csv1':
@@ -855,13 +918,15 @@ if __name__=="__main__":
         J2 = np.random.random(I2.size)
         x0Tr = np.concatenate((x0[I1[J1>0.33],:], x0[I2[J2>0.33],:]))
         x0Te = np.concatenate((x0[I1[J1<0.33],:], x0[I2[J2<0.33],:]))
+        NTr = x0Tr.shape[0]
+        NTe = x0Te.shape[0]
         x1Tr = np.concatenate((x1[I1[J1>0.33]], x1[I2[J2>0.33]]))[:, np.newaxis]
         x1Te = np.concatenate((x1[I1[J1<0.33]], x1[I2[J2<0.33]]))[:, np.newaxis]
         d = x0Tr.shape[1]
-        sigma = 2.5
+        sigma = 1.
         addDim = 0
         l1Cost = 1.
-        #localMaps = PointSetMatching().localMapsNaive(d)
+        #localMaps = PointSetMatching().localMapsNaive(d+1)
         relearnRate = 1
         removeNullDirs = False
         # xTmp = np.zeros((x0Tr.shape[0],2*d))
@@ -876,13 +941,13 @@ if __name__=="__main__":
         d = 10
         d1 = 10
         nc = 20
-        NTr = 1000
+        NTr = 100
         NTe = 2000
         #centers = np.random.normal(0, 1, (nc, d))
         centers = np.zeros((nc, d))
         c = np.zeros(nc)
         for k in range(nc):
-            centers[k,k%d] = k / float(nc)
+            centers[k,k%d] = 0.5*k / float(nc)
             c[k] = (2*(k%1.5) - 0.75)
         #c = (2*np.random.random(nc) -1)
         x0Tr = np.random.normal(0,1, (NTr,d))
@@ -897,8 +962,8 @@ if __name__=="__main__":
         #x0Tr = np.concatenate((x0Tr,0.5*np.random.normal(0,1,(NTr,d1))), axis=1)
         #x0Te = np.concatenate((x0Te,0.5*np.random.normal(0,1,(NTe,d1))), axis=1)
         #d += d1
-        l1Cost = 2.
-        sigma = 2.5
+        l1Cost = np.log10(NTr)
+        sigma = 1.
         sigError = 0.01
         addDim = 1
         #localMaps = PointSetMatching().localMaps1D(d)
@@ -993,7 +1058,7 @@ if __name__=="__main__":
         #pca.inverse_transform(x0Te).tofile(outputDir + '/mnistOutTest.txt')
     elif typeData == 'Dolls':
         d = 3
-        NTr = 100
+        NTr = 1000
         NTe = 2000
         x0Tr = np.random.multivariate_normal(np.zeros(d), np.eye(d), NTr)
         x0Te = np.random.multivariate_normal(np.zeros(d), np.eye(d), NTe)
@@ -1008,7 +1073,7 @@ if __name__=="__main__":
         removeNullDirs = False
         relearnRate = 1
     elif typeData == 'Segments':
-        NTr = 500
+        NTr = 1000
         NTe = 2000
         d = 100
         l0 = 10
@@ -1016,21 +1081,21 @@ if __name__=="__main__":
         x0Tr = np.zeros((2*NTr, d))
         x1Tr = np.zeros((2*NTr,1), dtype=int)
         x1Tr[NTr:2*NTr,0] = 1
-        start = np.random.randint(0, d+1-l0, NTr)
+        start = np.random.randint(0, d, NTr)
         for k in range(NTr):
-            x0Tr[k,start[k]:start[k]+l0] = 1
-        start = np.random.randint(0, d+1-l1, NTr)
+            x0Tr[k,np.arange(start[k], start[k]+l0)%d] = 1
+        start = np.random.randint(0, d, NTr)
         for k in range(NTr):
-            x0Tr[k+NTr,start[k]:start[k]+l1] = 1
+            x0Tr[k+NTr,np.arange(start[k], start[k]+l1)%d] = 1
         x0Te = np.zeros((2*NTe, d))
         x1Te = np.zeros((2*NTe,1), dtype=int)
         x1Te[NTe:2*NTe,0] = 1
-        start = np.random.randint(0, d+1-l0, NTe)
+        start = np.random.randint(0, d, NTe)
         for k in range(NTe):
-            x0Te[k,start[k]:start[k]+l0] = 1
-        start = np.random.randint(0, d+1-l1, NTe)
+            x0Te[k,np.arange(start[k], start[k]+l0)%d] = 1
+        start = np.random.randint(0, d, NTe)
         for k in range(NTe):
-            x0Te[k+NTe,start[k]:start[k]+l1] = 1
+            x0Te[k+NTe,np.arange(start[k], start[k]+l1)%d] = 1
         #x0Tr += 0.01 * np.random.randn(x0Tr.shape[0], x0Tr.shape[1])
         #x0Te += 0.01 * np.random.randn(x0Te.shape[0], x0Te.shape[1])
         x0Tr *= (1 + 0.25*np.random.randn(x0Tr.shape[0], 1))
@@ -1042,6 +1107,56 @@ if __name__=="__main__":
         removeNullDirs = False
 
         #localMaps = PointSetMatching().localMaps1D(d)
+    elif typeData == 'TwoSegments':
+        NTr = 100
+        NTe = 2000
+        d = 100
+        l0 = 10
+        l1 = 12
+        x0Tr = np.random.normal(0, 0.01, (2 * NTr, d))
+        x1Tr = np.zeros((2 * NTr, 1), dtype=int)
+        x1Tr[NTr:2 * NTr, 0] = 1
+        start = np.random.multinomial(d, size=NTr, pvals=[1/3.]*3)
+        for k in range(NTr):
+            flip = np.random.randint(0,2,size=1)
+            if flip:
+                x0Tr[k, np.arange(start[k,0], start[k,0] + 4)%d] = 1
+                x0Tr[k, np.arange(start[k, 0]+start[k,1]+5, start[k, 0]+start[k,1] + 11)%d] = 1
+            else:
+                x0Tr[k, np.arange(start[k, 0], start[k, 0] + 6)%d] = 1
+                x0Tr[k, np.arange(start[k, 0] + start[k, 1] + 7, start[k, 0] + start[k, 1] + 11)%d] = 1
+        start = np.random.multinomial(d-l0-1, size=NTr, pvals=[1/3.]*3)
+        for k in range(NTr):
+            x0Tr[k+NTr, np.arange(start[k, 0], start[k, 0] + 5)%d] = 1
+            x0Tr[k+NTr, np.arange(start[k, 0] + start[k, 1] + 6, start[k, 0] + start[k, 1] + 11)%d] = 1
+
+        x0Te = np.random.normal(0, 0.01, (2 * NTe, d))
+        #x0Te = np.zeros((2 * NTe, d))
+        x1Te = np.zeros((2 * NTe, 1), dtype=int)
+        x1Te[NTe:2 * NTe, 0] = 1
+        start = np.random.multinomial(d, size=NTe, pvals=[1/3.]*3)
+        for k in range(NTe):
+            flip = np.random.randint(0,2,size=1)
+            if flip:
+                x0Te[k, np.arange(start[k,0], start[k,0] + 4)%d] = 1
+                x0Te[k, np.arange(start[k, 0]+start[k,1]+5, start[k, 0]+start[k,1] + 11)%d] = 1
+            else:
+                x0Te[k, np.arange(start[k, 0], start[k, 0] + 6)%d] = 1
+                x0Te[k, np.arange(start[k, 0] + start[k, 1] + 7, start[k, 0] + start[k, 1] + 11)%d] = 1
+        start = np.random.multinomial(d, size=NTe, pvals=[1/3.]*3)-1
+        for k in range(NTe):
+            x0Te[k+NTe, np.arange(start[k, 0], start[k, 0] + 5)%d] = 1
+            x0Te[k+NTe, np.arange(start[k, 0] + start[k, 1] + 6, start[k, 0] + start[k, 1] + 11)%d] = 1
+
+        x0Tr *= (1 + 0.25 * np.random.randn(x0Tr.shape[0], 1))
+        x0Te *= (1 + 0.25 * np.random.randn(x0Te.shape[0], 1))
+        addDim = 1
+        sigma = 1.
+        l1Cost = .5
+        sigError = 0.01
+        removeNullDirs = False
+
+        #localMaps = PointSetMatching().localMapsCircle(d+1)
     else:
         NTr = 100
         NTe = 1000
@@ -1094,13 +1209,13 @@ if __name__=="__main__":
         x0Tr0 = x0Tr
         x0Te0 = x0Te
 
-    K1 = kfun.Kernel(name='laplacian', sigma=sigma, order=1)
+    K1 = kfun.Kernel(name='laplacian', sigma=sigma*np.sqrt(d), order=1)
     sm = PointSetMatchingParam(timeStep=0.1, KparDiff = K1, sigmaError=sigError*np.sqrt(NTr), errorType='classification')
 
 
     f = PointSetMatching(Template=x0Tr0, Target=x1Tr, outputDir=outputDir, param=sm, regWeight=1.,
                          saveTrajectories=True, pplot=True, testSet=(x0Te0, x1Te), addDim = addDim, u0=u0,
-                         normalizeInput=False, l1Cost = l1Cost, relearnRate=relearnRate,
+                         normalizeInput=False, l1Cost = l1Cost, relearnRate=relearnRate, randomInit=0.05,
                          affine='none', testGradient=False, affineWeight=1e3,
                          maxIter=1000)
 
@@ -1135,6 +1250,14 @@ if __name__=="__main__":
     yTe = clf.predict(x0Te)
     testInit.knn = np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(f.wTe)) / f.swTe
     print 'kNN prediction:', np.sum(np.not_equal(yTr, np.ravel(x1Tr)) * np.ravel(f.wTr)) / f.swTr, \
+        np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(f.wTe)) / f.swTe
+
+    clf = MLPClassifier(max_iter=10000)
+    clf.fit(x0Tr, np.ravel(x1Tr))
+    yTr = clf.predict(x0Tr)
+    yTe = clf.predict(x0Te)
+    testInit.mlp = np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(f.wTe)) / f.swTe
+    print 'MLP prediction:', np.sum(np.not_equal(yTr, np.ravel(x1Tr)) * np.ravel(f.wTr)) / f.swTr, \
         np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(f.wTe)) / f.swTe
 
     print testInit

@@ -329,7 +329,7 @@ class Kernel(KernelSpec):
                 if matrixWeights:
                     z = kff.applykmat(x, x, a, self.sigma, self.order, x.shape[0], x.shape[0], x.shape[1], a.shape[2])
                 elif self.localMaps:
-                    z = kff.applylocalk(x, x, a, self.sigma, self.order, 1+self.localMaps[0], self.localMaps[1],
+                    z = kff.applylocalk(x, x, a, self.sigma, self.order, 1+self.localMaps[0], 1+self.localMaps[1],
                                         x.shape[0], x.shape[0],
                                         x.shape[1], self.localMaps[0].size)
                 else:
@@ -340,7 +340,7 @@ class Kernel(KernelSpec):
                 if matrixWeights:
                     z = kff.applykmat(firstVar, x, a, self.sigma, self.order, firstVar.shape[0], x.shape[0], x.shape[1], a.shape[2])
                 elif self.localMaps:
-                    z = kff.applylocalk(firstVar, x, a, self.sigma, self.order, 1+self.localMaps[0], self.localMaps[1],
+                    z = kff.applylocalk(firstVar, x, a, self.sigma, self.order, 1+self.localMaps[0], 1+self.localMaps[1],
                                         firstVar.shape[0], x.shape[0],
                                         x.shape[1], self.localMaps[0].size)
                 else:
@@ -439,7 +439,7 @@ class Kernel(KernelSpec):
             #print a1.shape
             if firstVar is None:
                 if self.localMaps:
-                    zpx = kff.applylocalkdifft(x, x, a1, a2, self.sigma, self.order, 1+self.localMaps[0], self.localMaps[1],
+                    zpx = kff.applylocalkdifft(x, x, a1, a2, self.sigma, self.order, 1+self.localMaps[0], 1+self.localMaps[1],
                                                x.shape[0], x.shape[0], x.shape[1],
                                                self.localMaps[0].size, a1.shape[0])
                 else:
@@ -447,7 +447,7 @@ class Kernel(KernelSpec):
                                           x.shape[0], x.shape[1], a1.shape[2], a1.shape[0])
             else:
                 if self.localMaps:
-                    zpx = kff.applylocalkdifft(firstVar, x, a1, a2, self.sigma, self.order, 1+self.localMaps[0], self.localMaps[1],
+                    zpx = kff.applylocalkdifft(firstVar, x, a1, a2, self.sigma, self.order, 1+self.localMaps[0], 1+self.localMaps[1],
                                                firstVar.shape[0], x.shape[0],
                                                x.shape[1], self.localMaps[0].size, a1.shape[0])
                 else:

@@ -45,8 +45,9 @@ subroutine shoot1orderlocal(x0, alpha, y0, nu0, a, b, sig, ord, neighbors, num_n
     !  end interface
     real(8) :: dotproduct
     real(8) :: ut, Kv, Kv_diff, lpt, ppp
-    integer :: t, k, l, ip, jp, j, ii, i0, jj
-    real(8) :: dx(dimx),dy(dimx),dnu(dimx),djac
+    integer :: t, k, l, ip, jp, j, ii, i0, jj, kk, nSets
+    integer :: startSet(dimx), endSet(dimx)
+    real(8) :: dx(dimx),dy(dimx),dnu(dimx),djac, sqdist(dimx), sqdiff(dimx)
     real(8) :: c_(5, 5), c1_(4, 4)
     real(8) :: dt
     real(8) :: xt(numx, dimx)
@@ -56,6 +57,21 @@ subroutine shoot1orderlocal(x0, alpha, y0, nu0, a, b, sig, ord, neighbors, num_n
     real(8) :: bt(dimx)
     real(8) :: nut(numx, dimx)
 
+    nSets = 1
+    startSet(1) = 1
+    do k=1,tot_neighbors,1
+        if (neighbors(k) == 0) then
+            endSet(nSets) = k-1
+            if (k < tot_neighbors) then
+                nSets = nSets+1
+                startSet(nSets) = k+1
+            end if
+        end if
+    end do
+    !Print *, "shoot nSets = ", nSets
+    !do kk=1, nSets, 1
+     !   Print *, dimx, kk, startSet(kk), endSet(kk)
+    !end do
 
     dt = 1./t0
     x(1,:,:) = x0
@@ -80,19 +96,18 @@ subroutine shoot1orderlocal(x0, alpha, y0, nu0, a, b, sig, ord, neighbors, num_n
         bt = b(t,:)
         nut = nu(t,:,:)
         yt = y(t,:,:)
-        !$omp parallel do private(k,l,ut,lpt,Kv, Kv_diff, ppp, ip, jp, ii, j,jj,i0, &
-        !$omp& dx, dy, dnu, djac) shared (alphat,at,bt,xt,nut,x,nu,jac,sig,ord,c_, &
-        !$omp c1_,numy,numx,withnu,withjac,num_neighbors,neighbors)
+        !$omp parallel do private(k,l,ut,lpt,Kv, Kv_diff, ppp, ip, jp, ii, j,jj, &
+        !$omp& dx, dnu, djac, sqdist, sqdiff) shared (alphat,at,bt,xt,nut,x,nu,jac,sig,ord,c_, &
+        !$omp c1_,numy,numx,withnu,withjac,num_neighbors,neighbors, startSet, endSet, nSets)
         do k = 1, numx, 1
             dx=0
             dnu=0
             djac = 0
             do l=1, numx, 1
-                i0 = 1
-                do j = 1, dimx, 1
+                do kk =1, nSets, 1
                     ut = 0
-                    do jj =0, num_neighbors(j)-1, 1
-                        ut = ut + (xt(k,neighbors(i0+jj)) - xt(l,neighbors(i0+jj)))**2
+                    do jj=startSet(kk),endSet(kk),1
+                        ut = ut + (xt(k,neighbors(jj))-xt(l,neighbors(jj)))**2
                     end do
                     ut = sqrt(ut)/sig
                     if (ord > 4) then
@@ -127,20 +142,24 @@ subroutine shoot1orderlocal(x0, alpha, y0, nu0, a, b, sig, ord, neighbors, num_n
                             end if
                         end if
                     end if
-                    dx(j) = dx(j) + Kv * alphat(l,j)
+                    sqdist(kk) = Kv
+                    sqdiff(kk) = Kv_diff
+                end do
+                do j = 1, dimx, 1
+                    kk = num_neighbors(j)
+                    dx(j) = dx(j) + sqdist(kk) * alphat(l,j)
                     if (withjac > 0) then
-                        do jj =1, num_neighbors(j), 1
-                            ii = neighbors(i0+jj)
-                            djac = djac + 2* Kv_diff * (xt(k,ii) - xt(l,ii)*alphat(l,j))
+                        do jj =startSet(kk), endSet(kk), 1
+                            ii = neighbors(jj)
+                            djac = djac + 2* sqdiff(kk) * (xt(k,ii) - xt(l,ii)*alphat(l,j))
                         end do
                     end if
                     if (withnu > 0) then
-                        do jj =1, num_neighbors(j), 1
-                            ii = neighbors(i0+jj)
-                            dnu(ii) = dnu(ii) - 2 * Kv_diff * nut(j,l)*alphat(l,j) * (xt(k,ii) - xt(l,ii))
+                        do jj =startSet(kk), endSet(kk), 1
+                            ii = neighbors(jj)
+                            dnu(ii) = dnu(ii) - 2 * sqdiff(kk) * nut(j,l)*alphat(l,j) * (xt(k,ii) - xt(l,ii))
                         end do !jj
                     end if
-                    i0 = i0 + num_neighbors(j)
                 end do !j
             end do !l
             do ip = 1,dimx,1
@@ -165,16 +184,15 @@ subroutine shoot1orderlocal(x0, alpha, y0, nu0, a, b, sig, ord, neighbors, num_n
         end do !k
         !$omp end parallel do
 
-        !$omp parallel do private(k,l,ut,lpt,Kv,dy,j,i0,jj,ii) &
-        !$omp& shared (alphat,at,bt,xt,yt,y,sig,ord,c_,c1_)
+        !$omp parallel do private(k,l,ut,lpt,Kv,dy,j,jj,ii,sqdist) &
+        !$omp& shared (alphat,at,bt,xt,yt,y,sig,ord,c_,c1_,numy,numx,num_neighbors,neighbors, startSet, endSet, nSets)
         do k = 1, numy, 1
             dy=0
             do l=1, numx, 1
-                i0 = 1
-                do j = 1, dimx, 1
+                do kk =1, nSets, 1
                     ut = 0
-                    do jj =0, num_neighbors(j)-1, 1
-                        ut = ut + (yt(k,neighbors(i0+jj)) - xt(l,neighbors(i0+jj)))**2
+                    do jj=startSet(kk),endSet(kk),1
+                        ut = ut + (yt(k,neighbors(jj))-xt(l,neighbors(jj)))**2
                     end do
                     ut = sqrt(ut)/sig
                     if (ord > 4) then
@@ -192,9 +210,10 @@ subroutine shoot1orderlocal(x0, alpha, y0, nu0, a, b, sig, ord, neighbors, num_n
                             Kv = lpt * exp(-1.0*ut)
                         end if
                     end if
+                    sqdist(kk) = Kv
+                end do
+                do j = 1, dimx, 1
                     dy(j) = dy(j) + Kv*alphat(l, j)
-                    i0 = i0 + num_neighbors(j)
-
                 end do !j
             end do !l
             do ip = 1,dimx,1
@@ -237,8 +256,9 @@ subroutine adjoint1orderlocal(xt, alpha, px1, a, sig, ord, neighbors, num_neighb
 
     real(8) :: dotproduct
     real(8) :: ut, Kv_diff, lpt, ppp
-    integer :: t, k, l, ip, jp, ii, jj, j, i0
-    real(8) :: dpx(dimx)
+    integer :: t, k, l, ip, jp, ii, jj, kk, j, nSets
+    integer :: startSet(dimx), endSet(dimx)
+    real(8) :: dpx(dimx), sqdist(dimx)
     real(8) :: c_(5, 5), c1_(4, 4)
     real(8) :: dt
     real(8) :: xtt(numx, dimx)
@@ -246,6 +266,18 @@ subroutine adjoint1orderlocal(xt, alpha, px1, a, sig, ord, neighbors, num_neighb
     real(8) :: at(dimx, dimx)
     real(8) :: pxt(numx, dimx)
 
+    nSets = 1
+    startSet(1) = 1
+    do k=1,tot_neighbors,1
+        if (neighbors(k) == 0) then
+            endSet(nSets) = k-1
+            if (k < tot_neighbors) then
+                nSets = nSets+1
+                startSet(nSets) = k+1
+            end if
+        end if
+    end do
+    !Print *, "adj nSets = ", nSets
 
     dt = 1./t0
     px(t0+1,:,:) = px1
@@ -259,16 +291,15 @@ subroutine adjoint1orderlocal(xt, alpha, px1, a, sig, ord, neighbors, num_neighb
         xtt = xt(t,:,:)
         pxt = px(t+1,:,:)
         at = a(t,:,:)
-        !$omp parallel do private(k,l,ut,lpt,Kv_diff,ppp,ip,jp,ii,jj,j,i0, &
-        !$omp& dpx) shared (alphat,xtt,px,pxt,regweight,at,sig,ord,c_,c1_,neighbors,num_neighbors)
+        !$omp parallel do private(k,l,ut,lpt,Kv_diff,ppp,ip,jp,ii,jj,j, &
+        !$omp& dpx,sqdist) shared (alphat,xtt,px,pxt,regweight,at,sig,ord,c_,c1_,neighbors,num_neighbors, startSet, endSet, nSets)
         do k = 1, numx, 1
             dpx=0
             do l=1, numx, 1
-                i0 = 1
-                do j = 1, dimx, 1
+                do kk =1, nSets, 1
                     ut = 0
-                    do jj =0, num_neighbors(j)-1, 1
-                        ut = ut + (xtt(k,neighbors(i0+jj)) - xtt(l,neighbors(i0+jj)))**2
+                    do jj=startSet(kk),endSet(kk),1
+                        ut = ut + (xtt(k,neighbors(jj))-xtt(l,neighbors(jj)))**2
                     end do
                     ut = sqrt(ut)/sig
                     if (ord > 4) then
@@ -286,13 +317,15 @@ subroutine adjoint1orderlocal(xt, alpha, px1, a, sig, ord, neighbors, num_neighb
                             Kv_diff = -lpt * exp(-1.0*ut)/(2*sig**2)
                         end if
                     end if
-                    ut = 2*Kv_diff * (pxt(k,j)*alphat(l, j) + pxt(l, j)*alphat(k, j)&
+                    sqdist(kk) = 2*Kv_diff
+                end do
+                do j = 1, dimx, 1
+                    ut = sqdist(num_neighbors(j)) * (pxt(k,j)*alphat(l, j) + pxt(l, j)*alphat(k, j)&
                                 - 2*regweight*alphat(k,j)*alphat(l, j))
-                    do jj =0, num_neighbors(j)-1, 1
-                        ii = neighbors(i0+jj)
-                        dpx(ii) = dpx(ii) + ut * (xtt(k,ii) - xtt(l,ii))
+                    do ii = startSet(j),endSet(j),1
+                        jj = neighbors(ii)
+                        dpx(jj) = dpx(jj) + ut * (xtt(k,jj) - xtt(l,jj))
                     end do !jj
-                    i0 = i0 + num_neighbors(j)
                 end do !j
             end do !l
             do ip = 1,dimx,1
