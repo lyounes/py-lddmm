@@ -92,8 +92,8 @@ class PointSetMatching(object):
 
     def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000,
                  regWeight = 1.0, affineWeight = 1.0, verb=True, testSet = None, addDim = 0, intercept=True,
-                 u0 = None, normalizeInput = True, l1Cost = 0, relearnRate = 1,
-                 rotWeight = None, scaleWeight = None, transWeight = None, randomInit = 0,
+                 u0 = None, normalizeInput = False, l1Cost = 0.0, relearnRate = 1,
+                 rotWeight = None, scaleWeight = None, transWeight = None, randomInit = 0.,
                  testGradient=True, saveFile = 'evolution',
                  saveTrajectories = False, affine = 'none', outputDir = '.',pplot=True):
         if param is None:
@@ -196,6 +196,8 @@ class PointSetMatching(object):
             #self.wtr = np.zeros(self.fv1.shape)
             self.wTr = float(self.fv1.size)/(nTr[self.fv1[:,0]]*self.nclasses)[:, np.newaxis]
             self.swTr = self.wTr.sum()
+            self.rnd = 1.
+            self.coeffrnd = 0.99
             #self.wTr *= self.swTr
 
             if u0 is None:
@@ -288,7 +290,7 @@ class PointSetMatching(object):
 
     def dataTerm(self, _fvDef, _fvInit = None):
         if self.param.errorType == 'classification':
-            obj = pointSets.LogisticScore(_fvDef, self.fv1, self.u, w=self.wTr, intercept=self.intercept, l1Cost=self.l1Cost) \
+            obj = pointSets.LogisticScoreL2(_fvDef, self.fv1, self.u, w=self.wTr, intercept=self.intercept, l1Cost=self.l1Cost) \
                   / (self.param.sigmaError**2)
             #obj = pointSets.LogisticScore(_fvDef, self.fv1, self.u) / (self.param.sigmaError**2)
         else:
@@ -399,7 +401,7 @@ class PointSetMatching(object):
 
     def endPointGradient(self):
         if self.param.errorType == 'classification':
-            px = pointSets.LogisticScoreGradient(self.fvDef, self.fv1, self.u, w=self.wTr, intercept=self.intercept, l1Cost=self.l1Cost)
+            px = pointSets.LogisticScoreL2Gradient(self.fvDef, self.fv1, self.u, w=self.wTr, intercept=self.intercept, l1Cost=self.l1Cost)
             #px = pointSets.LogisticScoreGradient(self.fvDef, self.fv1, self.u)
         else:
             px = self.param.fun_objGrad(self.fvDef, self.fv1)
@@ -740,7 +742,8 @@ class PointSetMatching(object):
             self.fvDef = np.copy(np.squeeze(self.xt[-1, :, :]))
         if self.relearnRate > 0 and (self.iter % self.relearnRate == 0):
             u0 = self.u
-            self.u = self.learnLogistic(u0=self.u)
+            self.rnd = 1- self.coeffrnd*(1-self.rnd)
+            self.u = self.learnLogistic(u0=self.u, random=self.rnd)
             logging.info('Resetting weights: delta u = {0:f}, norm u = {1:f} '.format(np.sqrt(((self.u - u0) ** 2).sum()),
                                                                                       np.sqrt(((self.u) ** 2).sum())))
             self.reset = True
@@ -767,7 +770,7 @@ class PointSetMatching(object):
         #return self.at, self.xt
 
     def learnLogistic(self, u0=None, random = 1.0):
-        return pointSets.learnLogistic(self.fvDef, self.fv1, w= self.wTr, u0=u0, l1Cost=self.l1Cost,
+        return pointSets.learnLogisticL2(self.fvDef, self.fv1, w= self.wTr, u0=u0, l1Cost=self.l1Cost,
                                        intercept=self.intercept, random=random)
 
     def localMaps1D(self, d):
@@ -835,28 +838,22 @@ class PointSetMatching(object):
         KL0[ii] = -1
 
 
-if __name__=="__main__":
 
-    outputDir = '/Users/younes/Development/Results/Classif'
-    loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput=True)
+def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.05, removeNullDirs = False, NTr = 100, NTe = 2000, outputDir = '.'):
 
-    N = 100
-    d = 10
-    l1Cost = 1.
-    sigma = 1.
-    sigError = 0.01
-    addDim = 0
-    #typeData = 'TwoSegments'
-    typeData = 'RBF'
+    #typeData = 'Dolls'
     localMaps = None
-    removeNullDirs = False
     relearnRate = 1
     u0 = None
 
-    if typeData == 'helixes':
-        NTr = 1000
-        NTe = 2000
-        d = 20
+    if typeData in ('helixes3', 'helixes10', 'helixes20'):
+        if typeData == 'helixes3':
+            d = 3
+        elif typeData == 'helixes10':
+            d = 10
+        else:
+            d = 20
+
         h = 0.25
         x0Tr = 0.05*np.random.randn(2*NTr,d)
         x0Te = 0.05*np.random.randn(2*NTe,d)
@@ -895,16 +892,6 @@ if __name__=="__main__":
         R = la.expm((A-A.T)/2)
         x0Tr = np.dot(x0Tr, R)
         x0Te = np.dot(x0Te, R)
-        sigma = 1.
-        addDim = 1
-        l1Cost = np.log10(NTr)
-        sigError = 0.01
-        #localMaps = PointSetMatching().localMapsPredict(d+addDim, d)
-        #relearnRate = 10000
-        #u0 = np.zeros((d+2,2))
-        #u0[d+1,1] = 5
-        #u0 = np.random.randn(d+1, 2)
-        #removeNullDirs = False
     elif typeData == 'csv1':
         nv = -1
         X = np.genfromtxt('/Users/younes/Development/Data/Classification/BRCA1_q2_HW2.csv', delimiter=',')
@@ -923,12 +910,6 @@ if __name__=="__main__":
         x1Tr = np.concatenate((x1[I1[J1>0.33]], x1[I2[J2>0.33]]))[:, np.newaxis]
         x1Te = np.concatenate((x1[I1[J1<0.33]], x1[I2[J2<0.33]]))[:, np.newaxis]
         d = x0Tr.shape[1]
-        sigma = 1.
-        addDim = 0
-        l1Cost = 1.
-        #localMaps = PointSetMatching().localMapsNaive(d+1)
-        relearnRate = 1
-        removeNullDirs = False
         # xTmp = np.zeros((x0Tr.shape[0],2*d))
         # xTmp[:,range(0,2*d,2)] = x0Tr
         # xTmp[:,range(1,2*d,2)] = 0.1 * np.random.randn(x0Tr.shape[0],d)
@@ -941,8 +922,6 @@ if __name__=="__main__":
         d = 10
         d1 = 10
         nc = 20
-        NTr = 100
-        NTe = 2000
         #centers = np.random.normal(0, 1, (nc, d))
         centers = np.zeros((nc, d))
         c = np.zeros(nc)
@@ -962,23 +941,20 @@ if __name__=="__main__":
         #x0Tr = np.concatenate((x0Tr,0.5*np.random.normal(0,1,(NTr,d1))), axis=1)
         #x0Te = np.concatenate((x0Te,0.5*np.random.normal(0,1,(NTe,d1))), axis=1)
         #d += d1
-        l1Cost = np.log10(NTr)
-        sigma = 1.
-        sigError = 0.01
-        addDim = 1
         #localMaps = PointSetMatching().localMaps1D(d)
 
-    elif typeData == 'MoG':
-        NTr = 100
-        NTe = 2000
-        N = NTr + NTe
+    elif typeData in ('MoG','MoGHN'):
         d = 10
-        Cov0 = np.eye(d)
+        if typeData == 'MoGHN':
+            cn = 10.
+        else:
+            cn = 1.
+        Cov0 = cn*np.eye(d)
         m0 = np.concatenate((np.ones(3), np.zeros(d - 3)))
         q = np.arange(0, 1, 1.0 / d)
-        Cov1 = 2*np.exp(-np.abs(q[:,np.newaxis]-q[np.newaxis,:]))
+        Cov1 = 2*cn*np.exp(-np.abs(q[:,np.newaxis]-q[np.newaxis,:]))
         #Cov1 = np.eye(d)
-        Cov2 = 2*np.exp(-np.abs(q[:,np.newaxis]-q[np.newaxis,:])/3.)
+        Cov2 = 2*cn*np.exp(-np.abs(q[:,np.newaxis]-q[np.newaxis,:])/3.)
         #Cov2 = np.eye(d)
         m1 = np.concatenate((-np.ones(3), np.zeros(d - 3)))
         m2 = np.concatenate((-np.array([1,-1,1]), np.zeros(d - 3)))
@@ -1000,18 +976,11 @@ if __name__=="__main__":
         R = la.expm((A-A.T)/2)
         x0Tr = np.dot(x0Tr, R)
         x0Te = np.dot(x0Te, R)
-        l1Cost = 2.0
-        sigma = 2.5
-        addDim = 2
-        sigError = .01
     elif typeData=='MNIST':
         mndata = MNIST('/cis/home/younes/MNIST')
         images, labels = mndata.load_training()
         imTest, labTest = mndata.load_testing()
-        N0 = len(images)
         d = len(images[0])
-        NTr = 1500
-        NTe = 2000 #len(imTest)
         cls = [3,5,8]
         x0Tr = np.zeros((NTr,d))
         x1Tr = np.zeros((NTr,1), dtype=int)
@@ -1050,34 +1019,23 @@ if __name__=="__main__":
             x1Te = x1Te[0:NTe]
         #x0Te = pca.transform(x0Te) #/np.sqrt(pca.singular_values_)
         #x0Te = x0Te[:,std>0.05]
-        sigma = 2.5
-        l1Cost = 0.5
-        sigError = 0.005
-        addDim = 0
         #pca.inverse_transform(x0Tr).tofile(outputDir + '/mnistOutTrain.txt')
         #pca.inverse_transform(x0Te).tofile(outputDir + '/mnistOutTest.txt')
     elif typeData == 'Dolls':
         d = 3
-        NTr = 1000
-        NTe = 2000
         x0Tr = np.random.multivariate_normal(np.zeros(d), np.eye(d), NTr)
         x0Te = np.random.multivariate_normal(np.zeros(d), np.eye(d), NTe)
         nrm = np.sqrt((x0Tr**2).sum(axis=1))
         x1Tr = np.array(np.sign(np.cos(4*nrm))>0, dtype=int)[:, np.newaxis]
         nrm = np.sqrt((x0Te**2).sum(axis=1))
         x1Te = np.array(np.sign(np.cos(4*nrm))>0, dtype=int)[:, np.newaxis]
-        sigma = 2.5
-        sigError = 0.01
-        l1Cost = 2.0
-        addDim = 1
-        removeNullDirs = False
-        relearnRate = 1
-    elif typeData == 'Segments':
-        NTr = 1000
-        NTe = 2000
+    elif typeData == 'Segments11' or typeData == 'Segments12':
         d = 100
         l0 = 10
-        l1 = 12
+        if typeData == 'Segments11':
+            l1 = 11
+        else:
+            l1 = 12
         x0Tr = np.zeros((2*NTr, d))
         x1Tr = np.zeros((2*NTr,1), dtype=int)
         x1Tr[NTr:2*NTr,0] = 1
@@ -1100,67 +1058,84 @@ if __name__=="__main__":
         #x0Te += 0.01 * np.random.randn(x0Te.shape[0], x0Te.shape[1])
         x0Tr *= (1 + 0.25*np.random.randn(x0Tr.shape[0], 1))
         x0Te *= (1 + 0.25*np.random.randn(x0Te.shape[0], 1))
-        addDim = 1
-        sigma = 2.5
-        l1Cost = 2.
-        sigError = 0.01
-        removeNullDirs = False
 
         #localMaps = PointSetMatching().localMaps1D(d)
-    elif typeData == 'TwoSegments':
-        NTr = 100
-        NTe = 2000
+    elif typeData in ('TwoSegments', 'TwoSegmentsCumSum'):
         d = 100
-        l0 = 10
-        l1 = 12
         x0Tr = np.random.normal(0, 0.01, (2 * NTr, d))
         x1Tr = np.zeros((2 * NTr, 1), dtype=int)
         x1Tr[NTr:2 * NTr, 0] = 1
-        start = np.random.multinomial(d, size=NTr, pvals=[1/3.]*3)
+        start = np.random.multinomial(d-1, size=NTr, pvals=[1/3.]*3)
         for k in range(NTr):
             flip = np.random.randint(0,2,size=1)
             if flip:
                 x0Tr[k, np.arange(start[k,0], start[k,0] + 4)%d] = 1
                 x0Tr[k, np.arange(start[k, 0]+start[k,1]+5, start[k, 0]+start[k,1] + 11)%d] = 1
+                #x0Tr[k, np.array([start[k,0], start[k,0] + 3])%d] = 1
+                #x0Tr[k, np.array([start[k, 0]+start[k,1]+5, start[k, 0]+start[k,1] + 10])%d] = 1
             else:
-                x0Tr[k, np.arange(start[k, 0], start[k, 0] + 6)%d] = 1
-                x0Tr[k, np.arange(start[k, 0] + start[k, 1] + 7, start[k, 0] + start[k, 1] + 11)%d] = 1
-        start = np.random.multinomial(d-l0-1, size=NTr, pvals=[1/3.]*3)
+                x0Tr[k, np.arange(start[k,0], start[k,0] + 6)%d] = 1
+                x0Tr[k, np.arange(start[k, 0]+start[k,1]+7, start[k, 0]+start[k,1] + 11)%d] = 1
+                #x0Tr[k, np.array([start[k, 0], start[k, 0] + 5])%d] = 1
+                #x0Tr[k, np.array([start[k, 0] + start[k, 1] + 7, start[k, 0] + start[k, 1] + 10])%d] = 1
+        start = np.random.multinomial(d-1, size=NTr, pvals=[1/3.]*3)
         for k in range(NTr):
-            x0Tr[k+NTr, np.arange(start[k, 0], start[k, 0] + 5)%d] = 1
-            x0Tr[k+NTr, np.arange(start[k, 0] + start[k, 1] + 6, start[k, 0] + start[k, 1] + 11)%d] = 1
+            x0Tr[k+NTr, np.arange(start[k, 0], start[k, 0] + 5) % d] = 1
+            x0Tr[k+NTr, np.arange(start[k, 0] + start[k, 1] + 6, start[k, 0] + start[k, 1] + 11) % d] = 1
+            #x0Tr[k+NTr, np.array([start[k, 0], start[k, 0] + 4])%d] = 1
+            #x0Tr[k+NTr, np.array([start[k, 0] + start[k, 1] + 6, start[k, 0] + start[k, 1] + 10])%d] = 1
 
         x0Te = np.random.normal(0, 0.01, (2 * NTe, d))
         #x0Te = np.zeros((2 * NTe, d))
         x1Te = np.zeros((2 * NTe, 1), dtype=int)
         x1Te[NTe:2 * NTe, 0] = 1
-        start = np.random.multinomial(d, size=NTe, pvals=[1/3.]*3)
+        start = np.random.multinomial(d-1, size=NTe, pvals=[1/3.]*3)
         for k in range(NTe):
             flip = np.random.randint(0,2,size=1)
             if flip:
                 x0Te[k, np.arange(start[k,0], start[k,0] + 4)%d] = 1
                 x0Te[k, np.arange(start[k, 0]+start[k,1]+5, start[k, 0]+start[k,1] + 11)%d] = 1
+                #x0Te[k, np.array([start[k,0], start[k,0] + 3])%d] = 1
+                #x0Te[k, np.array([start[k, 0]+start[k,1]+5, start[k, 0]+start[k,1] + 10])%d] = 1
             else:
-                x0Te[k, np.arange(start[k, 0], start[k, 0] + 6)%d] = 1
-                x0Te[k, np.arange(start[k, 0] + start[k, 1] + 7, start[k, 0] + start[k, 1] + 11)%d] = 1
-        start = np.random.multinomial(d, size=NTe, pvals=[1/3.]*3)-1
+                x0Te[k, np.arange(start[k,0], start[k,0] + 6)%d] = 1
+                x0Te[k, np.arange(start[k, 0]+start[k,1]+7, start[k, 0]+start[k,1] + 11)%d] = 1
+                #x0Te[k, np.array([start[k, 0], start[k, 0] + 5])%d] = 1
+                #x0Te[k, np.array([start[k, 0] + start[k, 1] + 7, start[k, 0] + start[k, 1] + 10])%d] = 1
+        start = np.random.multinomial(d-1, size=NTe, pvals=[1/3.]*3)-1
         for k in range(NTe):
-            x0Te[k+NTe, np.arange(start[k, 0], start[k, 0] + 5)%d] = 1
-            x0Te[k+NTe, np.arange(start[k, 0] + start[k, 1] + 6, start[k, 0] + start[k, 1] + 11)%d] = 1
+            x0Te[k+NTe, np.arange(start[k, 0], start[k, 0] + 5) % d] = 1
+            x0Te[k+NTe, np.arange(start[k, 0] + start[k, 1] + 6, start[k, 0] + start[k, 1] + 11) % d] = 1
+            #x0Te[k+NTe, np.array([start[k, 0], start[k, 0] + 4])%d] = 1
+            #x0Te[k+NTe, np.array([start[k, 0] + start[k, 1] + 6, start[k, 0] + start[k, 1] + 10])%d] = 1
 
         x0Tr *= (1 + 0.25 * np.random.randn(x0Tr.shape[0], 1))
         x0Te *= (1 + 0.25 * np.random.randn(x0Te.shape[0], 1))
-        addDim = 1
-        sigma = 1.
-        l1Cost = .5
-        sigError = 0.01
-        removeNullDirs = False
+        if typeData == 'TwoSegmentsCumSum':
+            x0Tr = np.cumsum(x0Tr, axis=1)
+            x0Te = np.cumsum(x0Te, axis=1)
+        #A = np.random.normal(0,1,(d,5))
+        #x0Tr = np.concatenate((x0Tr, np.dot(x0Tr, A)), axis=1)
+        #x0Te = np.concatenate((x0Te, np.dot(x0Te, A)), axis=1)
 
         #localMaps = PointSetMatching().localMapsCircle(d+1)
+    elif typeData=='maxGauss':
+        d = 10
+        x0Tr = np.random.normal(0, 1, (2 * NTr, d))
+        M = np.max(x0Tr, axis=1)
+        #u = d/np.sqrt(2*np.pi)
+        #T = np.sqrt(2*np.log(u) - np.log(2*np.log(u)))
+        #T = 2.46#d=100
+        T =  1.495 #d=10
+        x1Tr = np.array(M>T, dtype = int)[:, np.newaxis]
+        x0Te = np.random.normal(0, 1, (2 * NTe, d))
+        M = np.max(x0Te, axis=1)
+        x1Te = np.array(M>T, dtype = int)[:, np.newaxis]
+        A = np.random.randn(d,d)
+        R = la.expm((A-A.T)/2)
+        x0Tr = np.dot(x0Tr, R)
+        x0Te = np.dot(x0Te, R)
     else:
-        NTr = 100
-        NTe = 1000
-        N = NTr + NTe
         d = 10
         Cov0 = 2*np.eye(d)
         m0 = np.concatenate((np.ones(3), np.zeros(d-3)))
@@ -1178,28 +1153,30 @@ if __name__=="__main__":
         x1Te = np.ones((2 * NTe,1), dtype=int)
         x1Tr[NTr:2 * NTr] = 0
         x1Te[NTe:2 * NTe] = 0
-        sigma = 2.5
-        #err0 = (1 - (np.sign(x0Te*x1Te))).sum()/(4*N)
-
-    #x0[:,2] = 0
 
 
+    l1Cost *= np.log10(NTr)
     nclasses = x1Tr.max() + 1
     nTr = np.zeros(nclasses)
     for k in range(nclasses):
         nTr[k] = (x1Tr == k).sum()
     wTr = float(x1Tr.size) / (nTr[x1Tr[:, 0]] * nclasses)[:, np.newaxis]
 
-    fu = pointSets.learnLogistic(x0Tr, x1Tr, w=wTr, l1Cost=l1Cost)
+
+
+    dst = np.sqrt(((x0Tr[:, np.newaxis, :] - x0Tr[np.newaxis,:,:])**2).sum(axis=2))
+    sigma = np.median(np.ravel(dst))
+    print 'Estimated sigma:', sigma
+    x0Tr /= sigma
+    x0Te /= sigma
+    sigma = 1.0
+
+    fu = pointSets.learnLogisticL2(x0Tr, x1Tr, w=wTr, l1Cost=l1Cost)
+    while np.fabs(fu).max() < 1e-8:
+        l1Cost *= 0.9
+        fu = pointSets.learnLogistic(x0Tr, x1Tr, w=wTr, l1Cost=l1Cost)
     xDef1 = np.concatenate((np.ones((x0Te.shape[0], 1)), x0Te), axis=1)
     gu = np.argmax(np.dot(xDef1, fu), axis=1)[:, np.newaxis]
-
-    # for k in range(10):
-    #     fu += pointSets.learnLogistic(x0Tr, x1Tr, w=wTr, l1Cost=l1Cost, random=0.75)
-    # fu /= 11
-
-    #x0Tr *= s
-    #x0Te *=s
 
     if removeNullDirs:
         J = np.nonzero(np.fabs(fu[1:-1, :]).sum(axis=1) > 1e-8)[0]
@@ -1209,20 +1186,21 @@ if __name__=="__main__":
         x0Tr0 = x0Tr
         x0Te0 = x0Te
 
-    K1 = kfun.Kernel(name='laplacian', sigma=sigma*np.sqrt(d), order=1)
+
+    K1 = kfun.Kernel(name='laplacian', sigma=sigma, order=1)
     sm = PointSetMatchingParam(timeStep=0.1, KparDiff = K1, sigmaError=sigError*np.sqrt(NTr), errorType='classification')
 
 
     f = PointSetMatching(Template=x0Tr0, Target=x1Tr, outputDir=outputDir, param=sm, regWeight=1.,
                          saveTrajectories=True, pplot=True, testSet=(x0Te0, x1Te), addDim = addDim, u0=u0,
-                         normalizeInput=False, l1Cost = l1Cost, relearnRate=relearnRate, randomInit=0.05,
+                         normalizeInput=False, l1Cost = l1Cost, relearnRate=relearnRate, randomInit=randomInit,
                          affine='none', testGradient=False, affineWeight=1e3,
-                         maxIter=1000)
+                         maxIter=1500)
 
     testInit = TestErrors()
     testInit.logistic = np.sum(np.not_equal(gu, x1Te) * f.wTe) / f.swTe
 
-    clf = svm.SVC(class_weight='balanced')
+    clf = svm.SVC(class_weight='balanced', gamma=1.0)
     clf.fit(x0Tr, np.ravel(x1Tr))
     yTr = clf.predict(x0Tr)
     yTe = clf.predict(x0Te)
@@ -1264,55 +1242,42 @@ if __name__=="__main__":
     if localMaps is not None:
         K1.localMaps = localMaps
 
-
-
-    #K1.localMaps = (np.zeros(3*d-2, dtype=int), 3*np.ones(d, dtype=int))
-    # K1.localMaps[1][0] = 2
-    # K1.localMaps[1][d-1] = 2
-    # KJ = np.random.permutation(d)
-    # jK=0
-    # for k in range(d):
-    #     if k>0:
-    #         K1.localMaps[0][jK] = KJ[k-1]
-    #         jK += 1
-    #     K1.localMaps[0][jK] = KJ[k]
-    #     jK += 1
-    #     if k<d-1:
-    #         K1.localMaps[0][jK] = KJ[k+1]
-    #         jK += 1
-        # K1.localMaps[0][4*k] = 2*k+1
-        # K1.localMaps[0][4 * k+1] = 2 * k + 2
-        # K1.localMaps[0][4 * k + 2] = 2 * k + 2
-        # K1.localMaps[0][4 * k + 3] = 2 * k + 1
-
     for k in range(1):
         f.optimizeMatching()
-        #sigma /= 2
-        #K1 = kfun.Kernel(name='laplacian', sigma=sigma, order=1)
-        #sm = PointSetMatchingParam(timeStep=0.1, KparDiff=K1, sigmaError=sigError, errorType='classification')
 
-        # f = PointSetMatching(Template=f.fvDef, Target=x1Tr, outputDir=outputDir, param=sm, regWeight=1.,
-        #                      saveTrajectories=True, pplot=True, testSet=(f.testDef, x1Te), addDim=0, u0=u0,
-        #                      normalizeInput=False, l1Cost=l1Cost, relearnRate=relearnRate,
-        #                      affine='none', testGradient=True, affineWeight=1e3,
-        #                      maxIter=1000)
-        #f.u = f.learnLogistic(u0=f.u) # + np.random.normal(0,10.0/(k+1), f.u.shape)
-        # f.obj = None
-        # f.iter = 0
-        # f.objectiveFun()
-        # f.param.KparDiff.sigma /= 2
-        # #f.maxIter = 100
-        #f.optimizeMatching()
-    with open(outputDir+'/results.txt','a+') as fl:
-        fl.write('\n'+typeData+' dim = {0:d} N = {1:d}\n'.format(d, NTr))
+    return f, testInit
 
-        fl.write('Initial: '+testInit.__repr__())
-        fl.write('Final: ' +f.testError.__repr__())
-    if typeData=='MNIST':
-        pca.inverse_transform(f.fvDef[:,0:f.fvDef.shape[1]- addDim]).tofile(outputDir + '/mnistOutTrainDef.txt')
-        pca.inverse_transform(f.testDef[:,0:f.fvDef.shape[1]- addDim]).tofile(outputDir + '/mnistOutTestDef.txt')
+if __name__ == "__main__":
+    #AllTD = {'helixes3':(100,), 'helixes10':(100,200,500,1000),
+    #          'helixes20':(100,200,500,1000), 'Dolls':(100,200,500,1000),
+    #          'Segments11':(100,200,500,1000), 'Segments12':(100,200,500,1000),'TwoSegments':(100,200,500,1000),'TwoSegmentsCumSum':(100,200,500,1000), 'RBF':(100,200,500,1000)}
+    #AllTD = {'TwoSegmentsCumSum':(250,)}
+    AllTD = {'MoG':(100,200,500,1000)}
+    #typeData = 'Dolls'
+
+    outputDir0 = '/Users/younes/Development/Results/Classif'
+    loggingUtils.setup_default_logging(outputDir0, fileName='info', stdOutput=True)
+    #f, testInit = Classify('TwoSegments', l1Cost=1., addDim=1, sigError=0.01, randomInit=0.05, removeNullDirs=False, NTr=200,
+    #                       NTe=2000, outputDir=outputDir0)
+    for typeData in AllTD.keys():
+        for NTr in AllTD[typeData]:
+            print typeData, 'NTr = ', NTr
+            outputDir = outputDir0+'/'+typeData+'_{0:d}'.format(NTr)
+            f,testInit = Classify(typeData, l1Cost = .01, addDim = 1, sigError = 0.01, randomInit=0.05, removeNullDirs = False, NTr = NTr, NTe = 2000, outputDir=outputDir)
+
+            with open(outputDir+'/results.txt','a+') as fl:
+                fl.write('\n'+typeData+' dim = {0:d} N = {1:d}\n'.format(f.fv0.shape[1], f.fv0.shape[0]))
+
+                fl.write('Initial: '+testInit.__repr__())
+                fl.write('Final: ' +f.testError.__repr__())
+
+            # if typeData=='MNIST':
+            #     pca.inverse_transform(f.fvDef[:,0:f.fvDef.shape[1]- addDim]).tofile(outputDir + '/mnistOutTrainDef.txt')
+            #     pca.inverse_transform(f.testDef[:,0:f.fvDef.shape[1]- addDim]).tofile(outputDir + '/mnistOutTestDef.txt')
+            #
+
+            #plt.pause(100)
 
 
 
-    plt.pause(1000)
 

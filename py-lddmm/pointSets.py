@@ -220,6 +220,22 @@ def LogisticScore(xDef, c1, u, w = None, intercept=True, l1Cost=0, ep = 0.01):
 
     return res + l1Cost*(np.fabs(u[ii:u.shape[0],:]).sum(axis=1)*s0).sum()
 
+def LogisticScoreL2(xDef, c1, u, w = None, intercept=True, l1Cost=0, ep = 0.01):
+    if w is None:
+        w = np.ones((xDef.shape[0],1))
+    if intercept:
+        xDef1 = np.concatenate((np.ones((xDef.shape[0], 1)), xDef), axis=1)
+        gu = np.dot(xDef1,u)
+        ii = 1
+    else:
+        gu = np.dot(xDef, u)
+        ii = 0
+    res = (np.ravel(w) * (- gu[np.arange(gu.shape[0])[:, np.newaxis], c1].sum(axis=1) + np.log(np.exp(gu).sum(axis=1)))).sum()
+    s0 = np.std(xDef, axis=0)**2 + 1
+
+    return res + l1Cost*((u[ii:u.shape[0],:]**2).sum(axis=1)*s0).sum()
+
+
 def LogisticScore__(xDef, c1, u, w = None, intercept=True, l1Cost=0, ep = 0.01):
     if w is None:
         w = np.ones((xDef.shape[0],1))
@@ -234,10 +250,24 @@ def LogisticScore__(xDef, c1, u, w = None, intercept=True, l1Cost=0, ep = 0.01):
 
     return res + l1Cost*(np.fabs(u[ii:u.shape[0],:])).sum()
 
+def LogisticScoreL2__(xDef, c1, u, w = None, intercept=True, l1Cost=0, ep = 0.01):
+    if w is None:
+        w = np.ones((xDef.shape[0],1))
+    if intercept:
+        xDef1 = np.concatenate((np.ones((xDef.shape[0], 1)), xDef), axis=1)
+        gu = np.dot(xDef1,u)
+        ii = 1
+    else:
+        gu = np.dot(xDef, u)
+        ii = 0
+    res = (np.ravel(w) * (- gu[np.arange(gu.shape[0])[:, np.newaxis], c1].sum(axis=1) + np.log(np.exp(gu).sum(axis=1)))).sum()
+
+    return res + l1Cost*(u[ii:u.shape[0],:]**2).sum()
+
 def LogisticScoreGradient(xDef, c1, u, w = None, intercept=True, l1Cost=0):
     if w is None:
         w = np.ones((xDef.shape[0],1))
-    s0 = np.std(xDef, axis=0)
+    s0 = np.maximum(np.std(xDef, axis=0), 1e-8)
     m0 = np.mean(xDef, axis=0)
     n = xDef.shape[0]
 
@@ -280,6 +310,30 @@ def LogisticScoreGradientInU(xDef, c1, u, w=None, intercept=True):
             grad[:, k] = - (wxDef)[np.ravel(c1) == k, :].sum(axis=0) + r[:, k]
     return grad
 
+def LogisticScoreL2Gradient(xDef, c1, u, w = None, intercept=True, l1Cost=0):
+    if w is None:
+        w = np.ones((xDef.shape[0],1))
+    s0 = np.std(xDef, axis=0)**2
+    m0 = np.mean(xDef, axis=0)
+    n = xDef.shape[0]
+
+
+    if intercept:
+        xDef1 = np.concatenate((np.ones((xDef.shape[0], 1)), xDef), axis=1)
+        gu = np.exp(np.dot(xDef1, u))
+        pu = gu/gu.sum(axis=1)[:,np.newaxis]
+        m = np.dot(pu, u[np.arange(1,u.shape[0]),:].T)
+        dpen = 2*((u[1:u.shape[0], :]**2).sum(axis=1) * (xDef - m0[np.newaxis,:])/n)
+        return (-u[np.arange(1,u.shape[0]), c1] +m)*w + l1Cost*dpen
+    else:
+        gu = np.exp(np.dot(xDef, u))
+        pu = gu/gu.sum(axis=1)[:,np.newaxis]
+        m = np.dot(pu, u.T)
+        dpen = 2*((u**2) * (xDef - m0/n)/n)
+        return (-u[np.arange(u.shape[0]), c1] +m)*w + l1Cost*dpen
+
+
+
 def learnLogistic(x, y, w=None, u0=None, l1Cost = 0, intercept=True, random = 1.):
     J1 = []
     dim = x.shape[1]
@@ -319,7 +373,51 @@ def learnLogistic(x, y, w=None, u0=None, l1Cost = 0, intercept=True, random = 1.
         fu = fu1
         ll = ep * l1Cost
         fu[ii:fu.shape[0],:] = np.sign(fu[ii:fu.shape[0],:]) * np.maximum(np.fabs(fu[ii:fu.shape[0],:]) - ll, 0)
-        if np.fabs(fu-fuOld).max() < 1e-8:
+        if np.fabs(fu-fuOld).max() < 1e-5:
+            break
+        #print 'Iteration ', k, ': ',  pointSets.LogisticScore(self.fvDef, self.fv1, fu), ' ep: ', ep
+    fu[ii:fu.shape[0],:] /= s0[:, np.newaxis]
+    return fu
+
+def learnLogisticL2(x, y, w=None, u0=None, l1Cost = 0, intercept=True, random = 1.):
+    J1 = []
+    dim = x.shape[1]
+    nclasses = y.max()+1
+    for k in range(nclasses):
+        J1.append(y == k)
+    if intercept:
+        ii = 1
+    else:
+        ii = 0
+    if u0 is None:
+        fu = np.zeros((dim+ii, nclasses))
+    else:
+        fu = u0
+    J = np.random.rand(x.shape[0]) < random
+    x0 = x[J,:]
+    y0 = y[J]
+    w0 = w[J]
+    s0 = np.sqrt(np.std(x0, axis=0)**2 + 1)
+    x0 = x0/s0
+    for k in range(10000):
+        fuOld = fu
+        obj0 = LogisticScoreL2__(x0, y0, fu, w=w0, intercept=intercept)
+        g = LogisticScoreGradientInU(x0, y0, fu, w=w0, intercept=intercept)
+        g += 2*l1Cost*fu
+        # ep = 1e-8
+        # fu1 = fu + ep * g
+        # obj1 = LogisticScore(x, y, fu1, w=w)
+        # print (obj1-obj0)/ep, (g**2).sum()
+
+        ep = .01
+        fu1 = fu - ep * g
+        obj1 = LogisticScore__(x0, y0, fu1, w=w0, intercept=intercept)
+        while obj1 > obj0:
+            ep /= 2
+            fu1 = fu - ep * g
+            obj1 = LogisticScore__(x0, y0, fu1, w=w0, intercept=intercept)
+        fu = fu1
+        if np.fabs(fu-fuOld).max() < 1e-5:
             break
         #print 'Iteration ', k, ': ',  pointSets.LogisticScore(self.fvDef, self.fv1, fu), ' ep: ', ep
     fu[ii:fu.shape[0],:] /= s0[:, np.newaxis]
