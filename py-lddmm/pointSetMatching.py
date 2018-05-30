@@ -1252,7 +1252,7 @@ if __name__ == "__main__":
     #          'helixes20':(100,200,500,1000), 'Dolls':(100,200,500,1000),
     #          'Segments11':(100,200,500,1000), 'Segments12':(100,200,500,1000),'TwoSegments':(100,200,500,1000),'TwoSegmentsCumSum':(100,200,500,1000), 'RBF':(100,200,500,1000)}
     #AllTD = {'TwoSegmentsCumSum':(250,)}
-    AllTD = {'MoG':(100,200,500,1000)}
+    AllTD = {'MoGHN':(100,)}
     #typeData = 'Dolls'
 
     outputDir0 = '/Users/younes/Development/Results/Classif'

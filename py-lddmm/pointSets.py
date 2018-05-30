@@ -261,8 +261,8 @@ def LogisticScoreL2__(xDef, c1, u, w = None, intercept=True, l1Cost=0, ep = 0.01
         gu = np.dot(xDef, u)
         ii = 0
     res = (np.ravel(w) * (- gu[np.arange(gu.shape[0])[:, np.newaxis], c1].sum(axis=1) + np.log(np.exp(gu).sum(axis=1)))).sum()
-
-    return res + l1Cost*(u[ii:u.shape[0],:]**2).sum()
+    res += l1Cost*(u[ii:u.shape[0],:]**2).sum()
+    return res
 
 def LogisticScoreGradient(xDef, c1, u, w = None, intercept=True, l1Cost=0):
     if w is None:
@@ -392,18 +392,22 @@ def learnLogisticL2(x, y, w=None, u0=None, l1Cost = 0, intercept=True, random = 
     if u0 is None:
         fu = np.zeros((dim+ii, nclasses))
     else:
-        fu = u0
+        fu = np.copy(u0)
     J = np.random.rand(x.shape[0]) < random
     x0 = x[J,:]
     y0 = y[J]
     w0 = w[J]
     s0 = np.sqrt(np.std(x0, axis=0)**2 + 1)
     x0 = x0/s0
-    for k in range(10000):
-        fuOld = fu
-        obj0 = LogisticScoreL2__(x0, y0, fu, w=w0, intercept=intercept)
+    fu[ii:fu.shape[0],:] *= s0[:, np.newaxis]
+    #print 'before', LogisticScoreL2__(x0, y0, fu, w=w0, intercept=intercept)
+    for k in range(100):
+        fuOld = np.copy(fu)
+        obj0 = LogisticScoreL2__(x0, y0, fu, w=w0, l1Cost=l1Cost, intercept=intercept)
         g = LogisticScoreGradientInU(x0, y0, fu, w=w0, intercept=intercept)
-        g += 2*l1Cost*fu
+        g2 = 2*l1Cost*fu
+        g2[0:ii, :] = 0
+        g += g2
         # ep = 1e-8
         # fu1 = fu + ep * g
         # obj1 = LogisticScore(x, y, fu1, w=w)
@@ -411,14 +415,15 @@ def learnLogisticL2(x, y, w=None, u0=None, l1Cost = 0, intercept=True, random = 
 
         ep = .01
         fu1 = fu - ep * g
-        obj1 = LogisticScore__(x0, y0, fu1, w=w0, intercept=intercept)
+        obj1 = LogisticScoreL2__(x0, y0, fu1, w=w0, l1Cost=l1Cost, intercept=intercept)
         while obj1 > obj0:
             ep /= 2
             fu1 = fu - ep * g
-            obj1 = LogisticScore__(x0, y0, fu1, w=w0, intercept=intercept)
+            obj1 = LogisticScoreL2__(x0, y0, fu1, w=w0, l1Cost=l1Cost, intercept=intercept)
         fu = fu1
         if np.fabs(fu-fuOld).max() < 1e-5:
             break
         #print 'Iteration ', k, ': ',  pointSets.LogisticScore(self.fvDef, self.fv1, fu), ' ep: ', ep
+    #print 'after', LogisticScoreL2__(x0, y0, fu, w=w0, intercept=intercept)
     fu[ii:fu.shape[0],:] /= s0[:, np.newaxis]
     return fu
