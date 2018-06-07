@@ -37,7 +37,7 @@ class AffineBasis:
             self.basis = np.zeros([2 * (dimSym + dim), self.affineDim])
 
         self.affCode = affCode
-        k = 0 ;
+        k = 0
         if affCode <= 1:
             for i in range(dimSym):
                 for j in range(i+1, dim):
@@ -46,7 +46,7 @@ class AffineBasis:
                     k+=1
             for i in range(dim-1):
                 uu = np.sqrt((1 - 1.0/(i+2)))/(i+1.)
-                self.basis[(i+1)*dim + (i+1.), k] = np.sqrt(1 - 1.0/(i+2))
+                self.basis[(i+1)*dim + (i+1), k] = np.sqrt(1 - 1.0/(i+2))
                 for j in range(i+1):
                     self.basis[j*dim + j, k] = -uu
                 k += 1

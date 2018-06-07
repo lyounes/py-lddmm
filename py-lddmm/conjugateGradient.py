@@ -143,9 +143,9 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01):
 
         if it == 0 or it == cgBurnIn: 
             if gradEps is None:
-                gradEps = 0.001 * np.sqrt(grd2)
+                gradEps = max(0.001 * np.sqrt(grd2), 0.0001)
             else:
-                gradEps = min(gradEps, 0.001 * np.sqrt(grd2))
+                gradEps = max(min(gradEps, 0.001 * np.sqrt(grd2)), 0.0001)
             
         objTry = opt.updateTry(dir0, eps, obj)
 
@@ -201,13 +201,14 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01):
 
             #print obj+obj0, objTry+obj0
             if (np.fabs(obj-objTry) < 1e-10):
-                if (skipCG==1) | (beta < 1e-10) :
+                if (skipCG==1): # or (beta < 1e-10) :
                     logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, beta = {3:.5f}, gradient: {4:.5f}'.format(it+1, obj, eps, beta, np.sqrt(grd2)))
-                    logging.info('Stopping Gradient Descent: small variation')
-                    opt.converged = True
+                    if it > cgBurnIn:
+                        logging.info('Stopping Gradient Descent: small variation')
+                        opt.converged = True
+                        break
                     if hasattr(opt, 'endOfIteration'):
                         opt.endOfIteration()
-                    break
                 else:
                     if verb:
                         logging.info('Disabling CG: small variation')

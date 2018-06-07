@@ -347,16 +347,17 @@ def learnLogistic(x, y, w=None, u0=None, l1Cost = 0, intercept=True, random = 1.
     if u0 is None:
         fu = np.zeros((dim+ii, nclasses))
     else:
-        fu = u0
+        fu = np.copy(u0)
     J = np.random.rand(x.shape[0]) < random
     x0 = x[J,:]
     y0 = y[J]
     w0 = w[J]
     s0 = np.std(x0, axis=0) + 1
     x0 = x0/s0
-    for k in range(10000):
+    fu[ii:fu.shape[0],:] *= s0[:, np.newaxis]
+    for k in range(100):
         fuOld = fu
-        obj0 = LogisticScore__(x0, y0, fu, w=w0, intercept=intercept)
+        obj0 = LogisticScore__(x0, y0, fu, w=w0, l1Cost=0, intercept=intercept)
         g = LogisticScoreGradientInU(x0, y0, fu, w=w0, intercept=intercept)
         # ep = 1e-8
         # fu1 = fu + ep * g
@@ -365,11 +366,11 @@ def learnLogistic(x, y, w=None, u0=None, l1Cost = 0, intercept=True, random = 1.
 
         ep = .01
         fu1 = fu - ep * g
-        obj1 = LogisticScore__(x0, y0, fu1, w=w0, intercept=intercept)
+        obj1 = LogisticScore__(x0, y0, fu1, w=w0, l1Cost=0, intercept=intercept)
         while obj1 > obj0:
             ep /= 2
             fu1 = fu - ep * g
-            obj1 = LogisticScore__(x0, y0, fu1, w=w0, intercept=intercept)
+            obj1 = LogisticScore__(x0, y0, fu1, w=w0, l1Cost=0, intercept=intercept)
         fu = fu1
         ll = ep * l1Cost
         fu[ii:fu.shape[0],:] = np.sign(fu[ii:fu.shape[0],:]) * np.maximum(np.fabs(fu[ii:fu.shape[0],:]) - ll, 0)

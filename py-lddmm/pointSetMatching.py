@@ -24,6 +24,8 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import csv
 from mnist import MNIST
 
+nlayers = 1
+
 class TestErrors:
     def __init__(self):
         self.knn = 1.
@@ -185,6 +187,7 @@ class PointSetMatching(object):
         self.pplot = pplot
         self.testSet = testSet
         self.l1Cost = l1Cost
+        self.cgBurnIn = 100
 
         if self.param.errorType == 'classification':
             self.intercept = intercept
@@ -594,8 +597,12 @@ class PointSetMatching(object):
                 else:
                     xDef1 = self.fvDef
                 gu = np.argmax(np.dot(xDef1, self.u), axis=1)[:,np.newaxis]
-                err = np.sum(np.not_equal(gu, self.fv1) * self.wTr)/self.swTr
-                logging.info('Training Error {0:0f}'.format(err))
+                train_err = np.sum(np.not_equal(gu, self.fv1) * self.wTr)/self.swTr
+                logging.info('Training Error {0:0f}'.format(train_err))
+                if train_err > 0.001:
+                    self.param.sigmaError *= 1 - min(train_err, 0.05)
+                    logging.info('Reducing sigma:  {0:f}'.format(self.param.sigmaError))
+                    self.reset = True
                 if self.nclasses < 3:
                     pcau = PCA(n_components=self.nclasses)
                 else:
@@ -1135,6 +1142,28 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
         R = la.expm((A-A.T)/2)
         x0Tr = np.dot(x0Tr, R)
         x0Te = np.dot(x0Te, R)
+    elif typeData == 'Line':
+        d = 10
+        x0Tr = np.zeros((2*NTr, d))
+        x0Tr[NTr:2*NTr,:] = np.random.normal(0, 1, (NTr, d))
+        t = np.random.normal(0, 1, (NTr,))
+        x0Tr[0:NTr,0] = np.cos(2*np.pi*t)
+        x0Tr[0:NTr,1] = np.sin(2*np.pi*t)
+        x0Tr[0:NTr,2] = t
+        x0Te = np.zeros((2*NTe, d))
+        x0Te[NTe:2*NTe,:] = np.random.normal(0, 1, (NTe, d))
+        t = np.random.normal(0, 1, (NTe,))
+        x0Te[0:NTe,0] = np.cos(2*np.pi*t)
+        x0Te[0:NTe,1] = np.sin(2*np.pi*t)
+        x0Te[0:NTe,2] = t
+        x1Tr = np.zeros((2 * NTr, 1), dtype=int)
+        x1Tr[NTr:2 * NTr, 0] = 1
+        x1Te = np.zeros((2 * NTe, 1), dtype=int)
+        x1Te[NTe:2 * NTe, 0] = 1
+        A = np.random.randn(d, d)
+        R = la.expm((A - A.T) / 2)
+        x0Tr = np.dot(x0Tr, R)
+        x0Te = np.dot(x0Te, R)
     else:
         d = 10
         Cov0 = 2*np.eye(d)
@@ -1155,7 +1184,7 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
         x1Te[NTe:2 * NTe] = 0
 
 
-    l1Cost *= np.log10(NTr)
+    #l1Cost *= np.log10(NTr)
     nclasses = x1Tr.max() + 1
     nTr = np.zeros(nclasses)
     for k in range(nclasses):
@@ -1192,9 +1221,9 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
 
 
     f = PointSetMatching(Template=x0Tr0, Target=x1Tr, outputDir=outputDir, param=sm, regWeight=1.,
-                         saveTrajectories=True, pplot=True, testSet=(x0Te0, x1Te), addDim = addDim, u0=u0,
+                         saveTrajectories=True, pplot=False, testSet=(x0Te0, x1Te), addDim = addDim, u0=u0,
                          normalizeInput=False, l1Cost = l1Cost, relearnRate=relearnRate, randomInit=randomInit,
-                         affine='none', testGradient=False, affineWeight=1e3,
+                         affine='none', testGradient=False, affineWeight=1000.,
                          maxIter=1500)
 
     testInit = TestErrors()
@@ -1248,11 +1277,11 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
     return f, testInit
 
 if __name__ == "__main__":
-    #AllTD = {'helixes3':(100,), 'helixes10':(100,200,500,1000),
-    #          'helixes20':(100,200,500,1000), 'Dolls':(100,200,500,1000),
-    #          'Segments11':(100,200,500,1000), 'Segments12':(100,200,500,1000),'TwoSegments':(100,200,500,1000),'TwoSegmentsCumSum':(100,200,500,1000), 'RBF':(100,200,500,1000)}
-    #AllTD = {'TwoSegmentsCumSum':(250,)}
-    AllTD = {'MoGHN':(100,)}
+    AllTD = {'helixes3':(100,), 'helixes10':(100,200,500,1000),
+              'helixes20':(100,200,500,1000), 'Dolls':(100,200,500,1000),
+              'Segments11':(100,200,500,1000), 'TwoSegments':(100,200,500,1000),'TwoSegmentsCumSum':(100,200,500,1000), 'RBF':(100,200,500,1000)}
+    #AllTD = {'Line':(200,)}
+    #AllTD = {'TwoSegments':(200,)}
     #typeData = 'Dolls'
 
     outputDir0 = '/Users/younes/Development/Results/Classif'
@@ -1263,7 +1292,7 @@ if __name__ == "__main__":
         for NTr in AllTD[typeData]:
             print typeData, 'NTr = ', NTr
             outputDir = outputDir0+'/'+typeData+'_{0:d}'.format(NTr)
-            f,testInit = Classify(typeData, l1Cost = .01, addDim = 1, sigError = 0.01, randomInit=0.05, removeNullDirs = False, NTr = NTr, NTe = 2000, outputDir=outputDir)
+            f,testInit = Classify(typeData, l1Cost = 1., addDim = 1, sigError = .1, randomInit=0.05, removeNullDirs = False, NTr = NTr, NTe = 2000, outputDir=outputDir)
 
             with open(outputDir+'/results.txt','a+') as fl:
                 fl.write('\n'+typeData+' dim = {0:d} N = {1:d}\n'.format(f.fv0.shape[1], f.fv0.shape[0]))
