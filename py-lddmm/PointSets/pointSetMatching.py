@@ -4,7 +4,7 @@ import scipy.linalg as la
 import scipy.fftpack as fft
 import logging
 from Common import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils
-import PointSets
+from PointSets import pointSets
 from Common.affineBasis import AffineBasis, getExponential
 import matplotlib
 matplotlib.use("TKAgg")
@@ -169,9 +169,9 @@ class PointSetMatching(object):
         self.objTry = None
         self.gradCoeff = self.x0.shape[0]
         self.saveFile = saveFile
-        PointSets.savelmk(self.fv0, self.outputDir + '/Template.vtk')
+        pointSets.savelmk(self.fv0, self.outputDir + '/Template.vtk')
         if not(self.param.errorType == 'classification'):
-            PointSets.savelmk(self.fv1, self.outputDir + '/Target.vtk')
+            pointSets.savelmk(self.fv1, self.outputDir + '/Target.vtk')
         self.coeffAff1 = 1.
         self.coeffAff2 = 100.
         self.coeffAff = self.coeffAff1
@@ -774,7 +774,7 @@ class PointSetMatching(object):
         #return self.at, self.xt
 
     def learnLogistic(self, u0=None, random = 1.0):
-        return PointSets.learnLogisticL2(self.fvDef, self.fv1, w= self.wTr, u0=u0, l1Cost=self.l1Cost,
+        return pointSets.learnLogisticL2(self.fvDef, self.fv1, w= self.wTr, u0=u0, l1Cost=self.l1Cost,
                                          intercept=self.intercept, random=random)
 
     def localMaps1D(self, d):
@@ -1251,10 +1251,10 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
     x0Te /= sigma
     sigma = 1.0
 
-    fu = PointSets.learnLogisticL2(x0Tr, x1Tr, w=wTr, l1Cost=l1Cost)
+    fu = pointSets.learnLogisticL2(x0Tr, x1Tr, w=wTr, l1Cost=l1Cost)
     while np.fabs(fu).max() < 1e-8:
         l1Cost *= 0.9
-        fu = PointSets.learnLogistic(x0Tr, x1Tr, w=wTr, l1Cost=l1Cost)
+        fu = pointSets.learnLogistic(x0Tr, x1Tr, w=wTr, l1Cost=l1Cost)
     xDef1 = np.concatenate((np.ones((x0Te.shape[0], 1)), x0Te), axis=1)
     gu = np.argmax(np.dot(xDef1, fu), axis=1)[:, np.newaxis]
 
