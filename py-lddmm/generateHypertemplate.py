@@ -1,10 +1,8 @@
-import os
-from os import path
 import glob
 import argparse
 import numpy as np
-import diffeo
-import surfaces
+from Surfaces import surfaces
+
 try:
     from vtk import *
     gotVTK = True
@@ -57,7 +55,7 @@ def main():
     resol = [dx, dx, dx] 
     origin = [minx-10*dx, miny-10*dx, minz-10*dx] 
 
-    g = fv.toPolyData() ;
+    g = fv.toPolyData()
     h = vtkImplicitPolyDataDistance()
     h.SetInput(g)
 

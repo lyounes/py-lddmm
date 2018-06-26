@@ -3,8 +3,8 @@ import os
 from os import path
 import glob
 import argparse
-import diffeo
-import surfaces
+from Common import diffeo
+from Surfaces import surfaces
 
 
 def main():

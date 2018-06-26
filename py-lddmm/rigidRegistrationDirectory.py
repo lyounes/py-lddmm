@@ -2,9 +2,8 @@
 from os import path
 import glob
 import argparse
-import diffeo
-import pointSets
-import surfaces
+from PointSets import pointSets
+from Surfaces import surfaces
 from affineRegistration import *
 
 
@@ -38,7 +37,7 @@ def main():
                 [nm,ext] = path.splitext(u[1])
                 if path.exists(args.dirLmk+'/'+nm+'.lmk'):
                     tmpl = surfaces.Surface(filename=left[0])
-                    tmplLmk, foo = pointSets.loadlmk(args.dirLmk+'/'+nm+'.lmk')
+                    tmplLmk, foo = pointSets.loadlmk(args.dirLmk + '/' + nm + '.lmk')
                     R0, T0 = rigidRegistration(surfaces = (tmplLmk, tmpl.vertices),  translationOnly=True, verb=False, temperature=10., annealing=True)
                     tmplLmk = tmplLmk + T0
                     cLmk = float(tmpl.vertices.shape[0]) / tmplLmk.shape[0]
@@ -70,7 +69,7 @@ def main():
                     (R0, T0) = rigidRegistration(landmarks=(y, tmplLmk, 1.), flipMidPoint=False, rotationOnly=False, verb=False, temperature=10., annealing=True, rotWeight=1.)
                     yy = np.dot(sf.vertices, R0.T) + T0
                     yyl = np.dot(y, R0.T) + T0
-                    pointSets.savelmk(yyl, args.dirOut+'/'+nm+'_reg.lmk')
+                    pointSets.savelmk(yyl, args.dirOut + '/' + nm + '_reg.lmk')
                     (R, T) = rigidRegistration(surfaces = (yy, tmpl.vertices), landmarks=(yyl, tmplLmk, cLmk), flipMidPoint=False, rotationOnly=True, verb=False, temperature=1., annealing=False, rotWeight=1.)
                     T += np.dot(T0, R.T)
                     R = np.dot(R, R0)
@@ -80,7 +79,7 @@ def main():
                     #     print R, T
                     #     ff.write(nm+'\n')
                     yyl = np.dot(y, R.T) + T
-                    pointSets.savelmk(yyl, args.dirOut+'/'+nm+'_reg.lmk')
+                    pointSets.savelmk(yyl, args.dirOut + '/' + nm + '_reg.lmk')
                     #print R,T
                 except IOError:
                     (R, T) = rigidRegistration(surfaces=(sf.vertices, tmpl.vertices), rotationOnly=True, verb=False, temperature=10., annealing=True, rotWeight=1.)
@@ -118,7 +117,7 @@ def main():
                     #     ff.write(nm+'\n')
                         #print R, T
                     yyl = np.dot(y, R.T) + T
-                    pointSets.savelmk(yyl, args.dirOut+'/'+nm+'_reg.lmk')
+                    pointSets.savelmk(yyl, args.dirOut + '/' + nm + '_reg.lmk')
                 except IOError:
                     (R, T) = rigidRegistration(surfaces = (sf.vertices, tmpl.vertices), flipMidPoint=True, rotationOnly=True, verb=False, temperature=10., annealing=True, rotWeight=1.)
             else:
