@@ -22,7 +22,7 @@ from PIL.Image import core as _imaging
 class gridScalars:
     # initializes either form a previous array (data) or from a file 
     def __init__(self, grid=None, data=None, fileName = None, dim = 3, resol = 1., origin= 0., force_axun=False, withBug=False):
-        if not (data == None):
+        if not (data is None):
             self.data = np.copy(data)
             if type(resol) == float:
                 self.resol = resol *np.ones(data.ndim)

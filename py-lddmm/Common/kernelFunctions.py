@@ -1,5 +1,5 @@
 import numpy as np
-import kernelFunctions_fort as kff
+import Common.kernelFunctions_fort as kff
 from scipy.spatial import distance as dfun
 
 #import kernelMatrix_fort

@@ -1,6 +1,6 @@
 import logging
 import numpy.linalg as la
-from Surfaces import surfaces
+from surfaces import surfaces
 from PointSets.pointSets import *
 from Common import conjugateGradient as cg, pointEvolution as evol
 from Common.affineBasis import *

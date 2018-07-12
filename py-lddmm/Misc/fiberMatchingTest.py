@@ -4,9 +4,9 @@ from Surfaces.surfaces import *
 from Common.kernelFunctions import *
 from Surfaces.secondOrderFiberMatching import *
 
-def compute(createSurfaces=True):
+def compute(createsurfaces=True):
 
-    if createSurfaces:
+    if createsurfaces:
         [x,y,z] = np.mgrid[0:200, 0:200, 0:200]/100.
         ay = np.fabs(y-1)
         az = np.fabs(z-1)

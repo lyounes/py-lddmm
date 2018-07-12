@@ -25,7 +25,7 @@ def compute():
     s2 = np.sqrt(2)
     
     I1 = .06 - ((x)**2 + 0.5*((y)**2) + (z)**2)  
-    fv1 = Surface() ;
+    fv1 = Surface()
     fv1.Isosurface(I1, value = 0, target=Tg, scales=[1, 1, 1])
 
     I1 = .08 - ((x+.05)**2 + 0.3*(y-0.05)**2 + (z)**2)  

@@ -2,7 +2,7 @@
 import os
 from os import path
 import argparse
-import Surfaces
+import surfaces
 import logging
 from Common import loggingUtils
 from Common.kernelFunctions import *
@@ -61,20 +61,20 @@ def main():
     else:
         import surfaceMatching as smt
 
-    tmpl = Surfaces.Surface(filename=args.template)
+    tmpl = surfaces.Surface(filename=args.template)
     tmpl.vertices *= args.scaleFactor
     K1 = Kernel(name=args.typeKernel, sigma = args.sigmaKernel)
     if args.internalWeight >  0:
         sm = smt.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=args.sigmaDist, sigmaError=args.sigmaError, errorType=args.typeError, internalCost = 'h1')
     else:
         sm = smt.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=args.sigmaDist, sigmaError=args.sigmaError, errorType=args.typeError, internalCost = None)
-    fv = Surfaces.Surface(filename=args.target)
+    fv = surfaces.Surface(filename=args.target)
     fv.vertices *= args.scaleFactor
     if args.flipTarget:
         logging.info('Flipping Target Orientation')
-        print Surfaces.currentNormDef(tmpl, fv, sm.KparDist)
+        print surfaces.currentNormDef(tmpl, fv, sm.KparDist)
         fv.flipFaces()
-        print Surfaces.currentNormDef(tmpl, fv, sm.KparDist)
+        print surfaces.currentNormDef(tmpl, fv, sm.KparDist)
     #print fv.vertices
 
     if args.rigid:

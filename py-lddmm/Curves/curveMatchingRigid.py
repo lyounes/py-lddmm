@@ -4,7 +4,7 @@ import matplotlib
 matplotlib.use("TKAgg")
 import scipy.linalg as la
 import scipy.optimize as sopt
-import Curves
+import curves
 from Common import conjugateGradient as cg, grid, matchingParam, pointEvolution as evol, loggingUtils
 from Common.affineBasis import *
 import matplotlib.pyplot as plt
@@ -30,22 +30,22 @@ class CurveMatchingRigidParam(matchingParam.MatchingParam):
                                          
         if errorType == 'current':
             print 'Running Current Matching'
-            self.fun_obj0 = Curves.currentNorm0
-            self.fun_obj = Curves.currentNormDef
-            self.fun_objGrad = Curves.currentNormGradient
+            self.fun_obj0 = curves.currentNorm0
+            self.fun_obj = curves.currentNormDef
+            self.fun_objGrad = curves.currentNormGradient
         elif errorType=='measure':
             print 'Running Measure Matching'
-            self.fun_obj0 = Curves.measureNorm0
-            self.fun_obj = Curves.measureNormDef
-            self.fun_objGrad = Curves.measureNormGradient
+            self.fun_obj0 = curves.measureNorm0
+            self.fun_obj = curves.measureNormDef
+            self.fun_objGrad = curves.measureNormGradient
         elif errorType=='varifold':
-            self.fun_obj0 = Curves.varifoldNorm0
-            self.fun_obj = Curves.varifoldNormDef
-            self.fun_objGrad = Curves.varifoldNormGradient
+            self.fun_obj0 = curves.varifoldNorm0
+            self.fun_obj = curves.varifoldNormDef
+            self.fun_objGrad = curves.varifoldNormGradient
         elif errorType=='varifoldComponent':
-            self.fun_obj0 = Curves.varifoldNormComponent0
-            self.fun_obj = Curves.varifoldNormComponentDef
-            self.fun_objGrad = Curves.varifoldNormComponentGradient
+            self.fun_obj0 = curves.varifoldNormComponent0
+            self.fun_obj = curves.varifoldNormComponentDef
+            self.fun_objGrad = curves.varifoldNormComponentGradient
         else:
             print 'Unknown error Type: ', self.errorType
 
@@ -93,27 +93,27 @@ class CurveMatchingRigid:
                 #print 'Please provide a template curve'
                 return
             else:
-                self.fv0 = Curves.Curve(filename=fileTempl)
+                self.fv0 = curves.Curve(filename=fileTempl)
         else:
-            self.fv0 = Curves.Curve(curve=Template)
+            self.fv0 = curves.Curve(curve=Template)
         if Target is None:
             if fileTarg is None:
                 print 'Please provide a target curve'
                 return
             else:
-                self.fv1 = Curves.Curve(filename=fileTarg)
+                self.fv1 = curves.Curve(filename=fileTarg)
         else:
-            self.fv1 = Curves.Curve(curve=Target)
+            self.fv1 = curves.Curve(curve=Target)
 
 
 
         self.npt = self.fv0.vertices.shape[0]
         self.dim = self.fv0.vertices.shape[1]
         if not(Clamped is None):
-            self.fvc = Curves.Curve(curve=Clamped)
+            self.fvc = curves.Curve(curve=Clamped)
             self.xc = self.fvc.vertices
         else:
-            self.fvc = Curves.Curve()
+            self.fvc = curves.Curve()
             self.xc = np.zeros([0, self.dim])
         if self.dim == 2:
             xmin = min(self.fv0.vertices[:,0].min(), self.fv1.vertices[:,0].min())
@@ -152,7 +152,7 @@ class CurveMatchingRigid:
                 os.mkdir(outputDir)
         for f in glob.glob(outputDir+'/*.vtk'):
             os.remove(f)
-        self.fvDef = Curves.Curve(curve=self.fv0)
+        self.fvDef = curves.Curve(curve=self.fv0)
 
         if param==None:
             self.param = CurveMatchingRigidParam()
@@ -493,7 +493,7 @@ class CurveMatchingRigid:
         #objTry += self.objectiveFunPotential(foo[1])
         objTry += self.objectiveFunRigid(foo[1], atTry, tautTry)
 
-        ff = Curves.Curve(curve=self.fvDef)
+        ff = curves.Curve(curve=self.fvDef)
         ff.updateVertices(np.squeeze(foo[1][-1, :, :]))
         objTry += self.dataTerm(ff)
         if np.isnan(objTry):
@@ -878,7 +878,7 @@ class CurveMatchingRigid:
         #H0 = (rho*theta).sum() - (mu00*v).sum()/2 - self.costRepell(x0,v) + self.objectiveFunPotential(x0[np.newaxis, :,:], timeStep=1.)
              # - self.objectiveFunRigid(x0[np.newaxis, :,:], a0[np.newaxis,:], tau0[np.newaxis,:,:], timeStep=1.)
 
-        fvDef = Curves.Curve(curve=fv0)
+        fvDef = curves.Curve(curve=fv0)
 
         timeStep = dt
         lag = int(np.floor(Tsize/100))
@@ -1006,7 +1006,7 @@ class CurveMatchingRigid:
         lag = int(np.floor(Tsize/plotRatio))
         #lag2 = int(np.floor(Tsize/20))
         lag2 = int(np.ceil(plotRatio/20.))*lag
-        fvDef = Curves.Curve(curve=fv0)
+        fvDef = curves.Curve(curve=fv0)
         H0 = 0
         for t in tqdm(range(Tsize)):
             z = np.copy(xt[t, :, :])
@@ -1236,7 +1236,7 @@ class CurveMatchingRigid:
 
         pxt = np.zeros([M+1, N, dim])
         pxt[M, :, :] = px1
-        foo = Curves.Curve(curve=self.fv0)
+        foo = curves.Curve(curve=self.fv0)
         for t in range(M):
             px = pxt[M-t, :, :]
             z = xt[M-t-1, :, :]
@@ -1274,7 +1274,7 @@ class CurveMatchingRigid:
 
 
     def hamiltonianGradient(self, px1):
-        foo = Curves.Curve(curve=self.fv0)
+        foo = curves.Curve(curve=self.fv0)
         timeStep = 1.0/self.Tsize
         (pxt, xt) = self.hamiltonianCovector(px1)
         at = self.at        
@@ -1586,7 +1586,7 @@ class CurveMatchingRigid:
         rx = r - d * (1 - np.exp(-100 * (t - t0) * (t1 - t)))
         x2[:, 0] = rx * np.cos(t)
         x2[:, 1] = rx * np.sin(t)
-        x = Curves.remesh(np.concatenate((x1, x2)), N)
+        x = curves.remesh(np.concatenate((x1, x2)), N)
         return x
 
     def __bunny(self, N0, r, a1, th1, a2, th2):
@@ -1602,7 +1602,7 @@ class CurveMatchingRigid:
         x = np.zeros((len(t), 2))
         x[:, 0] = rho * np.cos(t)
         x[:, 1] = rho * np.sin(t)
-        x = Curves.remesh(x, N0)
+        x = curves.remesh(x, N0)
         return x
 
     def __ellipse(self, N0,a,b,theta):
@@ -1611,7 +1611,7 @@ class CurveMatchingRigid:
         x = np.zeros((len(t), 2))
         x[:, 0] = a * np.cos(theta) * np.cos(t) + b * np.sin(theta) * np.sin(t)
         x[:, 1] = -a * np.sin(theta) * np.cos(t) + b * np.cos(theta) * np.sin(t)
-        x = Curves.remesh(x, N0)
+        x = curves.remesh(x, N0)
         return x
 
     def __square(self,N,r):
@@ -1664,12 +1664,12 @@ class CurveMatchingRigid:
             x = self.__circle(50, 0.25)
             x1 = self.__circle(25, 0.1)
             # x = self.__square(50, 0.25)
-            fv0 = Curves.Curve(curve=[Curves.Curve(pointSet=x + np.array([-3, 0])),
-                                      Curves.Curve(pointSet=x + np.array([-1.1, 1.])),
-                                      Curves.Curve(pointSet=x + np.array([-1.3, -1.])),
-                                      Curves.Curve(pointSet=x + np.array([-1.2, 0]))])
+            fv0 = curves.Curve(curve=[curves.Curve(pointSet=x + np.array([-3, 0])),
+                                      curves.Curve(pointSet=x + np.array([-1.1, 1.])),
+                                      curves.Curve(pointSet=x + np.array([-1.3, -1.])),
+                                      curves.Curve(pointSet=x + np.array([-1.2, 0]))])
             xframe = self.__rectangle(200, 4, 3)
-            fvc = Curves.Curve(pointSet=xframe)
+            fvc = curves.Curve(pointSet=xframe)
             #fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,1])), curves.Curve(pointSet=x1 + np.array([0,-1]))])
             mx = self.center(x + np.array([-3, 0]), kernel=K1)
             a0 = np.array([15, 0, 0, 0])
@@ -1682,12 +1682,12 @@ class CurveMatchingRigid:
                                          errorType='varifold')
             x = self.__circle(25, 0.1)
             #x = self.__bunny(50, 0.1, 0.15, 0.5*np.pi, 0.15, 0.75*np.pi)
-            fv0 = Curves.Curve(pointSet=x + np.array([-1 , .25]))
+            fv0 = curves.Curve(pointSet=x + np.array([-1 , .25]))
             xframe = self.__rectangle(200, 1.0, 0.5)
             #x1 = self.__circle(25, 0.1)
             x1 = self.__vline(50, 0.25)
             #fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,-.5]))])
-            fvc = Curves.Curve(pointSet=x1 + np.array([0, -.45]))
+            fvc = curves.Curve(pointSet=x1 + np.array([0, -.45]))
             #fvc = curves.Curve(curve=[curves.Curve(pointSet=x1 + np.array([0, -.45])), curves.Curve(pointSet=x)])
             #fvc = curves.Curve(pointSet=x1 + np.array([0,-1.5]))
             a0 = np.array([0])
@@ -1704,13 +1704,13 @@ class CurveMatchingRigid:
             x1 = self.__circle(25, 0.1)
             # x = self.__square(50, 0.25)
             offset = np.array([-1, 0.5318])
-            fv0 = [Curves.Curve(pointSet=x + offset),
+            fv0 = [curves.Curve(pointSet=x + offset),
                    #                   curves.Curve(pointSet=x + np.array([.9, 1.])),
                    #                   curves.Curve(pointSet=x + np.array([.7, -1.])),
-                   Curves.Curve(pointSet=x - offset)]
+                   curves.Curve(pointSet=x - offset)]
             xframe = self.__rectangle(200, 2, 1.5)
             x = self.__square(200, 4)
-            fvc = Curves.Curve(pointSet=x)
+            fvc = curves.Curve(pointSet=x)
             fvc = None
             fileName = "twoBunniesDanse"
             # fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,1])), curves.Curve(pointSet=x1 + np.array([0,-1]))])
@@ -1731,14 +1731,14 @@ class CurveMatchingRigid:
             x = self.__c(50, 0.5, 0.2)
             # x = self.__square(50, 0.25)
             #x = curves.remesh(x, 50)
-            fv0 = Curves.Curve(pointSet=x + np.array([-1, 0]))
+            fv0 = curves.Curve(pointSet=x + np.array([-1, 0]))
             #fv0.resample(0.1)
             mx = self.center(fv0.vertices, kernel=K1)
             #fv0 = curves.Curve(pointSet= fv0.vertices)
                    #                   curves.Curve(pointSet=x + np.array([.9, 1.])),
                    #                   curves.Curve(pointSet=x + np.array([.7, -1.])),
             xframe = self.__square(200, 6)
-            fvc = Curves.Curve(pointSet=xframe)
+            fvc = curves.Curve(pointSet=xframe)
             fvc = None
             fileName = "oneC"
             # fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,1])), curves.Curve(pointSet=x1 + np.array([0,-1]))])
@@ -1753,9 +1753,9 @@ class CurveMatchingRigid:
                                          errorType='varifold')
             x = self.__ellipse(50, 0.33, 0.33, 0)
             #fv0 = [curves.Curve(pointSet=x + np.array([-1, 0])), curves.Curve(pointSet=x)]
-            fv0 = Curves.Curve(pointSet=x + np.array([-1, 0]))
+            fv0 = curves.Curve(pointSet=x + np.array([-1, 0]))
             x = self.__square(200, 4)
-            fvc = Curves.Curve(pointSet=x)
+            fvc = curves.Curve(pointSet=x)
             #fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,1])), curves.Curve(pointSet=x1 + np.array([0,-1]))])
             a0 = np.array([10])
             tau0 = np.array([[10, -10]])
@@ -1771,10 +1771,10 @@ class CurveMatchingRigid:
             x3 = self.__line(25, 0.1, np.pi/6) + [0.4,-0.6]
             x4 = self.__line(25, 0.1, np.pi/2) + [0,0]
             x5 = self.__line(25, 0.1, np.pi/4) + [-0.2,0.9]
-            fv0 = [Curves.Curve(pointSet=x1), Curves.Curve(pointSet=x2), Curves.Curve(pointSet=x3),
-                   Curves.Curve(pointSet=x4), Curves.Curve(pointSet=x5)]
+            fv0 = [curves.Curve(pointSet=x1), curves.Curve(pointSet=x2), curves.Curve(pointSet=x3),
+                   curves.Curve(pointSet=x4), curves.Curve(pointSet=x5)]
             x = self.__square(200, 4)
-            fvc = Curves.Curve(pointSet=x)
+            fvc = curves.Curve(pointSet=x)
             #fvc = curves.Curve(curve=[curves.Curve(pointSet=x),curves.Curve(pointSet=x1 + np.array([0,1])), curves.Curve(pointSet=x1 + np.array([0,-1]))])
             a0 = np.array([10,0,-5,2,1])
             tau0 = np.array([[10, -10],[3,0],[-2,5],[4,-2], [0,-1]])
@@ -1834,7 +1834,7 @@ class CurveMatchingRigid:
         geod = f.geodesicEquation__(T, dt, a0, tau0, pplot=True, nsymplectic=0)
         # f.__geodesicEquation__(f.Tsize, f.fv0, f.pxt[0,:,:])
         fig = plt.figure(2)
-        fvDef = Curves.Curve(curve=f.fv0)
+        fvDef = curves.Curve(curve=f.fv0)
         xt = geod[0]
         FFMpegWriter = manimation.writers['ffmpeg']
         metadata = dict(title='Euclidean LDDMM')
@@ -1883,8 +1883,8 @@ class CurveMatchingRigid:
         #x = self.move(self.__circle(N,r ), b=(-1.5,1))
         x = self.__circle(N,r )
         #y = self.move(self.__c(N,2*r, r/4 ), b = (-1.2,0.8))
-        fv0 = Curves.Curve(pointSet=x + np.array([-0.5, 0.5]))
-        fv1 = Curves.Curve(pointSet=x + np.array([0.5, 0.5]))
+        fv0 = curves.Curve(pointSet=x + np.array([-0.5, 0.5]))
+        fv1 = curves.Curve(pointSet=x + np.array([0.5, 0.5]))
         #fvc = curves.Curve(pointSet=0.25*x+np.array([1,0.5]))
         # fv0 = curves.Curve(curve=[curves.Curve(pointSet=x),
         #                           curves.Curve(pointSet=y)])
@@ -1894,7 +1894,7 @@ class CurveMatchingRigid:
         #fv0.component = np.zeros(fv0.component.shape, dtype=int)
         #fv1.component = np.zeros(fv1.component.shape, dtype=int)
         x = self.__vline(100, .5)
-        fvc = Curves.Curve(pointSet=x + [0, 0])
+        fvc = curves.Curve(pointSet=x + [0, 0])
         xframe = self.__rectangle(100, 1.5, 1.0) + [0, 0.5]
         #fvc = curves.Curve(curve=[curves.Curve(pointSet=x - [.5,.75]),curves.Curve(pointSet=x + [.5,.75])])
         #fvc = None
@@ -1919,8 +1919,8 @@ class CurveMatchingRigid:
         c0 = f.center(fv0.vertices)
         c1 = f.center(fv1.vertices)
         tau0 = c1 - c0
-        fvTmp = Curves.Curve(curve=fv0)
-        fvTmp1 = Curves.Curve(curve=fv1)
+        fvTmp = curves.Curve(curve=fv0)
+        fvTmp1 = curves.Curve(curve=fv1)
         x0 = fv0.vertices - c0
         x1 = fv1.vertices - c1
         fvTmp1.updateVertices(x1)
@@ -1934,7 +1934,7 @@ class CurveMatchingRigid:
             x[:,0] = c*x0[:,0] + s*x0[:,1]
             x[:,1] = -s*x0[:,0] + c*x0[:,1]
             fvTmp.updateVertices(x)
-            d = Curves.varifoldNorm(fvTmp, fvTmp1, f.param.KparDist)
+            d = curves.varifoldNorm(fvTmp, fvTmp1, f.param.KparDist)
             if k==0 or d<d0:
                 a0 = a
                 d0 = d

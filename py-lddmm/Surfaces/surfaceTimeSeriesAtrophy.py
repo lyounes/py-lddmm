@@ -1,6 +1,6 @@
 import numpy.linalg as la
 import logging
-from Surfaces import surfaces
+import surfaces
 #import pointEvolution_fort as evol_omp
 from Common import conjugateGradient as cg, pointEvolution as evol
 import surfaceTimeSeries

@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import scipy as sp
 from Common import conjugateGradient as cg, diffeo
@@ -301,7 +302,10 @@ class Surface:
             dc = vtkQuadricDecimation()
             red = 1 - min(np.float(target)/polydata.GetNumberOfPoints(), 1)
             dc.SetTargetReduction(red)
-            dc.SetInput(polydata)
+            if vtkVersion.GetVTKMajorVersion() >= 6:
+                dc.SetInputData(polydata)
+            else:
+                dc.SetInput(polydata)
             dc.Update()
             g = dc.GetOutput()
             self.fromPolyData(g)
@@ -568,7 +572,7 @@ class Surface:
 
     def laplacianMatrix(self):
         F = self.faces
-        V = self.vertices ;
+        V = self.vertices
         nf = F.shape[0]
         nv = V.shape[0]
 
@@ -576,8 +580,8 @@ class Surface:
 
         # compute edges and detect boundary
         #edm = sp.lil_matrix((nv,nv))
-        edm = -np.ones([nv,nv])
-        E = np.zeros([3*nf, 2])
+        edm = -np.ones([nv,nv], dtype=int)
+        E = np.zeros([3*nf, 2], dtype=int)
         j = 0
         for k in range(nf):
             if (edm[F[k,0], F[k,1]]== -1):
@@ -597,7 +601,7 @@ class Surface:
                 j = j+1
         E = E[0:j, :]
         
-        edgeFace = np.zeros([j, nf])
+        edgeFace = np.zeros([j, nf], dtype=int)
         ne = j
         #print E
         for k in range(nf):

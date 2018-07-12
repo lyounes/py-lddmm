@@ -1,7 +1,7 @@
 import os
 import glob
 #import scipy as sp
-import Curves
+import curves
 from PointSets import pointSets
 #import kernelFunctions as kfun
 from Common import conjugateGradient as cg, grid, matchingParam, pointEvolution as evol
@@ -26,22 +26,22 @@ class CurveMatchingParam(matchingParam.MatchingParam):
                                          
         if errorType == 'current':
             print 'Running Current Matching'
-            self.fun_obj0 = Curves.currentNorm0
-            self.fun_obj = Curves.currentNormDef
-            self.fun_objGrad = Curves.currentNormGradient
+            self.fun_obj0 = curves.currentNorm0
+            self.fun_obj = curves.currentNormDef
+            self.fun_objGrad = curves.currentNormGradient
         elif errorType=='measure':
             print 'Running Measure Matching'
-            self.fun_obj0 = Curves.measureNorm0
-            self.fun_obj = Curves.measureNormDef
-            self.fun_objGrad = Curves.measureNormGradient
+            self.fun_obj0 = curves.measureNorm0
+            self.fun_obj = curves.measureNormDef
+            self.fun_objGrad = curves.measureNormGradient
         elif errorType=='varifold':
-            self.fun_obj0 = Curves.varifoldNorm0
-            self.fun_obj = Curves.varifoldNormDef
-            self.fun_objGrad = Curves.varifoldNormGradient
+            self.fun_obj0 = curves.varifoldNorm0
+            self.fun_obj = curves.varifoldNormDef
+            self.fun_objGrad = curves.varifoldNormGradient
         elif errorType=='varifoldComponent':
-            self.fun_obj0 = Curves.varifoldNormComponent0
-            self.fun_obj = Curves.varifoldNormComponentDef
-            self.fun_objGrad = Curves.varifoldNormComponentGradient
+            self.fun_obj0 = curves.varifoldNormComponent0
+            self.fun_obj = curves.varifoldNormComponentDef
+            self.fun_objGrad = curves.varifoldNormComponentGradient
         else:
             print 'Unknown error Type: ', self.errorType
 
@@ -76,17 +76,17 @@ class CurveMatching:
                 print 'Please provide a template curve'
                 return
             else:
-                self.fv0 = Curves.Curve(filename=fileTempl)
+                self.fv0 = curves.Curve(filename=fileTempl)
         else:
-            self.fv0 = Curves.Curve(curve=Template)
+            self.fv0 = curves.Curve(curve=Template)
         if Target==None:
             if fileTarg==None:
                 print 'Please provide a target curve'
                 return
             else:
-                self.fv1 = Curves.Curve(filename=fileTarg)
+                self.fv1 = curves.Curve(filename=fileTarg)
         else:
-            self.fv1 = Curves.Curve(curve=Target)
+            self.fv1 = curves.Curve(curve=Target)
 
 
 
@@ -115,7 +115,7 @@ class CurveMatching:
                 os.mkdir(outputDir)
         for f in glob.glob(outputDir+'/*.vtk'):
             os.remove(f)
-        self.fvDef = Curves.Curve(curve=self.fv0)
+        self.fvDef = curves.Curve(curve=self.fv0)
         self.iter = 0 ;
         self.maxIter = maxIter
         self.verb = verb
@@ -140,23 +140,23 @@ class CurveMatching:
             self.param = param
         
         if self.param.internalCost == 'h1':
-            self.internalCost = Curves.normGrad
-            self.internalCostGrad = Curves.diffNormGrad
+            self.internalCost = curves.normGrad
+            self.internalCostGrad = curves.diffNormGrad
         elif self.param.internalCost == 'h1Alpha':
-            self.internalCost = Curves.h1AlphaNorm
-            self.internalCostGrad = Curves.diffH1Alpha
+            self.internalCost = curves.h1AlphaNorm
+            self.internalCostGrad = curves.diffH1Alpha
             self.internalWeight *= self.fv0.length()/(self.fv0.component.max()+1)
         elif self.param.internalCost == 'h1AlphaInvariant':
-            self.internalCost = Curves.h1AlphaNormInvariant
-            self.internalCostGrad = Curves.diffH1AlphaInvariant
+            self.internalCost = curves.h1AlphaNormInvariant
+            self.internalCostGrad = curves.diffH1AlphaInvariant
             self.internalWeight *= self.fv0.length()/(self.fv0.component.max()+1)
         elif self.param.internalCost == 'h1Invariant':
             if self.fv0.vertices.shape[1] == 2:
-                self.internalCost = Curves.normGradInvariant
-                self.internalCostGrad = Curves.diffNormGradInvariant
+                self.internalCost = curves.normGradInvariant
+                self.internalCostGrad = curves.diffNormGradInvariant
             else:
-                self.internalCost = Curves.normGradInvariant3D
-                self.internalCostGrad = Curves.diffNormGradInvariant3D
+                self.internalCost = curves.normGradInvariant3D
+                self.internalCostGrad = curves.diffNormGradInvariant3D
         else:
             self.internalCost = None
             
@@ -230,7 +230,7 @@ class CurveMatching:
         #print xt[-1, :, :]
         #print obj
         obj=0
-        foo = Curves.Curve(curve=self.fv0)
+        foo = curves.Curve(curve=self.fv0)
         for t in range(self.Tsize):
             z = np.squeeze(xt[t, :, :])
             a = np.squeeze(at[t, :, :])
@@ -283,7 +283,7 @@ class CurveMatching:
         foo = self.objectiveFunDef(atTry, AfftTry, withTrajectory=True)
         objTry += foo[0]
 
-        ff = Curves.Curve(curve=self.fvDef)
+        ff = curves.Curve(curve=self.fvDef)
         ff.updateVertices(np.squeeze(foo[1][-1, :, :]))
         objTry += self.dataTerm(ff)
         if np.isnan(objTry):
@@ -306,7 +306,7 @@ class CurveMatching:
         M = at.shape[0]
         timeStep = 1.0/M
         xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
-        foo = Curves.Curve(curve=self.fv0)
+        foo = curves.Curve(curve=self.fv0)
         if not(affine is None):
             A0 = affine[0]
             A = np.zeros([M,dim,dim])
@@ -319,7 +319,7 @@ class CurveMatching:
                 
         pxt = np.zeros([M+1, N, dim])
         pxt[M, :, :] = px1
-        foo = Curves.Curve(curve=self.fv0)
+        foo = curves.Curve(curve=self.fv0)
         for t in range(M):
             px = np.squeeze(pxt[M-t, :, :])
             z = np.squeeze(xt[M-t-1, :, :])
@@ -355,7 +355,7 @@ class CurveMatching:
             return evol.landmarkHamiltonianGradient(self.x0, self.at, px1, self.param.KparDiff, self.regweight, affine=affine, 
                                                     getCovector=True)
                                                     
-        foo = Curves.Curve(curve=self.fv0)
+        foo = curves.Curve(curve=self.fv0)
         (pxt, xt) = self.hamiltonianCovector(px1, affine=affine)
         at = self.at        
         dat = np.zeros(at.shape)
@@ -474,7 +474,7 @@ class CurveMatching:
             dPhi1 = np.random.normal(size=self.x0.shape)
             dPhi2 = np.random.normal(size=self.x0.shape)
             eps = 1e-10
-            fv22 = Curves.Curve(curve=self.fvDef)
+            fv22 = curves.Curve(curve=self.fvDef)
             fv22.updateVertices(self.fvDef.vertices+eps*dPhi2)
             e0 = self.internalCost(self.fvDef, Phi)
             e1 = self.internalCost(self.fvDef, Phi+eps*dPhi1)

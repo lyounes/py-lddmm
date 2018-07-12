@@ -505,13 +505,13 @@ class Curve:
             fvtkout.write('\nLINES {0:d} {1:d}'.format(F.shape[0], 3*F.shape[0]))
             for ll in range(F.shape[0]):
                 fvtkout.write('\n2 {0: d} {1: d}'.format(F[ll,0], F[ll,1]))
-            if (not (scalars == None)) | (not (normals==None)):
+            if (not (scalars is None)) | (not (normals is None)):
                 fvtkout.write(('\nPOINT_DATA {0: d}').format(V.shape[0]))
-            if not (scalars == None):
+            if not (scalars is None):
                 fvtkout.write('\nSCALARS '+scal_name+' float 1\nLOOKUP_TABLE default')
                 for ll in range(V.shape[0]):
                     fvtkout.write('\n {0: .5f}'.format(scalars[ll]))
-            if not (normals == None):
+            if not (normals is None):
                 fvtkout.write('\nNORMALS normals float')
                 for ll in range(V.shape[0]):
                     fvtkout.write('\n {0: .5f} {1: .5f} {2: .5f}'.format(normals[ll, 0], normals[ll, 1], 0))
@@ -700,7 +700,7 @@ def remesh(x, N=100, closed=True, rhoTol=0.9):
 
 
 
-def mergeCurves(curves, tol=0.01):
+def mergecurves(curves, tol=0.01):
     N = 0
     M = 0
     dim = curves[0].vertices.shape[1]
@@ -762,7 +762,7 @@ def mergeCurves(curves, tol=0.01):
     return res
 
 # Reads several .byu files
-def readMultipleCurves(regexp, Nmax = 0):
+def readMultiplecurves(regexp, Nmax = 0):
     files = glob.glob(regexp)
     if Nmax > 0:
         nm = min(Nmax, len(files))

@@ -131,7 +131,7 @@ def savePoints(fileName, x, vector=None, scalars=None):
 # Saves in .vtk format
 def saveTrajectories(fileName, xt):
     with open(fileName, 'w') as fvtkout:
-        fvtkout.write('# vtk DataFile Version 3.0\nCurves \nASCII\nDATASET POLYDATA\n') 
+        fvtkout.write('# vtk DataFile Version 3.0\ncurves \nASCII\nDATASET POLYDATA\n')
         fvtkout.write('\nPOINTS {0: d} float'.format(xt.shape[0]*xt.shape[1]))
         if xt.shape[2] == 2:
             xt = np.concatenate(xt, np.zeros([xt.shape[0],xt.shape[1], 1]))

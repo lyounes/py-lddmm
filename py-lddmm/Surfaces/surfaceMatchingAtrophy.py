@@ -1,6 +1,6 @@
 import numpy.linalg as la
 import logging
-import Surfaces
+import surfaces
 #import pointEvolution_fort as evol_omp
 from Common import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol
 import surfaceMatching
@@ -268,11 +268,11 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         foo = self.objectiveFunDef(atTry, AfftTry, x0 = x0Try, withTrajectory=True)
         objTry = 0
 
-        ff = Surfaces.Surface(surf=self.fvDef)
+        ff = surfaces.Surface(surf=self.fvDef)
         ff.updateVertices(np.squeeze(foo[1][self.Tsize, ...]))
         objTry += self.param.fun_obj(ff, self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
         if self.symmetric:
-            ffI = Surfaces.Surface(surf=self.fvInit)
+            ffI = surfaces.Surface(surf=self.fvInit)
             ffI.updateVertices(x0Try)
             objTry += self.param.fun_obj(ffI, self.fv0, self.param.KparDist) / (self.param.sigmaError**2)
         objTry += foo[0]+self.obj0
@@ -462,7 +462,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             self.fvInit.updateVertices(self.x0)
 
             if self.affine=='euclidean' or self.affine=='translation':
-                f = Surfaces.Surface(surf=self.fvInit)
+                f = surfaces.Surface(surf=self.fvInit)
                 X = self.affB.integrateFlow(self.Afft)
                 displ = np.zeros(self.npt)
                 dt = 1.0 /self.Tsize ;
@@ -473,7 +473,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                         at = np.dot(self.at[t,...], U.T)
                         vt = self.param.KparDiff.applyK(yt, at)
                     f.updateVertices(yt)
-                    vf = Surfaces.vtkFields() ;
+                    vf = surfaces.vtkFields() ;
                     vf.scalars.append('Jacobian') ;
                     vf.scalars.append(np.exp(Jt[t, :]))
                     vf.scalars.append('displacement')
@@ -483,7 +483,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                     f.saveVTK2(self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.vtk', vf)
                     nu = self.fv0ori*f.computeVertexNormals()
                     displ += dt * (vt*nu).sum(axis=1)
-                f = Surfaces.Surface(surf=self.fv1)
+                f = surfaces.Surface(surf=self.fv1)
                 #logging.info('rotation?: %f' %(np.fabs(np.dot(U, U.T)- np.eye(3)).sum()))
                 yt = np.dot(f.vertices - X[1][-1, ...], U.T)
                 f.updateVertices(yt)
@@ -502,7 +502,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 self.fvDef.updateVertices(np.squeeze(self.xt[kk, :, :]))
                 AV = self.fvDef.computeVertexArea()
                 AV = (AV[0]/AV0[0])-1
-                vf = Surfaces.vtkFields() ;
+                vf = surfaces.vtkFields() ;
                 vf.scalars.append('Jacobian') ;
                 vf.scalars.append(np.exp(Jt[kk, :]))
                 vf.scalars.append('Jacobian_T') ;

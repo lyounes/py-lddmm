@@ -2,7 +2,7 @@ import os
 import scipy.linalg as spLA
 import logging
 import time
-import Surfaces
+import surfaces
 #import pointEvolution_fort as evol_omp
 from Common import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol
 from Surfaces import surfaceMatching
@@ -53,11 +53,11 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             else:
                 self.fv0 = []
                 for ftmp in fileTempl:
-                    self.fv0.append(Surfaces.Surface(filename=ftmp))
+                    self.fv0.append(surfaces.Surface(filename=ftmp))
         else:
             self.fv0 = []
             for ftmp in Template:
-                self.fv0.append(Surfaces.Surface(surf=ftmp))
+                self.fv0.append(surfaces.Surface(surf=ftmp))
         if Target==None:
             if fileTarg==None:
                 logging.error('Please provide a target surface')
@@ -65,11 +65,11 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             else:
                 self.fv1 = []
                 for ftmp in fileTarg:
-                    self.fv1.append(Surfaces.Surface(filename=ftmp))
+                    self.fv1.append(surfaces.Surface(filename=ftmp))
         else:
             self.fv1 = []
             for ftmp in Target:
-                self.fv1.append(Surfaces.Surface(surf=ftmp))
+                self.fv1.append(surfaces.Surface(surf=ftmp))
 
         self.dim = self.fv0[0].vertices.shape[1]
 
@@ -85,8 +85,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         self.fvDef = [] 
         self.fvDefB = [] 
         for fv in self.fv0:
-            self.fvDef.append(Surfaces.Surface(surf=fv))
-            self.fvDefB.append(Surfaces.Surface(surf=fv))
+            self.fvDef.append(surfaces.Surface(surf=fv))
+            self.fvDefB.append(surfaces.Surface(surf=fv))
         self.maxIter_cg = maxIter_cg
         self.maxIter_al = maxIter_al
         self.verb = verb
@@ -168,8 +168,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             self.nut.append(np.tile(np.array(nu0), [self.Tsize+1, 1, 1]))
             k=k+1
 
-        self.npoints = self.npt.sum()
-        self.nfaces = self.nf.sum()
+        self.npoints = self.npt.sum(dtype=int)
+        self.nfaces = self.nf.sum(dtype=int)
         self.at.append(np.zeros([self.Tsize, self.npoints, self.dim]))
         self.atTry.append(np.zeros([self.Tsize, self.npoints, self.dim]))
         self.x0.append(np.zeros([self.npoints, self.dim]))
@@ -650,7 +650,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         npt = 0
         for k in range(self.nsurf):
             npt1 = npt + self.npt[k]
-            ff = Surfaces.Surface(surf=self.fvDef[k])
+            ff = surfaces.Surface(surf=self.fvDef[k])
             ff.updateVertices(np.squeeze(foo[1][self.nsurf][self.Tsize, npt:npt1, :]))
             objTry += self.param.fun_obj(ff, self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
             ff.updateVertices(np.squeeze(foo[1][k][self.Tsize, :, :]))
@@ -924,7 +924,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 AV = self.fvDefB[k].computeVertexArea()
                 AV = (AV[0]/AV0[0])
                 #self.fvDefB[k].saveVTK(self.outputDir +'/'+ self.saveFile+str(k)+'Out'+str(kk)+'.vtk', scalars = Jt[-1][kk, nn:nn+n1], scal_name='Jacobian')
-                vf = Surfaces.vtkFields() ;
+                vf = surfaces.vtkFields() ;
                 vf.scalars.append('Jacobian') ;
                 vf.scalars.append(np.exp(Jt[-1][kk, nn:nn+n1]))
                 vf.scalars.append('Jacobian_T') ;
@@ -936,7 +936,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 self.fvDef[k].updateVertices(np.squeeze(self.xt[k][kk, :, :]))
                 AV = self.fvDef[k].computeVertexArea()
                 AV = (AV[0]/AV0[0])
-                vf = Surfaces.vtkFields() ;
+                vf = surfaces.vtkFields() ;
                 vf.scalars.append('Jacobian') ;
                 vf.scalars.append(np.exp(Jt[k][kk, :]))
                 vf.scalars.append('Jacobian_T') ;

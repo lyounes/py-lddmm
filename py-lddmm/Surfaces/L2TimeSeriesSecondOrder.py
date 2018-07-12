@@ -2,7 +2,7 @@ import os.path
 import argparse
 import logging
 from Common import loggingUtils
-import Surfaces
+import surfaces
 from Common.kernelFunctions import Kernel
 import surfaceMatching
 import secondOrderMatching as match
@@ -20,7 +20,7 @@ def compute(tmpl, targetDir, outputDir, display=True, geodesic=False, rescale=Fa
 
     #sub = '2729611'
     fv = []
-    fv0 = Surfaces.Surface(filename=tmpl)
+    fv0 = surfaces.Surface(filename=tmpl)
     j = 0 
     print targetDir+'/imageOutput_time_{0:d}_channel_0.vtk'.format(j)
     while os.path.exists(targetDir+'/imageOutput_time_{0:d}_channel_0.vtk'.format(j)):

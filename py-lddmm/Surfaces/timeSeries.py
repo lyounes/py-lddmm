@@ -12,7 +12,7 @@ def runLongitudinalSurface(template, targetList, minL=3, atrophy=False, splines=
     if atrophy:
         pass
     elif splines:
-        from Surfaces import secondOrderMatching as match
+        from surfaces import secondOrderMatching as match
     else:
         pass
 

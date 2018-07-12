@@ -44,14 +44,14 @@ def compute():
         fv4 = Surface() ;
         fv4.Isosurface(I1, value=0, target=Tg, scales=[1, 1, 1])
     else:
-        fv1 = Surface(filename='/Users/younes/Development/Data/Surfaces/fshpere1.obj')
-        fv2 = Surface(filename='/Users/younes/Development/Data/Surfaces/fshpere2.obj')
-        fv3 = Surface(filename='/Users/younes/Development/Data/Surfaces/fshpere1b.obj')
-        fv4 = Surface(filename='/Users/younes/Development/Data/Surfaces/fshpere2b.obj')
-        fv1.vertices *= 100 ;
-        fv2.vertices *= 100 ;
-        fv3.vertices *= 100 ;
-        fv4.vertices *= 100 ;
+        fv1 = Surface(filename='/Users/younes/Development/Data/surfaces/fshpere1.obj')
+        fv2 = Surface(filename='/Users/younes/Development/Data/surfaces/fshpere2.obj')
+        fv3 = Surface(filename='/Users/younes/Development/Data/surfaces/fshpere1b.obj')
+        fv4 = Surface(filename='/Users/younes/Development/Data/surfaces/fshpere2b.obj')
+        fv1.vertices *= 100
+        fv2.vertices *= 100
+        fv3.vertices *= 100
+        fv4.vertices *= 100
 
     ## Object kernel
     K1 = Kernel(name='laplacian', sigma = 50.0, order=4)

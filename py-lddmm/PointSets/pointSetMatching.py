@@ -48,9 +48,9 @@ class PointSetMatchingParam:
         self.sigmaError = sigmaError
         self.errorType = errorType
         if errorType == 'L2':
-            self.fun_obj0 = PointSets.L2Norm0
-            self.fun_obj = PointSets.L2NormDef
-            self.fun_objGrad = PointSets.L2NormGradient
+            self.fun_obj0 = pointSets.L2Norm0
+            self.fun_obj = pointSets.L2NormDef
+            self.fun_objGrad = pointSets.L2NormGradient
         elif errorType == 'classification':
             self.fun_obj0 = None
             self.fun_obj = None
@@ -101,7 +101,7 @@ class PointSetMatching(object):
                 logging.error('Please provide a template surface')
                 return
             else:
-                self.fv0 = PointSets.loadlmk(fileTempl)[0]
+                self.fv0 = pointSets.loadlmk(fileTempl)[0]
         else:
             self.fv0 = np.copy(Template)
             
@@ -111,9 +111,9 @@ class PointSetMatching(object):
                 return
             else:
                 if self.param.errorType == 'classification':
-                    self.fv1 = PointSets.loadlmk(fileTempl)[1]
+                    self.fv1 = pointSets.loadlmk(fileTempl)[1]
                 else:
-                    self.fv1 = PointSets.loadlmk(fileTarg)[0]
+                    self.fv1 = pointSets.loadlmk(fileTarg)[0]
         else:
             self.fv1 = np.copy(Target)
 
@@ -176,7 +176,7 @@ class PointSetMatching(object):
         self.coeffAff2 = 100.
         self.coeffAff = self.coeffAff1
         self.coeffInitx = .1
-        self.affBurnIn = 25
+        self.affBurnIn = 100
         self.pplot = pplot
         self.testSet = testSet
         self.l1Cost = l1Cost
@@ -290,7 +290,7 @@ class PointSetMatching(object):
 
     def dataTerm(self, _fvDef, _fvInit = None):
         if self.param.errorType == 'classification':
-            obj = PointSets.LogisticScoreL2(_fvDef, self.fv1, self.u, w=self.wTr, intercept=self.intercept, l1Cost=self.l1Cost) \
+            obj = pointSets.LogisticScoreL2(_fvDef, self.fv1, self.u, w=self.wTr, intercept=self.intercept, l1Cost=self.l1Cost) \
                   / (self.param.sigmaError**2)
             #obj = pointSets.LogisticScore(_fvDef, self.fv1, self.u) / (self.param.sigmaError**2)
         else:
@@ -401,7 +401,7 @@ class PointSetMatching(object):
 
     def endPointGradient(self):
         if self.param.errorType == 'classification':
-            px = PointSets.LogisticScoreL2Gradient(self.fvDef, self.fv1, self.u, w=self.wTr, intercept=self.intercept, l1Cost=self.l1Cost)
+            px = pointSets.LogisticScoreL2Gradient(self.fvDef, self.fv1, self.u, w=self.wTr, intercept=self.intercept, l1Cost=self.l1Cost)
             #px = pointSets.LogisticScoreGradient(self.fvDef, self.fv1, self.u)
         else:
             px = self.param.fun_objGrad(self.fvDef, self.fv1)
@@ -576,14 +576,14 @@ class PointSetMatching(object):
                     # vf.vectors.append('velocity') ;
                     # vf.vectors.append(vt)
                     # nu = self.fv0ori*f.computeVertexNormals()
-                    PointSets.savelmk(f, self.outputDir + '/' + self.saveFile + 'Corrected' + str(t) + '.lmk')
+                    pointSets.savelmk(f, self.outputDir + '/' + self.saveFile + 'Corrected' + str(t) + '.lmk')
                 f = np.copy(self.fv1)
                 yyt = np.dot(f - X[1][-1, ...], U.T)
                 f = np.copy(yyt)
-                PointSets.savelmk(f, self.outputDir + '/TargetCorrected.lmk')
+                pointSets.savelmk(f, self.outputDir + '/TargetCorrected.lmk')
             for kk in range(self.Tsize+1):
                 fvDef = np.copy(np.squeeze(xt[kk, :, :]))
-                PointSets.savelmk(fvDef, self.outputDir + '/' + self.saveFile + str(kk) + '.lmk')
+                pointSets.savelmk(fvDef, self.outputDir + '/' + self.saveFile + str(kk) + '.lmk')
             if self.param.errorType == 'classification':
                 # J1 = np.nonzero(self.fv1>0)[0]
                 # J2 = np.nonzero(self.fv1<0)[0]
@@ -724,7 +724,7 @@ class PointSetMatching(object):
                         x3 = np.concatenate((x3, xRes), axis=1)
                     else:
                         x3 = xRes[:, 0:3]
-                    PointSets.savePoints(self.outputDir + '/' + self.saveFile + str(kk) + '.vtk', x3,
+                    pointSets.savePoints(self.outputDir + '/' + self.saveFile + str(kk) + '.vtk', x3,
                                          scalars=np.ravel(self.fv1))
                 if self.testSet is not None:
                     for kk in range(self.Tsize + 1):
@@ -739,7 +739,7 @@ class PointSetMatching(object):
                             x3 = np.concatenate((x3, xRes), axis=1)
                         else:
                             x3 = xRes[:, 0:3]
-                        PointSets.savePoints(self.outputDir + '/' + self.saveFile + 'Test' + str(kk) + '.vtk', x3,
+                        pointSets.savePoints(self.outputDir + '/' + self.saveFile + 'Test' + str(kk) + '.vtk', x3,
                                              scalars=np.ravel(self.testSet[1]))
         else:
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
@@ -851,6 +851,9 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
     relearnRate = 1
     u0 = None
     affine = 'none'
+    dct = False
+    sparseProj = False
+
 
     if typeData in ('helixes3', 'helixes10', 'helixes20'):
         if typeData == 'helixes3':
@@ -1060,56 +1063,51 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
         #localMaps = PointSetMatching().localMaps1D(d)
     elif typeData in ('TwoSegments', 'TwoSegmentsCumSum'):
         d = 100
-        x0Tr = np.random.normal(0, 0.01, (2 * NTr, d))
+        #x0Tr = np.random.normal(0, 0.000001, (2 * NTr, d))
+        x0Tr = np.zeros((2 * NTr, d))
         x1Tr = np.zeros((2 * NTr, 1), dtype=int)
         x1Tr[NTr:2 * NTr, 0] = 1
-        start = np.random.multinomial(d-1, size=NTr, pvals=[1/3.]*3)
+        start = np.zeros((NTr,2), dtype=int)
+        start[:,0] = np.random.randint(0,d,NTr)
+        start[:,1] = start[:,0] + 5 + np.random.randint(0,d-11,NTr)
         for k in range(NTr):
-            flip = np.random.randint(0,2,size=1)
-            if flip:
-                x0Tr[k, np.arange(start[k,0], start[k,0] + 4)%d] = 1
-                x0Tr[k, np.arange(start[k, 0]+start[k,1]+5, start[k, 0]+start[k,1] + 11)%d] = 1
-                #x0Tr[k, np.array([start[k,0], start[k,0] + 3])%d] = 1
-                #x0Tr[k, np.array([start[k, 0]+start[k,1]+5, start[k, 0]+start[k,1] + 10])%d] = 1
-            else:
-                x0Tr[k, np.arange(start[k,0], start[k,0] + 6)%d] = 1
-                x0Tr[k, np.arange(start[k, 0]+start[k,1]+7, start[k, 0]+start[k,1] + 11)%d] = 1
-                #x0Tr[k, np.array([start[k, 0], start[k, 0] + 5])%d] = 1
-                #x0Tr[k, np.array([start[k, 0] + start[k, 1] + 7, start[k, 0] + start[k, 1] + 10])%d] = 1
-        start = np.random.multinomial(d-1, size=NTr, pvals=[1/3.]*3)
+            x0Tr[k, np.arange(start[k,0], start[k,0] + 4)%d] = 1
+            x0Tr[k, np.arange(start[k,1], start[k,1] + 6)%d] = 1
+            #x0Tr[k, np.array([start[k,0], start[k,0] + 3])%d] = 1
+            #x0Tr[k, np.array([start[k, 0]+start[k,1]+5, start[k, 0]+start[k,1] + 10])%d] = 1
+
+        start[:,0] = np.random.randint(0,d,NTr)
+        start[:,1] = start[:,0] + 6 + np.random.randint(0,d-11,NTr)
         for k in range(NTr):
             x0Tr[k+NTr, np.arange(start[k, 0], start[k, 0] + 5) % d] = 1
-            x0Tr[k+NTr, np.arange(start[k, 0] + start[k, 1] + 6, start[k, 0] + start[k, 1] + 11) % d] = 1
+            x0Tr[k+NTr, np.arange(start[k, 1], start[k, 1] + 5) % d] = 1
             #x0Tr[k+NTr, np.array([start[k, 0], start[k, 0] + 4])%d] = 1
             #x0Tr[k+NTr, np.array([start[k, 0] + start[k, 1] + 6, start[k, 0] + start[k, 1] + 10])%d] = 1
 
-        x0Te = np.random.normal(0, 0.01, (2 * NTe, d))
+        #x0Te = np.random.normal(0, 0.000001, (2 * NTe, d))
+        x0Te = np.zeros((2 * NTe, d))
         #x0Te = np.zeros((2 * NTe, d))
         x1Te = np.zeros((2 * NTe, 1), dtype=int)
         x1Te[NTe:2 * NTe, 0] = 1
-        start = np.random.multinomial(d-1, size=NTe, pvals=[1/3.]*3)
+        start = np.zeros((NTe,2), dtype=int)
+        start[:,0] = np.random.randint(0,d,NTe)
+        start[:,1] = start[:,0] +  5 + np.random.randint(0,d-11,NTe)
         for k in range(NTe):
-            flip = np.random.randint(0,2,size=1)
-            if flip:
-                x0Te[k, np.arange(start[k,0], start[k,0] + 4)%d] = 1
-                x0Te[k, np.arange(start[k, 0]+start[k,1]+5, start[k, 0]+start[k,1] + 11)%d] = 1
-                #x0Te[k, np.array([start[k,0], start[k,0] + 3])%d] = 1
-                #x0Te[k, np.array([start[k, 0]+start[k,1]+5, start[k, 0]+start[k,1] + 10])%d] = 1
-            else:
-                x0Te[k, np.arange(start[k,0], start[k,0] + 6)%d] = 1
-                x0Te[k, np.arange(start[k, 0]+start[k,1]+7, start[k, 0]+start[k,1] + 11)%d] = 1
-                #x0Te[k, np.array([start[k, 0], start[k, 0] + 5])%d] = 1
-                #x0Te[k, np.array([start[k, 0] + start[k, 1] + 7, start[k, 0] + start[k, 1] + 10])%d] = 1
-        start = np.random.multinomial(d-1, size=NTe, pvals=[1/3.]*3)-1
+            x0Te[k, np.arange(start[k,0], start[k,0] + 4)%d] = 1
+            x0Te[k, np.arange(start[k,1], start[k,1] + 6)%d] = 1
+
+        start[:,0] = np.random.randint(0,d,NTe)
+        start[:,1] = start[:,0] + 6 + np.random.randint(0,d-11,NTe)
         for k in range(NTe):
             x0Te[k+NTe, np.arange(start[k, 0], start[k, 0] + 5) % d] = 1
-            x0Te[k+NTe, np.arange(start[k, 0] + start[k, 1] + 6, start[k, 0] + start[k, 1] + 11) % d] = 1
+            x0Te[k+NTe, np.arange(start[k, 1], start[k, 1] + 5) % d] = 1
             #x0Te[k+NTe, np.array([start[k, 0], start[k, 0] + 4])%d] = 1
             #x0Te[k+NTe, np.array([start[k, 0] + start[k, 1] + 6, start[k, 0] + start[k, 1] + 10])%d] = 1
 
         #x0Tr *= (1 + 0.25 * np.random.randn(x0Tr.shape[0], 1))
         #x0Te *= (1 + 0.25 * np.random.randn(x0Te.shape[0], 1))
-        dct = True
+        dct = False
+        sparseProj = False
         if typeData == 'TwoSegmentsCumSum':
             x0Tr = np.cumsum(x0Tr, axis=1)
             x0Te = np.cumsum(x0Te, axis=1)
@@ -1235,6 +1233,11 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
         for k in range(2 * NTe):
             x0Te[k, :] = fft.dct(x0Te[k, :])/np.sqrt(d)
 
+    if sparseProj:
+        A = 2*(np.random.random((d,d)) > 0.9) - 1
+        x0Tr = np.dot(x0Tr, A)
+        x0Te = np.dot(x0Te, A)
+
     #l1Cost *= np.log10(NTr)
     nclasses = x1Tr.max() + 1
     nTr = np.zeros(nclasses)
@@ -1274,7 +1277,7 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
     f = PointSetMatching(Template=x0Tr0, Target=x1Tr, outputDir=outputDir, param=sm, regWeight=1.,
                          saveTrajectories=True, pplot=True, testSet=(x0Te0, x1Te), addDim = addDim, u0=u0,
                          normalizeInput=False, l1Cost = l1Cost, relearnRate=relearnRate, randomInit=randomInit,
-                         affine=affine, testGradient=False, affineWeight=.01,
+                         affine='none', testGradient=False, affineWeight=10.,
                          maxIter=1500)
 
     testInit = TestErrors()
@@ -1310,7 +1313,7 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
     print 'kNN prediction:', np.sum(np.not_equal(yTr, np.ravel(x1Tr)) * np.ravel(f.wTr)) / f.swTr, \
         np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(f.wTe)) / f.swTe
 
-    clf = MLPClassifier(max_iter=10000)
+    clf = MLPClassifier(max_iter=10000,hidden_layer_sizes=(100,)*1)
     clf.fit(x0Tr, np.ravel(x1Tr))
     yTr = clf.predict(x0Tr)
     yTe = clf.predict(x0Te)
@@ -1332,7 +1335,7 @@ if __name__ == "__main__":
     #          'helixes20':(100,200,500,1000), 'Dolls':(100,200,500,1000),
     #          'Segments11':(100,200,500,1000), 'TwoSegments':(100,200,500,1000),'TwoSegmentsCumSum':(100,200,500,1000), 'RBF':(100,200,500,1000)}
     #AllTD = {'Line':(100,)}
-    AllTD = {'xor':(100,)}
+    AllTD = {'TwoSegmentsCumSum':(250,)}
     #typeData = 'Dolls'
 
     outputDir0 = '/Users/younes/Development/Results/Classif'

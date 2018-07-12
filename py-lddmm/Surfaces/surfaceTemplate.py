@@ -1,5 +1,5 @@
 import numpy as np
-import Surfaces
+import surfaces
 import logging
 from Surfaces import surfaceMatching as smatch
 import multiprocessing as mp
@@ -50,20 +50,20 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                 print 'Please provide A hyper-template surface'
                 return
             else:
-                self.fv0 = Surfaces.Surface(filename=fileHTempl)
+                self.fv0 = surfaces.Surface(filename=fileHTempl)
         else:
-            self.fv0 = Surfaces.Surface(surf=HyperTmpl)
+            self.fv0 = surfaces.Surface(surf=HyperTmpl)
         if Targets==None:
             if fileTarg==None:
                 print 'Please provide Target surfaces'
                 return
             else:
                 for ff in fileTarg:
-                    self.fv1.append(Surfaces.Surface(filename=ff))
+                    self.fv1.append(surfaces.Surface(filename=ff))
         else:
             self.fv1 = []
             for ff in Targets:
-                self.fv1.append(Surfaces.Surface(surf=ff))
+                self.fv1.append(surfaces.Surface(surf=ff))
 
         self.Ntarg = len(self.fv1)
         self.npt = self.fv0.vertices.shape[0]
@@ -84,7 +84,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         for kk in range(self.Ntarg):
             self.fv1[kk].saveVTK(self.outputDir +'/'+ 'Target'+str(kk)+'.vtk')
 
-        self.fvTmpl = Surfaces.Surface(surf=self.fv0)
+        self.fvTmpl = surfaces.Surface(surf=self.fv0)
         self.maxIter = maxIter
         self.verb = verb
         self.testGradient = testGradient
@@ -142,7 +142,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             self.AfftAll.append(np.zeros([self.Tsize, self.affineDim]))
             self.AfftAllTry.append(np.zeros([self.Tsize, self.affineDim]))
             self.xtAll.append(np.tile(self.fv0.vertices, [self.Tsize+1, 1, 1]))
-            self.fvDef.append(Surfaces.Surface(surf=self.fv0))
+            self.fvDef.append(surfaces.Surface(surf=self.fv0))
         self.tmplCoeff = 1.0#float(self.Ntarg)
         self.obj = None
         self.objTry = None
@@ -150,8 +150,8 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 
 
         if self.param.internalCost == 'h1':
-            self.internalCost = Surfaces.normGrad
-            self.internalCostGrad = Surfaces.diffNormGrad
+            self.internalCost = surfaces.normGrad
+            self.internalCostGrad = surfaces.diffNormGrad
         else:
             self.internalCost = None
         self.internalWeight = internalWeight
@@ -160,7 +160,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         self.fv0 = ff.fvTmpl
         self.fv1 = ff.fv1
 
-        self.fvTmpl = Surfaces.Surface(surf=self.fv0)
+        self.fvTmpl = surfaces.Surface(surf=self.fv0)
         self.maxIter = ff.maxIter
         self.verb = ff.verb
         self.testGradient = ff.testGradient
@@ -186,7 +186,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             self.AfftAll.append(np.zeros([self.Tsize, self.affineDim]))
             self.AfftAllTry.append(np.zeros([self.Tsize, self.affineDim]))
             self.xtAll.append(np.tile(self.fv0.vertices, [self.Tsize+1, 1, 1]))
-            self.fvDef.append(Surfaces.Surface(surf=self.fv0))
+            self.fvDef.append(surfaces.Surface(surf=self.fv0))
 
         self.Ntarg = len(self.fv1)
         self.tmplCoeff = 1.0 #float(self.Ntarg)
@@ -205,7 +205,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         obj = 0 ;
         if self.param.errorType == 'L2Norm':
             for k,f in enumerate(_fvDef):
-                obj += Surfaces.L2Norm(f, self.fv1[k].vfld) / (self.param.sigmaError ** 2)
+                obj += surfaces.L2Norm(f, self.fv1[k].vfld) / (self.param.sigmaError ** 2)
         else:
             for k,f in enumerate(_fvDef):
                 obj += self.param.fun_obj(f, self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
@@ -225,7 +225,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             self.xt = np.copy(foo[1])
             self.fvTmpl.updateVertices(np.squeeze(self.xt[-1]))
             self.obj += foo[0]*self.lambdaPrior
-            ff = Surfaces.Surface(surf=self.fv0)
+            ff = surfaces.Surface(surf=self.fv0)
             for (kk, a) in enumerate(self.atAll):
                 foo = self.objectiveFunDef(a, self.AfftAll[kk], withTrajectory=True, x0 = self.fvTmpl.vertices)
                 ff.updateVertices(np.squeeze(foo[1][-1]))
@@ -297,7 +297,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                 AfftAllTry.append(np.copy(self.AfftAll[kk]))
             foo = self.objectiveFunDef(atAllTry[kk], AfftAllTry[kk], kernel = self.param.KparDiff, withTrajectory=True, x0 = x0)
             objTry += foo[0] 
-            ff = Surfaces.Surface(surf=self.fv0)
+            ff = surfaces.Surface(surf=self.fv0)
             ff.updateVertices(np.squeeze(foo[1][-1,...]))
             #print 'x0 deformed template', ff.vertices.sum()
             _ff.append(ff)
@@ -315,7 +315,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
     def gradientComponent(self, q, kk):
         #print kk, 'th gradient'
         if self.param.errorType == 'L2Norm':
-            px1 = -Surfaces.L2NormGradient(self.fvDef[kk], self.fv1[kk].vfld) / self.param.sigmaError ** 2
+            px1 = -surfaces.L2NormGradient(self.fvDef[kk], self.fv1[kk].vfld) / self.param.sigmaError ** 2
         else:
             px1 = -self.param.fun_objGrad(self.fvDef[kk], self.fv1[kk], self.param.KparDist) / self.param.sigmaError**2
         #print 'in fun', kk
@@ -346,14 +346,14 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         _dff = []
         incr = 0
         for k in range(self.Ntarg):
-            ff = Surfaces.Surface(surf=self.fvDef[k])
+            ff = surfaces.Surface(surf=self.fvDef[k])
             dff = np.random.normal(size=ff.vertices.shape)
             eps = 1e-6
             ff.updateVertices(ff.vertices+eps*dff)
             _ff.append(ff)
             _dff.append(dff)
             if self.param.errorType == 'L2Norm':
-                grd = Surfaces.L2NormGradient(self.fvDef[k], self.fv1[k].vfld) / self.param.sigmaError ** 2
+                grd = surfaces.L2NormGradient(self.fvDef[k], self.fv1[k].vfld) / self.param.sigmaError ** 2
             else:   
                 grd = self.param.fun_objGrad(self.fvDef[k], self.fv1[k], self.param.KparDist) / self.param.sigmaError**2
             incr += (grd*dff).sum()

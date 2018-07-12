@@ -1,4 +1,4 @@
-import Surfaces
+import surfaces
 from PointSets.pointSets import *
 from Common import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol
 from Common.affineBasis import *
@@ -21,13 +21,13 @@ class SurfaceMatchingParam:
         self.typeKernel = typeKernel
         self.errorType = errorType
         if errorType == 'current':
-            self.fun_obj0 = Surfaces.currentNorm0
-            self.fun_obj = Surfaces.currentNormDef
-            self.fun_objGrad = Surfaces.currentNormGradient
+            self.fun_obj0 = surfaces.currentNorm0
+            self.fun_obj = surfaces.currentNormDef
+            self.fun_objGrad = surfaces.currentNormGradient
         elif errorType=='measure':
-            self.fun_obj0 = Surfaces.measureNorm0
-            self.fun_obj = Surfaces.measureNormDef
-            self.fun_objGrad = Surfaces.measureNormGradient
+            self.fun_obj0 = surfaces.measureNorm0
+            self.fun_obj = surfaces.measureNormDef
+            self.fun_objGrad = surfaces.measureNormGradient
         else:
             print 'Unknown error Type: ', self.errorType
         if KparDiff == None:
@@ -69,9 +69,9 @@ class SurfaceMatching:
                 print 'Please provide a template surface'
                 return
             else:
-                self.fv0 = Surfaces.Surface(filename=fileTempl)
+                self.fv0 = surfaces.Surface(filename=fileTempl)
         else:
-            self.fv0 = Surfaces.Surface(surf=Template)
+            self.fv0 = surfaces.Surface(surf=Template)
         if Target==None:
             if fileTarg==None:
                 print 'Please provide a list of target surfaces'
@@ -79,11 +79,11 @@ class SurfaceMatching:
             else:
                 self.fv1 = [] ;
                 for f in fileTarg:
-                    self.fv1.append(Surfaces.Surface(filename=f))
+                    self.fv1.append(surfaces.Surface(filename=f))
         else:
             self.fv1 = [] ;
             for s in Target:
-                self.fv1.append(Surfaces.Surface(surf=s))
+                self.fv1.append(surfaces.Surface(surf=s))
 
         if Fiber==None:
             if fileFiber==None:
@@ -118,7 +118,7 @@ class SurfaceMatching:
         else:
             self.param = param
 
-        self.fv0Fine = Surfaces.Surface(surf=self.fv0)
+        self.fv0Fine = surfaces.Surface(surf=self.fv0)
         if (subsampleTargetSize > 0):
             self.fv0.Simplify(subsampleTargetSize)
             v0 = self.fv0.surfVolume()
@@ -130,7 +130,7 @@ class SurfaceMatching:
         self.x0 = self.fv0.vertices
         self.fvDef = []
         for k in range(self.nTarg):
-            self.fvDef.append(Surfaces.Surface(surf=self.fv0))
+            self.fvDef.append(surfaces.Surface(surf=self.fv0))
         self.npt = self.y0.shape[0]
         self.Tsize1 = int(round(1.0/self.param.timeStep))
         self.Tsize = self.nTarg*self.Tsize1
@@ -223,7 +223,7 @@ class SurfaceMatching:
             self.obj0 = 0
             for k in range(self.nTarg):
                 self.obj0 += self.param.fun_obj0(self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
-                foo = Surfaces.Surface(surf=self.fvDef[k])
+                foo = surfaces.Surface(surf=self.fvDef[k])
                 self.fvDef[k].updateVertices(np.squeeze(self.xt[(k+1)*self.Tsize1, :, :]))
                 foo.computeCentersAreas()
             self.obj += self.obj0 + self.dataTerm(self.fvDef)
@@ -241,7 +241,7 @@ class SurfaceMatching:
 
         ff = [] 
         for k in range(self.nTarg):
-            ff.append(Surfaces.Surface(surf=self.fvDef[k]))
+            ff.append(surfaces.Surface(surf=self.fvDef[k]))
             ff[k].updateVertices(np.squeeze(foo[1][(k+1)*self.Tsize1, :, :]))
         objTry += self.dataTerm(ff)
         if np.isnan(objTry):
@@ -324,7 +324,7 @@ class SurfaceMatching:
                 self.fvDef[k].updateVertices(np.squeeze(self.xt[(k+1)*self.Tsize1, :, :]))
             (xt, at, yt, vt, zt, Jt)  = evol.secondOrderFiberEvolution(self.x0, self.a0, self.y0, self.v0,  self.rhot, self.param.KparDiff,
                                                            withPointSet = self.fv0Fine.vertices, withJacobian=True)
-            fvDef = Surfaces.Surface(surf=self.fv0Fine)
+            fvDef = surfaces.Surface(surf=self.fv0Fine)
             for kk in range(self.Tsize+1):
                 fvDef.updateVertices(np.squeeze(zt[kk, :, :]))
                 fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = Jt[kk, :], scal_name='Jacobian')

@@ -20,7 +20,7 @@ def main():
     fv = surfaces.Surface(filename=args.pointFile)
 
     if ((fv.vertices.shape[0] != npoints) or (fv.faces.shape[0] != nfaces)):
-        print 'Surfaces are not compatible'
+        print 'surfaces are not compatible'
         return
 
     z = v.GetPoints()

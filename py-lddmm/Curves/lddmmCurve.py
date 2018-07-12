@@ -1,7 +1,7 @@
 #!/opt/local/bin/python2.7
 import os
 import argparse
-from Curves import curves
+from curves import curves
 import logging
 from Common import loggingUtils
 from Common.kernelFunctions import *
@@ -57,7 +57,7 @@ def main():
 #    else:
 #        import surfaceMatching as smt
 
-    from Curves import curveMatching as cmt
+    from curves import curveMatching as cmt
 
     tmpl = curves.Curve(filename=args.template)
     tmpl.vertices *= args.scaleFactor

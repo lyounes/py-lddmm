@@ -10,12 +10,12 @@ def compute():
     else:
         loggingUtils.setup_default_logging()
     ## Build Two colliding ellipses
-    fv01 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas04_curve01.txt')
-    fv02 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas04_curve02.txt')
-    fv03 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas04_curve03.txt')
-    fv11 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas09_curve01.txt')
-    fv12 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas09_curve02.txt')
-    fv13 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas09_curve03.txt')
+    fv01 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas04_curve01.txt')
+    fv02 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas04_curve02.txt')
+    fv03 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas04_curve03.txt')
+    fv11 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas09_curve01.txt')
+    fv12 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas09_curve02.txt')
+    fv13 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas09_curve03.txt')
 
     ## Object kernel
     K1 = Kernel(name='laplacian', sigma = 10.0)

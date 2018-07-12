@@ -1,9 +1,9 @@
 import numpy as np
-import Surfaces
+import surfaces
 from Common import loggingUtils
-from Surfaces import Surface
+from Surfaces.surfaces import Surface
 from Common.kernelFunctions import Kernel
-from surfaceMatching import SurfaceMatching, SurfaceMatchingParam
+from Surfaces.surfaceMatching import SurfaceMatching, SurfaceMatchingParam
 import matplotlib.pyplot as plt
 plt.ion()
 def compute(model):
@@ -80,10 +80,10 @@ def compute(model):
         #sub1 = '0186193_1_6'
         #sub2 = '1449400_1_L'
         sub2 = 'LU027_R_sumNCBC20100628'
-        fv1 = Surfaces.Surface(filename =path + '5_population_template_qc/newTemplate.byu')
+        fv1 = surfaces.Surface(filename =path + '5_population_template_qc/newTemplate.byu')
         v1 = fv1.surfVolume()
         #f0.append(surfaces.Surface(filename = path+'amygdala/biocardAmyg 2/'+sub1+'_amyg_L.byu'))
-        fv2 = Surfaces.Surface(filename =path + '2_qc_flipped_registered/' + sub2 + '_registered.byu')
+        fv2 = surfaces.Surface(filename =path + '2_qc_flipped_registered/' + sub2 + '_registered.byu')
         v2 = fv2.surfVolume()
         if (v2*v1 < 0):
             fv2.faces = fv2.faces[:, [0,2,1]]
@@ -95,10 +95,10 @@ def compute(model):
         #sub1 = '0186193_1_6'
         #sub2 = '1449400_1_L'
         sub2 = 'LU027_R_sumNCBC20100628'
-        fv1 = Surfaces.Surface(filename =path + '5_population_template_qc/newTemplate.byu')
+        fv1 = surfaces.Surface(filename =path + '5_population_template_qc/newTemplate.byu')
         v1 = fv1.surfVolume()
         #f0.append(surfaces.Surface(filename = path+'amygdala/biocardAmyg 2/'+sub1+'_amyg_L.byu'))
-        fv2 = Surfaces.Surface(filename =path + '2_qc_flipped_registered/' + sub2 + '_registered.byu')
+        fv2 = surfaces.Surface(filename =path + '2_qc_flipped_registered/' + sub2 + '_registered.byu')
         v2 = fv2.surfVolume()
         if (v2*v1 < 0):
             fv2.faces = fv2.faces[:, [0,2,1]]
@@ -113,13 +113,13 @@ def compute(model):
         #sub2 = '1449400_1_L'
         sub2 = '1229175_2_4'
         ftemp = []
-        ftemp.append(Surfaces.Surface(filename =path + 'Atlas_hippo_L_separate.byu'))
-        ftemp.append(Surfaces.Surface(filename =path + 'Atlas_amyg_L_separate.byu'))
-        ftemp.append(Surfaces.Surface(filename =path + 'Atlas_ent_L_up_separate.byu'))
+        ftemp.append(surfaces.Surface(filename =path + 'Atlas_hippo_L_separate.byu'))
+        ftemp.append(surfaces.Surface(filename =path + 'Atlas_amyg_L_separate.byu'))
+        ftemp.append(surfaces.Surface(filename =path + 'Atlas_ent_L_up_separate.byu'))
         ftarg = []
-        ftarg.append(Surfaces.Surface(filename =path + 'danielData/0186193_1_6_hippo_L_qc_pass1_daniel2_reg.vtk'))
-        ftarg.append(Surfaces.Surface(filename =path + 'danielData/0186193_1_6_amyg_L_qc_pass1_daniel2_reg.vtk'))
-        ftarg.append(Surfaces.Surface(filename =path + 'danielData/0186193_1_6_ec_L_qc_pass1_daniel2_reg.vtk'))
+        ftarg.append(surfaces.Surface(filename =path + 'danielData/0186193_1_6_hippo_L_qc_pass1_daniel2_reg.vtk'))
+        ftarg.append(surfaces.Surface(filename =path + 'danielData/0186193_1_6_amyg_L_qc_pass1_daniel2_reg.vtk'))
+        ftarg.append(surfaces.Surface(filename =path + 'danielData/0186193_1_6_ec_L_qc_pass1_daniel2_reg.vtk'))
     else:
         return
 

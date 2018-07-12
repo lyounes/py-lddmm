@@ -61,3 +61,5 @@ def compute(createImages=True):
 
     f.optimizeMatching()
     return f
+if __name__=="__main__":
+    compute()

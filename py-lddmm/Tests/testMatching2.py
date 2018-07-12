@@ -22,3 +22,6 @@ def compute():
 
 
     return f
+
+if __name__=="__main__":
+    compute()

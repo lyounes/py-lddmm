@@ -3,7 +3,7 @@ import numpy as np
 import numpy.linalg as la
 import logging
 from Common import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol
-import Surfaces
+import surfaces
 from PointSets import pointSets
 from Common.affineBasis import AffineBasis, getExponential, gradExponential
 import matplotlib
@@ -30,17 +30,17 @@ class SurfaceMatchingParam:
         self.typeKernel = typeKernel
         self.errorType = errorType
         if errorType == 'current':
-            self.fun_obj0 = Surfaces.currentNorm0
-            self.fun_obj = Surfaces.currentNormDef
-            self.fun_objGrad = Surfaces.currentNormGradient
+            self.fun_obj0 = surfaces.currentNorm0
+            self.fun_obj = surfaces.currentNormDef
+            self.fun_objGrad = surfaces.currentNormGradient
         elif errorType=='measure':
-            self.fun_obj0 = Surfaces.measureNorm0
-            self.fun_obj = Surfaces.measureNormDef
-            self.fun_objGrad = Surfaces.measureNormGradient
+            self.fun_obj0 = surfaces.measureNorm0
+            self.fun_obj = surfaces.measureNormDef
+            self.fun_objGrad = surfaces.measureNormGradient
         elif errorType=='varifold':
-            self.fun_obj0 = Surfaces.varifoldNorm0
-            self.fun_obj = Surfaces.varifoldNormDef
-            self.fun_objGrad = Surfaces.varifoldNormGradient
+            self.fun_obj0 = surfaces.varifoldNorm0
+            self.fun_obj = surfaces.varifoldNormDef
+            self.fun_objGrad = surfaces.varifoldNormGradient
         elif errorType == 'L2Norm':
             self.fun_obj0 = None
             self.fun_obj = None
@@ -97,9 +97,9 @@ class SurfaceMatching(object):
                 logging.error('Please provide a template surface')
                 return
             else:
-                self.fv0 = Surfaces.Surface(filename=fileTempl)
+                self.fv0 = surfaces.Surface(filename=fileTempl)
         else:
-            self.fv0 = Surfaces.Surface(surf=Template)
+            self.fv0 = surfaces.Surface(surf=Template)
             
         if Target==None:
             if fileTarg==None:
@@ -107,16 +107,16 @@ class SurfaceMatching(object):
                 return
             else:
                 if self.param.errorType == 'L2Norm':
-                    self.fv1 = Surfaces.Surface()
+                    self.fv1 = surfaces.Surface()
                     self.fv1.readFromImage(fileTarg)
                 else:
-                    self.fv1 = Surfaces.Surface(filename=fileTarg)
+                    self.fv1 = surfaces.Surface(filename=fileTarg)
         else:
             if self.param.errorType == 'L2Norm':
-                self.fv1 = Surfaces.Surface()
+                self.fv1 = surfaces.Surface()
                 self.fv1.initFromImage(fileTarg)
             else:
-                self.fv1 = Surfaces.Surface(surf=Target)
+                self.fv1 = surfaces.Surface(surf=Target)
 
             #print np.fabs(self.fv1.surfel-self.fv0.surfel).max()
 
@@ -147,8 +147,8 @@ class SurfaceMatching(object):
                     
 
         if self.param.internalCost == 'h1':
-            self.internalCost = Surfaces.normGrad
-            self.internalCostGrad = Surfaces.diffNormGrad
+            self.internalCost = surfaces.normGrad
+            self.internalCostGrad = surfaces.diffNormGrad
 #        elif self.param.internalCost == 'h1Invariant':
 #            if self.fv0.vertices.shape[1] == 2:
 #                self.internalCost = curves.normGradInvariant 
@@ -172,14 +172,14 @@ class SurfaceMatching(object):
                 self.fv1.flipFaces()
 
         #self.fv0Fine = surfaces.Surface(surf=self.fv0)
-        self.fvInit = Surfaces.Surface(surf=self.fv0)
+        self.fvInit = surfaces.Surface(surf=self.fv0)
         if (subsampleTargetSize > 0):
             self.fvInit.Simplify(subsampleTargetSize)
             logging.info('simplified template %d' %(self.fv0.vertices.shape[0]))
 
         self.x0 = np.copy(self.fvInit.vertices)
         self.x0try = np.copy(self.fvInit.vertices)
-        self.fvDef = Surfaces.Surface(surf=self.fvInit)
+        self.fvDef = surfaces.Surface(surf=self.fvInit)
         self.npt = self.fvInit.vertices.shape[0]
 
         if self.closed:
@@ -261,7 +261,7 @@ class SurfaceMatching(object):
 
     def dataTerm(self, _fvDef, _fvInit = None):
         if self.param.errorType == 'L2Norm':
-            obj = Surfaces.L2Norm(_fvDef, self.fv1.vfld) / (self.param.sigmaError ** 2)
+            obj = surfaces.L2Norm(_fvDef, self.fv1.vfld) / (self.param.sigmaError ** 2)
         else:
             obj = self.param.fun_obj(_fvDef, self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
             if _fvInit != None:
@@ -280,7 +280,7 @@ class SurfaceMatching(object):
         timeStep = 1.0/self.Tsize
         dim2 = self.dim**2
         A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-        foo = Surfaces.Surface(surf=self.fv0)
+        foo = surfaces.Surface(surf=self.fv0)
         if self.affineDim > 0:
             for t in range(self.Tsize):
                 AB = np.dot(self.affineBasis, Afft[t])
@@ -322,7 +322,7 @@ class SurfaceMatching(object):
     def objectiveFun(self):
         if self.obj == None:
             if self.param.errorType == 'L2Norm':
-                self.obj0 = Surfaces.L2Norm0(self.fv1) / (self.param.sigmaError ** 2)
+                self.obj0 = surfaces.L2Norm0(self.fv1) / (self.param.sigmaError ** 2)
             else:
                 self.obj0 = self.param.fun_obj0(self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
             if self.symmetric:
@@ -359,10 +359,10 @@ class SurfaceMatching(object):
         foo = self.objectiveFunDef(atTry, AfftTry, x0 = x0Try, withTrajectory=True)
         objTry += foo[0]
 
-        ff = Surfaces.Surface(surf=self.fvDef)
+        ff = surfaces.Surface(surf=self.fvDef)
         ff.updateVertices(np.squeeze(foo[1][-1, :, :]))
         if self.symmetric:
-            ffI = Surfaces.Surface(surf=self.fvInit)
+            ffI = surfaces.Surface(surf=self.fvInit)
             ffI.updateVertices(x0Try)
             objTry += self.dataTerm(ff, ffI)
         else:
@@ -383,7 +383,7 @@ class SurfaceMatching(object):
 
     def testEndpointGradient(self):
         c0 = self.dataTerm(self.fvDef)
-        ff = Surfaces.Surface(surf=self.fvDef)
+        ff = surfaces.Surface(surf=self.fvDef)
         dff = np.random.normal(size=ff.vertices.shape)
         eps = 1e-6
         ff.updateVertices(ff.vertices+eps*dff)
@@ -393,7 +393,7 @@ class SurfaceMatching(object):
 
     def endPointGradient(self):
         if self.param.errorType == 'L2Norm':
-            px = Surfaces.L2NormGradient(self.fvDef, self.fv1.vfld)
+            px = surfaces.L2NormGradient(self.fvDef, self.fv1.vfld)
         else:
             px = self.param.fun_objGrad(self.fvDef, self.fv1, self.param.KparDist)
         return px / self.param.sigmaError**2
@@ -421,7 +421,7 @@ class SurfaceMatching(object):
                 
         pxt = np.zeros([M+1, N, dim])
         pxt[M, :, :] = px1
-        foo = Surfaces.Surface(surf=self.fv0)
+        foo = surfaces.Surface(surf=self.fv0)
         for t in range(M):
             px = np.squeeze(pxt[M-t, :, :])
             z = np.squeeze(xt[M-t-1, :, :])
@@ -463,7 +463,7 @@ class SurfaceMatching(object):
             return evol.landmarkHamiltonianGradient(x0, at, px1, kernel, regWeight, affine=affine, 
                                                     getCovector=True)
                                                     
-        foo = Surfaces.Surface(surf=self.fv0)
+        foo = surfaces.Surface(surf=self.fv0)
         (pxt, xt) = self.hamiltonianCovector(x0, at, px1, kernel, regWeight, affine=affine)
         #at = self.at        
         dat = np.zeros(at.shape)
@@ -595,7 +595,7 @@ class SurfaceMatching(object):
             dPhi1 = np.random.normal(size=self.x0.shape)
             dPhi2 = np.random.normal(size=self.x0.shape)
             eps = 1e-6
-            fv22 = Surfaces.Surface(surf=self.fvDef)
+            fv22 = surfaces.Surface(surf=self.fvDef)
             fv22.updateVertices(self.fvDef.vertices+eps*dPhi2)
             e0 = self.internalCost(self.fvDef, Phi)
             e1 = self.internalCost(self.fvDef, Phi+eps*dPhi1)
@@ -631,7 +631,7 @@ class SurfaceMatching(object):
             (xt, Jt)  = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
                                                               withJacobian=True)
             if self.affine=='euclidean' or self.affine=='translation':
-                f = Surfaces.Surface(surf=self.fvInit)
+                f = surfaces.Surface(surf=self.fvInit)
                 X = self.affB.integrateFlow(self.Afft)
                 displ = np.zeros(self.x0.shape[0])
                 dt = 1.0 /self.Tsize ;
@@ -643,7 +643,7 @@ class SurfaceMatching(object):
                         at = np.dot(self.at[t,...], U.T)
                         vt = self.param.KparDiff.applyK(yyt, at, firstVar=zt)
                     f.updateVertices(yyt)
-                    vf = Surfaces.vtkFields() ;
+                    vf = surfaces.vtkFields() ;
                     vf.scalars.append('Jacobian') ;
                     vf.scalars.append(np.exp(Jt[t, :]))
                     vf.scalars.append('displacement')
@@ -653,11 +653,11 @@ class SurfaceMatching(object):
                     nu = self.fv0ori*f.computeVertexNormals()
                     f.saveVTK2(self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.vtk', vf)
                     displ += dt * (vt*nu).sum(axis=1)
-                f = Surfaces.Surface(surf=self.fv1)
+                f = surfaces.Surface(surf=self.fv1)
                 yyt = np.dot(f.vertices - X[1][-1, ...], U.T)
                 f.updateVertices(yyt)
                 f.saveVTK(self.outputDir +'/TargetCorrected.vtk')
-            fvDef = Surfaces.Surface(surf=self.fvInit)
+            fvDef = surfaces.Surface(surf=self.fvInit)
             AV0 = fvDef.computeVertexArea()
             nu = self.fv0ori*self.fvInit.computeVertexNormals()
             v = self.v[0,...]
@@ -667,7 +667,7 @@ class SurfaceMatching(object):
                 fvDef.updateVertices(np.squeeze(xt[kk, :, :]))
                 AV = fvDef.computeVertexArea()
                 AV = (AV[0]/AV0[0])
-                vf = Surfaces.vtkFields() ;
+                vf = surfaces.vtkFields() ;
                 vf.scalars.append('Jacobian') ;
                 vf.scalars.append(np.exp(Jt[kk, :]))
                 vf.scalars.append('Jacobian_T') ;

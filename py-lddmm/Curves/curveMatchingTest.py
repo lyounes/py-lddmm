@@ -1,9 +1,9 @@
 import numpy as np
 #import curves
-from Curves import Curve, remesh
+from curves import Curve, remesh
 from Common import loggingUtils
 from Common.kernelFunctions import Kernel
-from Curves.curveMatching import CurveMatchingParam, CurveMatching
+from curves.curveMatching import CurveMatchingParam, CurveMatching
 import matplotlib.pyplot as plt
 
 
@@ -37,7 +37,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
         sigmaDist = 0.5 
         sigmaError = 0.1
         internalWeight = 1000        
-    elif model == 'manyCurves':   
+    elif model == 'manycurves':
         s = 0.5
         nc = 10
         ftemp = []
@@ -203,12 +203,12 @@ def compute(model='default', dirOut='/cis/home/younes'):
         sigmaError = 0.1
         internalWeight = 500        
     elif model == 'atlasSections':
-        fv01 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas04_curve01.txt')
-        fv02 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas04_curve02.txt')
-        fv03 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas04_curve03.txt')
-        fv11 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas09_curve01.txt')
-        fv12 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas09_curve02.txt')
-        fv13 = Curve(filename='/cis/home/younes/MorphingData/MostofskyCurves/atlas09_curve03.txt')
+        fv01 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas04_curve01.txt')
+        fv02 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas04_curve02.txt')
+        fv03 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas04_curve03.txt')
+        fv11 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas09_curve01.txt')
+        fv12 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas09_curve02.txt')
+        fv13 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas09_curve03.txt')
         ftemp = [fv01, fv02, fv03]
         ftarg = [fv11, fv12, fv13]
     elif model == 'ellipses':

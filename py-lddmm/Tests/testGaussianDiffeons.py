@@ -2,16 +2,16 @@ from Surfaces.surfaces import *
 from Common.kernelFunctions import *
 from Diffeons.gaussianDiffeonsSurfaceMatching import *
 
-def compute(createSurfaces=True):
+def compute(createsurfaces=True):
 
-    if createSurfaces:
+    if createsurfaces:
         [x,y,z] = np.mgrid[0:200, 0:200, 0:200]/100.
         y = y-1
         z = z-1
         s2 = np.sqrt(2)
 
         I1 = .06 - ((x-.50)**2 + 0.5*y**2 + z**2)  
-        fv1 = Surface() ;
+        fv1 = Surface()
         fv1.Isosurface(I1, value = 0, target=2000, scales=[1, 1, 1], smooth=0.01)
 
         #return fv1
@@ -21,7 +21,7 @@ def compute(createSurfaces=True):
         I1 = np.maximum(0.05 - (x-.6)**2 - 0.5*y**2 - z**2, 0.03 - (x-.50)**2 - 0.5*y**2 - z**2)  
         #I1 = .06 - ((x-.50)**2 + 0.75*y**2 + z**2)  
         #I1 = .095 - ((x-.7)**2 + v**2 + 0.5*u**2) 
-        fv2 = Surface() ;
+        fv2 = Surface()
         fv2.Isosurface(I1, value = 0, target=2000, scales=[1, 1, 1], smooth=0.01)
 
         fv1.saveVTK('/Users/younes/Development/Results/Diffeons/fv1alt.vtk')
@@ -91,3 +91,6 @@ def compute(createSurfaces=True):
     #f.restart(DiffeonSegmentationRatio = 0.05)
 
     return f
+
+if __name__=="__main__":
+    compute()

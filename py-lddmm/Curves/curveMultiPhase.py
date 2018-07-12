@@ -1,6 +1,6 @@
 import os
 import logging
-import Curves
+from Curves import curves
 from Common import conjugateGradient as cg, grid, kernelFunctions as kfun, pointEvolution as evol
 from Curves import curveMatching
 from Common.affineBasis import *
@@ -50,11 +50,11 @@ class CurveMatching(curveMatching.CurveMatching):
             else:
                 self.fv0 = []
                 for ftmp in fileTempl:
-                    self.fv0.append(Curves.Curve(filename=ftmp))
+                    self.fv0.append(curves.Curve(filename=ftmp))
         else:
             self.fv0 = []
             for ftmp in Template:
-                self.fv0.append(Curves.Curve(curve=ftmp))
+                self.fv0.append(curves.Curve(curve=ftmp))
         if Target==None:
             if fileTarg==None:
                 print 'Please provide a target curve'
@@ -62,11 +62,11 @@ class CurveMatching(curveMatching.CurveMatching):
             else:
                 self.fv1 = []
                 for ftmp in fileTarg:
-                    self.fv1.append(Curves.Curve(filename=ftmp))
+                    self.fv1.append(curves.Curve(filename=ftmp))
         else:
             self.fv1 = []
             for ftmp in Target:
-                self.fv1.append(Curves.Curve(curve=ftmp))
+                self.fv1.append(curves.Curve(curve=ftmp))
 
         self.dim = self.fv0[0].vertices.shape[1]
         self.outputDir = outputDir  
@@ -128,7 +128,7 @@ class CurveMatching(curveMatching.CurveMatching):
                         fdisc[k0, 0] = firstFound[self.fv0[fk].faces[k, 0]]
                         fdisc[k0, 1] = firstFound[self.fv0[fk].faces[k, 1]]
                         k0 += 1
-                fv = Curves.Curve(FV=(fdisc, vdisc0))
+                fv = curves.Curve(FV=(fdisc, vdisc0))
                 #fv.saveVTK(self.outputDir+'/TemplateDiscrete'+str(fk)+'.vtk')
 
                 gr = grid.Grid()
@@ -164,8 +164,8 @@ class CurveMatching(curveMatching.CurveMatching):
         self.fvDef = [] 
         self.fvDefB = [] 
         for fv in self.fv0:
-            self.fvDef.append(Curves.Curve(curve=fv))
-            self.fvDefB.append(Curves.Curve(curve=fv))
+            self.fvDef.append(curves.Curve(curve=fv))
+            self.fvDefB.append(curves.Curve(curve=fv))
         self.maxIter_cg = maxIter_cg
         self.maxIter_al = maxIter_al
         self.verb = verb
@@ -202,7 +202,7 @@ class CurveMatching(curveMatching.CurveMatching):
         self.nu0 = []
         self.nu00 = []
         self.ncurve = len(self.fv0)
-        self.npt = np.zeros(self.ncurve)
+        self.npt = np.zeros(self.ncurve, dtype=int)
         k=0
         for fv in self.fv0:
             x0 = fv.vertices
@@ -235,7 +235,7 @@ class CurveMatching(curveMatching.CurveMatching):
             self.nut.append(np.tile(np.array(nu0), [self.Tsize+1, 1, 1]))
             k=k+1
 
-        self.npoints = self.npt.sum()
+        self.npoints = self.npt.sum(dtype=int)
         self.at.append(np.zeros([self.Tsize, self.npoints, self.dim]))
         self.atTry.append(np.zeros([self.Tsize, self.npoints, self.dim]))
         self.x0.append(np.zeros([self.npoints, self.dim]))
@@ -608,7 +608,7 @@ class CurveMatching(curveMatching.CurveMatching):
         npt = 0
         for k in range(self.ncurve):
             npt1 = npt + self.npt[k]
-            ff = Curves.Curve(curve=self.fvDef[k])
+            ff = curves.Curve(curve=self.fvDef[k])
             ff.updateVertices(np.squeeze(foo[1][self.ncurve][self.Tsize, npt:npt1, :]))
             objTry += self.param.fun_obj(ff, self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
             ff.updateVertices(np.squeeze(foo[1][k][self.Tsize, :, :]))

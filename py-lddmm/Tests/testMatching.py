@@ -17,3 +17,7 @@ def main():
                          maxIter=1000))
     f.optimizeMatching()
     return f
+
+if __name__=="__main__":
+    main()
+

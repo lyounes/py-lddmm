@@ -1,6 +1,6 @@
 import numpy.linalg as la
 import logging
-import Surfaces
+import surfaces
 from PointSets import pointSets
 # import pointEvolution_fort as evol_omp
 from Common import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils
@@ -246,11 +246,11 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         foo = self.objectiveFunDef(atTry, AfftTry, x0=x0Try, withTrajectory=True)
         objTry = 0
 
-        ff = Surfaces.Surface(surf=self.fvDef)
+        ff = surfaces.Surface(surf=self.fvDef)
         ff.updateVertices(np.squeeze(foo[1][self.Tsize, ...]))
         objTry += self.param.fun_obj(ff, self.fv1, self.param.KparDist) / (self.param.sigmaError ** 2)
         if self.symmetric:
-            ffI = Surfaces.Surface(surf=self.fvInit)
+            ffI = surfaces.Surface(surf=self.fvInit)
             ffI.updateVertices(x0Try)
             objTry += self.param.fun_obj(ffI, self.fv0, self.param.KparDist) / (self.param.sigmaError ** 2)
         objTry += foo[0] + self.obj0
@@ -290,7 +290,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         dAffcval = foo[3]
 
         pxt[M, :, :] += dxcval[M] * timeStep
-        foo = Surfaces.Surface(surf=self.fv0)
+        foo = surfaces.Surface(surf=self.fv0)
 
         for t in range(M):
             px = np.squeeze(pxt[M - t, :, :])
@@ -323,7 +323,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
     def HamiltonianGradient(self, at, Afft, px1, getCovector=False):
         (pxt, xt, dacval, dAffcval) = self.covectorEvolution(at, Afft, px1)
 
-        foo = Surfaces.Surface(surf=self.fv0)
+        foo = surfaces.Surface(surf=self.fv0)
         if self.useKernelDotProduct:
             dat = - dacval
             for t in range(self.Tsize):
@@ -470,7 +470,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curves.vtk', self.xt)
 
             if self.affine == 'euclidean' or self.affine == 'translation':
-                f = Surfaces.Surface(surf=self.fvInit)
+                f = surfaces.Surface(surf=self.fvInit)
                 X = self.affB.integrateFlow(self.Afft)
                 displ = np.zeros(self.npt)
                 dt = 1.0 / self.Tsize
@@ -481,7 +481,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                         at = np.dot(self.at[t, ...], U.T)
                         vt = self.param.KparDiff.applyK(yt, at)
                     f.updateVertices(yt)
-                    vf = Surfaces.vtkFields()
+                    vf = surfaces.vtkFields()
                     vf.scalars.append('Jacobian')
                     vf.scalars.append(np.exp(Jt[t, :]))
                     vf.scalars.append('displacement')
@@ -491,7 +491,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                     f.saveVTK2(self.outputDir + '/' + self.saveFile + 'Corrected' + str(t) + '.vtk', vf)
                     nu = self.fv0ori * f.computeVertexNormals()
                     displ += dt * (vt * nu).sum(axis=1)
-                f = Surfaces.Surface(surf=self.fv1)
+                f = surfaces.Surface(surf=self.fv1)
                 # logging.info('rotation?: %f' %(np.fabs(np.dot(U, U.T)- np.eye(3)).sum()))
                 yt = np.dot(f.vertices - X[1][-1, ...], U.T)
                 f.updateVertices(yt)
@@ -514,7 +514,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 self.fvDef.updateVertices(np.squeeze(self.xt[kk, :, :]))
                 AV = self.fvDef.computeVertexArea()
                 AV = (AV[0] / AV0[0]) - 1
-                vf = Surfaces.vtkFields()
+                vf = surfaces.vtkFields()
                 vf.scalars.append('Jacobian')
                 vf.scalars.append(np.exp(Jt[kk, :]))
                 vf.scalars.append('Jacobian_T')
@@ -542,7 +542,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 self.fvDef.saveVTK2(self.outputDir + '/' + self.saveFile + str(kk) + '.vtk', vf)
 
             adisp = area_displ / area_displ[-1, :][np.newaxis,:]
-            fvDef = Surfaces.Surface(surf=self.fv0)
+            fvDef = surfaces.Surface(surf=self.fv0)
             fvDef.saveVTK(self.outputDir + '/' + self.saveFile +'_bok0' + '.vtk')
             x = np.zeros((self.npt, self.dim))
             for kk in range(1, self.Tsize+1):
@@ -609,8 +609,8 @@ if __name__ == "__main__":
     # outputDir = '/cis/home/younes/Development/Results/ERC_Normals_ADNI_014_S_4058/'
     outputDir = '/Users/younes/Development/Results/BOK'
 
-    fvTop = Surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/DH1MiddleOuter.byu')
-    fvBottom = Surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/DH1MiddleInner.byu')
+    fvTop = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/DH1MiddleOuter.byu')
+    fvBottom = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/DH1MiddleInner.byu')
     # outputDir = '/cis/home/younes/Development/Results/tilakAW1Superior'
     loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput=True)
 
@@ -619,18 +619,18 @@ if __name__ == "__main__":
     #fvBottom = surfaces.Surface(filename=probDir + 'Target.vtk')
     #fvBottom = surfaces.Surface(
     #    filename='/cis/home/younes/MorphingData/SueExamples/bottom_041_S_4720_L_mo00_ERC_and_TEC.byu')
-    # fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/NK1Inner.byu')
-    # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/NK1Outer.byu')
+    # fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/NK1Inner.byu')
+    # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/NK1Outer.byu')
     # fv0 = surfaces.Surface(filename='/Users/younes/Development/Data/ALLIE/Template.vtk')
     # fv1 = surfaces.Surface(filename='/Users/younes/Development/Data/ALLIE/Target.vtk')
-    # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/TilakSurfaces/Separated_Cuts/NK1Outer.byu')
+    # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/NK1Outer.byu')
     fvTop.removeIsolated()
     fvTop.edgeRecover()
     # fvTop.subDivide(1)
     fvBottom.removeIsolated()
     fvBottom.edgeRecover()
-    # # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Surfaces/chelsea/bottom_surface_smooth.byu')
-    # fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Surfaces/chelsea/top_surface_smooth.byu')
+    # # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/surfaces/chelsea/bottom_surface_smooth.byu')
+    # fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/surfaces/chelsea/top_surface_smooth.byu')
 
     K1 = kfun.Kernel(name='laplacian', sigma=.5, order=3)
     # K2 = kfun.Kernel(sigma = 2.5)
@@ -639,12 +639,12 @@ if __name__ == "__main__":
     sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=10,
                                               sigmaError=.1, errorType='varifold', internalCost='h1')
 
-    fTemp = Surfaces.Surface(surf=fvBottom)
+    fTemp = surfaces.Surface(surf=fvBottom)
     nu = fTemp.computeVertexNormals()
     fTemp.updateVertices(fvBottom.vertices+1e-5*nu)
-    d1 = Surfaces.currentNorm(fTemp, fvTop, sm.KparDist)
+    d1 = surfaces.currentNorm(fTemp, fvTop, sm.KparDist)
     fTemp.updateVertices(fvBottom.vertices-1e-5*nu)
-    d2 = Surfaces.currentNorm(fTemp, fvTop, sm.KparDist)
+    d2 = surfaces.currentNorm(fTemp, fvTop, sm.KparDist)
     if d2 < d1:
         fvBottom.flipFaces()
         logging.info('Flipping orientation of bottom shape.')

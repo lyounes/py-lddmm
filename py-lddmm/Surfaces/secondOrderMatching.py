@@ -1,7 +1,7 @@
 import logging
 import numpy.linalg as la
 #import scipy as sp
-import Surfaces
+import surfaces
 from PointSets.pointSets import *
 #import kernelFunctions as kfun
 from Common import conjugateGradient as cg, pointEvolution as evol
@@ -57,9 +57,9 @@ class SurfaceMatching:
                 print 'Please provide a template surface'
                 return
             else:
-                self.fv0 = Surfaces.Surface(filename=fileTempl)
+                self.fv0 = surfaces.Surface(filename=fileTempl)
         else:
-            self.fv0 = Surfaces.Surface(surf=Template)
+            self.fv0 = surfaces.Surface(surf=Template)
             
         if Targets==None:
             if fileTarg==None:
@@ -69,22 +69,22 @@ class SurfaceMatching:
                 self.fv1 = []
                 if self.param.errorType == 'L2Norm':
                     for f in fileTarg:
-                        fv1 = Surfaces.Surface()
+                        fv1 = surfaces.Surface()
                         fv1.readFromImage(f)
                         self.fv1.append(fv1)
                 else:
                     for f in fileTarg:
-                        self.fv1.append(Surfaces.Surface(filename=f))
+                        self.fv1.append(surfaces.Surface(filename=f))
         else:
             self.fv1 = []
             if self.param.errorType == 'L2Norm':
                 for s in Targets:
-                    fv1 = Surfaces.Surface()
+                    fv1 = surfaces.Surface()
                     fv1.readFromImage(s)
                     self.fv1.append(fv1)
             else:
                 for s in Targets:
-                    self.fv1.append(Surfaces.Surface(surf=s))
+                    self.fv1.append(surfaces.Surface(surf=s))
 
         if rescaleTemplate:
             f0 = np.fabs(self.fv0.surfVolume())
@@ -141,7 +141,7 @@ class SurfaceMatching:
         self.coeffAff = self.coeffAff1
 
 
-        self.fv0Fine = Surfaces.Surface(surf=self.fv0)
+        self.fv0Fine = surfaces.Surface(surf=self.fv0)
         if (subsampleTargetSize > 0):
             self.fv0.Simplify(subsampleTargetSize)
             print 'simplified template', self.fv0.vertices.shape[0]
@@ -163,7 +163,7 @@ class SurfaceMatching:
         self.x0 = self.fv0.vertices
         self.fvDef = []
         for k in range(self.nTarg):
-            self.fvDef.append(Surfaces.Surface(surf=self.fv0))
+            self.fvDef.append(surfaces.Surface(surf=self.fv0))
         self.npt = self.x0.shape[0]
         #self.Tsize1 = int(round(1.0/self.param.timeStep))
         if times is None:
@@ -233,7 +233,7 @@ class SurfaceMatching:
         obj = 0
         for k,s in enumerate(_fvDef):
             if self.param.errorType == 'L2Norm':
-                obj += Surfaces.L2Norm(s, self.fv1[k].vfld) / (self.param.sigmaError ** 2)
+                obj += surfaces.L2Norm(s, self.fv1[k].vfld) / (self.param.sigmaError ** 2)
             else:
                 obj += self.param.fun_obj(s, self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
         return obj
@@ -303,10 +303,10 @@ class SurfaceMatching:
             self.obj0 = 0
             for k in range(self.nTarg):
                 if self.param.errorType == 'L2Norm':
-                    self.obj0 += Surfaces.L2Norm0(self.fv1[k]) / (self.param.sigmaError ** 2)
+                    self.obj0 += surfaces.L2Norm0(self.fv1[k]) / (self.param.sigmaError ** 2)
                 else:   
                     self.obj0 += self.param.fun_obj0(self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
-                foo = Surfaces.Surface(surf=self.fvDef[k])
+                foo = surfaces.Surface(surf=self.fvDef[k])
                 self.fvDef[k].updateVertices(np.squeeze(self.xt[self.jumpIndex[k], :, :]))
                 foo.computeCentersAreas()
             self.obj += self.obj0 + self.dataTerm(self.fvDef)
@@ -349,7 +349,7 @@ class SurfaceMatching:
 
         ff = [] 
         for k in range(self.nTarg):
-            ff.append(Surfaces.Surface(surf=self.fvDef[k]))
+            ff.append(surfaces.Surface(surf=self.fvDef[k]))
             ff[k].updateVertices(np.squeeze(foo[3][self.jumpIndex[k], :, :]))
         objTry += self.dataTerm(ff)
         if np.isnan(objTry):
@@ -374,7 +374,7 @@ class SurfaceMatching:
         px = []
         for k in range(self.nTarg):
             if self.param.errorType == 'L2Norm':
-                targGradient = -Surfaces.L2NormGradient(self.fvDef[k], self.fv1[k].vfld) / (self.param.sigmaError ** 2)
+                targGradient = -surfaces.L2NormGradient(self.fvDef[k], self.fv1[k].vfld) / (self.param.sigmaError ** 2)
             else:
                 targGradient = -self.param.fun_objGrad(self.fvDef[k], self.fv1[k], self.param.KparDist)/(self.param.sigmaError**2)
             px.append(targGradient)
@@ -729,7 +729,7 @@ class SurfaceMatching:
                                                            withPointSet = ft0[-1,...], withJacobian=True)
 
             if self.saveCorrected:
-                f = Surfaces.Surface(surf=self.fv0Fine)
+                f = surfaces.Surface(surf=self.fv0Fine)
                 X0 = self.affB.integrateFlow(self.Afft0)
                 X = self.affB.integrateFlow(self.Afft)
                 displ = np.zeros(self.x0.shape[0])
@@ -746,7 +746,7 @@ class SurfaceMatching:
                         vt = self.param.KparDiff0.applyK(yyt, a, firstVar=zt)
                         vt = np.dot(vt, U0.T)
                     f.updateVertices(zt)
-                    vf = Surfaces.vtkFields()
+                    vf = surfaces.vtkFields()
                     vf.scalars.append('Jacobian')
                     vf.scalars.append(displ)
                     vf.scalars.append('displacement')
@@ -770,7 +770,7 @@ class SurfaceMatching:
                         vt = self.param.KparDiff.applyK(yyt, a, firstVar=zt)
                         vt = np.dot(vt, U.T)
                     f.updateVertices(zt)
-                    vf = Surfaces.vtkFields()
+                    vf = surfaces.vtkFields()
                     vf.scalars.append('Jacobian')
                     vf.scalars.append(np.exp(Jt[t, :])-1)
                     vf.scalars.append('displacement')
@@ -791,14 +791,14 @@ class SurfaceMatching:
                  
 
                 for k,fv in enumerate(self.fv1):
-                    f = Surfaces.Surface(surf=fv)
+                    f = surfaces.Surface(surf=fv)
                     U = la.inv(X[0][self.jumpIndex[k]])
                     yyt = np.dot(f.vertices - b0, U0.T)
                     yyt = np.dot(yyt - X[1][self.jumpIndex[k], ...], U.T)
                     f.updateVertices(yyt)
                     f.saveVTK(self.outputDir +'/Target'+str(k)+'Corrected.vtk')
             
-            fvDef = Surfaces.Surface(surf=self.fv0Fine)
+            fvDef = surfaces.Surface(surf=self.fv0Fine)
             AV0 = fvDef.computeVertexArea()
             nu = self.fv0ori*self.fv0Fine.computeVertexNormals()
             #v = self.v[0,...]
@@ -809,7 +809,7 @@ class SurfaceMatching:
                 fvDef.updateVertices(np.squeeze(ft0[kk, :, :]))
                 AV = fvDef.computeVertexArea()
                 AV = (AV[0]/AV0[0])-1
-                vf = Surfaces.vtkFields()
+                vf = surfaces.vtkFields()
                 vf.scalars.append('Jacobian')
                 vf.scalars.append(displ)
                 vf.scalars.append('Jacobian_T')
@@ -833,7 +833,7 @@ class SurfaceMatching:
                 fvDef.updateVertices(np.squeeze(ft[kk, :, :]))
                 AV = fvDef.computeVertexArea()
                 AV = (AV[0]/AV0[0])-1
-                vf = Surfaces.vtkFields()
+                vf = surfaces.vtkFields()
                 vf.scalars.append('Jacobian')
                 vf.scalars.append(np.exp(Jt[kk, :])-1)
                 vf.scalars.append('Jacobian_T')

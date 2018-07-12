@@ -18,20 +18,20 @@ def compute():
     s2 = np.sqrt(2)
 
     I1 = .06 - ((x-.30)**2 + 0.5*y**2)  
-    fv1 = Curve() ;
+    fv1 = Curve()
     fv1.Isocontour(I1, value = 0, target=750, scales=[1, 1])
     #return
 
     I1 = .06 - ((x-1.70)**2 + 0.5*y**2) 
-    fv2 = Curve() ;
+    fv2 = Curve()
     fv2.Isocontour(I1, value=0, target=750, scales=[1, 1])
 
     I1 = 0.16 - ((x-.7)**2 + (y+0.25)**2) 
-    fv3 = Curve() ;
+    fv3 = Curve()
     fv3.Isocontour(I1, value = 0, target=750, scales=[1, 1])
 
     I1 = 0.16 - ((x-1.3)**2 + (y-0.25)**2) 
-    fv4 = Curve() ;
+    fv4 = Curve()
     fv4.Isocontour(I1, value=0, target=750, scales=[1, 1])
 
     #print fv1.vertices.shape[0], fv2.vertices.shape[0], fv3.vertices.shape[0], fv4.vertices.shape[0] 
