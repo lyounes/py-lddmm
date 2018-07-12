@@ -127,6 +127,7 @@ class PointSetMatching(object):
             if addDim > 0:
                 self.fv0 = np.concatenate((self.fv0,
                                            0.01*np.random.normal(size=(self.fv0.shape[0],addDim))), axis=1)
+
         self.saveRate = 10
         self.relearnRate = relearnRate
         self.iter = 0
