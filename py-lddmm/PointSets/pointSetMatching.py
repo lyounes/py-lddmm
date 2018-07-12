@@ -151,7 +151,6 @@ class PointSetMatching(object):
             self.affineWeight[self.affB.transComp] = transWeight
 
 
-
         self.x0 = np.copy(self.fv0)
         self.x0try = np.copy(self.fv0)
         self.fvDef = np.copy(self.fv0)
