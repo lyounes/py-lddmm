@@ -57,8 +57,8 @@ void Velocity::Print(char* path)
 
   _psi.multilinInterp(Template.img(), I1) ;
   sprintf(file, "%s/deformedTemplate", path) ;
-  if (param.verb)
-    cout << "writing " << file << endl ;
+  //if (param.verb)
+  //cout << "writing " << file << endl ;
   I1.write_image(file) ;
   _phi.multilinInterp(I1, I2) ;
   /*
@@ -70,28 +70,28 @@ void Velocity::Print(char* path)
 
   _phi.multilinInterp(Target.img(), I1) ;
   sprintf(file, "%s/deformedTarget", path) ;
-  if (param.verb)
-    cout << "writing " << file << endl ;
+  //if (param.verb)
+  //cout << "writing " << file << endl ;
   I1.write_image(file) ;
 
   sprintf(file, "%s/initialMomentum", path) ;
-  if (param.verb)
-    cout << "writing " << file << endl ;
+  //if (param.verb)
+  //cout << "writing " << file << endl ;
   Lv0[0].write(file) ;
 
   Vector dphi ;
   _phi.logJacobian(dphi, param.spaceRes) ;
 
   sprintf(file, "%s/jacobian", path) ;
-  if (param.verb)
-    cout << "writing " << file << endl ;
+  //if (param.verb)
+  //cout << "writing " << file << endl ;
   dphi.write(file) ;
 
   GeodesicDiffeoEvolution(Lv0[0]) ;
   _psi.multilinInterp(Template.img(), I1) ;
   sprintf(file, "%s/shootedTemplate", path) ;
-  if (param.verb)
-    cout << "writing " << file << endl ;
+  //if (param.verb)
+  //cout << "writing " << file << endl ;
   I1.write_image(file) ;
 
   if (param.saveProjectedMomentum) {
@@ -105,14 +105,14 @@ void Velocity::Print(char* path)
     // cout << "projection " << Z.d.length << endl ;
     imageTangentProjection(Template, Z, Z0) ;
     sprintf(file, "%s/initialScalarMomentum", path) ;
-    if (param.verb)
-      cout << "writing " << file << endl ;
+    //if (param.verb)
+    //cout << "writing " << file << endl ;
     Z0.write(file) ;
 
 
     sprintf(file, "%s/scaledScalarMomentum", path) ;
-    if (param.verb)
-      cout << "writing " << file << endl ;
+    //if (param.verb)
+    //cout << "writing " << file << endl ;
     Z0.writeZeroCentered(file) ;
 
 
@@ -122,20 +122,20 @@ void Velocity::Print(char* path)
     GeodesicDiffeoEvolution(Lwc) ;
     _psi.multilinInterp(Template.img(), I1) ;
     sprintf(file, "%s/Z0ShootedTemplate", path) ;
-    if (param.verb)
-      cout << "writing " << file << endl ;
+    //if (param.verb)
+    //cout << "writing " << file << endl ;
     I1.write_image(file) ;
   }
 
   _psi.copy(psi) ;
   sprintf(file, "%s/template2targetMap", path) ;
-  if (param.verb)
-    cout << "writing " << file << endl ;
+  //if (param.verb)
+  //cout << "writing " << file << endl ;
   _phi.write(file) ;
 
   sprintf(file, "%s/target2templateMap", path) ;
-  if (param.verb)
-    cout << "writing " << file << endl ;
+  //if (param.verb)
+  //cout << "writing " << file << endl ;
   _psi.write(file) ;
 
 }
@@ -148,25 +148,25 @@ void Velocity::initialPrint(char* path)
   char file[256] ;
 
   sprintf(file, "%s/template", path) ;
-  if (param.verb)
-    cout << "writing " << file << endl ;
+  //if (param.verb)
+  //cout << "writing " << file << endl ;
   Template.img().write_image(file) ;
   sprintf(file, "%s/binaryTemplate", path) ;
-  if (param.verb)
-    cout << "writing " << file << endl ;
+  //if (param.verb)
+  //cout << "writing " << file << endl ;
   Template.img().write(file) ;
   sprintf(file, "%s/target", path) ;
-  if (param.verb)
-    cout << "writing " << file << endl ;
+  //if (param.verb)
+  //cout << "writing " << file << endl ;
   Target.img().write_image(file) ;
   sprintf(file, "%s/binaryTarget", path) ;
-  if (param.verb)
-    cout << "writing " << file << endl ;
+  //if (param.verb)
+  //cout << "writing " << file << endl ;
   Target.img().write(file) ;
 
   sprintf(file, "%s/kernel", path) ;
-  if (param.verb)
-    cout << "writing " << file << endl ;
+  //if (param.verb)
+  //cout << "writing " << file << endl ;
 
   if (_kern.initialized() == false) {
     _kern.setParam(param) ;

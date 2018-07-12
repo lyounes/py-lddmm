@@ -886,7 +886,7 @@ class Morphing:public ImageMatching
     }
 
     void operator() (const TimeVector &It, TimeVector &gI) {
-      int T = _sh->w.size() ;
+      unsigned int T = _sh->w.size() ;
       Vector foo1, foo2, foo3 ;
 
       // cout << "T= " << T << endl;
@@ -900,7 +900,7 @@ class Morphing:public ImageMatching
 
 
       /* //Id.idMesh(_sh->w.d) ; */
-      for (int t=0; t<T; t++) {
+      for (unsigned int t=0; t<T; t++) {
       	if (t<T-1) {
       	  if (_sh->param.matchDensities) {
 	    y2[t].multilinInterpDual(It[t], foo1) ;

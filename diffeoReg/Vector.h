@@ -1,19 +1,19 @@
 /**
    Vector.h
-    Copyright (C) 2010 Laurent Younes
+   Copyright (C) 2010 Laurent Younes
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #ifndef _VECTOR_
@@ -26,7 +26,7 @@
 #include <algorithm>
 #include <Magick++.h>
 #include "pointSet.h"
-using namespace Magick ;
+//using namespace Magick ;
 
 class Vector: public _Vector<_real>  
 {
@@ -50,7 +50,7 @@ class Vector: public _Vector<_real>
       ifs >> nb ;
       Ivector MIN, MAX ;
       //      unsigned int i ;
-     MIN.resize(1) ;
+      MIN.resize(1) ;
       MIN.zero() ;
       MAX.resize(1) ;
       MAX[0] = nb-1 ;
@@ -83,7 +83,7 @@ class Vector: public _Vector<_real>
       cerr << "Coder Warning: " << warning.what() << endl;
     }
     int nbl = img0.rows(), nbc = img0.columns() ;
-    Magick::PixelPacket *pixels = img0.getPixels(0, 0, nbc, nbl);
+    //Magick::PixelPacket *pixels = img0.getPixels(0, 0, nbc, nbl);
     Ivector MIN, MAX ;
     unsigned int i ;
     MIN.resize(2) ;
@@ -96,8 +96,9 @@ class Vector: public _Vector<_real>
     i = 0 ;
     for(int ii = 0 ; ii<nbl; ii++) 
       for (int jj=0; jj<nbc; jj++) {
-	Magick::Color u = pixels[nbc * ii + jj] ; //img0.pixelColor(jj,ii) ;
-	(*this)[i++] = (_real) 255.0*(u.redQuantum()+u.greenQuantum()+u.blueQuantum())/(3.0*MaxRGB) ;
+	//Magick::Color u = pixels[nbc * ii + jj] ;
+	Magick::ColorRGB u = img0.pixelColor(jj,ii) ;
+	(*this)[i++] = (_real) 255.0*(u.red()+u.green()+u.blue())/(3.0*QuantumRange) ;
       }
     // cout << max() << " " << min() << endl ;
   }
@@ -158,7 +159,7 @@ class Vector: public _Vector<_real>
 	for (int j=0; j<nbc; j++) 
 	  //cout << nb3*(nbc*i + j)+k-i1 << " " << flush ;
 	  (*this)[nb3*(nbc*i + j)+k-i1] = img[nbc*i+j] ;
-	}
+      }
     }
   }
 	
@@ -236,7 +237,7 @@ class Vector: public _Vector<_real>
       unsigned char *data = new unsigned char[nbVox] ; 
       ifs.read((char *) data, nbVox) ;
       //      for (int k=0; k<nbVox; k++) 
-	//	(*this)[k] = (double) data[k] ;
+      //	(*this)[k] = (double) data[k] ;
       int k= 0;
       double mm = 0 ;
       for (int k0=MIN[2]; k0 <= MAX[2] ; k0++) 
@@ -261,14 +262,14 @@ class Vector: public _Vector<_real>
 	//	(*this)[k] = data[k] ;
       }
       int k= 0;
-     for (int k0=MIN[2]; k0 <= MAX[2] ; k0++) 
-      for (int k1=MIN[1]; k1 <= MAX[1] ; k1++) 
-	for (int k2=MIN[0]; k2 <= MAX[0] ; k2++) {
+      for (int k0=MIN[2]; k0 <= MAX[2] ; k0++) 
+	for (int k1=MIN[1]; k1 <= MAX[1] ; k1++) 
+	  for (int k2=MIN[0]; k2 <= MAX[0] ; k2++) {
 	    II[2] = k0 ;
 	    II[1] = k1;
 	    II[0] = k2 ;
 	    (*this)[II] = data[k++] ;
-	}
+	  }
       delete[] data ;
       //      delete[] data ;
     }
@@ -281,14 +282,14 @@ class Vector: public _Vector<_real>
 	//	(*this)[k] = data[k] ;
       }
       int k=0 ;
-     for (int k0=MIN[2]; k0 <= MAX[2] ; k0++) 
-      for (int k1=MIN[1]; k1 <= MAX[1] ; k1++) 
-	for (int k2=MIN[0]; k2 <= MAX[0] ; k2++) {
+      for (int k0=MIN[2]; k0 <= MAX[2] ; k0++) 
+	for (int k1=MIN[1]; k1 <= MAX[1] ; k1++) 
+	  for (int k2=MIN[0]; k2 <= MAX[0] ; k2++) {
 	    II[2] = k0 ;
 	    II[1] = k1;
 	    II[0] = k2 ;
 	    (*this)[II] = data[k++] ;
-	}
+	  }
       delete[] data ;
       //      delete[] data ;
     }
@@ -302,14 +303,14 @@ class Vector: public _Vector<_real>
       }
       //      delete[] data ;
       int k=0 ;
-     for (int k0=MIN[2]; k0 <= MAX[2] ; k0++) 
-      for (int k1=MIN[1]; k1 <= MAX[1] ; k1++) 
-	for (int k2=MIN[0]; k2 <= MAX[0] ; k2++) {
+      for (int k0=MIN[2]; k0 <= MAX[2] ; k0++) 
+	for (int k1=MIN[1]; k1 <= MAX[1] ; k1++) 
+	  for (int k2=MIN[0]; k2 <= MAX[0] ; k2++) {
 	    II[2] = k0 ;
 	    II[1] = k1;
 	    II[0] = k2 ;
 	    (*this)[II] = data[k++] ;
-	}
+	  }
       delete[] data ;
     }
     else if (datatype == 64) {
@@ -322,14 +323,14 @@ class Vector: public _Vector<_real>
       }
       //      delete[] data ;
       int k=0 ;
-     for (int k0=MIN[2]; k0 <= MAX[2] ; k0++) 
-      for (int k1=MIN[1]; k1 <= MAX[1] ; k1++) 
-	for (int k2=MIN[0]; k2 <= MAX[0] ; k2++) {
+      for (int k0=MIN[2]; k0 <= MAX[2] ; k0++) 
+	for (int k1=MIN[1]; k1 <= MAX[1] ; k1++) 
+	  for (int k2=MIN[0]; k2 <= MAX[0] ; k2++) {
 	    II[2] = k0 ;
 	    II[1] = k1;
 	    II[0] = k2 ;
 	    (*this)[II] = data[k++] ;
-	}
+	  }
       delete[] data ;
     }
     else {
@@ -402,13 +403,13 @@ class Vector: public _Vector<_real>
     int k=0 ;
     II.resize(3) ;
 
-     for (int k0=MIN[2]; k0 <= MAX[2] ; k0++) 
+    for (int k0=MIN[2]; k0 <= MAX[2] ; k0++) 
       for (int k1=MIN[1]; k1 <= MAX[1] ; k1++) 
 	for (int k2=MIN[0]; k2 <= MAX[0] ; k2++) {
-	    II[2] = k0 ;
-	    II[1] = k1;
-	    II[0] = k2 ;
-	    data[k++] = (*this)[II] ;
+	  II[2] = k0 ;
+	  II[1] = k1;
+	  II[0] = k2 ;
+	  data[k++] = (*this)[II] ;
 	}
     
 
@@ -530,10 +531,10 @@ class Vector: public _Vector<_real>
 	  else 
 	    uc = (unsigned int) (*this)[i] ;
 
-	  uc = (unsigned int) round((double) MaxRGB * uc/255.0) ;
+	  uc = (unsigned int) round((double) QuantumRange * uc/255.0) ;
 	  res.pixelColor(jj,ii,Magick::Color(uc,uc,uc,uc)) ;
 	  i++ ;
-      }
+	}
       res.write(path) ;
     }
     
@@ -542,13 +543,13 @@ class Vector: public _Vector<_real>
       write_imageVTK(file) ;
       sprintf(path, "%s.hdr", file) ;
       saveAnalyze(path) ;
-/*       _Vector<_real> tmp0 ; */
-/*       tmp0.copy(*this) ; */
-/*       AnalyzeImage<_real> Res ; */
-/*       Array3D<_real> tmp ; */
-/*       tmp0.writeInArray3D(tmp) ; */
-/*       Res = tmp ; */
-/*       Res.save(file) ; */
+      /*       _Vector<_real> tmp0 ; */
+      /*       tmp0.copy(*this) ; */
+      /*       AnalyzeImage<_real> Res ; */
+      /*       Array3D<_real> tmp ; */
+      /*       tmp0.writeInArray3D(tmp) ; */
+      /*       Res = tmp ; */
+      /*       Res.save(file) ; */
     }
   }
 
@@ -577,7 +578,7 @@ class Vector: public _Vector<_real>
 */
 template <class NUM> class _VectorMap : public std::vector<_Vector<NUM> >
 {
-public:
+ public:
   typedef typename  std::vector<NUM>::iterator _iterator ;
   typedef typename  std::vector<NUM>::const_iterator c_iterator ;
   Domain d ;
@@ -698,16 +699,16 @@ public:
   }
 
   _Vector<NUM> norm()  const
-  {
-    _Vector<NUM> *res = new _Vector<NUM>[1] ;
-    (*res).zeros(d) ;
-    for(unsigned int i=0; i<d.length; i++) {
-      for(unsigned int j=0; j<d.n; j++) 
-	(*res)[i] += (*this)[j][i] * (*this)[j][i] ;
-      (*res)[i] = sqrt((*res)[i] + 0.0000000001) ;
+    {
+      _Vector<NUM> *res = new _Vector<NUM>[1] ;
+      (*res).zeros(d) ;
+      for(unsigned int i=0; i<d.length; i++) {
+	for(unsigned int j=0; j<d.n; j++) 
+	  (*res)[i] += (*this)[j][i] * (*this)[j][i] ;
+	(*res)[i] = sqrt((*res)[i] + 0.0000000001) ;
+      }
+      return *res ;
     }
-    return *res ;
-  }
 
   NUM maxNorm() const 
   {_Vector<NUM> res ; norm(res); return res.max();}
@@ -1355,8 +1356,8 @@ public:
     double prec = 1e-10 ;
 
     if (d.n  == 1) {
-    _Vector<NUM> res ;
-    res.al(d) ;
+      _Vector<NUM> res ;
+      res.al(d) ;
       _iterator I ;
       int offset = - d.getCumMin(), d0=d.getCum(0), m0 = d.getm(0), M0 = d.getM(0) ;
       int phi0, iu0 ;  ;
@@ -1889,27 +1890,27 @@ public:
       *ip = absMin((_real) absMax(*ip, (_real) d.getm(i)), d.getM(i)-0.00000001) ;
       *ii = (int) floor(*ip) ;
       *ir = *ip - *ii ;
-  }
-
-  int i0 = src.d.position(I) ;
-  NUM res = 0 ;
-  for (int k=0; k< twoPowerDim ; k++) {
-    _real weight = 1 ;
-    int j = 1, ii = i0 ;
-    ir =r.begin() ;
-    for (unsigned int i=0; i<phic.size(); i++, ++ir) {
-      if (k & j) {
-	weight *= *ir ;
-	ii += src.d.getCum(i) ;
-      }
-      else {
-	weight *= 1 - *ir ;
-      }
-      j<<=1 ;
     }
-    res += weight * src[ii] ; 
-  }
-  return res ; 
+
+    int i0 = src.d.position(I) ;
+    NUM res = 0 ;
+    for (int k=0; k< twoPowerDim ; k++) {
+      _real weight = 1 ;
+      int j = 1, ii = i0 ;
+      ir =r.begin() ;
+      for (unsigned int i=0; i<phic.size(); i++, ++ir) {
+	if (k & j) {
+	  weight *= *ir ;
+	  ii += src.d.getCum(i) ;
+	}
+	else {
+	  weight *= 1 - *ir ;
+	}
+	j<<=1 ;
+      }
+      res += weight * src[ii] ; 
+    }
+    return res ; 
   }
 
 
@@ -1926,12 +1927,12 @@ public:
     I.resize(size()) ;
     r.resize(size()) ;
 
-  for(unsigned int c =0; c<d.length; c++) {
-    for (unsigned int j=0; j<size(); j++)
-      phic[j] = (*this)[j][c] ;
-    res[c] = multilinInterp(src, phic, I, r) ;
-  }
-  res0.copy(res) ;
+    for(unsigned int c =0; c<d.length; c++) {
+      for (unsigned int j=0; j<size(); j++)
+	phic[j] = (*this)[j][c] ;
+      res[c] = multilinInterp(src, phic, I, r) ;
+    }
+    res0.copy(res) ;
   }
 
 
@@ -2331,16 +2332,16 @@ template <class NUM>  void addProduct(const _VectorMap<NUM>  &src1, double a,  c
   res.zeros(src2.d) ;
   //#pragma omp parallel
   for (unsigned int i=0; i<src2.size(); i++) 
-       for (unsigned int c=0; c<src2.d.length; c++)
-	res[i][c] = src1[i][c] + a * src2[i][c] ;
+    for (unsigned int c=0; c<src2.d.length; c++)
+      res[i][c] = src1[i][c] + a * src2[i][c] ;
 }
 
 template <class NUM>  void addProduct(_VectorMap<NUM> &res, double a,  const _VectorMap<NUM> & src2)
 {
   //#pragma omp parallel
   for (unsigned int i=0; i<src2.size(); i++) 
-       for (unsigned int c=0; c<src2.d.length; c++)
-	res[i][c] += a * src2[i][c] ;
+    for (unsigned int c=0; c<src2.d.length; c++)
+      res[i][c] += a * src2[i][c] ;
 }
 
 template <class NUM>  void copyProduct(const NUM &a,  const _VectorMap<NUM> & src2, _VectorMap<NUM> &res)
@@ -2348,81 +2349,81 @@ template <class NUM>  void copyProduct(const NUM &a,  const _VectorMap<NUM> & sr
   res.zeros(src2.d) ;
   //#pragma omp parallel
   for (unsigned int i=0; i<src2.size(); i++) 
-       for (unsigned int c=0; c<src2.d.length; c++)
-	res[i][c] = a * src2[i][c] ;
+    for (unsigned int c=0; c<src2.d.length; c++)
+      res[i][c] = a * src2[i][c] ;
 }
 
     
 
 template <class NUM> void gradient(const _Vector<NUM> &src, _VectorMap<NUM> &res, vector<_real> &resol)
 {
-    res.al(src.d) ;
-    Ivector I ;
-    src.d.putm(I)  ;
+  res.al(src.d) ;
+  Ivector I ;
+  src.d.putm(I)  ;
 
-    for(unsigned int c =0; c< src.length(); c++) {
-      for(unsigned int j=0; j<res.size(); j++)
-	if (I[j] > src.d.getm(j) && I[j] < src.d.getM(j)) 
-      	  res[j][c] = (src[src.d.rPos(c, j, 1)] - src[src.d.rPos(c, j, -1)]) / (2*resol[j]) ;
-	else if (I[j] == src.d.getm(j))  
-      	  res[j][c] = (src[src.d.rPos(c, j, 1)] - src[c])/resol[j]  ;
-	else if (I[j] == src.d.getM(j))  
-      	  res[j][c] = (src[c] - src[src.d.rPos(c, j, -1)])/resol[j]  ;
-      src.d.inc(I) ;
-    }
+  for(unsigned int c =0; c< src.length(); c++) {
+    for(unsigned int j=0; j<res.size(); j++)
+      if (I[j] > src.d.getm(j) && I[j] < src.d.getM(j)) 
+	res[j][c] = (src[src.d.rPos(c, j, 1)] - src[src.d.rPos(c, j, -1)]) / (2*resol[j]) ;
+      else if (I[j] == src.d.getm(j))  
+	res[j][c] = (src[src.d.rPos(c, j, 1)] - src[c])/resol[j]  ;
+      else if (I[j] == src.d.getM(j))  
+	res[j][c] = (src[c] - src[src.d.rPos(c, j, -1)])/resol[j]  ;
+    src.d.inc(I) ;
+  }
 }
 
 template <class NUM> void gradientPlus(const _Vector<NUM> &src, _VectorMap<NUM> &res, vector<_real> &resol)
 {
-    res.al(src.d) ;
-    Ivector I ;
-    src.d.putm(I)  ;
+  res.al(src.d) ;
+  Ivector I ;
+  src.d.putm(I)  ;
 
-    for(unsigned int c =0; c< src.length(); c++) {
-      for(unsigned int j=0; j<res.size(); j++)
-	if (I[j] < src.d.getM(j)) 
-	  res[j][c] = (src[src.d.rPos(c, j, 1)] - src[c]) / resol[j] ;
-	else 
-	  res[j][c] = (src[c] - src[src.d.rPos(c, j, -1)])/resol[j]  ;
-      src.d.inc(I) ;
-    }
+  for(unsigned int c =0; c< src.length(); c++) {
+    for(unsigned int j=0; j<res.size(); j++)
+      if (I[j] < src.d.getM(j)) 
+	res[j][c] = (src[src.d.rPos(c, j, 1)] - src[c]) / resol[j] ;
+      else 
+	res[j][c] = (src[c] - src[src.d.rPos(c, j, -1)])/resol[j]  ;
+    src.d.inc(I) ;
+  }
 }
 
 template <class NUM> void gradientMinus(const _Vector<NUM> &src, _VectorMap<NUM> &res, vector<_real> &resol)
 {
-    res.al(src.d) ;
-    Ivector I ;
-    src.d.putm(I)  ;
+  res.al(src.d) ;
+  Ivector I ;
+  src.d.putm(I)  ;
 
-    for(unsigned int c =0; c< src.length(); c++) {
-      for(unsigned int j=0; j<res.size(); j++)
-	if (I[j] > src.d.getm(j)) 
-	  res[j][c] = (src[c] - src[src.d.rPos(c, j, -1)]) / resol[j] ;
-	else 
-	  res[j][c] = (src[src.d.rPos(c, j, 1)] - src[c])/resol[j]  ;
-      src.d.inc(I) ;
-    }
+  for(unsigned int c =0; c< src.length(); c++) {
+    for(unsigned int j=0; j<res.size(); j++)
+      if (I[j] > src.d.getm(j)) 
+	res[j][c] = (src[c] - src[src.d.rPos(c, j, -1)]) / resol[j] ;
+      else 
+	res[j][c] = (src[src.d.rPos(c, j, 1)] - src[c])/resol[j]  ;
+    src.d.inc(I) ;
+  }
 }
 
 
 
 template <class NUM> void divergence(const _VectorMap<NUM> &src, _Vector<NUM> &res, vector<_real> &resol)
 {
-    res.al(src.d) ;
-    Ivector I ;
-    src.d.putm(I)  ;
+  res.al(src.d) ;
+  Ivector I ;
+  src.d.putm(I)  ;
 
-    for(unsigned int c =0; c< res.length(); c++) {
-      res[c] = 0 ;
-      for(unsigned int j=0; j<src.size(); j++)
-	if (I[j] > src.d.getm(j) && I[j] < src.d.getM(j)) 
-	  res[c] += (src[j][src.d.rPos(c, j, 1)] - src[j][src.d.rPos(c, j, -1)]) / (2) ;
-	else if (I[j] == src.d.getm(j))  
-	  res[c] += (src[j][src.d.rPos(c, j, 1)] - src[j][c])  ;
-	else if (I[j] == src.d.getM(j))  
-	  res[c] += (src[j][c] - src[j][src.d.rPos(c, j, -1)])  ;
-      src.d.inc(I) ;
-    }
+  for(unsigned int c =0; c< res.length(); c++) {
+    res[c] = 0 ;
+    for(unsigned int j=0; j<src.size(); j++)
+      if (I[j] > src.d.getm(j) && I[j] < src.d.getM(j)) 
+	res[c] += (src[j][src.d.rPos(c, j, 1)] - src[j][src.d.rPos(c, j, -1)]) / (2) ;
+      else if (I[j] == src.d.getm(j))  
+	res[c] += (src[j][src.d.rPos(c, j, 1)] - src[j][c])  ;
+      else if (I[j] == src.d.getM(j))  
+	res[c] += (src[j][c] - src[j][src.d.rPos(c, j, -1)])  ;
+    src.d.inc(I) ;
+  }
 }
 
 
@@ -2433,7 +2434,7 @@ typedef _VectorMap<_real> VectorMap;
 */
 class TimeVector : public std::vector<Vector>
 {
-public:
+ public:
   Domain d ;
   void resize(int s, const Domain &d_) {
     std::vector<Vector>::resize(s) ; for(unsigned int i=0; i<size(); i++) (*this)[i].al(d_) ; d.copy(d_) ;}
@@ -2471,7 +2472,7 @@ public:
   _real sumScalProd(const TimeVector& tv, int i1, int i2) const {
     _real res = 0 ; for(int i=i1; i<=i2; i++) res += (*this)[i].sumProd(tv[i]) ; return res ;}
   _real sumScalProd(const TimeVector& tv) const {
-      _real res = 0 ; for(unsigned int i=0; i<size(); i++) res += (*this)[i].sumProd(tv[i]) ; return res ;}
+    _real res = 0 ; for(unsigned int i=0; i<size(); i++) res += (*this)[i].sumProd(tv[i]) ; return res ;}
 };
 
 /**
@@ -2479,7 +2480,7 @@ public:
 */
 class TimeVectorMap : public std::vector<VectorMap>
 {
-public:
+ public:
   Domain d ;
   void resize(int s){std::vector<VectorMap>::resize(s) ;}
   void resize(int s, const Domain &d_) {
