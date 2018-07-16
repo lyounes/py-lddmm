@@ -253,6 +253,7 @@ def linearcg(op, b, iterMax=100, x0=None, param = None, verb=False):
     ener = (z*x).sum()
     oldEner = ener
     f=0
+    mu = 0
     r = -z - b
     for i2 in range(iterMax):
         if i2 == 0:
