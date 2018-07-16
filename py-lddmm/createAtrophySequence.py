@@ -1,5 +1,6 @@
 from common.surfaces import *
 
+
 def compute():
     fv0 = Surface(filename='/Users/younes/Data/sculptris/shape1.obj')
     fv0.updateVertices(10*fv0.vertices)
