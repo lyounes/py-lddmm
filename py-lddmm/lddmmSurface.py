@@ -2,10 +2,10 @@
 import os
 from os import path
 import argparse
-import common.surfaces as surfaces
+import base.surfaces as surfaces
 import logging
-from common import loggingUtils
-from common.kernelFunctions import *
+from base import loggingUtils
+from base.kernelFunctions import *
 from affineRegistration import *
 
 

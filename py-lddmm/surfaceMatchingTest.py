@@ -1,8 +1,8 @@
 import numpy as np
-from common import surfaces
-from common import loggingUtils
-from common.surfaces import Surface
-from common.kernelFunctions import Kernel
+from base import surfaces
+from base import loggingUtils
+from base.surfaces import Surface
+from base.kernelFunctions import Kernel
 from surfaceMatching import SurfaceMatching, SurfaceMatchingParam
 import matplotlib.pyplot as plt
 plt.ion()

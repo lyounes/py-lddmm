@@ -2,10 +2,10 @@ import os
 import numpy as np
 import numpy.linalg as la
 import logging
-from common import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol
-import common.surfaces as surfaces
-from common import pointSets
-from common.affineBasis import AffineBasis, getExponential, gradExponential
+from base import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol
+import base.surfaces as surfaces
+from base import pointSets
+from base.affineBasis import AffineBasis, getExponential, gradExponential
 import matplotlib
 matplotlib.use("TKAgg")
 import matplotlib.pyplot as plt

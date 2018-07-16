@@ -3,9 +3,9 @@ import numpy as np
 import scipy.linalg as la
 import scipy.fftpack as fft
 import logging
-from common import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils
-from common import pointSets
-from common.affineBasis import AffineBasis, getExponential
+from base import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils
+from base import pointSets
+from base.affineBasis import AffineBasis, getExponential
 import matplotlib
 matplotlib.use("TKAgg")
 from sklearn import svm

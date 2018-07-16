@@ -1,10 +1,10 @@
 import numpy.linalg as la
 import logging
-from common import surfaces
+from base import surfaces
 #import pointEvolution_fort as evol_omp
-from common import conjugateGradient as cg, pointEvolution as evol
+from base import conjugateGradient as cg, pointEvolution as evol
 import surfaceTimeSeries
-from common.affineBasis import *
+from base.affineBasis import *
 
 
 

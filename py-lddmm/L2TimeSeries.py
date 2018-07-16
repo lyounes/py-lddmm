@@ -1,8 +1,8 @@
 import os.path
 import argparse
-from common import loggingUtils
-import common.surfaces as surfaces
-from common.kernelFunctions import *
+from base import loggingUtils
+import base.surfaces as surfaces
+from base.kernelFunctions import *
 import surfaceMatching
 #import secondOrderMatching as match
 

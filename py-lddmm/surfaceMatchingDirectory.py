@@ -2,7 +2,7 @@
 from os import path
 import glob
 import argparse
-from common.kernelFunctions import *
+from base.kernelFunctions import *
 from surfaceMatching import *
 
 

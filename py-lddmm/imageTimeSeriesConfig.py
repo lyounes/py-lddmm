@@ -1,6 +1,6 @@
 import logging
 import numpy
-from common import diffeomorphisms, regularGrid
+from base import diffeomorphisms, regularGrid
 import sys
 import os
 

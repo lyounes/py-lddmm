@@ -1,7 +1,7 @@
 import argparse
-from common import loggingUtils
-from common.surfaces import *
-from common.kernelFunctions import *
+from base import loggingUtils
+from base.surfaces import *
+from base.kernelFunctions import *
 from surfaceMultiPhase import *
 
 def compute(args=None, noArgs=True):

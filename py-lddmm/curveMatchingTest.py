@@ -1,8 +1,8 @@
 import numpy as np
 #import curves
-from common.curves import Curve, remesh
-from common import loggingUtils
-from common.kernelFunctions import Kernel
+from base.curves import Curve, remesh
+from base import loggingUtils
+from base.kernelFunctions import Kernel
 from curveMatching import CurveMatchingParam, CurveMatching
 import matplotlib.pyplot as plt
 

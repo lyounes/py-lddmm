@@ -4,12 +4,12 @@ import matplotlib
 matplotlib.use("TKAgg")
 import scipy.linalg as la
 import scipy.optimize as sopt
-import common.curves as curves
-from common import conjugateGradient as cg, grid, matchingParam, pointEvolution as evol, loggingUtils
-from common.affineBasis import *
+import base.curves as curves
+from base import conjugateGradient as cg, grid, matchingParam, pointEvolution as evol, loggingUtils
+from base.affineBasis import *
 import matplotlib.pyplot as plt
 import matplotlib.animation as manimation
-from common.kernelFunctions import Kernel
+from base.kernelFunctions import Kernel
 import logging
 from tqdm import *
 

@@ -1,9 +1,9 @@
 #! /usr/bin/env python
 import argparse
 import logging
-from common import loggingUtils
-from common import surfaces
-from common.kernelFunctions import *
+from base import loggingUtils
+from base import surfaces
+from base.kernelFunctions import *
 import surfaceMatching
 from affineRegistration import *
 

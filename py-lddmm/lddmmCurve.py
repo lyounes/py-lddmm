@@ -1,10 +1,10 @@
 #!/opt/local/bin/python2.7
 import os
 import argparse
-from common import curves
+from base import curves
 import logging
-from common import loggingUtils
-from common.kernelFunctions import *
+from base import loggingUtils
+from base.kernelFunctions import *
 from affineRegistration import *
 
 
