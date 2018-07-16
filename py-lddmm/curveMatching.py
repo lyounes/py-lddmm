@@ -1,11 +1,11 @@
 import os
 import glob
 #import scipy as sp
-import common.curves as curves
-from common import pointSets
+import base.curves as curves
+from base import pointSets
 #import kernelFunctions as kfun
-from common import conjugateGradient as cg, grid, matchingParam, pointEvolution as evol
-from common.affineBasis import *
+from base import conjugateGradient as cg, grid, matchingParam, pointEvolution as evol
+from base.affineBasis import *
 import matplotlib.pyplot as plt
 
 

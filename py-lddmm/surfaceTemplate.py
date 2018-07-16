@@ -1,10 +1,10 @@
 import numpy as np
-from common import surfaces
+from base import surfaces
 import logging
 import surfaceMatching as smatch
 import multiprocessing as mp
-from common import conjugateGradient as cg, kernelFunctions as kfun
-from common.affineBasis import AffineBasis
+from base import conjugateGradient as cg, kernelFunctions as kfun
+from base.affineBasis import AffineBasis
 
 
 

@@ -1,9 +1,9 @@
 import numpy.linalg as LA
-import common.gaussianDiffeons as gd
-from common import conjugateGradient as cg, kernelFunctions as kfun, surfaces
-import common.pointEvolution as evol
+import base.gaussianDiffeons as gd
+from base import conjugateGradient as cg, kernelFunctions as kfun, surfaces
+import base.pointEvolution as evol
 import surfaceMatching
-from common.affineBasis import *
+from base.affineBasis import *
 
 ## Parameter class for matching
 #      timeStep: time discretization

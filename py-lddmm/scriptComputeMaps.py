@@ -3,7 +3,7 @@ import optparse
 import os
 import shutil
 import logging
-from common import loggingUtils
+from base import loggingUtils
 
 output_directory_base = imageTimeSeriesConfig.compute_output_dir
 # set options from command line

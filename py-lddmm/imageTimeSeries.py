@@ -1,4 +1,4 @@
-from common import conjugateGradient, loggingUtils
+from base import conjugateGradient, loggingUtils
 import numpy
 import optparse
 import os

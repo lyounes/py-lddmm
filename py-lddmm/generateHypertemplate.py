@@ -1,7 +1,7 @@
 import glob
 import argparse
 import numpy as np
-from common import surfaces
+from base import surfaces
 
 try:
     from vtk import *

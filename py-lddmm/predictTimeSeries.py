@@ -1,6 +1,6 @@
 import csv
-from common import loggingUtils, surfaces
-from common.kernelFunctions import *
+from base import loggingUtils, surfaces
+from base.kernelFunctions import *
 import surfaceMatching, surfaceTimeSeries as match
 
 

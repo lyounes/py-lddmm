@@ -1,11 +1,11 @@
 import numpy.linalg as la
 import logging
-import common.surfaces as surfaces
-from common import pointSets
+import base.surfaces as surfaces
+from base import pointSets
 # import pointEvolution_fort as evol_omp
-from common import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils
+from base import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils
 import surfaceMatching
-from common.affineBasis import *
+from base.affineBasis import *
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 #from mpl_toolkits.mplot3d.art3d import Poly3DCollection

@@ -3,9 +3,9 @@ import numpy.linalg as LA
 from PIL import Image
 import scipy.ndimage as Img
 import scipy.stats.mstats as stats
-import common.gaussianDiffeons as gd
-from common import conjugateGradient as cg, diffeo, kernelFunctions as kfun, pointEvolution as evol
-from common.affineBasis import *
+import base.gaussianDiffeons as gd
+from base import conjugateGradient as cg, diffeo, kernelFunctions as kfun, pointEvolution as evol
+from base.affineBasis import *
 
 ## Parameter class for matching
 #      timeStep: time discretization

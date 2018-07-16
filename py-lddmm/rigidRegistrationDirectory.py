@@ -2,7 +2,7 @@
 from os import path
 import glob
 import argparse
-from common import pointSets, surfaces
+from base import pointSets, surfaces
 from affineRegistration import *
 
 

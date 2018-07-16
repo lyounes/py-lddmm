@@ -1,10 +1,10 @@
 import numpy.linalg as la
 import logging
-import common.surfaces as surfaces
+import base.surfaces as surfaces
 #import pointEvolution_fort as evol_omp
-from common import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol
+from base import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol
 import surfaceMatching
-from common.affineBasis import *
+from base.affineBasis import *
 
 
 ## Parameter class for matching

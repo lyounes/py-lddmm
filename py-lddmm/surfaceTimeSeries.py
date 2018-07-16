@@ -1,9 +1,9 @@
 import logging
 import numpy.linalg as la
-from common import surfaces
-from common.pointSets import *
-from common import conjugateGradient as cg, pointEvolution as evol
-from common.affineBasis import *
+from base import surfaces
+from base.pointSets import *
+from base import conjugateGradient as cg, pointEvolution as evol
+from base.affineBasis import *
 from surfaceMatching import SurfaceMatchingParam
 
 ## Parameter class for matching
