@@ -1,8 +1,8 @@
 import numpy as np
-from Diffeons import gaussianDiffeons as gd
+import gaussianDiffeons as gd
 import numpy.linalg as LA
-import Common.pointEvolution_fort as pfor
-from Common import affineBasis
+import pointEvolution_fort as pfor
+import affineBasis
 
 
 def gaussianDiffeonsEvolutionEuler(c0, S0, at, sigma, affine = None, withJacobian=False, withPointSet=None, withNormals=None,

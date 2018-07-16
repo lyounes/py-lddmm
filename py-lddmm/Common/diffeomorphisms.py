@@ -12,13 +12,13 @@ class gridScalars:
          self.data = np.copy(data)
       elif not (fileName==None):
          if (dim == 1):
-            with open(filename, 'r') as ff:
+            with open(fileName, 'r') as ff:
                ln0 = ff.readline()
                while (len(ln0) == 0) | (ln0=='\n'):
                   ln0 = ff.readline()
                ln = ln0.split()
                nb = int(ln[0])
-               self.data = zeros(nb)
+               self.data = np.zeros(nb)
                j = 0
                while j < nb:
                   ln = ln0.readline.split()

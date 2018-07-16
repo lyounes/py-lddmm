@@ -32,6 +32,7 @@ public:
     Tg.copy(TG) ;
     TpNorm = TP.norm2() ;
     TgNorm = TG.norm2() ;
+    cout << "affine: " << TpNorm << " " << TgNorm << endl ;
     sz.resize(SZ.size()) ;
     for(unsigned int k=0; k<sz.size(); k++)
       sz[k] = SZ[k]  ;

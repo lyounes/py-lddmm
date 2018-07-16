@@ -60,8 +60,8 @@ template <class OBJECT_TYPE, class scalProd, class linearOperator> class linearC
     //    A(x, foo) ;
     //    energyTest = scp(x, foo)/2 - scp(b,x) ;
     energyOld = energy ;
-    if (verb)
-      cout << " conjugate gradient: initial variation = " << var0 << endl ;
+    if (verb>1)
+      cout << "Conjugate gradient: initial variation = " << var0 << endl ;
 
     if (sqrt(mu) > error)    
       for (int ss = 0; ss <nbStep; ss++) {
@@ -86,8 +86,8 @@ template <class OBJECT_TYPE, class scalProd, class linearOperator> class linearC
 	//energyTest = scp(x, foo)/2 - scp(b,x) ;
 	//var2 = energyOld - energyTest ;
 	energyOld = energy ;
-	if (verb)
-	  cout << "step " << ss << " conjugate gradient: variation = " << var << endl ;
+	if (verb>1)
+	  cout << "Step " << ss << " conjugate gradient: variation = " << var << endl ;
 
 	//	var = alpha * scp(p,r) ;
 	//	energy = energyOld - var ;
@@ -98,8 +98,8 @@ template <class OBJECT_TYPE, class scalProd, class linearOperator> class linearC
 	  break ;
 	energyOld = energy ;
       }
-    if (verb)
-      cout << " conjugate gradient: Total variation: " << energy0 - energy << endl ;
+    if (verb>1)
+      cout << "Conjugate gradient: Total variation: " << energy0 - energy << endl ;
     return energy ;
   }
 } ;

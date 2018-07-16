@@ -98,9 +98,10 @@ class Vector: public _Vector<_real>
       for (int jj=0; jj<nbc; jj++) {
 	//Magick::Color u = pixels[nbc * ii + jj] ;
 	Magick::ColorRGB u = img0.pixelColor(jj,ii) ;
-	(*this)[i++] = (_real) 255.0*(u.red()+u.green()+u.blue())/(3.0*QuantumRange) ;
+	(*this)[i++] = (_real) 255.0*(u.red()+u.green()+u.blue())/3. ;
       }
-    // cout << max() << " " << min() << endl ;
+    //cout << "loadImage " << QuantumScale << " " << QuantumRange << " "
+    //<< max() << " " << min() << " " << norm2() << endl ;
   }
 
   void load3DImage(const char* filename0) {

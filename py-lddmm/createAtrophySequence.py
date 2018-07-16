@@ -1,4 +1,4 @@
-from Surfaces.surfaces import *
+from common.surfaces import *
 
 def compute():
     fv0 = Surface(filename='/Users/younes/Data/sculptris/shape1.obj')

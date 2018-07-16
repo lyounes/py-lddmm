@@ -106,7 +106,7 @@ public:
     for (unsigned int i=0; i<paddedMap.length(); i++) {
       (_inMap)[i] = paddedMap[i] ;
     }
-    //cout << "execute" << endl ;
+    cout << "execute" << endl ;
     fftw_execute(_ptoMap) ;
     double test1 =0, test2 =0 ;
     for (unsigned int i=0; i<paddedMap.length(); i++) {
@@ -116,9 +116,9 @@ public:
       (_fMapKernel)[i][1] = 0 ;
     }
 
-    //cout << "pfrom" << endl ;
+    cout << "pfrom" << endl ;
     _pfromMap = fftw_plan_dft_c2r(dim.size(), _nM, _inMapc, _outMap,  TYPEINIT) ;
-    //cout << "end init kernel" << endl ;
+    cout << "end init kernel" << endl ;
     FFT_INITIALIZED = true ;
   }
 

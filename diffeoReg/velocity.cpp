@@ -35,7 +35,6 @@ void LDDMMTimegradient(const VectorMap& phi, const VectorMap &psi, const deforma
 }
 
 
-
 void Velocity::Print(char* path)
 {
   char file[256] ;

@@ -202,7 +202,7 @@ public:
 
   void convImage(const Vector &in, Vector &out) {
     // padding the in image ;
-    //cout << "??? " << in.max() << endl ;
+    cout << "??? " << in.max() << endl ;
     if (param.sigmaGauss <0) {
       //    cout << "Not smoothing image" << endl ;
       out.copy(in) ;

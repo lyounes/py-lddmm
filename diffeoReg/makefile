@@ -20,7 +20,7 @@ PROJECT=.
 ARRAY_IPATH = -I$(PROJECT)/arrayClasses 
 #IPATH = $(ARRAY_IPATH) $(GSL_IPATH) $(FFTW3_IPATH) $(JAMA_IPATH) $(IMAGICK_IPATH)   
 #LPATH = $(GSL_LPATH) $(FFTW3_LPATH) $(IMAGICK_LPATH)   
-CFLAGS = -O3 -ffast-math -Wall -Xpreprocessor -fopenmp
+CFLAGS = 
 #-fopenmp 
 #-arch x86_64 
 #COMPILE.cpp = $(CC) $(IPATH)  $(CFLAGS) -c

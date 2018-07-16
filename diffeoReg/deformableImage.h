@@ -117,6 +117,7 @@ computes the gradient of the image
   void  scaleScalars(double z) {
     _real M0 = _img.max();
       _img *= z/(M0+0.001) ;
+      //cout << "scs " << _img.norm2() << endl;  
   }
 
 protected:

@@ -558,7 +558,7 @@ class Morphing:public ImageMatching
 	    }
 	    else {
 	      skipCG = 1 ;
-	      if (param.verb == true)
+	      if (param.verb > 1)
 		cout << "Negative b in CG: " << b << endl ;
 	    } 
 	  }
@@ -704,7 +704,7 @@ class Morphing:public ImageMatching
 	
 	cout << "energy after gradient: " << enerw() << endl ; ; 
 	smoothIConj(20, -1) ;
-	cout << "energy after CG: " << enerw() << endl ; ; 
+	//cout << "energy after CG: " << enerw() << endl ; ; 
 	
 	
 	if (it >0 && it % 1 == 0) 

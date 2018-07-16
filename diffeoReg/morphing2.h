@@ -696,7 +696,7 @@ class Morphing:public ImageMatching
       cout << "obj fun: " << objectiveFun(w) << " grad norm " << gradNorm << endl ;
     }
     void startOfProcedure(VectorMap &w) {
-      cout << "obj fun (initial): " << objectiveFun(w) << "    " ;
+      //cout << "obj fun (initial): " << objectiveFun(w) << "    " ;
     }
       //_sh->Z0.copy(Z) ;
       //_sh->Print() ;
@@ -790,7 +790,7 @@ class Morphing:public ImageMatching
 	
       cout << "energy after gradient: " << enerw() << endl ; ; 
       smoothIConj(20, -1) ;
-      cout << "energy after CG: " << enerw() << endl ; ; 
+      //cout << "energy after CG: " << enerw() << endl ; ; 
 	
 	
       // if (it >0 && it % 1 == 0) 

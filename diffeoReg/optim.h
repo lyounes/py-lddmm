@@ -90,8 +90,8 @@ template<class OBJECT_TYPE> class Optim{
       muOld = mu ;
       energy = energyOld - alpha * scalProd(p,r) ;
 
-      if (verb)
-	cout << "step " << ss << " conjugate gradient: " << energy0 << " " << energy << endl ;
+      if (verb>1)
+	cout << "Step " << ss << " conjugate gradient: " << energy0 << " " << energy << endl ;
       if (abs(energyOld - energy) < error * energyOld)
 	break ;
       energyOld = energy ;

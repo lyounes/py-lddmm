@@ -10,8 +10,8 @@ def createLongitudinalSurfaceScripts(minL=3):
 
     #Directory where the data is. One subfolder per subject.
     targetDir = '/cis/home/younes/MorphingData/TimeseriesResults/'
-    #python directory for py-lddmm
-    source = '/cis/home/younes/github/registration/py-lddmm'
+    #python directory for registration
+    source = '/cis/home/younes/github/registration/registration'
     allDir = glob.glob(targetDir+'*')
     for d in allDir:
         nscan = 0 

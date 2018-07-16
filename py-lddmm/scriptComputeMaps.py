@@ -1,9 +1,9 @@
-from Images import imageTimeSeries, imageTimeSeriesConfig
+import imageTimeSeries, imageTimeSeriesConfig
 import optparse
 import os
 import shutil
 import logging
-from Common import loggingUtils
+from common import loggingUtils
 
 output_directory_base = imageTimeSeriesConfig.compute_output_dir
 # set options from command line

@@ -218,6 +218,8 @@ public:
   bool matchDensities ;
   bool revertIntensities ;
   bool flipTarget ;
+  bool initMeta ;
+  int initMetaNIter ;
   int flipDim ;
   double binThreshold ;
   int affine_time_disc ;
@@ -331,6 +333,7 @@ public:
       foundScale = p0.foundScale ;
       flipTarget = p0.flipTarget ;
       flipDim = p0.flipDim ;
+      initMeta = p0.initMeta ;
       crop1 =p0.crop1 ;
       crop2 = p0.crop2 ;
       affine = p0.affine ;
@@ -426,7 +429,7 @@ public:
 		OUTDIR, CROP1, CROP2, AFFINE, SPACERES, AFFINEREG, DNMT, DNMI,
 		PROJECTIMAGE, ACCURACY, SIGMA, NB_ITER, EPSMAX, NBSEMI, NBCGMETA, GS,
 		TIME_DISC, LAMBDA, MINVAREN, EXPAND, MAXSHOOTTIME, SCALESCALARS, KEEPTARGET,
-		APPLYAFFINETOTEMPLATE, FLIPTARGET, GRADIENT_THRESHOLD,
+		APPLYAFFINETOTEMPLATE, FLIPTARGET, INIT_META, GRADIENT_THRESHOLD,
 		PARALLELTIMEDISC, INITIALMOMENTUM, BINARIZE, EXPANDTOMAXSIZE,USEVECTORMOMENTUM,
                 REVERTINTENSITIES, MATCHDENSITIES,NB_THREADS, CONTINUE,SAVEMOVIE,PERIODIC,QUIET,
 		DEBUG, NORMALIZEKERNEL

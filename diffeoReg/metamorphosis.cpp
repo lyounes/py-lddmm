@@ -52,7 +52,7 @@ int main(int argc, char** argv)
     cout << mo.Template.img().sum() << " " <<  mo.Target.img().sum() << endl ;
   }
   mo.initialPrint() ;  
-  cout << "done initial print" << endl ;
+  //cout << "done initial print" << endl ;
 
   // minitest
   // VectorMap phi, v, dv, w, GI1 ;

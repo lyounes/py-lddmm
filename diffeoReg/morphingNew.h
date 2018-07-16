@@ -23,6 +23,7 @@
 #include "matchingBase.h"
 #include "param_matching.h"
 #include "optimF.h"
+#include "velocity.h"
 #ifdef MEM
 extern mem ;
 #endif
@@ -296,11 +297,11 @@ class Morphing:public ImageMatching
       _kern.setParam(param) ;
       cout << imageDim ;
       _kern.initFFT(imageDim, FFTW_MEASURE) ;
-      cout << "done fft" << endl ;
+      //cout << "done fft" << endl ;
     }
     sprintf(file, "%s/kernel", path) ;
     _kern.kern.write_imagesc(file) ;
-    cout << "done writing" << endl ;
+    //cout << "done writing" << endl ;
   }
 
   void Print(char* path)
@@ -314,7 +315,7 @@ class Morphing:public ImageMatching
 	mx = mx2 ;
     }
 
-    if (param.verb)
+    if (param.verb>1)
       cout << "Printing Images" << endl ;
     for(unsigned int t=0; t< J.size(); t++) {
       Vector foo ;
@@ -340,7 +341,7 @@ class Morphing:public ImageMatching
     Z -= J[0] ;
     Z *= w.size() * param.lambda ;
       
-    if (param.verb)
+    if (param.verb>1)
       cout << "Printing momentum" << endl ;
     sprintf(file, "%s/initialScalarMomentumMeta", path) ;
     Z.write(file) ;
@@ -383,7 +384,7 @@ class Morphing:public ImageMatching
     //  sprintf(file, "%s/finalTemplate", path) ;
     //  Tplt[Tplt.size()-1].write_imagesc(file) ;
       
-    if (param.verb)     
+    if (param.verb>1)     
       cout << "Printing deformed target" << endl ;
     //flowDual(psi, phi) ;
     if (param.matchDensities) {
@@ -396,10 +397,10 @@ class Morphing:public ImageMatching
     }
     sprintf(file, "%s/deformedTarget", path) ;
     I11.write_imagesc(file) ;
-    if (param.verb)
-      cout << "Target: " << J[J.size()-1].sum() << " " << I11.sum() << endl ;
+    //if (param.verb)
+    //  cout << "Target: " << J[J.size()-1].sum() << " " << I11.sum() << endl ;
 
-    if(param.verb)      
+    if(param.verb>1)      
       cout << "Printing deformed template" << endl ;
     if (param.matchDensities) 
       phi[phi.size()-1].multilinInterpDual(J[0], I11) ;
@@ -408,10 +409,10 @@ class Morphing:public ImageMatching
 
     sprintf(file, "%s/deformedTemplate", path) ;
     I11.write_imagesc(file) ;
-    if (param.verb)
-      cout << "Template: " << J[0].sum() << " " << I11.sum() << endl ;
+    //if (param.verb)
+    //cout << "Template: " << J[0].sum() << " " << I11.sum() << endl ;
 
-    if (param.verb)
+    if (param.verb>1)
       cout << "Printing matching" << endl ;
     for (unsigned int t=0; t<phi.size(); t++) {
       sprintf(file, "%s/forwardMatching%03d", path, t) ;
@@ -440,7 +441,7 @@ class Morphing:public ImageMatching
       dphi += 128 ;
     }
 
-    if (param.verb)
+    if (param.verb>1)
       cout << "Printing deformed jacobian" << endl ;
     sprintf(file, "%s/jacobian", path) ;
     dphi.write_image(file) ;
@@ -729,11 +730,11 @@ class Morphing:public ImageMatching
 
 
     void endOfProcedure(VectorMap &w) {
-      if (_sh->param.verb)
+      if (_sh->param.verb>1)
 	cout << "obj fun: " << objectiveFun(w) << " grad norm " << gradNorm << endl ;
     }
     void startOfProcedure(VectorMap &w) {
-      if (_sh->param.verb)
+      if (_sh->param.verb>1)
 	cout << "obj fun (initial): " << objectiveFun(w) << "    " ;
     }
       //_sh->Z0.copy(Z) ;
@@ -748,7 +749,7 @@ class Morphing:public ImageMatching
   /**
      Conjugate gradient step (deformation)
   */
-  void gradientStepC() 
+  void gradientStepC(unsigned int nI) 
   {
     VectorMap ww ;
     conjGrad<VectorMap, VectorMap, scalProdDef, optimDefPart> cg ;
@@ -760,7 +761,7 @@ class Morphing:public ImageMatching
     for (unsigned int t=0; t<w.size(); t++) {
       opt.setImages(&(J[t]), &(J[t+1])) ;
       //cout << "Starting cg" << endl ;
-      cg(opt, scp, w[t], ww, 5, step[t], param.epsMax, param.minVarEn, param.gs, 0) ;
+      cg(opt, scp, w[t], ww, nI, step[t], param.epsMax, param.minVarEn, param.gs, 0) ;
       w[t].copy(ww) ;
       step[t] = cg.getStep() ;
     }
@@ -802,6 +803,7 @@ class Morphing:public ImageMatching
   _real matchingStep(TimeVectorMap &wIni) 
   {
     Vector tmp ;
+    Velocity init_vel ;
     w.copy(wIni) ;
       
     // initialization
@@ -809,9 +811,30 @@ class Morphing:public ImageMatching
     w.zeros(w.size(), w.d) ;
     Z.zeros(w.d) ;
  
-    VectorMap Id ;
-    Id.idMesh(w.d) ;
+    //VectorMap Id ;
+    //Id.idMesh(w.d) ;
     interpolate() ;
+    if (param.initMeta) {
+      init_vel.init(param) ;
+      init_vel.param.nb_iter = param.initMetaNIter ;
+      //init_vel.param.sigma /= 10 ;
+      init_vel.matching() ;
+
+      //psi.copy(init_vel._psi) ;
+      init_vel.initFlow(init_vel.Lv0.d) ;
+      for(unsigned int t=0; t<init_vel.Lv0.size(); t++) {
+	init_vel.updateFlow(init_vel.Lv0[t], 1.0/init_vel._T) ;
+	//init_vel.kernel(init_vel.Lv0[t], w[t]) ;
+	if (t < init_vel.Lv0.size()-1)
+	  init_vel._psi.multilinInterp(init_vel.Template.img(), J[t+1]) ;
+	//cout << t << " " << J.size() << endl ;
+      }
+      w.copy(init_vel.Lv0) ;
+      gradientStepC(100) ;
+    }
+    //w.copy(init_vel.vt) ;
+    //smoothIConj(200, 0.001) ;
+    // interpolate() ;
       
     if (param.doDefor == 0)
       return 0 ;
@@ -823,17 +846,17 @@ class Morphing:public ImageMatching
       cout << endl << "iteration " << it << endl ;
 	
       for (int cnt=0; cnt < 1; cnt++) {
-	gradientStepC() ;
+	gradientStepC(5) ;
 	if (param.verb)
 	  cout << endl ;
       } 
 	
       if (param.verb)
-	cout << "energy after gradient: " << enerw() << endl ;
+	cout << "Energy after gradient: " << enerw() << endl ;
 
       if (w.size() > 1)
 	smoothIConj(20, -1) ;
-      if (param.verb)
+      if (param.verb>1)
 	cout << "energy after CG: " << enerw() << endl ; ; 
 	
 	
@@ -842,7 +865,7 @@ class Morphing:public ImageMatching
 	
       en = enerw() ;
 	
-      cout << "   energy: " << en << endl ; ; 
+      cout << "Energy: " << en << endl ; ; 
       if (enOld-en < 0.00001*en)
 	test = test + 0.25 ;
       else
@@ -1027,14 +1050,14 @@ class Morphing:public ImageMatching
     imv(JJ0, gg) ;
     initEn = gg.sumScalProd(JJ0) - 2*b.sumScalProd(JJ0) + offset ;
     if (param.verb)
-      cout << "Initial Energy: " << T*T*initEn/(w.length()) << " " << energyM() << endl ;
-    lcg(JJ0, JJ, b, 20, 1e-2, param.verb, imv, scp) ;
+      cout << "CG Initial Energy: " << T*T*initEn/(w.length()) << " " << energyM() << endl ;
+    lcg(JJ0, JJ, b, nbStep, 1e-2, param.verb, imv, scp) ;
     for (unsigned int t=1; t<T; t++)
       J[t].copy(JJ[t-1]) ; 
     imv(JJ, gg) ;
     initEn = gg.sumScalProd(JJ) - 2*b.sumScalProd(JJ) + offset ;
     if (param.verb)
-      cout << "Final Energy: " << T*T*initEn/(w.length()) << " " << energyM() << endl ;
+      cout << "CG Final Energy: " << T*T*initEn/(w.length()) << " " << energyM() << endl ;
     // cout << "Final Image Energy " << 2* energyM()*w.length() / (T*T) << endl ;
   }
     

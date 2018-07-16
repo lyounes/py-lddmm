@@ -67,6 +67,7 @@ param_matching::param_matching() {
   paramMap[(string) "goldenSearch:"] = GS ;
   paramMap[(string) "binarize:"] = BINARIZE ;
   paramMap[(string) "flipTarget:"] = FLIPTARGET ;
+  paramMap[(string) "initMeta:"] = INIT_META ;
   paramMap[(string) "expandToMaxSize:"] = EXPANDTOMAXSIZE ;
   paramMap[(string) "useVectorMomentum:"] = USEVECTORMOMENTUM ;
   paramMap[(string) "revertIntensities:"] = REVERTINTENSITIES ;
@@ -119,6 +120,8 @@ param_matching::param_matching() {
   foundAuxiliaryParam = false ;
   foundInitialMomentum =  false ;
   flipTarget = false;
+  initMeta = false ;
+  initMetaNIter = 50 ;
   flipDim = 0 ;
   saveProjectedMomentum = true ;
   matchDensities = false ;
@@ -365,6 +368,10 @@ void param_matching::read(std::vector<string> &input)
       case FLIPTARGET:
 	flipTarget = true ; 
 	flipDim = atoi(input[k++].c_str());
+	break ;
+      case INIT_META:
+	initMeta = true ; 
+	initMetaNIter = atoi(input[k++].c_str());
 	break ;
       case EXPANDTOMAXSIZE:
 	expandToMaxSize = true ; 
