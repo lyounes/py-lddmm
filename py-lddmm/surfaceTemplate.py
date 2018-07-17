@@ -202,7 +202,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 
 
     def dataTerm(self, _fvDef):
-        obj = 0 ;
+        obj = 0
         if self.param.errorType == 'L2Norm':
             for k,f in enumerate(_fvDef):
                 obj += surfaces.L2Norm(f, self.fv1[k].vfld) / (self.param.sigmaError ** 2)
