@@ -3,6 +3,7 @@ from base import surfaces
 import logging
 import surfaceMatching as smatch
 import multiprocessing as mp
+from multiprocessing import Lock
 from base import conjugateGradient as cg, kernelFunctions as kfun
 from base.affineBasis import AffineBasis
 
@@ -114,7 +115,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         self.Tsize = int(round(1.0/self.param.timeStep))
         
         self.updateTemplate = True
-        self.updateAllTraj = False
+        self.updateAllTraj = True
         self.templateBurnIn = 10
         if self.affineDim > 0:
             self.updateAffine = True
@@ -312,14 +313,14 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         return objTry
 
 
-    def gradientComponent(self, q, kk):
+    def gradientComponent(self, l, q, kk):
         #print kk, 'th gradient'
         if self.param.errorType == 'L2Norm':
             px1 = -surfaces.L2NormGradient(self.fvDef[kk], self.fv1[kk].vfld) / self.param.sigmaError ** 2
         else:
             px1 = -self.param.fun_objGrad(self.fvDef[kk], self.fv1[kk], self.param.KparDist) / self.param.sigmaError**2
-        #print 'in fun', kk
         if self.updateAllTraj:
+            #print 'in fun' ,kk
             A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
             dim2 = self.dim**2
             if self.affineDim > 0:
@@ -337,18 +338,21 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 
         #print kk, (px1-pxTmpl).sum()
         #print 'before put', kk
+        l.acquire()
         q.put([kk, grd, pxTmpl])
+        l.release()
         #print 'end fun', kk
+        return True
 
     def testEndpointGradient(self):
         c0 = self.dataTerm(self.fvDef)
         _ff = []
         _dff = []
         incr = 0
+        eps = 1e-6
         for k in range(self.Ntarg):
             ff = surfaces.Surface(surf=self.fvDef[k])
             dff = np.random.normal(size=ff.vertices.shape)
-            eps = 1e-6
             ff.updateVertices(ff.vertices+eps*dff)
             _ff.append(ff)
             _dff.append(dff)
@@ -365,23 +369,37 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         #pxIncr = np.zeros([self.Ntarg, self.atAll.shape[1], self.atAll.shape[2]])
         pxTmpl = np.zeros(self.at.shape[1:3])
         q = mp.Queue()
-        #procGrd = []
-        # for kk in range(Ntarg):
-        #     procGrd.append(mp.Process(target = gradientComponent, args=(q,kk,fvTmpl, fv1[kk], xt[kk], at[kk], KparDist, KparDiff, regWeight, sigmaError,)))
-        # for kk in range(Ntarg):
-        #     procGrd[kk].start()
-        # for kk in range(Ntarg):
-        #     procGrd[kk].join()
-        # print 'all joined'
+
+        useMP = True
+        if useMP:
+            lock = Lock()
+            procGrd = []
+            for kk in range(self.Ntarg):
+                procGrd.append(mp.Process(target = self.gradientComponent, args=(lock, q,kk)))
+            for kk in range(self.Ntarg):
+                print kk, self.Ntarg
+                procGrd[kk].start()
+            print "end start"
+            for kk in range(self.Ntarg):
+                print "join", kk
+                procGrd[kk].join()
+            # print 'all joined'
+            for kk in range(self.Ntarg):
+                print "terminate", kk
+                procGrd[kk].terminate()
+        else:
+            for kk in range(self.Ntarg):
+                self.gradientComponent(q, kk)
         grd = Direction()
         for kk in range(self.Ntarg):
-            self.gradientComponent(q, kk)
+            #self.gradientComponent(q, kk)
             grd.all.append(smatch.Direction())
-                
 
         dim2 = self.dim**2
         for kk in range(self.Ntarg):
             foo = q.get()
+            q.task_done()
+            print 'got', kk
             if self.updateAllTraj:
                 dat = foo[1][0]/(coeff*self.Tsize)
                 dAfft = np.zeros(self.AfftAll[foo[0]].shape)
@@ -401,6 +419,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             #print kk, foo[2].sum()
             pxTmpl += foo[2]
 
+        #print q.get()
         #print pxTmpl.sum()
         #print 'Template gradient'
         foo2 = self.hamiltonianGradient(pxTmpl, kernel = self.param.KparDiff0, regWeight=self.lambdaPrior, x0=self.x0, at=self.at)

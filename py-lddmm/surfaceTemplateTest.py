@@ -1,8 +1,8 @@
-from Surfaces.surfaces import Surface
-from Common.kernelFunctions import Kernel
+from base.surfaces import Surface
+from base.kernelFunctions import Kernel
 #from surfaceMatching import SurfaceMatchingParam
-from Surfaces.surfaceTemplate import SurfaceTemplate, SurfaceTemplateParam
-from Common import loggingUtils
+from surfaceTemplate import SurfaceTemplate, SurfaceTemplateParam
+from base import loggingUtils
 
 
 def main():
