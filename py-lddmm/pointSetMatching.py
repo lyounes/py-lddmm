@@ -555,7 +555,7 @@ class PointSetMatching(object):
         if self.iter >= self.affBurnIn:
             self.coeffAff = self.coeffAff2
         if (self.iter % self.saveRate == 0 or endP) :
-            logging.info('Saving surfaces...')
+            logging.info('Saving Points...')
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             # if self.affineDim <=0:
             #     xtEPDiff, atEPdiff = evol.landmarkEPDiff(self.at.shape[0], self.x0,
@@ -1393,6 +1393,7 @@ if __name__ == "__main__":
                              normalizeInput=False,
                              affine='none', testGradient=True, affineWeight=10.,
                              maxIter=1500)
+        #f.sgd = (1,1)
         f.optimizeMatching()
 
 
