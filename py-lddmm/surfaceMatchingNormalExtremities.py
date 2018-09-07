@@ -546,9 +546,9 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             fvDef.saveVTK(self.outputDir + '/' + self.saveFile +'_bok0' + '.vtk')
             x = np.zeros((self.npt, self.dim))
             for kk in range(1, self.Tsize+1):
-                Inext = ((adisp - float(kk)/(self.Tsize+1))>-1e-10).argmax(axis=0)
+                Inext = ((adisp - float(kk)/(self.Tsize))>-1e-10).argmax(axis=0)
                 for jj in range(self.npt):
-                    r = adisp[Inext[jj], jj] - float(kk)/(self.Tsize)
+                    r = (adisp[Inext[jj], jj] - float(kk)/(self.Tsize))/(adisp[Inext[jj], jj] - adisp[Inext[jj]-1, jj])
                     x[jj] = r*self.xt[Inext[jj]-1,jj,:] + (1-r)*self.xt[Inext[jj],jj,:]
                 fvDef.updateVertices(x)
                 fvDef.saveVTK(self.outputDir + '/' + self.saveFile + '_bok' + str(kk) + '.vtk')
@@ -609,8 +609,10 @@ if __name__ == "__main__":
     # outputDir = '/cis/home/younes/Development/Results/ERC_Normals_ADNI_014_S_4058/'
     outputDir = '/Users/younes/Development/Results/BOK'
 
-    fvTop = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/DH1MiddleOuter.byu')
-    fvBottom = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/DH1MiddleInner.byu')
+    #fvTop = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/DH1MiddleOuter.byu')
+    #fvBottom = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/DH1MiddleInner.byu')
+    fvBottom = surfaces.Surface(filename='/Users/younes/Development/Data/NormalData/cornerTemplate.byu')
+    fvTop = surfaces.Surface(filename='/Users/younes/Development/Data/NormalData/cornerTarget.byu')
     # outputDir = '/cis/home/younes/Development/Results/tilakAW1Superior'
     loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput=True)
 
@@ -632,11 +634,11 @@ if __name__ == "__main__":
     # # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/surfaces/chelsea/bottom_surface_smooth.byu')
     # fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/surfaces/chelsea/top_surface_smooth.byu')
 
-    K1 = kfun.Kernel(name='laplacian', sigma=.5, order=3)
+    K1 = kfun.Kernel(name='laplacian', sigma=.25, order=3)
     # K2 = kfun.Kernel(sigma = 2.5)
     # print fv0.normGrad(fv0.vertices)
     # print fv0.normGrad(fv0.vertices)
-    sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=10,
+    sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=3,
                                               sigmaError=.1, errorType='varifold', internalCost='h1')
 
     fTemp = surfaces.Surface(surf=fvBottom)
