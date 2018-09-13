@@ -153,10 +153,10 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             self.fvDef.append(surfaces.Surface(surf=self.fv0))
             self.fvDefTry.append(surfaces.Surface(surf=self.fv0))
 
-        self.tmplCoeff = self.lambdaPrior#float(self.Ntarg)
+        self.tmplCoeff = self.lambdaPrior/float(self.Ntarg)
         self.obj = None
         self.objTry = None
-        self.gradCoeff = 1.#self.fv0.vertices.shape[0]
+        self.gradCoeff = 1.*self.Ntarg#self.fv0.vertices.shape[0]
 
         if sgd is None:
             self.sgd = self.Ntarg
@@ -557,13 +557,13 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                     s += str(sel[kk]) + ' '
                     self.select[sel[kk]] = True
                 logging.info('\nRandom step ' + str(k) + ' ' + s)
-                self.epsMax = 10./(k+1)
+                self.epsMax = .01/(k+1)
                 self.reset = True
-                cg.cg(self, verb=self.verb, maxIter=10, TestGradient=False, epsInit=0.0001)
+                cg.cg(self, verb=self.verb, maxIter=10, TestGradient=False, epsInit=0.01)
 
             #sgd = (10, 0.00001)
         else:
-            cg.cg(self, verb=self.verb, maxIter=self.maxIter, TestGradient=True, epsInit=0.0001)
+            cg.cg(self, verb=self.verb, maxIter=self.maxIter, TestGradient=True, epsInit=0.01)
         return self
 
 if __name__ == "__main__":
@@ -575,11 +575,11 @@ if __name__ == "__main__":
         htmpl = fv[0]
 
     else:
-        fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_08022012/hippocampus/2_qc_flipped_registered/*_1_*_hippo_*_reg.byu')
+        fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/2_qc_flipped_registered/*_1_*_hippo_*_reg.byu')
         if (len(fls) > 0):
             for name in fls:
                 fv.append(surfaces.Surface(filename=name))
-        hf = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_08022012/hippocampus/4_create_population_based_template/newTemplate.byu'
+        hf = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/4_create_population_based_template_smooth/newTemplate.byu'
         htmpl = surfaces.Surface(filename=hf)
 
     loggingUtils.setup_default_logging('/Users/younes/Results/surfaceTemplate2', fileName='info.txt', stdOutput = True)
@@ -589,7 +589,7 @@ if __name__ == "__main__":
 
     sm = SurfaceTemplateParam(timeStep=0.1, KparDiff=K1, KparDist=K2, sigmaError=1., errorType='current')
     f = SurfaceTemplate(HyperTmpl=htmpl, Targets=fv, outputDir='/Users/younes/Results/surfaceTemplateBiocard',param=sm, testGradient=False,
-                        lambdaPrior = .01, maxIter=1000, affine='euclidean', rotWeight=10., sgd=2,
+                        lambdaPrior = 1, maxIter=1000, affine='none', rotWeight=10., sgd=10,
                         transWeight = 1., scaleWeight=10., affineWeight=100.)
     f.computeTemplate()
 
