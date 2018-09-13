@@ -297,17 +297,27 @@ class Surface:
             raise Exception('Cannot run subDivide without VTK')
                         
             
-    def Simplify(self, target=1000.0):
+    def Simplify(self, target=1000.0, deciPro=False):
         if gotVTK:
             polydata = self.toPolyData()
-            dc = vtkQuadricDecimation()
-            red = 1 - min(np.float(target)/polydata.GetNumberOfPoints(), 1)
-            dc.SetTargetReduction(red)
-            if vtkVersion.GetVTKMajorVersion() >= 6:
-                dc.SetInputData(polydata)
+            red = 1 - min(np.float(target) / polydata.GetNumberOfPoints(), 1)
+            if deciPro:
+                dc = vtk.vtkDecimatePro()
+                if vtkVersion.GetVTKMajorVersion() >= 6:
+                    dc.SetInputData(polydata)
+                else:
+                    dc.SetInput(polydata)
+                dc.SetTargetReduction(red)
+                dc.PreserveTopologyOn()
+                dc.Update()
             else:
-                dc.SetInput(polydata)
-            dc.Update()
+                dc = vtkQuadricDecimation()
+                dc.SetTargetReduction(red)
+                if vtkVersion.GetVTKMajorVersion() >= 6:
+                    dc.SetInputData(polydata)
+                else:
+                    dc.SetInput(polydata)
+                dc.Update()
             g = dc.GetOutput()
             self.fromPolyData(g)
             z= self.surfVolume()
@@ -958,7 +968,7 @@ class Surface:
             fvtkout.write('\nPOLYGONS {0:d} {1:d}'.format(F.shape[0], 4*F.shape[0]))
             for ll in range(F.shape[0]):
                 fvtkout.write('\n3 {0: d} {1: d} {2: d}'.format(F[ll,0], F[ll,1], F[ll,2]))
-            if not (vtkFields == None):
+            if vtkFields is not  None:
                 wrote_pd_hdr = False
                 if len(vtkFields.scalars) > 0:
                     if not wrote_pd_hdr:
@@ -1246,7 +1256,7 @@ def saveEvolution(fileName, fv0, xt):
 
 
 # Current norm of fv1
-def currentNorm0(fv1, KparDist):
+def currentNorm0(fv1, KparDist, weight=1.):
     c2 = fv1.centers
     cr2 = np.copy(fv1.surfel)
     obj = np.multiply(cr2, KparDist.applyK(c2, cr2)).sum()
@@ -1254,7 +1264,7 @@ def currentNorm0(fv1, KparDist):
         
 
 # Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct 
-def currentNormDef(fvDef, fv1, KparDist):
+def currentNormDef(fvDef, fv1, KparDist, weight=1.):
     c1 = fvDef.centers
     cr1 = np.copy(fvDef.surfel)
     c2 = fv1.centers
@@ -1264,11 +1274,11 @@ def currentNormDef(fvDef, fv1, KparDist):
     return obj
 
 # Returns |fvDef - fv1|^2 for current norm
-def currentNorm(fvDef, fv1, KparDist):
+def currentNorm(fvDef, fv1, KparDist, weight=1.):
     return currentNormDef(fvDef, fv1, KparDist) + currentNorm0(fv1, KparDist) 
 
 # Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (current norm)
-def currentNormGradient(fvDef, fv1, KparDist):
+def currentNormGradient(fvDef, fv1, KparDist, weight=1.):
     xDef = fvDef.vertices
     c1 = fvDef.centers
     cr1 = np.copy(fvDef.surfel)
@@ -1364,8 +1374,8 @@ def measureNormGradient(fvDef, fv1, KparDist):
 
     return 2*px
 
-def varifoldNorm0(fv1, KparDist):
-    d=1
+def varifoldNorm0(fv1, KparDist, weight=1.):
+    d=weight
     c2 = fv1.centers
     a2 = np.sqrt((fv1.surfel**2).sum(axis=1)+1e-10)
     cr2 = fv1.surfel/a2[:,np.newaxis]
@@ -1376,8 +1386,8 @@ def varifoldNorm0(fv1, KparDist):
         
 
 # Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct 
-def varifoldNormDef(fvDef, fv1, KparDist):
-    d=1
+def varifoldNormDef(fvDef, fv1, KparDist, weight=1.):
+    d=weight
     c1 = fvDef.centers
     c2 = fv1.centers
     a1 = np.sqrt((fvDef.surfel**2).sum(axis=1)+1e-10)
@@ -1398,12 +1408,12 @@ def varifoldNormDef(fvDef, fv1, KparDist):
     return obj
 
 # Returns |fvDef - fv1|^2 for current norm
-def varifoldNorm(fvDef, fv1, KparDist):
-    return varifoldNormDef(fvDef, fv1, KparDist) + varifoldNorm0(fv1, KparDist) 
+def varifoldNorm(fvDef, fv1, KparDist, weight=1.):
+    return varifoldNormDef(fvDef, fv1, KparDist, weight=weight) + varifoldNorm0(fv1, KparDist, weight=weight)
 
 # Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (current norm)
-def varifoldNormGradient(fvDef, fv1, KparDist):
-    d=1
+def varifoldNormGradient(fvDef, fv1, KparDist, weight=1.):
+    d=weight
     xDef = fvDef.vertices
     c1 = fvDef.centers
     c2 = fv1.centers

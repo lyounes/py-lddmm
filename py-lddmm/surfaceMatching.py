@@ -2,11 +2,12 @@ import os
 import numpy as np
 import numpy.linalg as la
 import logging
-from base import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol
+from base import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, bfgs
 import base.surfaces as surfaces
 from base import pointSets
 from base.affineBasis import AffineBasis, getExponential, gradExponential
 import matplotlib
+from functools import partial
 matplotlib.use("TKAgg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -21,7 +22,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class SurfaceMatchingParam:
-    def __init__(self, timeStep = .1, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist = 2.5,
+    def __init__(self, timeStep = .1, algorithm='bfgs', Wolfe=True, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist = 2.5,
                  sigmaError = 1.0, errorType = 'measure',  typeKernel='gauss', internalCost = None):
         self.timeStep = timeStep
         self.sigmaKernel = sigmaKernel
@@ -29,24 +30,8 @@ class SurfaceMatchingParam:
         self.sigmaError = sigmaError
         self.typeKernel = typeKernel
         self.errorType = errorType
-        if errorType == 'current':
-            self.fun_obj0 = surfaces.currentNorm0
-            self.fun_obj = surfaces.currentNormDef
-            self.fun_objGrad = surfaces.currentNormGradient
-        elif errorType=='measure':
-            self.fun_obj0 = surfaces.measureNorm0
-            self.fun_obj = surfaces.measureNormDef
-            self.fun_objGrad = surfaces.measureNormGradient
-        elif errorType=='varifold':
-            self.fun_obj0 = surfaces.varifoldNorm0
-            self.fun_obj = surfaces.varifoldNormDef
-            self.fun_objGrad = surfaces.varifoldNormGradient
-        elif errorType == 'L2Norm':
-            self.fun_obj0 = None
-            self.fun_obj = None
-            self.fun_objGrad = None            
-        else:
-            logging.error('Unknown error Type: ' + self.errorType)
+        self.algorithm = algorithm
+        self.wolfe = Wolfe
         if KparDiff is None:
             self.KparDiff = kfun.Kernel(name = self.typeKernel, sigma = self.sigmaKernel)
         else:
@@ -91,6 +76,13 @@ class SurfaceMatching(object):
             self.param = SurfaceMatchingParam()
         else:
             self.param = param
+        if self.param.algorithm == 'bfgs':
+             self.euclideanGradient = True
+        else:
+            self.euclideanGradient = False
+
+        self.set_fun(self.param.errorType)
+
 
         if Template==None:
             if fileTempl==None:
@@ -121,6 +113,7 @@ class SurfaceMatching(object):
             #print np.fabs(self.fv1.surfel-self.fv0.surfel).max()
 
         self.saveRate = 10
+        self.randomInit = True
         self.iter = 0
         self.setOutputDir(outputDir)
         self.dim = self.fv0.vertices.shape[1]
@@ -202,6 +195,8 @@ class SurfaceMatching(object):
 
         self.Tsize = int(round(1.0/self.param.timeStep))
         self.at = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
+        if self.randomInit:
+            self.at = np.random.normal(0, 1, self.at.shape)
         self.atTry = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
         self.Afft = np.zeros([self.Tsize, self.affineDim])
         self.AfftTry = np.zeros([self.Tsize, self.affineDim])
@@ -234,7 +229,33 @@ class SurfaceMatching(object):
             plt.pause(0.1)
 
 
-    def addSurfaceToPlot(self, fv1, ax, ec = [0,0,1], fc = [1,0,0], al=.5, lw=1):
+    def set_fun(self, errorType):
+        self.param.errorType = errorType
+        if errorType == 'current':
+            print 'Running Current Matching'
+            self.fun_obj0 = partial(surfaces.currentNorm0, KparDist=self.param.KparDist, weight=1.)
+            self.fun_obj = partial(surfaces.currentNormDef, KparDist=self.param.KparDist, weight=1.)
+            self.fun_objGrad = partial(surfaces.currentNormGradient, KparDist=self.param.KparDist, weight=1.)
+            # self.fun_obj0 = curves.currentNorm0
+            # self.fun_obj = curves.currentNormDef
+            # self.fun_objGrad = curves.currentNormGradient
+        elif errorType=='measure':
+            print 'Running Measure Matching'
+            self.fun_obj0 = partial(surfaces.measureNorm0, KparDist=self.param.KparDist)
+            self.fun_obj = partial(surfaces.measureNormDef,KparDist=self.param.KparDist)
+            self.fun_objGrad = partial(surfaces.measureNormGradient,KparDist=self.param.KparDist)
+        elif errorType=='varifold':
+            self.fun_obj0 = partial(surfaces.varifoldNorm0, KparDist=self.param.KparDist, weight=1.)
+            self.fun_obj = partial(surfaces.varifoldNormDef, KparDist=self.param.KparDist, weight=1.)
+            self.fun_objGrad = partial(surfaces.varifoldNormGradient, KparDist=self.param.KparDist, weight=1.)
+        elif errorType == 'L2Norm':
+            self.fun_obj0 = None
+            self.fun_obj = None
+            self.fun_objGrad = None
+        else:
+            print 'Unknown error Type: ', self.param.errorType
+
+    def addSurfaceToPlot(self, fv1, ax, ec = 'b', fc = 'r', al=.5, lw=1):
         x = fv1.vertices[fv1.faces[:,0],:]
         y = fv1.vertices[fv1.faces[:,1],:]
         z = fv1.vertices[fv1.faces[:,2],:]
@@ -263,9 +284,9 @@ class SurfaceMatching(object):
         if self.param.errorType == 'L2Norm':
             obj = surfaces.L2Norm(_fvDef, self.fv1.vfld) / (self.param.sigmaError ** 2)
         else:
-            obj = self.param.fun_obj(_fvDef, self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
-            if _fvInit != None:
-                obj += self.param.fun_obj(_fvInit, self.fv0, self.param.KparDist) / (self.param.sigmaError**2)
+            obj = self.fun_obj(_fvDef, self.fv1) / (self.param.sigmaError**2)
+            if _fvInit is not None:
+                obj += self.fun_obj(_fvInit, self.fv0) / (self.param.sigmaError**2)
         #print 'dataterm = ', obj + self.obj0
         return obj
 
@@ -324,9 +345,9 @@ class SurfaceMatching(object):
             if self.param.errorType == 'L2Norm':
                 self.obj0 = surfaces.L2Norm0(self.fv1) / (self.param.sigmaError ** 2)
             else:
-                self.obj0 = self.param.fun_obj0(self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
+                self.obj0 = self.fun_obj0(self.fv1) / (self.param.sigmaError**2)
             if self.symmetric:
-                self.obj0 += self.param.fun_obj0(self.fv0, self.param.KparDist) / (self.param.sigmaError**2)
+                self.obj0 += self.fun_obj0(self.fv0) / (self.param.sigmaError**2)
             (self.obj, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             #foo = surfaces.Surface(surf=self.fvDef)
             self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
@@ -391,15 +412,17 @@ class SurfaceMatching(object):
         grd = self.endPointGradient()
         logging.info("test endpoint gradient: {0:.5f} {1:.5f}".format((c1-c0)/eps, (grd*dff).sum()) )
 
-    def endPointGradient(self):
+    def endPointGradient(self, endPoint=None):
+        if endPoint is None:
+            endPoint = self.fvDef
         if self.param.errorType == 'L2Norm':
-            px = surfaces.L2NormGradient(self.fvDef, self.fv1.vfld)
+            px = surfaces.L2NormGradient(endPoint, self.fv1.vfld)
         else:
-            px = self.param.fun_objGrad(self.fvDef, self.fv1, self.param.KparDist)
+            px = self.fun_objGrad(endPoint, self.fv1)
         return px / self.param.sigmaError**2
 
     def initPointGradient(self):
-        px = self.param.fun_objGrad(self.fvInit, self.fv0, self.param.KparDist)
+        px = self.fun_objGrad(self.fvInit, self.fv0, self.param.KparDist)
         return px / self.param.sigmaError**2
     
     
@@ -502,18 +525,36 @@ class SurfaceMatching(object):
         else:
             return dat, dA, db, xt, pxt
 
-    def getGradient(self, coeff=1.0):
-        px1 = -self.endPointGradient()
-        A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+    def getGradient(self, coeff=1.0, update=None):
+        if update is None:
+            at = self.at
+            endPoint = self.fvDef
+            A = self.affB.getTransforms(self.Afft)
+        else:
+            A = self.affB.getTransforms(self.Afft - update[1]*update[0].aff)
+            at = self.at - update[1] *update[0].diff
+            xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
+            endPoint = surfaces.Surface(surf=self.fv0)
+            endPoint.updateVertices(xt[-1, :, :])
+
+
+        px1 = -self.endPointGradient(endPoint=endPoint)
+        # A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
         dim2 = self.dim**2
-        if self.affineDim > 0:
-            for t in range(self.Tsize):
-                AB = np.dot(self.affineBasis, self.Afft[t])
-                A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-                A[1][t] = AB[dim2:dim2+self.dim]
-        foo = self.hamiltonianGradient(px1, affine=A)
+        # if self.affineDim > 0:
+        #     for t in range(self.Tsize):
+        #         AB = np.dot(self.affineBasis, self.Afft[t])
+        #         A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
+        #         A[1][t] = AB[dim2:dim2+self.dim]
+        foo = self.hamiltonianGradient(px1, at=at, affine=A)
         grd = Direction()
-        grd.diff = foo[0]/(coeff*self.Tsize)
+        if self.euclideanGradient:
+            grd.diff = np.zeros(foo[0].shape)
+            for t in range(self.Tsize):
+                z = self.xt[t, :, :]
+                grd.diff[t,:,:] = self.param.KparDiff.applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
+        else:
+            grd.diff = foo[0]/(coeff*self.Tsize)
         grd.aff = np.zeros(self.Afft.shape)
         if self.affineDim > 0:
             dA = foo[1]
@@ -537,6 +578,13 @@ class SurfaceMatching(object):
         dir.diff = dir1.diff + beta * dir2.diff
         dir.aff = dir1.aff + beta * dir2.aff
         dir.initx = dir1.initx + beta * dir2.initx
+        return dir
+
+    def prod(self, dir1, beta):
+        dir = Direction()
+        dir.diff = beta * dir1.diff
+        dir.aff = beta * dir1.aff
+        dir.initx = beta * dir1.initx
         return dir
 
     def copyDir(self, dir0):
@@ -577,6 +625,25 @@ class SurfaceMatching(object):
             for ll,gr in enumerate(g2):
                 res[ll] += (g1.initx * gr.initx).sum() * self.coeffInitx
 
+        return res
+
+    def dotProduct_euclidean(self, g1, g2):
+        res = np.zeros(len(g2))
+        for t in range(self.Tsize):
+            z = np.squeeze(self.xt[t, :, :])
+            u = np.squeeze(g1.diff[t, :, :])
+            uu = (g1.aff[t]*self.affineWeight.reshape(g1.aff[t].shape))
+            ll = 0
+            for gr in g2:
+                ggOld = np.squeeze(gr.diff[t, :, :])
+                res[ll]  += (ggOld*u).sum()
+                if self.affineDim > 0:
+                    res[ll] += (uu*gr.aff[t]).sum()
+                    #                    +np.multiply(g1[1][t, dim2:dim2+self.dim], gr[1][t, dim2:dim2+self.dim]).sum())
+                ll = ll + 1
+        if self.symmetric:
+            for ll,gr in enumerate(g2):
+                res[ll] += (g1.initx * gr.initx).sum() * self.coeffInitx
         return res
 
     def acceptVarTry(self):
@@ -634,7 +701,7 @@ class SurfaceMatching(object):
                 f = surfaces.Surface(surf=self.fvInit)
                 X = self.affB.integrateFlow(self.Afft)
                 displ = np.zeros(self.x0.shape[0])
-                dt = 1.0 /self.Tsize ;
+                dt = 1.0 /self.Tsize
                 for t in range(self.Tsize+1):
                     U = la.inv(X[0][t])
                     yyt = np.dot(self.xt[t,...] - X[1][t, ...], U.T)
@@ -643,12 +710,12 @@ class SurfaceMatching(object):
                         at = np.dot(self.at[t,...], U.T)
                         vt = self.param.KparDiff.applyK(yyt, at, firstVar=zt)
                     f.updateVertices(yyt)
-                    vf = surfaces.vtkFields() ;
-                    vf.scalars.append('Jacobian') ;
+                    vf = surfaces.vtkFields()
+                    vf.scalars.append('Jacobian')
                     vf.scalars.append(np.exp(Jt[t, :]))
                     vf.scalars.append('displacement')
                     vf.scalars.append(displ)
-                    vf.vectors.append('velocity') ;
+                    vf.vectors.append('velocity')
                     vf.vectors.append(vt)
                     nu = self.fv0ori*f.computeVertexNormals()
                     f.saveVTK2(self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.vtk', vf)
@@ -662,18 +729,18 @@ class SurfaceMatching(object):
             nu = self.fv0ori*self.fvInit.computeVertexNormals()
             v = self.v[0,...]
             displ = np.zeros(self.npt)
-            dt = 1.0 /self.Tsize ;
+            dt = 1.0 /self.Tsize
             for kk in range(self.Tsize+1):
                 fvDef.updateVertices(np.squeeze(xt[kk, :, :]))
                 AV = fvDef.computeVertexArea()
                 AV = (AV[0]/AV0[0])
-                vf = surfaces.vtkFields() ;
-                vf.scalars.append('Jacobian') ;
+                vf = surfaces.vtkFields()
+                vf.scalars.append('Jacobian')
                 vf.scalars.append(np.exp(Jt[kk, :]))
-                vf.scalars.append('Jacobian_T') ;
-                vf.scalars.append(AV[:,0])
-                vf.scalars.append('Jacobian_N') ;
-                vf.scalars.append(np.exp(Jt[kk, :])/(AV[:,0]))
+                vf.scalars.append('Jacobian_T')
+                vf.scalars.append(AV)
+                vf.scalars.append('Jacobian_N')
+                vf.scalars.append(np.exp(Jt[kk, :])/AV)
                 vf.scalars.append('displacement')
                 vf.scalars.append(displ)
                 if kk < self.Tsize:
@@ -682,7 +749,7 @@ class SurfaceMatching(object):
                     kkm = kk
                 else:
                     kkm = kk-1
-                vf.vectors.append('velocity') ;
+                vf.vectors.append('velocity')
                 vf.vectors.append(self.v[kkm,:])
                 fvDef.saveVTK2(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', vf)
                 displ += dt * (v*nu).sum(axis=1)
@@ -700,6 +767,7 @@ class SurfaceMatching(object):
             ax.set_xlim(min(lim0[0][0],lim1[0][0]), max(lim0[0][1],lim1[0][1]))
             ax.set_ylim(min(lim0[1][0],lim1[1][0]), max(lim0[1][1],lim1[1][1]))
             ax.set_zlim(min(lim0[2][0],lim1[2][0]), max(lim0[2][1],lim1[2][1]))
+            #plt.axis('equal')
             plt.pause(0.1)
 
 
@@ -716,6 +784,10 @@ class SurfaceMatching(object):
         self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
         logging.info('Gradient lower bound: %f' %(self.gradEps))
         self.coeffAff = self.coeffAff1
-        cg.cg(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
+        if self.param.algorithm == 'cg':
+            cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=0.1)
+        elif self.param.algorithm == 'bfgs':
+            bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=1.,
+                      Wolfe=self.param.wolfe, memory=25)
         #return self.at, self.xt
 

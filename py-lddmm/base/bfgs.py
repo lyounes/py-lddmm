@@ -44,23 +44,33 @@ def __prod(x, a):
 def __copyDir(x):
     return np.copy(x)
 
-def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, memory=25, sgdPar=None):
+def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, memory=25, Wolfe = False):
 
     if (hasattr(opt, 'getVariable')==False | hasattr(opt, 'objectiveFun')==False | hasattr(opt, 'updateTry')==False | hasattr(opt, 'acceptVarTry')==False | hasattr(opt, 'getGradient')==False):
         logging.error('Error: required functions are not provided')
         return
 
-    if not(hasattr(opt, 'dotProduct')):
-        opt.dotProduct = __dotProduct
+    if hasattr(opt, 'dotProduct_euclidean'):
+        dotProduct = opt.dotProduct_euclidean
+    elif hasattr(opt, 'dotProduct'):
+        dotProduct = opt.dotProduct
+    else:
+        dotProduct = __dotProduct
 
     if not(hasattr(opt, 'addProd')):
-        opt.addProd = __addProd
+        addProd = __addProd
+    else:
+        addProd = opt.addProd
 
     if not(hasattr(opt, 'prod')):
-        opt.prod = __prod
+        prod = __prod
+    else:
+        prod = opt.prod
 
     if not(hasattr(opt, 'copyDir')):
-        opt.copyDir = __copyDir
+        copyDir = __copyDir
+    else:
+        copyDir = opt.copyDir
 
     if hasattr(opt, 'startOptim'):
         opt.startOptim()
@@ -80,6 +90,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
     else:
         epsMax = 1.
 
+    burnIn = 20
     eps = epsInit
     epsMin = 1e-10
     opt.converged = False
@@ -104,6 +115,10 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
         if hasattr(opt, 'startOfIteration'):
             opt.startOfIteration()
 
+        if opt.reset:
+            opt.obj = None
+            obj = opt.objectiveFun()
+
         grd = opt.getGradient(gradCoeff)
 
         if TestGradient:
@@ -113,46 +128,55 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
                 dirfoo = np.random.normal(size=grd.shape)
             epsfoo = 1e-8
             objfoo = opt.updateTry(dirfoo, epsfoo, obj-1e10)
-            [grdfoo] = opt.dotProduct(grd, [dirfoo])
+            [grdfoo] = dotProduct(grd, [dirfoo])
             logging.info('Test Gradient: %.4f %.4f' %((objfoo - obj)/epsfoo, -grdfoo * gradCoeff ))
 
-        if it > 0:
-            storedGrad.append([diffVar, opt.addProd(grd, grdOld, -1)])
+        if (not opt.reset)  and it > 0:
+            storedGrad.append([diffVar, addProd(grd, grdOld, -1)])
             if len(storedGrad) > memory:
                 storedGrad.pop(0)
-            q = opt.copyDir(grd)
+            q = copyDir(grd)
             rho = []
             alpha = []
             for m in reversed(storedGrad):
-                rho.append(1/opt.dotProduct(m[1], [m[0]])[0])
-                alpha.append(rho[-1]*opt.dotProduct(m[0],[q])[0])
-                q = opt.addProd(q, m[1], -alpha[-1])
+                rho.append(1/dotProduct(m[1], [m[0]])[0])
+                alpha.append(rho[-1]*dotProduct(m[0],[q])[0])
+                q = addProd(q, m[1], -alpha[-1])
             rho.reverse()
             alpha.reverse()
             m = storedGrad[-1]
-            c = opt.dotProduct(m[0],[m[1]])[0]/opt.dotProduct(m[1],[m[1]])[0]
-            q = opt.prod(q,c)
+            c = dotProduct(m[0],[m[1]])[0]/dotProduct(m[1],[m[1]])[0]
+            if c < 1e-10:
+                c = 1
+            q = prod(q,c)
             for k,m in enumerate(storedGrad):
-                beta = rho[k] * opt.dotProduct(m[1],[q])[0]
-                q = opt.addProd(q, m[0], alpha[k]-beta)
+                beta = rho[k] * dotProduct(m[1],[q])[0]
+                q = addProd(q, m[0], alpha[k]-beta)
             #q = opt.prod(q,-1)
         else:
-            q = opt.copyDir(grd)
+            storedGrad = []
+            q = copyDir(grd)
+            opt.reset = False
 
 
 
-        grd2 = opt.dotProduct(grd, [grd])[0]
-        grdTry = np.sqrt(np.maximum(1e-20,opt.dotProduct(q,[q])[0]))
-        dir0 = opt.copyDir(q)
+        grd2 = dotProduct(grd, [grd])[0]
+        grdTry = np.sqrt(np.maximum(1e-20,dotProduct(q,[q])[0]))
+        dir0 = copyDir(q)
 
-        grdOld = opt.copyDir(grd)
+        grdOld = copyDir(grd)
+
+        if Wolfe:
+            eps *= 2.
+            if eps > 1.:
+                eps = 1.
+        else:
+            epsBig = epsMax / (grdTry)
+            if eps > epsBig:
+                eps = epsBig
 
         objTry = opt.updateTry(dir0, eps, obj)
 
-        noUpdate = 0
-        epsBig = epsMax / (grdTry)
-        if eps > epsBig:
-            eps = epsBig
         if objTry > obj:
             #fprintf(1, 'iteration %d: obj = %.5f, eps = %.5f\n', it, objTry, eps) ;
             epsSmall = np.maximum(1e-6/(grdTry), epsMin)
@@ -162,47 +186,75 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
                 logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, gradient: {3:.5f}'.format(it+1, obj, eps, np.sqrt(grd2)))
                 logging.info('Stopping Gradient Descent: bad direction')
                 break
-            else:
-                while (objTry > obj) and (eps > epsMin):
-                    eps = eps / 2
-                    objTry = opt.updateTry(dir0, eps, obj)
-                    #opt.acceptVarTry()
 
-                    #print 'improve'
-        ## reducing step if improves
-        contt = 1
-        while contt==1:
-            objTry2 = opt.updateTry(dir0, .5*eps, objTry)
-            if objTry > objTry2:
+
+
+        ### Starting Line Search
+
+        if Wolfe:
+            #var = opt.getVariable()
+            d1 = dotProduct(dir0, [grd])[0]
+            c1 = 0.1
+            c2 = 0.5
+            lb1 = obj - c1*eps*d1
+            while (objTry > lb1):
+                eps /= 1.5
+                lb1 = obj - c1 * eps * d1
+                objTry = opt.updateTry(dir0, eps, obj)
+            lb2 = c2*d1
+            #varTry = opt.update(dir0, -eps)
+            grdTry = opt.getGradient(coeff=gradCoeff, update=[dir0, eps])
+            d2 = dotProduct(dir0, [grdTry])[0]
+            while (objTry > lb1) or (abs(d2) < abs(lb2)):
+                eps /= 1.5
+                lb1 = obj - c1 * eps * d1
+                objTry = opt.updateTry(dir0, eps, obj)
+                #varTry = addProd(var, dir0, -eps)
+                grdTry = opt.getGradient(gradCoeff, update=[dir0,eps])
+                d2 = dotProduct(dir0, [grdTry])[0]
+        else:
+            while (objTry > obj) and (eps > epsMin):
                 eps = eps / 2
-                objTry=objTry2
-            else:
-                contt=0
+                objTry = opt.updateTry(dir0, eps, obj)
+                        #opt.acceptVarTry()
+
+                        #print 'improve'
+            ## reducing step if improves
+            contt = 1
+            while contt==1:
+                objTry2 = opt.updateTry(dir0, .5*eps, objTry)
+                if objTry > objTry2:
+                    eps = eps / 2
+                    objTry=objTry2
+                else:
+                    contt=0
 
 
-    # increasing step if improves
-        contt = 5
-        #eps0 = eps / 4
-        while contt>=1 and eps<epsBig:
-            objTry2 = opt.updateTry(dir0, 1.25*eps, objTry)
-            if objTry > objTry2:
-                eps *= 1.25
-                objTry=objTry2
-                #contt -= 1
-            else:
-                contt=0
+        # increasing step if improves
+            contt = 5
+            #eps0 = eps / 4
+            while contt>=1 and eps<epsBig:
+                objTry2 = opt.updateTry(dir0, 1.25*eps, objTry)
+                if objTry > objTry2:
+                    eps *= 1.25
+                    objTry=objTry2
+                    #contt -= 1
+                else:
+                    contt=0
+        ### end of line search
+
 
         #print obj+obj0, objTry+obj0
         if (np.fabs(obj-objTry) < 1e-10):
             logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, gradient: {3:.5f}'.format(it+1, obj, eps, np.sqrt(grd2)))
-            if it > cgBurnIn:
+            if it > burnIn:
                 logging.info('Stopping Gradient Descent: small variation')
                 opt.converged = True
                 break
             if hasattr(opt, 'endOfIteration'):
                 opt.endOfIteration()
 
-        diffVar = opt.prod(dir0, -eps)
+        diffVar = prod(dir0, -eps)
         opt.acceptVarTry()
         obj = objTry
         #logging.info('Obj Fun CG: ' + str(opt.objectiveFun(force=True)))

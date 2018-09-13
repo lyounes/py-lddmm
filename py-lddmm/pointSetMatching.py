@@ -3,7 +3,7 @@ import numpy as np
 import scipy.linalg as la
 import scipy.fftpack as fft
 import logging
-from base import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils
+from base import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils, bfgs
 from base import pointSets
 from base.affineBasis import AffineBasis, getExponential
 import matplotlib
@@ -41,13 +41,14 @@ class TestErrors:
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class PointSetMatchingParam:
-    def __init__(self, timeStep = .1, KparDiff = None, sigmaKernel = 6.5, KparDist=None, sigmaDist = 1.,
+    def __init__(self, timeStep = .1, algorithm = 'bfgs', KparDiff = None, sigmaKernel = 6.5, KparDist=None, sigmaDist = 1.,
                  sigmaError = 1.0, errorType = 'L2'):
         self.timeStep = timeStep
         self.sigmaKernel = sigmaKernel
         self.sigmaError = sigmaError
         self.sigmaDist = sigmaDist
         self.errorType = errorType
+        self.algorithm = algorithm
         if errorType == 'L2':
             self.fun_obj0 = pointSets.L2Norm0
             self.fun_obj = pointSets.L2NormDef
@@ -128,6 +129,12 @@ class PointSetMatching(object):
 
             #print np.fabs(self.fv1.surfel-self.fv0.surfel).max()
 
+        if self.param.algorithm == 'bfgs':
+            self.euclideanGradient = True
+        else:
+            self.euclideanGradient = False
+
+
         if self.param.errorType == 'classification':
             if normalizeInput:
                 s = 1e-5 + np.std(self.fv0, axis=0)
@@ -137,7 +144,7 @@ class PointSetMatching(object):
                 self.fv0 = np.concatenate((self.fv0,
                                            0.01*np.random.normal(size=(self.fv0.shape[0],addDim))), axis=1)
 
-        self.saveRate = 10
+        self.saveRate = 100
         self.relearnRate = relearnRate
         self.iter = 0
         self.setOutputDir(outputDir)
@@ -355,7 +362,7 @@ class PointSetMatching(object):
 
 
     def objectiveFun(self):
-        if self.obj == None:
+        if self.obj is None:
             if self.param.errorType == 'classification':
                 self.obj0 = 0
             elif self.param.errorType == 'measure':
@@ -482,7 +489,13 @@ class PointSetMatching(object):
                 A[1][t] = AB[dim2:dim2+self.dim]
         foo = self.hamiltonianGradient(px1, affine=A)
         grd = Direction()
-        grd.diff = foo[0]/(coeff*self.Tsize)
+        if self.euclideanGradient:
+            grd.diff = np.zeros(foo[0].shape)
+            for t in range(self.Tsize):
+                z = self.xt[t, :, :]
+                grd.diff[t,:,:] = self.param.KparDiff.applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
+        else:
+            grd.diff = foo[0]/(coeff*self.Tsize)
         grd.aff = np.zeros(self.Afft.shape)
         if self.affineDim > 0:
             dA = foo[1]
@@ -498,11 +511,16 @@ class PointSetMatching(object):
         return grd
 
 
-
     def addProd(self, dir1, dir2, beta):
         dir = Direction()
         dir.diff = dir1.diff + beta * dir2.diff
         dir.aff = dir1.aff + beta * dir2.aff
+        return dir
+
+    def prod(self, dir1, beta):
+        dir = Direction()
+        dir.diff = beta * dir1.diff
+        dir.aff = beta * dir1.aff
         return dir
 
     def copyDir(self, dir0):
@@ -539,6 +557,28 @@ class PointSetMatching(object):
 
 
         return res
+
+    def dotProduct_euclidean(self, g1, g2):
+        res = np.zeros(len(g2))
+        for t in range(self.Tsize):
+            z = np.squeeze(self.xt[t, :, :])
+            u = np.squeeze(g1.diff[t, :, :])
+            #u = self.param.KparDiff.applyK(z, gg)
+            #uu = np.multiply(g1.aff[t], self.affineWeight.reshape(g1.aff[t].shape))
+            uu = g1.aff[t]
+            ll = 0
+            for gr in g2:
+                ggOld = np.squeeze(gr.diff[t, :, :])
+                res[ll]  = res[ll] + np.multiply(ggOld,u).sum()
+                if self.affineDim > 0:
+                    #print np.multiply(np.multiply(g1[1][t], gr[1][t]), self.affineWeight).shape
+                    #res[ll] += np.multiply(uu, gr.aff[t]).sum() * self.coeffAff
+                    res[ll] += np.multiply(uu, gr.aff[t]).sum() * self.coeffAff
+                    #                    +np.multiply(g1[1][t, dim2:dim2+self.dim], gr[1][t, dim2:dim2+self.dim]).sum())
+                ll = ll + 1
+        return res
+
+
 
     def acceptVarTry(self):
         self.obj = self.objTry
@@ -767,8 +807,8 @@ class PointSetMatching(object):
                                                                                       np.sqrt(((self.u) ** 2).sum())))
             self.reset = True
             # logging.info('Before {0:f}'.format(self.obj))
-            # self.obj = None
-            # self.obj = self.objectiveFun()
+            #self.obj = None
+            #self.obj = self.objectiveFun()
             # logging.info('After {0:f}'.format(self.obj))
 
     def endOfProcedure(self):
@@ -785,7 +825,10 @@ class PointSetMatching(object):
         logging.info('Gradient lower bound: %f' %(self.gradEps))
         self.coeffAff = self.coeffAff1
         #self.restartRate = self.relearnRate
-        cg.cg(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
+        if self.param.algorithm == 'cg':
+            cg.cg(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
+        elif self.param.algorithm == 'bfgs':
+            bfgs.bfgs(self, verb=self.verb, maxIter=self.maxIter, TestGradient=self.testGradient, epsInit=0.1)
         #return self.at, self.xt
 
     def learnLogistic(self, u0=None, random = 1.0):
@@ -863,7 +906,7 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
 
     #typeData = 'Dolls'
     localMaps = None
-    relearnRate = 1
+    relearnRate = 100
     u0 = None
     affine = 'none'
     dct = False
@@ -1286,13 +1329,13 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
 
 
     K1 = kfun.Kernel(name='laplacian', sigma=sigma, order=1)
-    sm = PointSetMatchingParam(timeStep=0.1, KparDiff = K1, sigmaError=sigError*np.sqrt(NTr), errorType='classification')
+    sm = PointSetMatchingParam(timeStep=0.1, algorithm='bfgs', KparDiff = K1, sigmaError=sigError*np.sqrt(NTr), errorType='classification')
 
 
     f = PointSetMatching(Template=x0Tr0, Target=x1Tr, outputDir=outputDir, param=sm, regWeight=1.,
                          saveTrajectories=True, pplot=True, testSet=(x0Te0, x1Te), addDim = addDim, u0=u0,
                          normalizeInput=False, l1Cost = l1Cost, relearnRate=relearnRate, randomInit=randomInit,
-                         affine='none', testGradient=False, affineWeight=10.,
+                         affine='none', testGradient=True, affineWeight=10.,
                          maxIter=1500)
 
     testInit = TestErrors()
@@ -1350,10 +1393,10 @@ if __name__ == "__main__":
     #          'helixes20':(100,200,500,1000), 'Dolls':(100,200,500,1000),
     #          'Segments11':(100,200,500,1000), 'TwoSegments':(100,200,500,1000),'TwoSegmentsCumSum':(100,200,500,1000), 'RBF':(100,200,500,1000)}
     #AllTD = {'Line':(100,)}
-    classif = False
+    classif = True
 
     if classif:
-        AllTD = {'TwoSegmentsCumSum':(250,)}
+        AllTD = {'TwoSegmentsCumSum':(100,)}
         #typeData = 'Dolls'
 
         outputDir0 = '/Users/younes/Development/Results/Classif'
@@ -1364,7 +1407,8 @@ if __name__ == "__main__":
             for NTr in AllTD[typeData]:
                 print typeData, 'NTr = ', NTr
                 outputDir = outputDir0+'/'+typeData+'_{0:d}'.format(NTr)
-                f,testInit = Classify(typeData, l1Cost = 1., addDim = 1, sigError = .01, randomInit=0.05, removeNullDirs = False, NTr = NTr, NTe = 2000, outputDir=outputDir)
+                f,testInit = Classify(typeData, l1Cost = 1., addDim = 1, sigError = .01, randomInit=0.05,
+                                      removeNullDirs = False, NTr = NTr, NTe = 2000, outputDir=outputDir)
 
                 with open(outputDir+'/results.txt','a+') as fl:
                     fl.write('\n'+typeData+' dim = {0:d} N = {1:d}\n'.format(f.fv0.shape[1], f.fv0.shape[0]))

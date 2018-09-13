@@ -5,7 +5,7 @@ import logging
 import base.curves as curves
 from base import pointSets
 #import kernelFunctions as kfun
-from base import conjugateGradient as cg, grid, matchingParam, pointEvolution as evol
+from base import conjugateGradient as cg, grid, matchingParam, pointEvolution as evol, bfgs
 from base.affineBasis import *
 import matplotlib
 matplotlib.use("TKAgg")
@@ -22,9 +22,10 @@ from functools import partial
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class CurveMatchingParam(matchingParam.MatchingParam):
-    def __init__(self, timeStep = .1, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist=2.5, sigmaError=1.0, 
+    def __init__(self, timeStep = .1, algorithm = 'bfgs', Wolfe=False, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist=2.5, sigmaError=1.0,
                  errorType = 'measure', typeKernel='gauss', internalCost=None):
-        matchingParam.MatchingParam.__init__(self, timeStep=timeStep, KparDiff = KparDiff, KparDist = KparDist, sigmaKernel = sigmaKernel, sigmaDist=sigmaDist,
+        matchingParam.MatchingParam.__init__(self, timeStep=timeStep, algorithm = algorithm, Wolfe=Wolfe,
+                                             KparDiff = KparDiff, KparDist = KparDist, sigmaKernel = sigmaKernel, sigmaDist=sigmaDist,
                                          sigmaError=sigmaError, errorType = errorType, typeKernel=typeKernel)
           
         self.internalCost = internalCost
@@ -53,7 +54,8 @@ class Direction:
 #        affine: 'affine', 'similitude', 'euclidean', 'translation' or 'none'
 #        maxIter: max iterations in conjugate gradient
 class CurveMatching:
-    def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000, regWeight = 1.0, affineWeight = 1.0, 
+    def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None,
+                 maxIter=1000, regWeight = 1.0, affineWeight = 1.0,
                  verb=True, gradLB = 0.001, saveRate=10, saveTrajectories=False,
                  rotWeight = None, scaleWeight = None, transWeight = None, internalWeight=-1.0, 
                  testGradient=False, saveFile = 'evolution', affine = 'none', outputDir = '.', pplot=True):
@@ -73,7 +75,6 @@ class CurveMatching:
                 self.fv1 = curves.Curve(filename=fileTarg)
         else:
             self.fv1 = curves.Curve(curve=Target)
-
 
 
         self.npt = self.fv0.vertices.shape[0]
@@ -125,11 +126,16 @@ class CurveMatching:
         else:
             self.param = param
 
+        if self.param.algorithm == 'bfgs':
+             self.euclideanGradient = True
+        else:
+            self.euclideanGradient = False
+
         self.set_fun(self.param.errorType)
 
         if self.param.internalCost == 'h1':
-            self.internalCost = curves.normGrad
-            self.internalCostGrad = curves.diffNormGrad
+            self.internalCost = partial(curves.normGrad, weight=0.0)
+            self.internalCostGrad = partial(curves.diffNormGrad, weight=0.0)
         elif self.param.internalCost == 'h1Alpha':
             self.internalCost = curves.h1AlphaNorm
             self.internalCostGrad = curves.diffH1Alpha
@@ -167,7 +173,6 @@ class CurveMatching:
         self.saveTrajectories = saveTrajectories
         self.pplot = pplot
         if self.pplot:
-            plt.ion()
             self.cmap = cm.get_cmap('hsv', self.fvDef.faces.shape[0])
             self.cmap1 = cm.get_cmap('hsv', self.fv1.faces.shape[0])
             self.lw = 3
@@ -354,9 +359,10 @@ class CurveMatching:
 
         return objTry
 
-    def hamiltonianCovector(self, px1, affine = None):
+    def hamiltonianCovector(self, px1, at = None, affine = None):
         x0 = self.x0
-        at = self.at
+        if at is None:
+            at = self.at
         KparDiff = self.param.KparDiff
         N = x0.shape[0]
         dim = x0.shape[1]
@@ -407,14 +413,16 @@ class CurveMatching:
         return pxt, xt
 
 
-    def hamiltonianGradient(self, px1, affine = None):
+    def hamiltonianGradient(self, px1, at = None, affine = None):
+        if at is None:
+            at = self.at
         if not self.internalCost:
-            return evol.landmarkHamiltonianGradient(self.x0, self.at, px1, self.param.KparDiff, self.regweight, affine=affine, 
+            return evol.landmarkHamiltonianGradient(self.x0, at, px1, self.param.KparDiff, self.regweight, affine=affine,
                                                     getCovector=True)
                                                     
         foo = curves.Curve(curve=self.fv0)
-        (pxt, xt) = self.hamiltonianCovector(px1, affine=affine)
-        at = self.at        
+        (pxt, xt) = self.hamiltonianCovector(px1, at = at, affine=affine)
+        #at = self.at
         dat = np.zeros(at.shape)
         timeStep = 1.0/at.shape[0]
         if not (affine is None):
@@ -444,14 +452,26 @@ class CurveMatching:
             return dat, dA, db, xt, pxt
 
 
-    def endPointGradient(self):
-        px = self.fun_objGrad(self.fvDef, self.fv1)
+    def endPointGradient(self, endPoint = None):
+        if endPoint is None:
+            endPoint = self.fvDef
+        px = self.fun_objGrad(endPoint, self.fv1)
         return px / self.param.sigmaError**2
 
 
-    def getGradient(self, coeff=1.0):
-        px1 = -self.endPointGradient()
-        A = self.affB.getTransforms(self.Afft)
+    def getGradient(self, coeff=1.0, update=None):
+        if update is None:
+            at = self.at
+            endPoint = self.fvDef
+            A = self.affB.getTransforms(self.Afft)
+        else:
+            A = self.affB.getTransforms(self.Afft - update[1]*update[0].aff)
+            at = self.at - update[1] *update[0].diff
+            xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
+            endPoint = curves.Curve(curve=self.fv0)
+            endPoint.updateVertices(xt[-1, :, :])
+
+        px1 = -self.endPointGradient(endPoint=endPoint)
         # A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
         dim2 = self.dim**2
         # if self.affineDim > 0:
@@ -459,9 +479,15 @@ class CurveMatching:
         #         AB = np.dot(self.affineBasis, self.Afft[t])
         #         A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
         #         A[1][t] = AB[dim2:dim2+self.dim]
-        foo = self.hamiltonianGradient(px1, affine=A)
+        foo = self.hamiltonianGradient(px1, at=at, affine=A)
         grd = Direction()
-        grd.diff = foo[0]/(coeff*self.Tsize)
+        if self.euclideanGradient:
+            grd.diff = np.zeros(foo[0].shape)
+            for t in range(self.Tsize):
+                z = self.xt[t, :, :]
+                grd.diff[t,:,:] = self.param.KparDiff.applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
+        else:
+            grd.diff = foo[0]/(coeff*self.Tsize)
         grd.aff = np.zeros(self.Afft.shape)
         if self.affineDim > 0:
             dA = foo[1]
@@ -481,6 +507,12 @@ class CurveMatching:
         dir = Direction()
         dir.diff = dir1.diff + beta * dir2.diff
         dir.aff = dir1.aff + beta * dir2.aff
+        return dir
+
+    def prod(self, dir1, beta):
+        dir = Direction()
+        dir.diff = beta * dir1.diff
+        dir.aff = beta * dir1.aff
         return dir
 
     def copyDir(self, dir0):
@@ -514,8 +546,29 @@ class CurveMatching:
                     res[ll] += np.multiply(uu, gr.aff[t]).sum()
                     #                    +np.multiply(g1[1][t, dim2:dim2+self.dim], gr[1][t, dim2:dim2+self.dim]).sum())
                 ll = ll + 1
-
         return res
+
+
+    def dotProduct_euclidean(self, g1, g2):
+        res = np.zeros(len(g2))
+        for t in range(self.Tsize):
+            z = np.squeeze(self.xt[t, :, :])
+            u = np.squeeze(g1.diff[t, :, :])
+            #u = self.param.KparDiff.applyK(z, gg)
+            uu = (g1.aff[t]*self.affineWeight.reshape(g1.aff[t].shape))
+            #uu = g1.aff[t]
+            ll = 0
+            for gr in g2:
+                ggOld = np.squeeze(gr.diff[t, :, :])
+                res[ll]  += (ggOld*u).sum()
+                if self.affineDim > 0:
+                    #print np.multiply(np.multiply(g1[1][t], gr[1][t]), self.affineWeight).shape
+                    #res[ll] += np.multiply(uu, gr.aff[t]).sum() * self.coeffAff
+                    res[ll] += (uu*gr.aff[t]).sum()
+                    #                    +np.multiply(g1[1][t, dim2:dim2+self.dim], gr[1][t, dim2:dim2+self.dim]).sum())
+                ll = ll + 1
+        return res
+
 
     def acceptVarTry(self):
         self.obj = self.objTry
@@ -613,7 +666,6 @@ class CurveMatching:
                 #self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = Jt[kk, :], scal_name='Jacobian')
                 self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk')
         self.defCost = self.obj - self.obj0 - self.dataTerm(self.fvDef)
-        plt.ioff()
 
 
     def optimizeMatching(self):
@@ -626,6 +678,10 @@ class CurveMatching:
         while os.path.isfile(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk'):
             os.remove(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk')
             kk += 1
-        cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=0.0001)
+        if self.param.algorithm == 'cg':
+            cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=0.01)
+        elif self.param.algorithm == 'bfgs':
+            bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=1.,
+                      Wolfe=self.param.wolfe, memory=25)
         #return self.at, self.xt
 

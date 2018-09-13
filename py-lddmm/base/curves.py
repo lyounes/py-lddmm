@@ -702,15 +702,19 @@ def remesh(x, N=100, closed=True, rhoTol=0.9):
     return v
 
 
-def smoothCurve(f, N, eps = 0.01, constantArea = True):
+def smoothCurve(f, N, eps = 0.01, constantLength = True, constantArea = True):
     res = Curve(curve=f)
+    l = f.length()
     a = f.enclosedArea()
     s = -np.sign(a)
     a = np.fabs(a)
     for k in range(N):
         k1, n, kan = res.computeCurvature()
         res.updateVertices(res.vertices + s*eps * kan)
-        if constantArea:
+        if constantLength:
+            rho = l / res.length()
+            res.updateVertices(res.vertices * (rho))
+        elif constantArea:
             rho = a/np.fabs(res.enclosedArea())
             res.updateVertices(res.vertices*np.sqrt(rho))
     return res
@@ -820,33 +824,35 @@ def L2Norm(fvDev, fv1):
 
 
 # Current norm of fv1
-def currentNorm0(fv1, KparDist=None, weight=0.):
+def currentNorm0(fv1, KparDist=None, weight=None):
     c2 = fv1.centers
     cr2 = fv1.linel
-    cr2n = np.sqrt((cr2**2).sum(axis=1))[:,np.newaxis]
-    obj = weight* (cr2n * KparDist.applyK(c2, cr2n)).sum()
-    obj += (cr2 * KparDist.applyK(c2, cr2)).sum()
+    obj = (cr2 * KparDist.applyK(c2, cr2)).sum()
+    if weight:
+        cr2n = np.sqrt((cr2**2).sum(axis=1))[:,np.newaxis]
+        obj += weight* (cr2n * KparDist.applyK(c2, cr2n)).sum()
     return obj
 
 
 # Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct 
-def currentNormDef(fvDef, fv1, KparDist=None, weight=0.):
+def currentNormDef(fvDef, fv1, KparDist=None, weight=None):
     c1 = fvDef.centers
     cr1 =fvDef.linel
     c2 = fv1.centers
     cr2 = fv1.linel
-    cr1n = np.sqrt((cr1**2).sum(axis=1)+1e-10)[:,np.newaxis]
-    cr2n = np.sqrt((cr2**2).sum(axis=1)+1e-10)[:,np.newaxis]
-    obj = weight* ((cr1n * KparDist.applyK(c1, cr1n)).sum() - 2*(cr1n * KparDist.applyK(c2, cr2n, firstVar=c1)).sum())
-    obj += ((cr1*KparDist.applyK(c1, cr1)).sum() - 2*(cr1 * KparDist.applyK(c2, cr2, firstVar=c1)).sum())
+    obj = ((cr1*KparDist.applyK(c1, cr1)).sum() - 2*(cr1 * KparDist.applyK(c2, cr2, firstVar=c1)).sum())
+    if weight:
+        cr1n = np.sqrt((cr1**2).sum(axis=1)+1e-10)[:,np.newaxis]
+        cr2n = np.sqrt((cr2**2).sum(axis=1)+1e-10)[:,np.newaxis]
+        obj += weight* ((cr1n * KparDist.applyK(c1, cr1n)).sum() - 2*(cr1n * KparDist.applyK(c2, cr2n, firstVar=c1)).sum())
     return obj
 
 # Returns |fvDef - fv1|^2 for current norm
-def currentNorm(fvDef, fv1, KparDist=None, weight=0.):
+def currentNorm(fvDef, fv1, KparDist=None, weight=None):
     return currentNormDef(fvDef, fv1, KparDist, weight=weight) + currentNorm0(fv1, KparDist, weight=weight)
 
 # Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (current norm)
-def currentNormGradient(fvDef, fv1, KparDist=None, weight=0.):
+def currentNormGradient(fvDef, fv1, KparDist=None, weight=None):
     xDef = fvDef.vertices
     c1 = fvDef.centers
     cr1 = fvDef.linel
@@ -854,20 +860,22 @@ def currentNormGradient(fvDef, fv1, KparDist=None, weight=0.):
     cr2 = fv1.linel
     dim = c1.shape[1]
 
-    a1 = np.sqrt((cr1**2).sum(axis=1)+1e-10)
-    a2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)
-    cr1n = cr1 / a1[:, np.newaxis]
-    cr2n = cr2 / a2[:, np.newaxis]
 
 
-    z1 = weight*(KparDist.applyK(c1, a1[:, np.newaxis]) - KparDist.applyK(c2, a2[:, np.newaxis], firstVar=c1))
-    z1 = np.multiply(z1, cr1n)
-    z1 += KparDist.applyK(c1, cr1) - KparDist.applyK(c2, cr2, firstVar=c1)
-
-    dz1 = (weight/2.) * (KparDist.applyDiffKT(c1, a1[np.newaxis,:,np.newaxis], a1[np.newaxis,:,np.newaxis]) -
-                      KparDist.applyDiffKT(c2, a1[np.newaxis,:,np.newaxis], a2[np.newaxis,:,np.newaxis], firstVar=c1))
-    dz1 += .5*(KparDist.applyDiffKT(c1, cr1[np.newaxis,...], cr1[np.newaxis,...]) -
+    z1 = KparDist.applyK(c1, cr1) - KparDist.applyK(c2, cr2, firstVar=c1)
+    dz1 = .5*(KparDist.applyDiffKT(c1, cr1[np.newaxis,...], cr1[np.newaxis,...]) -
             KparDist.applyDiffKT(c2, cr1[np.newaxis,...], cr2[np.newaxis,...], firstVar=c1))
+
+    if weight:
+        a1 = np.sqrt((cr1 ** 2).sum(axis=1) + 1e-10)
+        a2 = np.sqrt((cr2 ** 2).sum(axis=1) + 1e-10)
+        cr1n = cr1 / a1[:, np.newaxis]
+        z01 = (KparDist.applyK(c1, a1[:, np.newaxis]) - KparDist.applyK(c2, a2[:, np.newaxis], firstVar=c1))
+        z1 += weight * (z01*cr1n)
+        dz1 += (weight/2.) * (KparDist.applyDiffKT(c1, a1[np.newaxis,:,np.newaxis], a1[np.newaxis,:,np.newaxis]) -
+                      KparDist.applyDiffKT(c2, a1[np.newaxis,:,np.newaxis], a2[np.newaxis,:,np.newaxis], firstVar=c1))
+
+
 
 
     px = np.zeros([xDef.shape[0], dim])
@@ -1097,13 +1105,30 @@ def varifoldNormComponentGradient(fvDef, fv1, KparDist=None, weight=1.):
 
     return 2*px
 
-
-def normGrad(fv, phi):
+def normGrad___(fv, phi):
     phi1 = phi[fv.faces[:,0],:]
     phi2 = phi[fv.faces[:,1],:]
     a = np.sqrt((fv.linel**2).sum(axis=1))
-    #print min(a) 
+    #print min(a)
     res = (((phi2-phi1)**2).sum(axis=1)/a).sum()
+    return res
+
+def normGrad(fv, phi, weight=1.0):
+    phi1 = phi[fv.faces[:,0],:]
+    phi2 = phi[fv.faces[:,1],:]
+    a = np.sqrt((fv.linel**2).sum(axis=1))
+    a1 = a[:, np.newaxis]
+    tau = fv.linel
+    nu = np.zeros(tau.shape)
+    nu[:,0] = -tau[:,1]
+    nu[:,1] = tau[:,0]
+    #print min(a)
+    dphi = (phi2-phi1)
+    res = (((dphi*tau).sum(axis=1)**2 + weight*(dphi*nu).sum(axis=1)**2)/(a**3))
+    #res0 = ((((dphi)*(tau/a1)).sum(axis=1)**2 + weight*((dphi)*(nu/a1)).sum(axis=1)**2)/(a))
+    #res1 = (((dphi*tau).sum(axis=1)**2/(a**4) + weight*(dphi*nu).sum(axis=1)**2/(a**4))*(a))
+    #res2 = normGrad___(fv, phi)
+    res = res.sum()
     return res
     
 def normGradInvariant(fv, phi):
@@ -1280,16 +1305,27 @@ def diffNormGradInvariant3D(fv, phi, variables='both'):
     else:
         print 'Incorrect option in diffNormGradInvariant'
 
-def diffNormGrad(fv, phi, variables='both'):
+def diffNormGrad(fv, phi, variables='both', weight=1.):
+    gradphi = None
+    gradx = None
     phi1 = phi[fv.faces[:,0],:]
     phi2 = phi[fv.faces[:,1],:]
     a2 = (fv.linel**2).sum(axis=1)
-    a = np.sqrt(a2)
-    tl = fv.linel/a[...,np.newaxis]
+    a = np.sqrt(a2)[:, np.newaxis]
+    tau = fv.linel
+    nu = np.zeros(tau.shape)
+    nu[:,0] = -tau[:,1]
+    nu[:,1] = tau[:,0]
     dphi = phi2-phi1
-    dphia = dphi/a[...,np.newaxis]
+    dphiperp = np.zeros(dphi.shape)
+    dphiperp[:,0] = dphi[:,1]
+    dphiperp[:,1] = -dphi[:,0]
+    dphitau = (dphi*tau).sum(axis=1)[:, np.newaxis]
+    dphinu = (dphi*nu).sum(axis=1)[:, np.newaxis]
+
+    #dphia = dphi/a[...,np.newaxis]
     if variables == 'both' or variables == 'phi':
-        r1 = 2 * dphia
+        r1 = 2 * (dphitau*tau + weight*dphinu*nu) / a**3
         gradphi = np.zeros(phi.shape)
         for k,f in enumerate(fv.faces):
             gradphi[f[0],:] -= r1[k,:]
@@ -1297,7 +1333,8 @@ def diffNormGrad(fv, phi, variables='both'):
     
     if variables == 'both' or variables == 'x':
         gradx = np.zeros(fv.vertices.shape)
-        r1 = -((dphia**2).sum(axis=1))[...,np.newaxis] * tl
+        r1 = 2 * (dphitau*dphi + weight*dphinu*dphiperp) / a**3
+        r1 -= 3 * (dphitau**2 + weight * dphinu**2) * tau / a**5
         for k,f in enumerate(fv.faces):
             gradx[f[0],:] -= r1[k,:]
             gradx[f[1],:] += r1[k,:]
