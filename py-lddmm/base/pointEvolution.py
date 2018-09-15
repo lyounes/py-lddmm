@@ -753,7 +753,7 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=F
     else:
         nt0 = np.zeros([N,dim])
         
-    if not(affine is None):
+    if not(affine is None or len(affine[0])==0):
         A0 = affine[0]
         b = affine[1]
         A = np.zeros([M,dim,dim])

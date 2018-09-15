@@ -99,6 +99,10 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
         if hasattr(opt, 'startOfIteration'):
             opt.startOfIteration()
 
+        if opt.reset:
+            opt.obj = None
+            obj = opt.objectiveFun()
+
         if noUpdate==0:
             grd = opt.getGradient(gradCoeff)
 

@@ -9,13 +9,15 @@ import kernelFunctions as kfun
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class MatchingParam:
-    def __init__(self, timeStep = .1, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist=2.5, sigmaError=1.0, errorType = 'measure', typeKernel='gauss'):
+    def __init__(self, timeStep = .1, algorithm = 'bfgs', Wolfe = False, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist=2.5, sigmaError=1.0, errorType = 'measure', typeKernel='gauss'):
         self.timeStep = timeStep
         self.sigmaKernel = sigmaKernel
         self.sigmaDist = sigmaDist
         self.sigmaError = sigmaError
         self.typeKernel = typeKernel
         self.errorType = errorType
+        self.algorithm = algorithm
+        self.wolfe = Wolfe
         if KparDiff == None:
             self.KparDiff = kfun.Kernel(name = self.typeKernel, sigma = self.sigmaKernel)
         else:
