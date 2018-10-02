@@ -5,7 +5,7 @@ matplotlib.use("TKAgg")
 import scipy.linalg as la
 import scipy.optimize as sopt
 import base.curves as curves
-from base import conjugateGradient as cg, grid, matchingParam, pointEvolution as evol, loggingUtils
+from base import conjugateGradient as cg, grid, matchingParam, pointEvolution as evol, loggingUtils, bfgs
 from base.affineBasis import *
 import matplotlib.pyplot as plt
 import matplotlib.animation as manimation
@@ -21,7 +21,7 @@ from tqdm import *
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class CurveMatchingRigidParam(matchingParam.MatchingParam):
-    def __init__(self, timeStep = .1, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist=2.5, sigmaError=1.0, 
+    def __init__(self, timeStep = .1, algorithm = 'bfgs', Wolfe=False, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist=2.5, sigmaError=1.0,
                  errorType = 'measure', typeKernel='gauss', internalCost=None):
         matchingParam.MatchingParam.__init__(self, timeStep=timeStep, KparDiff = KparDiff, KparDist = KparDist, sigmaKernel = sigmaKernel, sigmaDist=sigmaDist,
                                              sigmaError=sigmaError, errorType = errorType, typeKernel=typeKernel)
@@ -1334,6 +1334,12 @@ class CurveMatchingRigid:
         dir.trans = dir1.trans + beta * dir2.trans
         return dir
 
+    def prod(self, dir1, beta):
+        dir = Direction()
+        dir.skew = beta * dir1.skew
+        dir.trans = beta * dir1.trans
+        return dir
+
     def copyDir(self, dir0):
         dir = Direction()
         dir.skew = np.copy(dir0.skew)
@@ -1547,13 +1553,17 @@ class CurveMatchingRigid:
         grd = self.getGradient(self.gradCoeff)
         [grd2] = self.dotProduct(grd, [grd])
 
-        self.gradEps = max(self.gradLB, np.sqrt(grd2) / 100000)
+        self.gradEps = max(self.gradLB, np.sqrt(grd2) / 10000000)
         print 'Gradient bound:', self.gradEps
         kk = 0
         while os.path.isfile(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk'):
             os.remove(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk')
             kk += 1
-        cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient)
+
+        if self.param.algorithm == 'bfgs':
+            bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient)
+        else:
+            cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient)
         #return self.at, self.xt
 
 
@@ -1902,7 +1912,7 @@ class CurveMatchingRigid:
         sigma = .1
         K1 = Kernel(name='laplacian', sigma=sigma)
         sigmaDist = 2.
-        sigmaError = .01
+        sigmaError = .1
         prec = 0.05
         dirOut = '/Users/younes'
         fileOut = '/Development/Results/curveMatchingRigidObstacle'
@@ -1912,9 +1922,9 @@ class CurveMatchingRigid:
         loggingUtils.setup_default_logging(dirOut + fileOut, fileName='info.txt',
                                            stdOutput=True)
 
-        sm = CurveMatchingRigidParam(timeStep=prec, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError, errorType='varifoldComponent')
+        sm = CurveMatchingRigidParam(timeStep=prec, algorithm='bfgs', KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError, errorType='varifoldComponent')
         f = CurveMatchingRigid(Template=fv0, Target=fv1, Clamped=fvc, pltFrame=xframe, outputDir=dirOut + fileOut, param=sm,
-                          testGradient=False, gradLB=1e-5, saveTrajectories=True, regWeight=1., maxIter=10000,paramRepell= None)
+                          testGradient=True, gradLB=1e-5, saveTrajectories=True, regWeight=1., maxIter=10000,paramRepell= None)
 
         c0 = f.center(fv0.vertices)
         c1 = f.center(fv1.vertices)
@@ -1973,4 +1983,4 @@ class CurveMatchingRigid:
         return f
 
 if __name__ == "__main__":
-    CurveMatchingRigid().runShoot()
+    CurveMatchingRigid().runMatch()

@@ -219,7 +219,7 @@ def gaussianDiffeonsCovectorPset(c0, S0, x0,  at, pc1, pS1, px1, sigma, regweigh
     pct[T-1, :, :] = pc1
     pSt[T-1, :, :, :] = pS1
     if withJacobian:
-        pJt = np.tile(pJ1, np.insert(np.ones(J0.ndim), 0, T))
+        pJt = np.tile(pJ1, np.insert(np.ones(J0.ndim, dtype=int), 0, T))
         #pJt = np.zeros(np.insert(J0.shape, 0, T))
         #pJt[T-1, ...] = pJ1
     sig2 = sigma*sigma

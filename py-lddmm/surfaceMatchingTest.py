@@ -175,11 +175,11 @@ def compute(model):
         dst = np.min(dst, axis=3)
         ftemp = Surface()
         ftemp.Isosurface((dst < delta**2), value=0.5)
-        sigmaKernel = 5
+        sigmaKernel = 10
         sigmaDist = 10.
         sigmaError = .1
         internalWeight = 5000.
-        internalCost = 'h1'
+        internalCost = None
     else:
         return
 

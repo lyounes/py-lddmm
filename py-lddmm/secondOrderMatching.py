@@ -6,7 +6,7 @@ import base.surfaces as surfaces
 from base.pointSets import *
 from surfaceMatching import SurfaceMatchingParam
 #import kernelFunctions as kfun
-from base import conjugateGradient as cg, pointEvolution as evol
+from base import conjugateGradient as cg, pointEvolution as evol, bfgs
 from base.affineBasis import getExponential, gradExponential, AffineBasis
 
 ## Parameter class for matching
@@ -624,6 +624,16 @@ class SurfaceMatching:
         dir.aff0 = dir1.aff0 + beta * dir2.aff0
         return dir
 
+    def prod(self, dir1, beta):
+        dir = Direction()
+        dir.a0 = beta * dir1.a0
+        dir.rhot = beta * dir1.rhot
+        dir.aff = beta * dir1.aff
+        dir.a00 = beta * dir1.a00
+        dir.rhot0 = beta * dir1.rhot0
+        dir.aff0 = beta * dir1.aff0
+        return dir
+
     def copyDir(self, dir0):
         dir = Direction()
         dir.a0 = np.copy(dir0.a0)
@@ -873,5 +883,9 @@ class SurfaceMatching:
         #print 'y0:', self.y0
         self.cgBurnIn = self.affBurnIn
         
-        cg.cg(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
+        if self.param.algorithm == 'cg':
+            cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=0.01)
+        elif self.param.algorithm == 'bfgs':
+            bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=1.,
+                      Wolfe=self.param.wolfe, memory=25)
         #return self.at, self.xt
