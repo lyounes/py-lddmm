@@ -1356,11 +1356,11 @@ if __name__ == "__main__":
     #AllTD = {'helixes3':(100,), 'helixes10':(100,200,500,1000),
     #          'helixes20':(100,200,500,1000), 'Dolls':(100,200,500,1000),
     #          'Segments11':(100,200,500,1000), 'TwoSegments':(100,200,500,1000),'TwoSegmentsCumSum':(100,200,500,1000), 'RBF':(100,200,500,1000)}
-    #AllTD = {'Line':(100,)}
+    AllTD = {'helixes3':(100,)}
     classif = True
 
     if classif:
-        AllTD = {'TwoSegmentsCumSum':(100,)}
+        #AllTD = {'TwoSegmentsCumSum':(100,)}
         #typeData = 'Dolls'
 
         outputDir0 = '/Users/younes/Development/Results/Classif'
