@@ -1,7 +1,7 @@
 from scipy.ndimage import *
-from Common.diffeo import *
-from Common.kernelFunctions import *
-from Diffeons.gaussianDiffeonsImageMatching import *
+from base.diffeo import *
+from base.kernelFunctions import *
+from gaussianDiffeonsImageMatching import *
 
 def compute(createImages=True):
 

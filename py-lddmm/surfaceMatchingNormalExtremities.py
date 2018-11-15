@@ -3,7 +3,7 @@ import logging
 import base.surfaces as surfaces
 from base import pointSets
 # import pointEvolution_fort as evol_omp
-from base import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils
+from base import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils, bfgs
 import surfaceMatching
 from base.affineBasis import *
 import matplotlib.pyplot as plt
@@ -20,7 +20,7 @@ from mpl_toolkits.mplot3d import Axes3D
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class SurfaceMatchingParam(surfaceMatching.SurfaceMatchingParam):
-    def __init__(self, timeStep=.1, KparDiff=None, KparDist=None, KparDiffOut=None, sigmaKernel=6.5, sigmaKernelOut=6.5,
+    def __init__(self, timeStep=.1, algorithm='bfgs', Wolfe=True, KparDiff=None, KparDist=None, KparDiffOut=None, sigmaKernel=6.5, sigmaKernelOut=6.5,
                  sigmaDist=2.5, sigmaError=1.0, typeKernel='gauss', errorType='varifold'):
         surfaceMatching.SurfaceMatchingParam.__init__(self, timeStep=timeStep, KparDiff=KparDiff, KparDist=KparDist,
                                                       sigmaKernel=sigmaKernel, sigmaDist=sigmaDist,
@@ -72,10 +72,11 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         self.nu = np.zeros([self.Tsize + 1, self.npt, self.dim])
 
         self.mu = mu
-        self.useKernelDotProduct = True
-        self.dotProduct = self.kernelDotProduct
+        #self.useKernelDotProduct = True
+        #self.dotProduct = self.kernelDotProduct
         self.saveRate = 10
         self.meanc = 0
+        self.converged = False
         # print self.affineWeight
         # self.useKernelDotProduct = False
         # self.dotProduct = self.standardDotProduct
@@ -149,10 +150,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             # lv = lv * vnu[:,np.newaxis]
             dxcval[t] = self.param.KparDiff.applyDiffKT(x, a[np.newaxis, ...], lnu[np.newaxis, ...])
             dxcval[t] += self.param.KparDiff.applyDiffKT(x, lnu[np.newaxis, ...], a[np.newaxis, ...])
-            if self.useKernelDotProduct:
-                dacval[t] = np.copy(lnu)
-            else:
+            if self.euclideanGradient:
                 dacval[t] = self.param.KparDiff.applyK(x, lnu)
+            else:
+                dacval[t] = np.copy(lnu)
             dAffcval = []
             # if self.affineDim > 0:
             #     dAffcval[t, :] = (np.dot(self.affineBasis.T, np.vstack([np.dot(lnu.T, x).reshape([dim2,1]), lnu.sum(axis=0).reshape([self.dim,1])]))).flatten()
@@ -197,7 +198,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         #     vA = np.multiply(dA, AfftTry-Afft).sum()/eps
         #     logging.info('var affine: %f %f' %(self.Tsize*(uA[0]-u0[0])/(eps), -vA ))
 
-    def objectiveFunDef(self, at, Afft, withTrajectory=False, withJacobian=False, x0=None):
+    def objectiveFunDef(self, at, Afft, kernel=None, withTrajectory=False, withJacobian=False, x0=None, regWeight=None):
         f = super(SurfaceMatching, self).objectiveFunDef(at, Afft, withTrajectory=True, withJacobian=withJacobian,
                                                          x0=x0)
         cstr = self.constraintTerm(f[1], at, Afft)
@@ -214,18 +215,21 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
     def objectiveFun(self):
         if self.obj == None:
-            self.obj0 = self.param.fun_obj0(self.fv1, self.param.KparDist) / (self.param.sigmaError ** 2)
+            self.obj0 = self.fun_obj0(self.fv1) / (self.param.sigmaError ** 2)
             if self.symmetric:
-                self.obj0 += self.param.fun_obj0(self.fv0, self.param.KparDist) / (self.param.sigmaError ** 2)
+                self.obj0 += self.fun_obj0(self.fv0) / (self.param.sigmaError ** 2)
 
             (self.obj, self.xt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             self.obj += self.obj0
 
             self.fvDef.updateVertices(np.squeeze(self.xt[self.Tsize, ...]))
-            self.obj += self.param.fun_obj(self.fvDef, self.fv1, self.param.KparDist) / (self.param.sigmaError ** 2)
+            if self.fv1:
+                self.obj += self.fun_obj(self.fvDef, self.fv1) / (self.param.sigmaError ** 2)
+            else:
+                self.obj += self.fun_obj(self.fvDef) / (self.param.sigmaError ** 2)
             if self.symmetric:
                 self.fvInit.updateVertices(np.squeeze(self.x0))
-                self.obj += self.param.fun_obj(self.fvInit, self.fv0, self.param.KparDist) / (
+                self.obj += self.fun_obj(self.fvInit, self.fv0, self.param.KparDist) / (
                 self.param.sigmaError ** 2)
 
         return self.obj
@@ -248,11 +252,14 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
         ff = surfaces.Surface(surf=self.fvDef)
         ff.updateVertices(np.squeeze(foo[1][self.Tsize, ...]))
-        objTry += self.param.fun_obj(ff, self.fv1, self.param.KparDist) / (self.param.sigmaError ** 2)
+        if self.fv1:
+            objTry += self.fun_obj(ff, self.fv1) / (self.param.sigmaError ** 2)
+        else:
+            objTry += self.fun_obj(ff) / (self.param.sigmaError ** 2)
         if self.symmetric:
             ffI = surfaces.Surface(surf=self.fvInit)
             ffI.updateVertices(x0Try)
-            objTry += self.param.fun_obj(ffI, self.fv0, self.param.KparDist) / (self.param.sigmaError ** 2)
+            objTry += self.fun_obj(ffI, self.fv0) / (self.param.sigmaError ** 2)
         objTry += foo[0] + self.obj0
 
         if np.isnan(objTry):
@@ -324,7 +331,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         (pxt, xt, dacval, dAffcval) = self.covectorEvolution(at, Afft, px1)
 
         foo = surfaces.Surface(surf=self.fv0)
-        if self.useKernelDotProduct:
+        if not self.euclideanGradient:
             dat = - dacval
             for t in range(self.Tsize):
                 z = np.squeeze(xt[t, ...])
@@ -346,10 +353,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 v = self.param.KparDiff.applyK(z, a)
                 if self.internalCost:
                     Lv = self.internalCostGrad(foo, v, variables='phi')
-                    dat[t, :, :] = self.param.KparDiff.applyK(z,
+                    dat[t, :, :] += self.param.KparDiff.applyK(z,
                                                               2 * self.regweight * a - px + self.regweight * self.internalWeight * Lv)
                 else:
-                    dat[t] += self.param.KparDiff.applyK(z, 2 * self.regweight * a - px)
+                    dat[t, :, :] += self.param.KparDiff.applyK(z, 2 * self.regweight * a - px)
         if self.affineDim > 0:
             timeStep = 1.0 / self.Tsize
             dAfft = 2 * np.multiply(self.affineWeight.reshape([1, self.affineDim]), Afft)
@@ -384,6 +391,14 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             dir.aff = dir1.aff + beta * dir2.aff
         return dir
 
+    def prod(self, dir1, beta):
+        dir = surfaceMatching.Direction()
+        dir.diff = beta * dir1.diff
+        if self.affineDim > 0:
+            dir.aff = beta * dir1.aff
+        dir.initx = beta * dir1.initx
+        return dir
+
     # def copyDir(self, dir0):
     #     dir = surfaceMatching.Direction()
     #     dir.diff = np.copy(dir0.diff)
@@ -391,7 +406,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
     #     return dir
 
 
-    def kernelDotProduct(self, g1, g2):
+    def dotProduct(self, g1, g2):
         res = np.zeros(len(g2))
         for t in range(self.Tsize):
             z = np.squeeze(self.xt[t, :, :])
@@ -413,7 +428,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
         return res
 
-    def standardDotProduct(self, g1, g2):
+    def dotProduct_euclidean(self, g1, g2):
         res = np.zeros(len(g2))
         # dim2 = self.dim**2
         for ll, gr in enumerate(g2):
@@ -431,12 +446,32 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
         return res
 
-    def getGradient(self, coeff=1.0):
-        px1 = -self.endPointGradient()
+    def getGradient(self, coeff=1.0, update=None):
+        if update is None:
+            at = self.at
+            endPoint = self.fvDef
+            Afft = self.Afft
+            #A = self.affB.getTransforms(self.Afft)
+        else:
+            Afft = self.Afft - update[1]*update[0].aff
+            A = self.affB.getTransforms(Afft)
+            at = self.at - update[1] *update[0].diff
+            xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
+            endPoint = surfaces.Surface(surf=self.fv0)
+            endPoint.updateVertices(xt[-1, :, :])
+
+        px1 = -self.endPointGradient(endPoint=endPoint)
         # px1.append(np.zeros([self.npoints, self.dim]))
-        foo = self.HamiltonianGradient(self.at, self.Afft, px1, getCovector=True)
+        foo = self.HamiltonianGradient(at, Afft, px1, getCovector=True)
         grd = surfaceMatching.Direction()
-        grd.diff = foo[0] / (coeff * self.Tsize)
+        # if self.euclideanGradient:
+        #     grd.diff = np.zeros(foo[0].shape)
+        #     for t in range(self.Tsize):
+        #         z = self.xt[t, :, :]
+        #         grd.diff[t,:,:] = self.param.KparDiff.applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
+        # else:
+        grd.diff = foo[0]/(coeff*self.Tsize)
+
         if self.affineDim > 0:
             grd.aff = foo[1] / (self.coeffAff * coeff * self.Tsize)
         if self.symmetric:
@@ -577,82 +612,201 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         grd = self.getGradient(self.gradCoeff)
         [grd2] = self.dotProduct(grd, [grd])
 
-        self.gradEps = np.sqrt(grd2) / 20
+        self.gradEps = np.sqrt(grd2) / 10000
         self.coeffAff = self.coeffAff1
         self.muEps = 1.0
         it = 0
         while (self.muEps > 0.001) & (it < self.maxIter_al):
-            logging.info('Starting Minimization: gradEps = %f muEps = %f mu = %f' % (self.gradEps, self.muEps, self.mu))
+            logging.info('Starting Minimization: Iteration = %d gradEps = %f muEps = %f mu = %f' % (it, self.gradEps, self.muEps, self.mu))
             # self.coeffZ = max(1.0, self.mu)
-            cg.cg(self, verb=self.verb, maxIter=self.maxIter_cg, TestGradient=self.testGradient, epsInit=0.1)
+            if self.param.algorithm == 'bfgs':
+                bfgs.bfgs(self, verb=self.verb, maxIter=self.maxIter_cg, TestGradient=self.testGradient, epsInit=1.,
+                          Wolfe=self.param.wolfe, memory=25)
+            else:
+                cg.cg(self, verb=self.verb, maxIter=self.maxIter_cg, TestGradient=self.testGradient, epsInit=0.1)
             self.coeffAff = self.coeffAff2
             for t in range(self.Tsize + 1):
                 self.lmb[t, ...] = -self.cval[t, ...] / self.mu
             logging.info('mean lambdas %f' % (np.fabs(self.lmb).sum() / self.lmb.size))
             if self.converged:
-                self.gradEps *= .75
-                if (self.meanc > self.muEps):
+                self.gradEps *= .5
+                if it > 10 and self.meanc > self.muEps:
                     self.mu *= 0.75
-                else:
-                    self.muEps = 0.75 * self.muEps
                 #            else:
                 #                self.mu *= 0.9
             if self.muEps > self.meanc:
-                self.muEps = 0.9 * self.meanc
+                self.muEps = min(0.75*self.muEps, 0.9 * self.meanc)
             self.obj = None
+            self.reset = True
             it = it + 1
 
             # return self.fvDef
 
+def run(opt=None):
+    # outputDir = '/cis/home/younes/Development/Results/ERC_Normals_ADNI_014_S_4058/'
+    fvTop = None
+    fvBottom = None
+    if opt is not None:
+        outputDir = '/Users/younes/Development/Results/BOK/'+opt
+        loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput=True)
+
+        if opt == 'Corner':
+            fvBottom = surfaces.Surface(filename='/Users/younes/Development/Data/NormalData/cornerTemplate.byu')
+            fvTop = surfaces.Surface(filename='/Users/younes/Development/Data/NormalData/cornerTarget.byu')
+        elif opt == 'SueData':
+            probDir = '/cis/home/younes/MorphingData/SUE/023_S_4035_L_mo00_ERC_and_TEC/'
+            fvTop = surfaces.Surface(filename=probDir + 'Template.vtk')
+            fvBottom = surfaces.Surface(filename=probDir + 'Target.vtk')
+        elif opt == 'heart':
+            [x, y, z] = np.mgrid[0:200, 0:200, 0:200] / 100.
+            ay = np.fabs(y - 1)
+            az = np.fabs(z - 1)
+            ax = np.fabs(x - 0.5)
+            s2 = np.sqrt(2)
+            c1 = np.sqrt(0.06)
+            c2 = np.sqrt(0.045)
+            c3 = 0.1
+
+            # return fv1
+
+            # s1 = 1.375
+            # s2 = 2
+            s1 = 1.1
+            s2 = 1.2
+            p = 1.75
+            I1 = np.minimum(c1 ** p / s1 - ((ax ** p + 0.5 * ay ** p + az ** p)),
+                            np.minimum((s2 * ax ** p + s2 * 0.5 * ay ** p + s2 * az ** p) - c2 ** p / s1,
+                                       1 + c3 / s1 - y))
+            fvBottom = surfaces.Surface()
+            fvBottom.Isosurface(I1, value=0, target=1000, scales=[1, 1, 1], smooth=0.01)
+
+            fvBottom.vertices[:, 1] += 15 - 15 / s1
+            # I1 = np.minimum(c1 ** 2 - (ax ** 2 + 0.5 * ay ** 2 + az ** 2),
+            #                 np.minimum((ax ** 2 + 0.5 * ay ** 2 + az ** 2) - c2 ** 2, 1 + c3 - y))
+            # fvTop = surfaces.Surface()
+            # fvTop.Isosurface(I1, value=0, target=1000, scales=[1, 1, 1], smooth=0.01)
+
+        elif opt == 'ellipses':
+            [x, y, z] = np.mgrid[0:200, 0:200, 0:200] / 100.
+            ay = np.fabs(y - 1)
+            az = np.fabs(z - 1)
+            ax = np.fabs(x - 0.5)
+            s2 = np.sqrt(2)
+            c1 = np.sqrt(0.06)
+            c2 = np.sqrt(0.035)
+            c3 = 0.1
+
+            I1 = c1 ** 2 - (ax ** 2 + 0.5 * ay ** 2 + az ** 2)
+            I2 = -(ax ** 2 + 0.5 * ay ** 2 + az ** 2) + c2 ** 2
+            #1 + c3 - y
+            fvTop = surfaces.Surface()
+            #I1 = np.logical_and(I1 > 0, np.logical_and(ay>-0.001, ay < 0.201))-0.5
+            fvTop.Isosurface(I1, value=0, target=5000, scales=[1, 1, 1], smooth=-0.01)
+            fvTop = fvTop.truncate((np.array([0,1,0,85]), np.array([0,-1,0,-100])))
+            #fvTop.smooth()
+            #select = np.logical_and(fvTop.vertices[:,1] > 75, fvTop.vertices[:,1] < 90)
+            #fvTop = fvTop.cut(select)
+
+            fvBottom = surfaces.Surface()
+            #I2 = np.logical_and(I2 > 0, np.logical_and(ay>-0.01, ay < 0.21))-0.5
+            fvBottom.Isosurface(I2, value=0, target=5000, scales=[1, 1, 1], smooth=-0.01)
+            fvBottom = fvBottom.truncate((np.array([0,1,0,85]), np.array([0,-1,0,-100])))
+            #select = np.logical_and(fvBottom.vertices[:,1] > 75, fvBottom.vertices[:,1] < 90)
+            #fvBottom = fvBottom.cut(select)
+
+            #fvBottom.vertices[:, 1] += 15 - 15 / s1
+        elif opt == 'flowers':
+            [x, y, z] = np.mgrid[0:200, 0:200, 0:200] / 100.
+            ay = np.fabs(y - 1)
+            az = np.fabs(z - 1)
+            ax = np.fabs(x - 0.5)
+            s2 = np.sqrt(2)
+            c1 = np.sqrt(0.06)
+            c2 = np.sqrt(0.03)
+            c3 = 0.1
+
+            th = np.arctan2(ax, az)
+            I1 = c1 ** 2 - (ax ** 2 + 0.5 * ay ** 2 + az ** 2) * (1+0.25*np.cos(6*th))
+            #I2 = -(ax ** 2 + 0.5 * ay ** 2 + az ** 2) * (1+0.5*np.cos(6*th))  + c2 ** 2
+            I2 = -(ax ** 2 + 0.5 * ay ** 2 + az ** 2)  + c2 ** 2
+            fvTop = surfaces.Surface()
+            fvTop.Isosurface(I1, value=0, target=3000, scales=[1, 1, 1], smooth=-0.01)
+            fvTop = fvTop.truncate((np.array([0,1,0,95]), np.array([0,-1,0,-105])))
+
+            fvBottom = surfaces.Surface()
+            fvBottom.Isosurface(I2, value=0, target=3000, scales=[1, 1, 1], smooth=-0.01)
+            fvBottom = fvBottom.truncate((np.array([0,1,0,95]), np.array([0,-1,0,-105])))
+
+            # th = np.arctan2(fvTop.vertices[:,0], fvTop.vertices[:,2])[:,np.newaxis]
+            # fvTop.updateVertices(fvTop.vertices* (1+0.5*np.cos(6*th)))
+            # th = np.arctan2(fvBottom.vertices[:,0], fvBottom.vertices[:,2])[:,np.newaxis]
+            # fvBottom.updateVertices(fvBottom.vertices* (1+0.5*np.cos(6*th)))
+
+        #fvTop = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/DH1MiddleOuter.byu')
+        #fvBottom = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/DH1MiddleInner.byu')
+        # outputDir = '/cis/home/younes/Development/Results/tilakAW1Superior'
+
+        #fvBottom = surfaces.Surface(
+        #    filename='/cis/home/younes/MorphingData/SueExamples/bottom_041_S_4720_L_mo00_ERC_and_TEC.byu')
+        # fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/NK1Inner.byu')
+        # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/NK1Outer.byu')
+        # fv0 = surfaces.Surface(filename='/Users/younes/Development/Data/ALLIE/Template.vtk')
+        # fv1 = surfaces.Surface(filename='/Users/younes/Development/Data/ALLIE/Target.vtk')
+        # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/NK1Outer.byu')
+        # # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/surfaces/chelsea/bottom_surface_smooth.byu')
+        # fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/surfaces/chelsea/top_surface_smooth.byu')
+
+        fvBottom.removeIsolated()
+        fvBottom.edgeRecover()
+        # fvTop.subDivide(1)
+
+        K1 = kfun.Kernel(name='laplacian', sigma=2.5, order=3)
+
+        if opt=='heart':
+            K1 = kfun.Kernel(name='laplacian', sigma=.1, order=3)
+            sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, algorithm='bfgs', KparDiff=K1, sigmaDist=.1,
+                                                      sigmaError=.1, errorType='currentMagnitude', internalCost=None)
+
+            fTemp = surfaces.Surface(surf=fvBottom)
+            nu = fTemp.computeVertexNormals()
+            fTemp.updateVertices(fvBottom.vertices + 1e-5 * nu)
+            s1 = fTemp.surfVolume()
+            fTemp.updateVertices(fvBottom.vertices - 1e-5 * nu)
+            s2 = fTemp.surfVolume()
+            if s1 < s2:
+                fvBottom.flipFaces()
+                logging.info('Flipping orientation of bottom shape.')
+
+            f = SurfaceMatching(Template=fvBottom, outputDir=outputDir, param=sm, regWeight=1.,
+                                saveTrajectories=True, symmetric=False, pplot=True,
+                                affine='none', testGradient=False, internalWeight=1000., affineWeight=1e3, maxIter_cg=50,
+                                maxIter_al=50, mu=1e-5)
+        else:
+
+            fvTop.removeIsolated()
+            fvTop.edgeRecover()
+            # K2 = kfun.Kernel(sigma = 2.5)
+            # print fv0.normGrad(fv0.vertices)
+            # print fv0.normGrad(fv0.vertices)
+            sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, algorithm='bfgs', KparDiff=K1, sigmaDist=1.,
+                                                      sigmaError=.1, errorType='varifold', internalCost='h1')
+
+            fTemp = surfaces.Surface(surf=fvBottom)
+            nu = fTemp.computeVertexNormals()
+            fTemp.updateVertices(fvBottom.vertices+1e-5*nu)
+            d1 = surfaces.haussdorffDist(fTemp, fvTop)
+            fTemp.updateVertices(fvBottom.vertices-1e-5*nu)
+            d2 = surfaces.haussdorffDist(fTemp, fvTop)
+            if d2 < d1:
+                fvBottom.flipFaces()
+                logging.info('Flipping orientation of bottom shape.')
+
+            f = SurfaceMatching(Template=fvBottom, Target=fvTop, outputDir=outputDir, param=sm, regWeight=1.,
+                                saveTrajectories=True, symmetric=False, pplot=True,
+                                affine='none', testGradient=False, internalWeight=100., affineWeight=1e3, maxIter_cg=50,
+                                maxIter_al=50, mu=1e-4)
+        f.optimizeMatching()
+
 
 if __name__ == "__main__":
-    # outputDir = '/cis/home/younes/Development/Results/ERC_Normals_ADNI_014_S_4058/'
-    outputDir = '/Users/younes/Development/Results/BOK'
-
-    #fvTop = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/DH1MiddleOuter.byu')
-    #fvBottom = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/DH1MiddleInner.byu')
-    fvBottom = surfaces.Surface(filename='/Users/younes/Development/Data/NormalData/cornerTemplate.byu')
-    fvTop = surfaces.Surface(filename='/Users/younes/Development/Data/NormalData/cornerTarget.byu')
-    # outputDir = '/cis/home/younes/Development/Results/tilakAW1Superior'
-    loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput=True)
-
-    #probDir = '/cis/home/younes/MorphingData/SUE/023_S_4035_L_mo00_ERC_and_TEC/'
-    #fvTop = surfaces.Surface(filename=probDir + 'Template.vtk')
-    #fvBottom = surfaces.Surface(filename=probDir + 'Target.vtk')
-    #fvBottom = surfaces.Surface(
-    #    filename='/cis/home/younes/MorphingData/SueExamples/bottom_041_S_4720_L_mo00_ERC_and_TEC.byu')
-    # fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/NK1Inner.byu')
-    # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/NK1Outer.byu')
-    # fv0 = surfaces.Surface(filename='/Users/younes/Development/Data/ALLIE/Template.vtk')
-    # fv1 = surfaces.Surface(filename='/Users/younes/Development/Data/ALLIE/Target.vtk')
-    # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/NK1Outer.byu')
-    fvTop.removeIsolated()
-    fvTop.edgeRecover()
-    # fvTop.subDivide(1)
-    fvBottom.removeIsolated()
-    fvBottom.edgeRecover()
-    # # fv1 = surfaces.Surface(filename='/cis/home/younes/MorphingData/surfaces/chelsea/bottom_surface_smooth.byu')
-    # fv0 = surfaces.Surface(filename='/cis/home/younes/MorphingData/surfaces/chelsea/top_surface_smooth.byu')
-
-    K1 = kfun.Kernel(name='laplacian', sigma=.25, order=3)
-    # K2 = kfun.Kernel(sigma = 2.5)
-    # print fv0.normGrad(fv0.vertices)
-    # print fv0.normGrad(fv0.vertices)
-    sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=3,
-                                              sigmaError=.1, errorType='varifold', internalCost='h1')
-
-    fTemp = surfaces.Surface(surf=fvBottom)
-    nu = fTemp.computeVertexNormals()
-    fTemp.updateVertices(fvBottom.vertices+1e-5*nu)
-    d1 = surfaces.currentNorm(fTemp, fvTop, sm.KparDist)
-    fTemp.updateVertices(fvBottom.vertices-1e-5*nu)
-    d2 = surfaces.currentNorm(fTemp, fvTop, sm.KparDist)
-    if d2 < d1:
-        fvBottom.flipFaces()
-        logging.info('Flipping orientation of bottom shape.')
-
-    f = SurfaceMatching(Template=fvBottom, Target=fvTop, outputDir=outputDir, param=sm, regWeight=1.,
-                        saveTrajectories=True, symmetric=False, pplot=False,
-                        affine='none', testGradient=False, internalWeight=1000., affineWeight=1e3, maxIter_cg=50,
-                        maxIter_al=50, mu=1e-5)
-    f.optimizeMatching()
+    run(opt='flowers')

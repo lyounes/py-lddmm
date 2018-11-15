@@ -137,18 +137,18 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
 
         for k  in range(10000):
             # new weights
-            if annealing & (k < 21):
+            if annealing and (k < 21):
                 t = t*c 
             dmin = dSurf.min()
             wSurf = np.minimum((dSurf-dmin)/t, 500.)
-            wSurf = np.exp(-wSurf) ;
+            wSurf = np.exp(-wSurf)
             #wSurf = w[0:Nsurf, 0:Msurf] 
     
             #    w = sinkhorn(w, 100) ;
             Z  = wSurf.sum(axis=1)
-            w1Surf = np.divide(wSurf , Z.reshape([Nsurf,1]))
+            w1Surf = wSurf / Z[:, np.newaxis]
             Z  = wSurf.sum(axis = 0)
-            w2Surf = np.divide(wSurf,  Z.reshape([1,Msurf]))
+            w2Surf = wSurf / Z[np.newaxis, :]
             w1[0:Nsurf, 0:Msurf] = w1Surf
             w2[0:Nsurf, 0:Msurf] = w2Surf
             w = w1 + w2
@@ -171,7 +171,7 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
             if not translationOnly: 
                 U = np.dot( np.dot(w, Y).T, X) + rotWeight * np.eye(dimn)
                 if rotationOnly:
-                    R = rotpart(U) ;
+                    R = rotpart(U)
                 else:
                     sU = linalg.inv(np.real(linalg.sqrtm(np.dot(U.T, U))))
                     R = np.dot(U, sU)
@@ -182,13 +182,13 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
         
             d = (RX**2).sum(axis=1).reshape([N,1]) - 2 * np.dot(RX, Y1.T) + (Y1**2).sum(axis=1).reshape([1,M])
             dSurf = d[0:Nsurf, 0:Msurf] 
-            ener = rotWeight*(3-np.trace(R)) + (np.multiply(w, d)).sum() + t*(np.multiply(w1Surf, np.log(w1Surf)) + np.multiply(w2Surf, np.log(w2Surf))).sum()
+            ener = rotWeight*(dimn-np.trace(R)) + (np.multiply(w, d)).sum() + t*(np.multiply(w1Surf, np.log(w1Surf)) + np.multiply(w2Surf, np.log(w2Surf))).sum()
             #ener = rotWeight*(3-np.trace(R)) + (np.multiply(w, d) + t*(np.multiply(w1, np.log(w1)) + np.multiply(w2, np.log(w2)))).sum()
 
             if verb:
                 print 'ener = ', ener, 'var = ', np.fabs((R-Rold)).sum(), np.fabs((T-Told)).sum() 
 
-            if (k > 21) & (np.fabs((R-Rold)).sum() < 1e-3) & (np.fabs((T-Told)).sum() < 1e-2):
+            if (k > 21) and (np.fabs((R-Rold)).sum() < 1e-3) and (np.fabs((T-Told)).sum() < 1e-2):
                 break
             else:
                 Told = np.copy(T)
@@ -205,7 +205,7 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
             U = np.dot(Y.T, X) #+ rotWeight * np.eye(dimn)
             print U
             if rotationOnly:
-                R = rotpart(U) ;
+                R = rotpart(U)
             else:
                 sU = linalg.inv(np.real(linalg.sqrtm(np.dot(U.T, U))))
                 R = np.dot(U, sU)

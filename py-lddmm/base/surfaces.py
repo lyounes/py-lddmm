@@ -4,6 +4,7 @@ import scipy as sp
 import conjugateGradient as cg
 import diffeo
 import scipy.linalg as spLA
+from scipy.sparse import coo_matrix
 import glob
 import logging
 try:
@@ -297,17 +298,27 @@ class Surface:
             raise Exception('Cannot run subDivide without VTK')
                         
             
-    def Simplify(self, target=1000.0):
+    def Simplify(self, target=1000.0, deciPro=False):
         if gotVTK:
             polydata = self.toPolyData()
-            dc = vtkQuadricDecimation()
-            red = 1 - min(np.float(target)/polydata.GetNumberOfPoints(), 1)
-            dc.SetTargetReduction(red)
-            if vtkVersion.GetVTKMajorVersion() >= 6:
-                dc.SetInputData(polydata)
+            red = 1 - min(np.float(target) / polydata.GetNumberOfPoints(), 1)
+            if deciPro:
+                dc = vtk.vtkDecimatePro()
+                if vtkVersion.GetVTKMajorVersion() >= 6:
+                    dc.SetInputData(polydata)
+                else:
+                    dc.SetInput(polydata)
+                dc.SetTargetReduction(red)
+                dc.PreserveTopologyOn()
+                dc.Update()
             else:
-                dc.SetInput(polydata)
-            dc.Update()
+                dc = vtkQuadricDecimation()
+                dc.SetTargetReduction(red)
+                if vtkVersion.GetVTKMajorVersion() >= 6:
+                    dc.SetInputData(polydata)
+                else:
+                    dc.SetInput(polydata)
+                dc.Update()
             g = dc.GetOutput()
             self.fromPolyData(g)
             z= self.surfVolume()
@@ -568,7 +579,400 @@ class Surface:
         for k,j in enumerate(J[0]):
             Q[j] = k
         self.faces = np.int_(Q[self.faces])
-        
+
+
+    def removeDuplicates(self, c=0.0001):
+        c2 = c ** 2
+        N0 = self.vertices.shape[0]
+        w = np.zeros(N0, dtype=int)
+
+        newv = np.zeros(self.vertices.shape)
+        newv[0, :] = self.vertices[0, :]
+        N = 1
+        for kj in range(1, N0):
+            dist = ((self.vertices[kj, :] - newv[0:N, :]) ** 2).sum(axis=1)
+            # print dist.shape
+            J = np.nonzero(dist < c2)
+            J = J[0]
+            # print kj, ' ', J, len(J)
+            if (len(J) > 0):
+                print "duplicate:", kj, J[0]
+                w[kj] = J[0]
+            else:
+                w[kj] = N
+                newv[N, :] = self.vertices[kj, :]
+                N = N + 1
+
+        newv = newv[0:N, :]
+        self.vertices = newv
+        self.faces = w[self.faces]
+
+        newf = np.zeros(self.faces.shape, dtype=int)
+        Nf = self.faces.shape[0]
+        nj = 0
+        for kj in range(Nf):
+            if len(set(self.faces[kj,:]))< 3:
+                print 'Empty face: ', kj, nj
+            else:
+                newf[nj, :] = self.faces[kj, :]
+                #newc[nj] = self.component[kj]
+                nj += 1
+        self.faces = newf[0:nj, :]
+        self.computeCentersAreas()
+        #self.component = newc[0:nj]
+
+
+    def addFace(self, f, faces, edges):
+        faces.append(f)
+        edges[(f[0],f[1])] = len(faces)-1
+        edges[(f[1],f[2])] = len(faces)-1
+        edges[(f[2],f[0])] = len(faces)-1
+
+
+    def split_in_4(self, faces, vert, val, popped, edges, i, with_vertex = None):
+        if not popped[i]:
+            vali = np.array(val)[faces[i]]
+            kmax = faces[i][vali.argmax()]
+            kmin = faces[i][vali.argmin()]
+            kmid = [j for j in faces[i] if j != kmin and j!= kmax][0]
+            if val[kmid] > 0:
+                kpivot = kmin
+            else:
+                kpivot = kmax
+            if val[kmax] > 0:
+                k0 = faces[i][0]
+                k1 = faces[i][1]
+                k2 = faces[i][2]
+
+                if [kmin, kmid, kmax] in [[k0,k1,k2], [k1,k2,k0], [k2,k0,k1]]:
+                    pos = True
+                else:
+                    pos = False
+
+                # select[res.faces[i,:]] = True
+                eps = 1e-10 * np.sign(val[kpivot])
+                if val[kmin] < 0:
+                    r0 = val[kmax]/(val[kmax] - val[kmin])
+                    v0 = (1-r0) * vert[kmax] + r0 * vert[kmin]
+                    knew0 = len(vert)
+                    vert.append(v0)
+                    val.append(0)
+                    if val[kmid] < 1e-10 and val[kmid] > -1e-10:
+                        if pos:
+                            self.addFace([kmid, kmax, knew0], faces, edges)
+                        else:
+                            self.addFace([kmax, kmid, knew0], faces, edges)
+                        popped += [False]
+                        if pos:
+                            self.addFace([kmid, knew0, kmin], faces, edges)
+                        else:
+                            self.addFace([knew0, kmid, kmin], faces, edges)
+                        popped += [False]
+
+                    if pos:
+                        if (kmin,kmax) in edges:
+                            jf = edges[(kmin, kmax)]
+                            valf = np.array(val)[faces[jf]]
+                            if valf.min() > 0 or valf.max() < 0:
+                                jj = [j for j in faces[jf] if j not in faces[i]][0]
+                                self.addFace([kmax, jj, knew0], faces, edges)
+                                self.addFace([kmin, knew0, jj], faces, edges)
+                                popped += [False]*2
+                                popped[jf] = True
+                    else:
+                        if (kmax, kmin) in edges:
+                            jf = edges[(kmax, kmin)]
+                            valf = np.array(val)[faces[jf]]
+                            if valf.min() > 0 or valf.max() < 0:
+                                jj = [j for j in faces[jf] if j not in faces[i]][0]
+                                self.addFace([kmin, jj, knew0], faces, edges)
+                                self.addFace([kmax, knew0, jj], faces, edges)
+                                popped += [False]*2
+                                popped[jf] = True
+
+                    if val[kmid] > 1e-10:
+                        r1 = val[kmid] / (val[kmid]-val[kmin])
+                        v1 = (1-r1) * vert[kmid] + r1 * vert[kmin]
+                        knew1 = len(vert)
+                        vert.append(v1)
+                        val.append(0)
+                        v2 = (vert[kmid]+vert[kmax])/2
+                        knew2 = len(vert)
+                        vert.append(v2)
+                        val.append((val[kmid]+val[kmax])/2)
+                        if pos:
+                            self.addFace([knew1, kmid, knew2], faces, edges)
+                            self.addFace([knew2, kmax, knew0], faces, edges)
+                            self.addFace([knew0, knew1, knew2], faces, edges)
+                            self.addFace([knew0, kmin, knew1], faces, edges)
+                            popped += [False] * 4
+                            if (kmid, kmin) in edges:
+                                jf = edges[(kmid, kmin)]
+                                valf = np.array(val)[faces[jf]]
+                                if valf.min() > 0 or valf.max() < 0:
+                                    jj = [j for j in faces[jf] if j not in faces[i]][0]
+                                    self.addFace([kmin, jj, knew1], faces, edges)
+                                    self.addFace([kmid, knew1, jj], faces, edges)
+                                    popped += [False] * 2
+                                    popped[jf] = True
+                            if (kmax, kmid) in edges:
+                                jf = edges[(kmax, kmid)]
+                                valf = np.array(val)[faces[jf]]
+                                if valf.min() > 0 or valf.max() < 0:
+                                    jj = [j for j in faces[jf] if j not in faces[i]][0]
+                                    self.addFace([kmid, jj, knew2], faces, edges)
+                                    self.addFace([kmax, knew2, jj], faces, edges)
+                                    popped += [False] * 2
+                                    popped[jf] = True
+                        else:
+                            self.addFace([kmid, knew1, knew2], faces, edges)
+                            self.addFace([kmax, knew2, knew0], faces, edges)
+                            self.addFace([knew1, knew0, knew2], faces, edges)
+                            self.addFace([kmin, knew0, knew1], faces, edges)
+                            popped += [False] * 4
+                            if (kmin, kmid) in edges:
+                                jf = edges[(kmin, kmid)]
+                                valf = np.array(val)[faces[jf]]
+                                if valf.min() > 0 or valf.max() < 0:
+                                    jj = [j for j in faces[jf] if j not in faces[i]][0]
+                                    self.addFace([jj, kmin, knew1], faces, edges)
+                                    self.addFace([knew1, kmid, jj], faces, edges)
+                                    popped += [False] * 2
+                                    popped[jf] = True
+                            if (kmid, kmax) in edges:
+                                jf = edges[(kmid, kmax)]
+                                valf = np.array(val)[faces[jf]]
+                                if valf.min() > 0 or valf.max() < 0:
+                                    jj = [j for j in faces[jf] if j not in faces[i]][0]
+                                    self.addFace([jj, kmid, knew2], faces, edges)
+                                    self.addFace([knew2, kmax, jj], faces, edges)
+                                    popped += [False] * 2
+                                    popped[jf] = True
+
+                    if val[kmid] < -1e-10:
+                        r1 = val[kmax] / (val[kmax]-val[kmid])
+                        v1 = (1-r1) * vert[kmax] + r1 * vert[kmid]
+                        knew1 = len(vert)
+                        vert.append(v1)
+                        val.append(0)
+                        v2 = (vert[kmid]+vert[kmin])/2
+                        knew2 = len(vert)
+                        vert.append(v2)
+                        val.append((val[kmid]+val[kmin])/2)
+                        if pos:
+                            self.addFace([knew1, knew2, kmid], faces, edges)
+                            self.addFace([knew2, knew0, kmin], faces, edges)
+                            self.addFace([knew0, knew1, knew1], faces, edges)
+                            self.addFace([knew1, kmax, knew0], faces, edges)
+                            popped += [False] * 4
+                            if (kmax, kmid) in edges:
+                                jf = edges[(kmax, kmid)]
+                                valf = np.array(val)[faces[jf]]
+                                if valf.min() > 0 or valf.max() < 0:
+                                    jj = [j for j in faces[jf] if j not in faces[i]][0]
+                                    self.addFace([kmid, jj, knew1], faces, edges)
+                                    self.addFace([kmax, knew1, jj], faces, edges)
+                                    popped += [False] * 2
+                                    popped[jf] = True
+                            if (kmid, kmin) in edges:
+                                jf = edges[(kmid, kmin)]
+                                valf = np.array(val)[faces[jf]]
+                                if valf.min() > 0 or valf.max() < 0:
+                                    jj = [j for j in faces[jf] if j not in faces[i]][0]
+                                    self.addFace([kmin, jj, knew2], faces, edges)
+                                    self.addFace([kmid, knew2, jj], faces, edges)
+                                    popped += [False] * 2
+                                    popped[jf] = True
+                        else:
+                            self.addFace([knew2, knew1, kmid], faces, edges)
+                            self.addFace([knew0, knew2, kmin], faces, edges)
+                            self.addFace([knew1, knew0, knew1], faces, edges)
+                            self.addFace([kmax, knew1, knew0], faces, edges)
+                            popped += [False] * 4
+                            if (kmid, kmax) in edges:
+                                jf = edges[(kmid, kmax)]
+                                valf = np.array(val)[faces[jf]]
+                                if valf.min() > 0 or valf.max() < 0:
+                                    jj = [j for j in faces[jf] if j not in faces[i]][0]
+                                    self.addFace([jj, kmid, knew1], faces, edges)
+                                    self.addFace([knew1, kmax, jj], faces, edges)
+                                    popped += [False] * 2
+                                    popped[jf] = True
+                            if (kmin, kmid) in edges:
+                                jf = edges[(kmin, kmid)]
+                                valf = np.array(val)[faces[jf]]
+                                if valf.min() > 0 or valf.max() < 0:
+                                    jj = [j for j in faces[jf] if j not in faces[i]][0]
+                                    self.addFace([jj, kmin, knew2], faces, edges)
+                                    self.addFace([knew2, kmid, jj], faces, edges)
+                                    popped += [False] * 2
+                                    popped[jf] = True
+                    popped[i] = True
+
+
+
+    def truncate(self, ineq = ()):
+        res = Surface(surf=self)
+        for a in ineq:
+            val = (res.vertices*a[0:3]).sum(axis=1) - a[3]
+            val = list(val)
+            vert = list(res.vertices)
+            faces = list(res.faces)
+            edges = {}
+            for i,f in enumerate(faces):
+                edges[(f[0],f[1])] = i
+                edges[(f[1], f[2])] = i
+                edges[(f[2], f[0])] = i
+            # row = np.concatenate((res.faces[:,0], res.faces[:,1], res.faces[:,2]))
+            # col = np.concatenate((res.faces[:,1], res.faces[:,2], res.faces[:,0]))
+            # v = np.array(range(len(faces))*3, dtype=int) + 1
+            # edges = coo_matrix((v, (row, col)), shape=[len(faces), len(faces)], dtype=int).tocsr()
+
+            #popped = np.zeros(len(faces), dtype=bool)
+            popped = [False]*len(faces)
+            nf = len(faces)
+            i = 0
+            while i < nf:
+                res.split_in_4(faces, vert, val, popped, edges, i)
+                i += 1
+                # if not popped[i]:
+                #     if val[res.faces[i,:]].max() > 0:
+                #         k0 = res.faces[i, 0]
+                #         k1 = res.faces[i, 1]
+                #         k2 = res.faces[i, 2]
+                #         #select[res.faces[i,:]] = True
+                #         if val[res.faces[i, :]].min() < 0:
+                #             pval = val[k0] * val[k1] * val[k2]
+                #             if  (pval<0 and val[k1]<0) or (pval >0 and val[k1]>0):
+                #                 r = -val[k1]/(val[k2]-val[k1])
+                #                 knew0 = len(vert)
+                #                 vert.append((1-r)*vert[k1] + r * vert[k2])
+                #                 knew2 = len(vert)
+                #                 r = -val[k1]/(val[k0]-val[k1])
+                #                 vert.append((1-r)*vert[k1] + r * vert[k0])
+                #                 knew1 = len(vert)
+                #                 vert.append((vert[k0]+vert[k2])/2)
+                #             elif (pval<0 and val[k2]<0) or (pval >0 and val[k2]>0):
+                #                 knew1 = len(vert)
+                #                 r = -val[k2] / (val[k0] - val[k2])
+                #                 vert.append((1 - r) * vert[k2] + r * vert[k0])
+                #                 knew0 = len(vert)
+                #                 r = -val[k2] / (val[k1] - val[k2])
+                #                 vert.append((1 - r) * vert[k2] + r * vert[k1])
+                #                 knew2 = len(vert)
+                #                 vert.append((vert[k1] + vert[k0]) / 2)
+                #             elif (pval<0 and val[k0]<0) or (pval >0 and val[k0]>0):
+                #                 knew2 = len(vert)
+                #                 r = -val[k0]/(val[k1]-val[k0])
+                #                 vert.append((1-r)*vert[k0] + r * vert[k1])
+                #                 knew1 = len(vert)
+                #                 r = -val[k1]/(val[k2]-val[k0])
+                #                 vert.append((1-r)*vert[k0] + r * vert[k2])
+                #                 knew0 = len(vert)
+                #                 vert.append((vert[k2]+vert[k0])/2)
+                #             # else:
+                #             #     if val[k1] > 0:
+                #             #         r = -val[k1]/(val[k2]-val[k1])
+                #             #         knew0 = len(vert)
+                #             #         vert.append((1-r)*vert[k1] + r * vert[k2])
+                #             #         knew2 = len(vert)
+                #             #         r = -val[k1]/(val[k0]-val[k1])
+                #             #         vert.append((1-r)*vert[k1] + r * vert[k0])
+                #             #         knew1 = len(vert)
+                #             #         vert.append((vert[k0]+vert[k2])/2)
+                #             #     elif val[k2] > 0:
+                #             #         knew1 = len(vert)
+                #             #         r = -val[k2] / (val[k0] - val[k2])
+                #             #         vert.append((1 - r) * vert[k2] + r * vert[k0])
+                #             #         knew0 = len(vert)
+                #             #         r = -val[k2] / (val[k1] - val[23])
+                #             #         vert.append((1 - r) * vert[k2] + r * vert[k1])
+                #             #         knew2 = len(vert)
+                #             #         vert.append((vert[k1] + vert[k0]) / 2)
+                #             #     elif val[k1] > 0:
+                #             #         knew2 = len(vert)
+                #             #         r = -val[k0]/(val[k1]-val[k0])
+                #             #         vert.append((1-r)*vert[k0] + r * vert[k1])
+                #             #         knew1 = len(vert)
+                #             #         r = -val[k1]/(val[k2]-val[k0])
+                #             #         vert.append((1-r)*vert[k0] + r * vert[k2])
+                #             #         knew0 = len(vert)
+                #             #         vert.append((vert[k2]+vert[k0])/2)
+                #             faces.append(np.array([k0, knew2, knew1], dtype=int))
+                #             faces.append(np.array([knew2, k1, knew0], dtype=int))
+                #             faces.append(np.array([knew2, knew0, knew1], dtype=int))
+                #             faces.append(np.array([knew1, knew0, k2], dtype=int))
+                #             jf = edges[k2,k1] - 1
+                #             if jf >=0 and not popped[jf]:
+                #                 jj = [j for j in faces[jf] if j not in faces[i]][0]
+                #                 faces.append([k1, jj, knew0])
+                #                 faces.append([k2, knew0, jj])
+                #                 popped[jf] = True
+                #             jf = edges[k0,k2] - 1
+                #             if jf >=0 and not popped[jf]:
+                #                 jj = [j for j in faces[jf] if j not in faces[i]][0]
+                #                 faces.append([k2, jj, knew1])
+                #                 faces.append([k0, knew1, jj])
+                #                 popped[jf] = True
+                #             jf = edges[k1,k0] - 1
+                #             if jf >=0 and not popped[jf]:
+                #                 jj = [j for j in faces[jf] if j not in faces[i]][0]
+                #                 faces.append([k0, jj, knew2])
+                #                 faces.append([k1, knew2, jj])
+                #                 popped[jf] = True
+                #             popped[i]= True
+
+            npopped = 0
+            nf = len(faces)
+            for i in range(nf):
+                if popped[i]:
+                    faces.pop(i-npopped)
+                    npopped += 1
+
+
+            res = Surface(FV=(np.array(faces, dtype=int), np.array(vert)))
+            res.removeDuplicates()
+            val = (res.vertices*a[0:3]).sum(axis=1) - a[3]
+            #
+            #
+            # newV = np.zeros([select.sum(),3])
+            # newIV = np.zeros(len(vert), dtype=int)
+            # j = 0
+            # for i in range(len(vert)):
+            #     if select[i]:
+            #         newV[j,:] = vert[i]
+            #         newIV[i] = j
+            #         j += 1
+            # npop = 0
+            # nf = len(faces)
+            # k = 0
+            # while k < nf:
+            #     if not np.any(faces[k-npop]):
+            #         faces.pop(k-npop)
+            #         npop += 1
+            #     else:
+            #         faces[k-npop] = newIV[faces[k-npop]]
+            #     k+= 1
+            res = res.cut(val>-1e-5)
+
+        return res
+
+
+
+    def cut(self, select):
+        res = Surface()
+        res.vertices = self.vertices[select, :]
+        newindx = np.arange(self.vertices.shape[0], dtype=int)
+        newindx[select] = np.arange(select.sum(), dtype=int)
+        res.faces = np.zeros(self.faces.shape, dtype= int)
+        j = 0
+        for i in range(self.faces.shape[0]):
+            if np.all(select[self.faces[i, :]]):
+                res.faces[j, :] = newindx[np.copy(self.faces[i, :])]
+                j += 1
+        res.faces = res.faces[0:j, :]
+        res.computeCentersAreas()
+        return res
 
 
     def laplacianMatrix(self):
@@ -581,11 +985,11 @@ class Surface:
 
         # compute edges and detect boundary
         #edm = sp.lil_matrix((nv,nv))
-        edm = -np.ones([nv,nv], dtype=int)
-        E = np.zeros([3*nf, 2], dtype=int)
+        edm = -np.ones((nv,nv), dtype=int)
+        E = np.zeros((3*nf, 2), dtype=int)
         j = 0
         for k in range(nf):
-            if (edm[F[k,0], F[k,1]]== -1):
+            if edm[F[k,0], F[k,1]]== -1:
                 edm[F[k,0], F[k,1]] = j
                 edm[F[k,1], F[k,0]] = j
                 E[j, :] = [F[k,0], F[k,1]]
@@ -867,7 +1271,7 @@ class Surface:
             while ln:
                 if kf >= nfaces:
                     break
-		#print nfaces, kf, ln
+                #print nfaces, kf, ln
                 for s in ln:
                     self.faces[kf,j] = int(sp.fabs(int(s)))
                     j = j+1
@@ -958,7 +1362,7 @@ class Surface:
             fvtkout.write('\nPOLYGONS {0:d} {1:d}'.format(F.shape[0], 4*F.shape[0]))
             for ll in range(F.shape[0]):
                 fvtkout.write('\n3 {0: d} {1: d} {2: d}'.format(F[ll,0], F[ll,1], F[ll,2]))
-            if not (vtkFields == None):
+            if vtkFields is not  None:
                 wrote_pd_hdr = False
                 if len(vtkFields.scalars) > 0:
                     if not wrote_pd_hdr:
@@ -1244,17 +1648,58 @@ def saveEvolution(fileName, fv0, xt):
 
 
 
+def haussdorffDist(fv1, fv2):
+    dst = ((fv1.vertices[:, np.newaxis, :] - fv2.vertices[np.newaxis, :, :])**2).sum(axis=2)
+    res = np.amin(dst, axis=1).max() + np.amin(dst, axis=0).max()
+    return res
+
 
 # Current norm of fv1
-def currentNorm0(fv1, KparDist):
+def currentMagnitude(fv1, KparDist):
     c2 = fv1.centers
     cr2 = np.copy(fv1.surfel)
     obj = np.multiply(cr2, KparDist.applyK(c2, cr2)).sum()
     return obj
-        
+
+# Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (current norm)
+def currentMagnitudeGradient(fvDef, KparDist):
+    xDef = fvDef.vertices
+    c1 = fvDef.centers
+    cr1 = np.copy(fvDef.surfel)
+    dim = c1.shape[1]
+
+    z1 = KparDist.applyK(c1, cr1)/2
+    dz1 = (1./3.) * KparDist.applyDiffKT(c1, cr1[np.newaxis,...], cr1[np.newaxis,...])
+
+    xDef1 = xDef[fvDef.faces[:, 0], :]
+    xDef2 = xDef[fvDef.faces[:, 1], :]
+    xDef3 = xDef[fvDef.faces[:, 2], :]
+
+    px = np.zeros([xDef.shape[0], dim])
+    I = fvDef.faces[:,0]
+    crs = np.cross(xDef3 - xDef2, z1)
+    for k in range(I.size):
+        px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
+
+    I = fvDef.faces[:,1]
+    crs = np.cross(xDef1 - xDef3, z1)
+    for k in range(I.size):
+        px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
+
+    I = fvDef.faces[:,2]
+    crs = np.cross(xDef2 - xDef1, z1)
+    for k in range(I.size):
+        px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
+
+    return 2*px
+
+
+def currentNorm0(fv1, KparDist, weight=1.):
+    return currentMagnitude(fv1, KparDist)
+
 
 # Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct 
-def currentNormDef(fvDef, fv1, KparDist):
+def currentNormDef(fvDef, fv1, KparDist, weight=1.):
     c1 = fvDef.centers
     cr1 = np.copy(fvDef.surfel)
     c2 = fv1.centers
@@ -1264,11 +1709,11 @@ def currentNormDef(fvDef, fv1, KparDist):
     return obj
 
 # Returns |fvDef - fv1|^2 for current norm
-def currentNorm(fvDef, fv1, KparDist):
+def currentNorm(fvDef, fv1, KparDist, weight=1.):
     return currentNormDef(fvDef, fv1, KparDist) + currentNorm0(fv1, KparDist) 
 
 # Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (current norm)
-def currentNormGradient(fvDef, fv1, KparDist):
+def currentNormGradient(fvDef, fv1, KparDist, weight=1.):
     xDef = fvDef.vertices
     c1 = fvDef.centers
     cr1 = np.copy(fvDef.surfel)
@@ -1364,8 +1809,8 @@ def measureNormGradient(fvDef, fv1, KparDist):
 
     return 2*px
 
-def varifoldNorm0(fv1, KparDist):
-    d=1
+def varifoldNorm0(fv1, KparDist, weight=1.):
+    d=weight
     c2 = fv1.centers
     a2 = np.sqrt((fv1.surfel**2).sum(axis=1)+1e-10)
     cr2 = fv1.surfel/a2[:,np.newaxis]
@@ -1376,8 +1821,8 @@ def varifoldNorm0(fv1, KparDist):
         
 
 # Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct 
-def varifoldNormDef(fvDef, fv1, KparDist):
-    d=1
+def varifoldNormDef(fvDef, fv1, KparDist, weight=1.):
+    d=weight
     c1 = fvDef.centers
     c2 = fv1.centers
     a1 = np.sqrt((fvDef.surfel**2).sum(axis=1)+1e-10)
@@ -1398,12 +1843,12 @@ def varifoldNormDef(fvDef, fv1, KparDist):
     return obj
 
 # Returns |fvDef - fv1|^2 for current norm
-def varifoldNorm(fvDef, fv1, KparDist):
-    return varifoldNormDef(fvDef, fv1, KparDist) + varifoldNorm0(fv1, KparDist) 
+def varifoldNorm(fvDef, fv1, KparDist, weight=1.):
+    return varifoldNormDef(fvDef, fv1, KparDist, weight=weight) + varifoldNorm0(fv1, KparDist, weight=weight)
 
 # Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (current norm)
-def varifoldNormGradient(fvDef, fv1, KparDist):
-    d=1
+def varifoldNormGradient(fvDef, fv1, KparDist, weight=1.):
+    d=weight
     xDef = fvDef.vertices
     c1 = fvDef.centers
     c2 = fv1.centers
