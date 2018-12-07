@@ -137,7 +137,7 @@ class PointSetMatching(object):
                 self.fv0 = np.concatenate((self.fv0,
                                            0.01*np.random.normal(size=(self.fv0.shape[0],addDim))), axis=1)
 
-        self.saveRate = 10
+        self.saveRate = 50
         self.relearnRate = relearnRate
         self.iter = 0
         self.setOutputDir(outputDir)
@@ -791,8 +791,8 @@ class PointSetMatching(object):
         logging.info('Gradient lower bound: %f' %(self.gradEps))
         self.coeffAff = self.coeffAff1
         #self.restartRate = self.relearnRate
-        cg.cg(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
-        #bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
+        #cg.cg(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
+        bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
         #return self.at, self.xt
 
     def learnLogistic(self, u0=None, random = 1.0):
@@ -870,7 +870,7 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
 
     #typeData = 'Dolls'
     localMaps = None
-    relearnRate = 1
+    relearnRate = 20
     u0 = None
     affine = 'none'
     dct = False
@@ -1299,7 +1299,7 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
     f = PointSetMatching(Template=x0Tr0, Target=x1Tr, outputDir=outputDir, param=sm, regWeight=1.,
                          saveTrajectories=True, pplot=True, testSet=(x0Te0, x1Te), addDim = addDim, u0=u0,
                          normalizeInput=False, l1Cost = l1Cost, relearnRate=relearnRate, randomInit=randomInit,
-                         affine='none', testGradient=True, affineWeight=10.,
+                         affine='none', testGradient=False, affineWeight=10.,
                          maxIter=1500)
 
     testInit = TestErrors()
@@ -1356,11 +1356,11 @@ if __name__ == "__main__":
     #AllTD = {'helixes3':(100,), 'helixes10':(100,200,500,1000),
     #          'helixes20':(100,200,500,1000), 'Dolls':(100,200,500,1000),
     #          'Segments11':(100,200,500,1000), 'TwoSegments':(100,200,500,1000),'TwoSegmentsCumSum':(100,200,500,1000), 'RBF':(100,200,500,1000)}
-    AllTD = {'helixes3':(100,)}
+    #AllTD = {'Line':(100,)}
     classif = True
 
     if classif:
-        #AllTD = {'TwoSegmentsCumSum':(100,)}
+        AllTD = {'TwoSegmentsCumSum':(200,)}
         #typeData = 'Dolls'
 
         outputDir0 = '/Users/younes/Development/Results/Classif'
