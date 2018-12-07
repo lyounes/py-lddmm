@@ -568,7 +568,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 
 if __name__ == "__main__":
     fv = []
-    Test = False
+    Test = True
     if Test:
         for k in range(1,11):
             fv.append(Surface(filename ='/Users/younes/Development/Data/sculptris/Dataset/surface'+str(k)+'.vtk'))
