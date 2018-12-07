@@ -552,20 +552,14 @@ class CurveMatching:
     def dotProduct_euclidean(self, g1, g2):
         res = np.zeros(len(g2))
         for t in range(self.Tsize):
-            z = np.squeeze(self.xt[t, :, :])
             u = np.squeeze(g1.diff[t, :, :])
-            #u = self.param.KparDiff.applyK(z, gg)
             uu = (g1.aff[t]*self.affineWeight.reshape(g1.aff[t].shape))
-            #uu = g1.aff[t]
             ll = 0
             for gr in g2:
                 ggOld = np.squeeze(gr.diff[t, :, :])
                 res[ll]  += (ggOld*u).sum()
                 if self.affineDim > 0:
-                    #print np.multiply(np.multiply(g1[1][t], gr[1][t]), self.affineWeight).shape
-                    #res[ll] += np.multiply(uu, gr.aff[t]).sum() * self.coeffAff
                     res[ll] += (uu*gr.aff[t]).sum()
-                    #                    +np.multiply(g1[1][t, dim2:dim2+self.dim], gr[1][t, dim2:dim2+self.dim]).sum())
                 ll = ll + 1
         return res
 

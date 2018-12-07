@@ -5,6 +5,8 @@ import struct
 import numpy as np
 import scipy as sp
 import scipy.ndimage as Img
+from PIL import Image
+
 try:
     from vtk import *
     import vtk.util.numpy_support as v2n
@@ -392,7 +394,7 @@ def gradient(img, resol=None):
         res[2,:, :, 0] = (img[:, :, 1] - img[:, :, 0])/(resol[2])
         res[2,:, :, img.shape[2]-1] = (img[:, :, img.shape[2]-1] - img[:, :, img.shape[2]-2])/(resol[2])
     elif img.ndim ==2:
-        if resol == None:
+        if resol is None:
             resol = [1.,1.]
         res = np.zeros([2,img.shape[0], img.shape[1]])
         res[0,1:img.shape[0]-1, :] = (img[2:img.shape[0], :] - img[0:img.shape[0]-2, :])/(2*resol[0])

@@ -4,8 +4,9 @@ from PIL import Image
 import scipy.ndimage as Img
 import scipy.stats.mstats as stats
 import base.gaussianDiffeons as gd
-from base import conjugateGradient as cg, diffeo, kernelFunctions as kfun, pointEvolution as evol
+from base import conjugateGradient as cg, diffeo, kernelFunctions as kfun, pointEvolution as evol, bfgs
 from base.affineBasis import *
+from PIL import Image
 
 ## Parameter class for matching
 #      timeStep: time discretization
@@ -48,13 +49,15 @@ def ImageMatchingGradient(gr, J, im0, im1, gradient=None):
 
 
 class ImageMatchingParam:
-    def __init__(self, timeStep = .1, sigmaKernel = 6.5, sigmaError=1.0, dimension=2, errorType='L2', KparDiff = None, typeKernel='gauss'):
+    def __init__(self, timeStep = .1, algorithm = 'bfgs', Wolfe=False, sigmaKernel = 6.5, sigmaError=1.0, dimension=2, errorType='L2', KparDiff = None, typeKernel='gauss'):
         self.timeStep = timeStep
         self.sigmaKernel = sigmaKernel
         self.sigmaError = sigmaError
         self.typeKernel = typeKernel
         self.errorType = errorType
         self.dimension = dimension
+        self.algorithm = algorithm
+        self.wolfe = Wolfe
         if errorType == 'L2':
             self.fun_obj = ImageMatchingDist
             self.fun_objGrad = ImageMatchingGradient
@@ -157,13 +160,13 @@ class ImageMatching:
         if (len(affB.transComp) > 0) & (transWeight != None):
             self.affineWeight[affB.transComp] = transWeight
 
-        if param==None:
+        if param is None:
             self.param = ImageMatchingParam()
         else:
             self.param = param
         self.dim = self.param.dimension
         #self.x0 = self.fv0.vertices
-        if Diffeons==None:
+        if Diffeons is None:
             gradIm0 = np.sqrt((diffeo.gradient(self.im0.data, self.im0.resol) ** 2).sum(axis=0))
             m0 = stats.mquantiles(gradIm0, 0.75)/10. + 1e-5
             if DecimationTarget==None:
@@ -205,7 +208,7 @@ class ImageMatching:
             (self.c0, self.S0, self.idx) = Diffeons
 
         if zeroVar:
-	    self.S0 = np.zeros(self.S0.shape)
+            self.S0 = np.zeros(self.S0.shape)
 
             #print self.c0
             #print self.S0
@@ -242,9 +245,9 @@ class ImageMatching:
         self.atTry = np.zeros([self.Tsize, self.c0.shape[0], self.dim])
         self.Afft = np.zeros([self.Tsize, self.affineDim])
         self.AfftTry = np.zeros([self.Tsize, self.affineDim])
-        self.imt = np.tile(self.im0, np.insert(np.ones(self.dim), 0, self.Tsize+1))
-        self.Jt = np.tile(self.J0, np.insert(np.ones(self.dim), 0, self.Tsize+1))
-        self.grt = np.tile(self.gr0, np.insert(np.ones(self.dim+1), 0, self.Tsize+1))
+        self.imt = np.tile(self.im0, np.insert(np.ones(self.dim, dtype=int), 0, self.Tsize+1))
+        self.Jt = np.tile(self.J0, np.insert(np.ones(self.dim, dtype=int), 0, self.Tsize+1))
+        self.grt = np.tile(self.gr0, np.insert(np.ones(self.dim+1, dtype=int), 0, self.Tsize+1))
         self.ct = np.tile(self.c0, [self.Tsize+1, 1, 1])
         self.St = np.tile(self.S0, [self.Tsize+1, 1, 1, 1])
         print 'error type:', self.param.errorType
@@ -390,6 +393,12 @@ class ImageMatching:
         dir.aff = dir1.aff + beta * dir2.aff
         return dir
 
+    def prod(self, dir1, beta):
+        dir = Direction()
+        dir.diff = beta * dir1.diff
+        dir.aff = beta * dir1.aff
+        return dir
+
     def copyDir(self, dir0):
         ddir = Direction()
         ddir.diff = np.copy(dir0.diff)
@@ -435,6 +444,21 @@ class ImageMatching:
                 ll = ll + 1
 
         return res
+
+    def dotProduct_euclidean(self, g1, g2):
+        res = np.zeros(len(g2))
+        for t in range(self.Tsize):
+            u = np.squeeze(g1.diff[t, :, :])
+            uu = (g1.aff[t]*self.affineWeight.reshape(g1.aff[t].shape))
+            ll = 0
+            for gr in g2:
+                ggOld = np.squeeze(gr.diff[t, :, :])
+                res[ll]  += (ggOld*u).sum()
+                if self.affineDim > 0:
+                    res[ll] += (uu*gr.aff[t]).sum()
+                ll = ll + 1
+        return res
+
 
     def acceptVarTry(self):
         self.obj = self.objTry
@@ -507,6 +531,10 @@ class ImageMatching:
             self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
 
         print 'Gradient lower bound: ', self.gradEps
-        cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient)
+        if self.param.algorithm == 'cg':
+            cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=0.01)
+        elif self.param.algorithm == 'bfgs':
+            bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=1.,
+                      Wolfe=self.param.wolfe, memory=25)
         #return self.at, self.xt
 

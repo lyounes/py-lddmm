@@ -175,7 +175,7 @@ def compute(model):
         dst = np.min(dst, axis=3)
         ftemp = Surface()
         ftemp.Isosurface((dst < delta**2), value=0.5)
-        sigmaKernel = 20
+        sigmaKernel = 10
         sigmaDist = 10.
         sigmaError = .1
         internalWeight = 5000.
@@ -188,7 +188,7 @@ def compute(model):
 
     sm = SurfaceMatchingParam(timeStep=0.1, algorithm='bfgs', KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
                               errorType='varifold', internalCost=internalCost)
-    f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='/Users/younes/Development/Results/'+model+'LDDMM20p0H0',param=sm,
+    f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='/Users/younes/Development/Results/'+model+'LDDMM5p0H5000',param=sm,
                         testGradient=False,
                         #subsampleTargetSize = 500,
                          internalWeight=internalWeight, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)

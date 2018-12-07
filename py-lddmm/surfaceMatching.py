@@ -92,23 +92,26 @@ class SurfaceMatching(object):
                 self.fv0 = surfaces.Surface(filename=fileTempl)
         else:
             self.fv0 = surfaces.Surface(surf=Template)
-            
-        if Target==None:
-            if fileTarg==None:
-                logging.error('Please provide a target surface')
-                return
+
+        if self.param.errorType != 'currentMagnitude':
+            if Target==None:
+                if fileTarg==None:
+                    logging.error('Please provide a target surface')
+                    return
+                else:
+                    if self.param.errorType == 'L2Norm':
+                        self.fv1 = surfaces.Surface()
+                        self.fv1.readFromImage(fileTarg)
+                    else:
+                        self.fv1 = surfaces.Surface(filename=fileTarg)
             else:
                 if self.param.errorType == 'L2Norm':
                     self.fv1 = surfaces.Surface()
-                    self.fv1.readFromImage(fileTarg)
+                    self.fv1.initFromImage(fileTarg)
                 else:
-                    self.fv1 = surfaces.Surface(filename=fileTarg)
+                    self.fv1 = surfaces.Surface(surf=Target)
         else:
-            if self.param.errorType == 'L2Norm':
-                self.fv1 = surfaces.Surface()
-                self.fv1.initFromImage(fileTarg)
-            else:
-                self.fv1 = surfaces.Surface(surf=Target)
+            self.fv1 = None
 
             #print np.fabs(self.fv1.surfel-self.fv0.surfel).max()
 
@@ -152,20 +155,38 @@ class SurfaceMatching(object):
         else:
             self.internalCost = None
 
-        self.fv0.getEdges()
-        self.fv1.getEdges()
-        self.closed = self.fv0.bdry.max() == 0 and self.fv1.bdry.max() == 0
-        if self.closed:
-            v0 = self.fv0.surfVolume()
-            if self.param.errorType == 'L2Norm' and v0 < 0:
-                self.fv0.flipFaces()
-                v0 = -v0
-            v1 = self.fv1.surfVolume()
-            if (v0*v1 < 0):
-                self.fv1.flipFaces()
-
-        #self.fv0Fine = surfaces.Surface(surf=self.fv0)
         self.fvInit = surfaces.Surface(surf=self.fv0)
+        if self.fv1:
+            self.fv0.getEdges()
+            self.fv1.getEdges()
+            self.closed = self.fv0.bdry.max() == 0 and self.fv1.bdry.max() == 0
+            if self.closed:
+                v0 = self.fv0.surfVolume()
+                if self.param.errorType == 'L2Norm' and v0 < 0:
+                    self.fv0.flipFaces()
+                    v0 = -v0
+                v1 = self.fv1.surfVolume()
+                if (v0*v1 < 0):
+                    self.fv1.flipFaces()
+            if self.closed:
+                z= self.fvInit.surfVolume()
+                if (z < 0):
+                    self.fv0ori = -1
+                else:
+                    self.fv0ori = 1
+
+                z= self.fv1.surfVolume()
+                if (z < 0):
+                    self.fv1ori = -1
+                else:
+                    self.fv1ori = 1
+            else:
+                self.fv0ori = 1
+                self.fv1ori = 1
+        else:
+            self.fv0ori = 1
+            self.fv1ori = 1
+        #self.fv0Fine = surfaces.Surface(surf=self.fv0)
         if (subsampleTargetSize > 0):
             self.fvInit.Simplify(subsampleTargetSize)
             logging.info('simplified template %d' %(self.fv0.vertices.shape[0]))
@@ -175,22 +196,7 @@ class SurfaceMatching(object):
         self.fvDef = surfaces.Surface(surf=self.fvInit)
         self.npt = self.fvInit.vertices.shape[0]
 
-        if self.closed:
-            z= self.fvInit.surfVolume()
-            if (z < 0):
-                self.fv0ori = -1
-            else:
-                self.fv0ori = 1
 
-            z= self.fv1.surfVolume()
-            if (z < 0):
-                self.fv1ori = -1
-            else:
-                self.fv1ori = 1
-        else:
-            self.fv0ori = 1
-            self.fv1ori = 1
-        
         logging.info('orientation: {0:d}'.format(self.fv0ori))
 
         self.Tsize = int(round(1.0/self.param.timeStep))
@@ -207,7 +213,8 @@ class SurfaceMatching(object):
         self.gradCoeff = self.x0.shape[0]
         self.saveFile = saveFile
         self.fv0.saveVTK(self.outputDir+'/Template.vtk')
-        self.fv1.saveVTK(self.outputDir+'/Target.vtk')
+        if self.fv1:
+            self.fv1.saveVTK(self.outputDir+'/Target.vtk')
         self.coeffAff1 = 1.
         self.coeffAff2 = 100.
         self.coeffAff = self.coeffAff1
@@ -218,9 +225,12 @@ class SurfaceMatching(object):
             fig=plt.figure(3)
             #fig.clf()
             ax = Axes3D(fig)
-            lim0 = self.addSurfaceToPlot(self.fv1, ax, ec = 'k', fc = 'b')
             lim1 = self.addSurfaceToPlot(self.fvDef, ax, ec='k', fc='r')
-#            ax.plot_trisurf(self.fv1.vertices[self.fv1.faces[:,0],:], self.fv1.vertices[self.fv1.faces[:,1],:], 
+            if self.fv1:
+                lim0 = self.addSurfaceToPlot(self.fv1, ax, ec='k', fc='b')
+            else:
+                lim0 = lim1
+    #            ax.plot_trisurf(self.fv1.vertices[self.fv1.faces[:,0],:], self.fv1.vertices[self.fv1.faces[:,1],:],
 #                           self.fv1.vertices[self.fv1.faces[:,2],:])# color=[0,0,1])
             #plt.axis('equal')
             ax.set_xlim(min(lim0[0][0],lim1[0][0]), max(lim0[0][1],lim1[0][1]))
@@ -236,6 +246,11 @@ class SurfaceMatching(object):
             self.fun_obj0 = partial(surfaces.currentNorm0, KparDist=self.param.KparDist, weight=1.)
             self.fun_obj = partial(surfaces.currentNormDef, KparDist=self.param.KparDist, weight=1.)
             self.fun_objGrad = partial(surfaces.currentNormGradient, KparDist=self.param.KparDist, weight=1.)
+        elif errorType == 'currentMagnitude':
+            print 'Running Current Matching'
+            self.fun_obj0 = lambda fv1 : 0
+            self.fun_obj = partial(surfaces.currentMagnitude, KparDist=self.param.KparDist)
+            self.fun_objGrad = partial(surfaces.currentMagnitudeGradient, KparDist=self.param.KparDist)
             # self.fun_obj0 = curves.currentNorm0
             # self.fun_obj = curves.currentNormDef
             # self.fun_objGrad = curves.currentNormGradient
@@ -418,7 +433,10 @@ class SurfaceMatching(object):
         if self.param.errorType == 'L2Norm':
             px = surfaces.L2NormGradient(endPoint, self.fv1.vfld)
         else:
-            px = self.fun_objGrad(endPoint, self.fv1)
+            if self.fv1:
+                px = self.fun_objGrad(endPoint, self.fv1)
+            else:
+                px = self.fun_objGrad(endPoint)
         return px / self.param.sigmaError**2
 
     def initPointGradient(self):
