@@ -76,6 +76,7 @@ class SurfaceMatching(object):
             self.param = SurfaceMatchingParam()
         else:
             self.param = param
+
         if self.param.algorithm == 'bfgs':
              self.euclideanGradient = True
         else:

@@ -82,6 +82,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
         opt.obj = None
 
     obj = opt.objectiveFun()
+    opt.objIni = obj
     opt.reset = False
     #obj = opt.objectiveFun()
     logging.info('iteration 0: obj = {0: .5f}'.format( obj))
@@ -234,7 +235,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
                 #print obj+obj0, objTry+obj0
                 if (np.fabs(obj-objTry) < 1e-10):
                     if (skipCG==1): # or (beta < 1e-10) :
-                        logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, beta = {3:.5f}, gradient: {4:.5f}'.format(it+1, obj, eps, beta, np.sqrt(grd2)))
+                        logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, eps/epsMax = {5:.5f}, beta = {3:.5f}, gradient: {4:.5f}'.format(it+1, obj, eps, beta, np.sqrt(grd2), eps/epsBig))
                         if it > cgBurnIn:
                             logging.info('Stopping Gradient Descent: small variation')
                             opt.converged = True
@@ -253,7 +254,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
                 obj = objTry
                 #logging.info('Obj Fun CG: ' + str(opt.objectiveFun(force=True)))
                 if verb | (it == maxIter):
-                    logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, beta = {3:.5f}, gradient: {4:.5f}'.format(it+1, obj, eps, beta, np.sqrt(grd2)))
+                    logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, eps/epsMax = {5:.5f},  beta = {3:.5f}, gradient: {4:.5f}'.format(it+1, obj, eps, beta, np.sqrt(grd2), eps/epsBig))
 
                 if np.sqrt(grd2) <gradEps and it>cgBurnIn:
                     logging.info('Stopping Gradient Descent: small gradient')
