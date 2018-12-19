@@ -9,5 +9,6 @@ py-metamorphosis: python code for metamorphosis (python2.7, PIL, vtk, fortran li
 diffeoReg (to come): C++ code for image matching (LDDMM and metamorphosis)
 
 To compile f90 programs in py-lddmm
-f2py --f90flags='-fopenmp' -lgomp -c kernelFunctions.f90 -m kernelFunctions_fort
-f2py --f90flags='-fopenmp' -lgomp -c pointEvolution.f90 -m pointEvolution_fort
+
+python numpy.f2py --f90flags='-fopenmp' -lgomp -c kernelFunctions.f90 -m kernelFunctions_fort
+python numpy.f2py --f90flags='-fopenmp' -lgomp -c pointEvolution.f90 -m pointEvolution_fort
