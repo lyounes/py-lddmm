@@ -239,14 +239,17 @@ class KernelSpec:
     def __init__(self, name='gauss', affine = 'none', sigma = 6.5, order = 10, w1 = 1.0,
                  w2 = 1.0, dim = 3, center = [0,0,0], weight = 1.0, localMaps=None):
         self.name = name
-        self.sigma = sigma
+        if np.isscalar(sigma):
+            self.sigma = np.array([sigma], dtype=float)
+        else:
+            self.sigma = sigma
         self.order = order
         self.weight=weight
         self.w1 = w1
         self.w2 = w2
         self.constant_plane=False
         self.center = np.array(center)
-        self.affine_basis = [] ;
+        self.affine_basis = []
         self.dim = dim
         #self.prev_x = []
         #self.prev_y = []
@@ -312,9 +315,9 @@ class Kernel(KernelSpec):
     def getK(self, x, firstVar = None):
         if not (self.kernelMatrix is None):
             if firstVar is None:
-                z = kff.kernelmatrix(x, x, self.sigma, self.order, x.shape[0], x.shape[0], x.shape[1])
+                z = kff.kernelmatrix(x, x, self.sigma, self.order, x.shape[0], x.shape[0], self.sigma.size, x.shape[1])
             else:
-                z = kff.kernelmatrix(x, firstVar, self.sigma, self.order, x.shape[0], firstVar.shape[0], x.shape[1])
+                z = kff.kernelmatrix(x, firstVar, self.sigma, self.order, x.shape[0], firstVar.shape[0], self.sigma.size, x.shape[1])
         return z
 
         
@@ -327,24 +330,27 @@ class Kernel(KernelSpec):
             if firstVar is None:
                 #z = np.zeros([x.shape[0],a.shape[1]])
                 if matrixWeights:
-                    z = kff.applykmat(x, x, a, self.sigma, self.order, x.shape[0], x.shape[0], x.shape[1], a.shape[2])
+                    z = kff.applykmat(x, x, a, self.sigma, self.order, x.shape[0], x.shape[0], len(self.sigma), x.shape[1], a.shape[2])
                 elif self.localMaps:
-                    z = kff.applylocalk(x, x, a, self.sigma, self.order, 1+self.localMaps[0], 1+self.localMaps[1],
-                                        x.shape[0], x.shape[0],
-                                        x.shape[1], self.localMaps[0].size)
+                    z = kff.applylocalk(x ,x ,a ,self.sigma ,self.order ,1 + self.localMaps[0] ,
+                                        1 + self.localMaps[1] ,
+                                        x.shape[0] ,x.shape[0] , len(self.sigma),
+                                        x.shape[1] ,self.localMaps[0].size)
                 else:
-                    z = kff.applyk(x, x, a, self.sigma, self.order, x.shape[0], x.shape[0], x.shape[1], a.shape[1])
+                    z = kff.applyk(x ,x ,a ,self.sigma ,self.order ,x.shape[0] ,x.shape[0], len(self.sigma), x.shape[1] ,a.shape[1])
                 # for k in range(a.shape[1]):
                 #     z[:,k] = kff.applyk(x, x, a[:,k], self.sigma, self.order, x.shape[0], x.shape[0], x.shape[1])
             else:
                 if matrixWeights:
-                    z = kff.applykmat(firstVar, x, a, self.sigma, self.order, firstVar.shape[0], x.shape[0], x.shape[1], a.shape[2])
+                    z = kff.applykmat(firstVar, x, a, self.sigma, self.order, firstVar.shape[0], x.shape[0], len(self.sigma), x.shape[1], a.shape[2])
                 elif self.localMaps:
-                    z = kff.applylocalk(firstVar, x, a, self.sigma, self.order, 1+self.localMaps[0], 1+self.localMaps[1],
-                                        firstVar.shape[0], x.shape[0],
-                                        x.shape[1], self.localMaps[0].size)
+                    z = kff.applylocalk(firstVar ,x ,a ,self.sigma ,self.order ,1 + self.localMaps[0] ,
+                                        1 + self.localMaps[1] ,
+                                        firstVar.shape[0] ,x.shape[0] , len(self.sigma),
+                                        x.shape[1] ,self.localMaps[0].size)
                 else:
-                    z = kff.applyk(firstVar, x, a, self.sigma, self.order, firstVar.shape[0], x.shape[0], x.shape[1], a.shape[1])
+                    z = kff.applyk(firstVar ,x ,a ,self.sigma ,self.order ,firstVar.shape[0] ,x.shape[0], len(self.sigma), x.shape[1] ,
+                                         a.shape[1])
                 # z = np.zeros([firstVar.shape[0],a.shape[1]])
                 # for k in range(a.shape[1]):
                 #     z[:,k] = kff.applyk(firstVar, x, a[:,k], self.sigma, self.order, firstVar.shape[0], x.shape[0], x.shape[1])
@@ -409,24 +415,24 @@ class Kernel(KernelSpec):
 
     # Computes A(i) = sum_j D_2[K(x(i), x(j))a2(j)]a1(j)
     def applyDiffK(self, x, a1, a2):
-        z = kff.applykdiff1(x, a1, a2, self.sigma, self.order, x.shape[0], x.shape[1])
+        z = kff.applykdiff1(x, a1, a2, self.sigma, self.order, x.shape[0], self.sigma.size, x.shape[1])
         return z
 
     # Computes A(i) = sum_j D_2[K(x(i), x(j))a2(j)]a1(j)
     def applyDiffK2(self, x, a1, a2):
-        z = kff.applykdiff2(x, a1, a2, self.sigma, self.order, x.shape[0], x.shape[1])
+        z = kff.applykdiff2(x, a1, a2, self.sigma, self.order, x.shape[0], self.sigma.size, x.shape[1])
         return z
 
     def applyDiffK1and2(self, x, a1, a2):
-        z = kff.applykdiff1and2(x, a1, a2, self.sigma, self.order, x.shape[0], x.shape[1])
+        z = kff.applykdiff1and2(x, a1, a2, self.sigma, self.order, x.shape[0], self.sigma.size, x.shape[1])
         return z
 
     # Computes A(i) = sum_j D_2[K(x(i), x(j))a2(j)]a1(j)
     def applyDiffKmat(self, x, beta, firstVar=None):
         if firstVar is None:
-            z = kff.applykdiffmat(x, x, beta, self.sigma, self.order, x.shape[0], x.shape[0], x.shape[1])
+            z = kff.applykdiffmat(x, x, beta, self.sigma, self.order, x.shape[0], x.shape[0], self.sigma.size, x.shape[1])
         else:
-            z = kff.applykdiffmat(firstVar, x, beta, self.sigma, self.order, firstVar.shape[0], x.shape[0], x.shape[1])
+            z = kff.applykdiffmat(firstVar, x, beta, self.sigma, self.order, firstVar.shape[0], x.shape[0], self.sigma.size, x.shape[1])
         return z
 
     # Computes array A(i) = sum_k sum_(j) nabla_1[a1(k,i). K(x(i), x(j))a2(k,j)]
@@ -439,19 +445,22 @@ class Kernel(KernelSpec):
             #print a1.shape
             if firstVar is None:
                 if self.localMaps:
-                    zpx = kff.applylocalkdifft(x, x, a1, a2, self.sigma, self.order, 1+self.localMaps[0], 1+self.localMaps[1],
-                                               x.shape[0], x.shape[0], x.shape[1],
-                                               self.localMaps[0].size, a1.shape[0])
+                    zpx = kff.applylocalkdifft(x ,x ,a1 ,a2 ,self.sigma ,self.order ,1 + self.localMaps[0] ,
+                                               1 + self.localMaps[1] ,
+                                               x.shape[0] ,x.shape[0], len(self.sigma), x.shape[1] ,
+                                               self.localMaps[0].size ,a1.shape[0])
                 else:
-                    zpx = kff.applykdifft(x,x,a1,a2,self.sigma, self.order, x.shape[0],
-                                          x.shape[0], x.shape[1], a1.shape[2], a1.shape[0])
+                    zpx = kff.applykdifft(x ,x ,a1 ,a2 ,self.sigma ,self.order ,x.shape[0] ,
+                                          x.shape[0], len(self.sigma), x.shape[1], a1.shape[2] ,a1.shape[0])
             else:
                 if self.localMaps:
-                    zpx = kff.applylocalkdifft(firstVar, x, a1, a2, self.sigma, self.order, 1+self.localMaps[0], 1+self.localMaps[1],
-                                               firstVar.shape[0], x.shape[0],
-                                               x.shape[1], self.localMaps[0].size, a1.shape[0])
+                    zpx = kff.applylocalkdifft(firstVar ,x ,a1 ,a2 ,self.sigma ,self.order ,1 + self.localMaps[0] ,
+                                               1 + self.localMaps[1] ,
+                                               firstVar.shape[0] ,x.shape[0], len(self.sigma),
+                                               x.shape[1] ,self.localMaps[0].size ,a1.shape[0])
                 else:
-                    zpx = kff.applykdifft(firstVar,x,a1,a2,self.sigma, self.order, firstVar.shape[0], x.shape[0], x.shape[1], a1.shape[2], a1.shape[0])
+                    zpx = kff.applykdifft(firstVar ,x ,a1 ,a2 ,self.sigma ,self.order ,firstVar.shape[0] ,x.shape[0], len(self.sigma),
+                                          x.shape[1] ,a1.shape[2] ,a1.shape[0])
             # r = self.precompute(x, diff=True, firstVar=firstVar)
             # g1 =  r*a
             # #print a.shape, r.shape, g1.shape
@@ -481,7 +490,7 @@ class Kernel(KernelSpec):
 
 
     def applyDDiffK11and12(self, x, n, a, p):
-        z = kff.applykdiff11and12(x, n, a, p, self.sigma, self.order, x.shape[0], x.shape[1])
+        z = kff.applykdiff11and12(x, n, a, p, self.sigma, self.order, x.shape[0], self.sigma.size, x.shape[1])
         return z
 
 

@@ -760,7 +760,7 @@ def run(opt=None):
         fvBottom.edgeRecover()
         # fvTop.subDivide(1)
 
-        K1 = kfun.Kernel(name='laplacian', sigma=2.5, order=3)
+        K1 = kfun.Kernel(name='laplacian', sigma=np.array([2.5]), order=3)
 
         if opt=='heart':
             K1 = kfun.Kernel(name='laplacian', sigma=.1, order=3)
@@ -779,7 +779,7 @@ def run(opt=None):
 
             f = SurfaceMatching(Template=fvBottom, outputDir=outputDir, param=sm, regWeight=1.,
                                 saveTrajectories=True, symmetric=False, pplot=True,
-                                affine='none', testGradient=False, internalWeight=1000., affineWeight=1e3, maxIter_cg=50,
+                                affine='none', testGradient=True, internalWeight=1000., affineWeight=1e3, maxIter_cg=50,
                                 maxIter_al=50, mu=1e-5)
         else:
 
@@ -803,7 +803,7 @@ def run(opt=None):
 
             f = SurfaceMatching(Template=fvBottom, Target=fvTop, outputDir=outputDir, param=sm, regWeight=1.,
                                 saveTrajectories=True, symmetric=False, pplot=True,
-                                affine='none', testGradient=False, internalWeight=100., affineWeight=1e3, maxIter_cg=50,
+                                affine='none', testGradient=True, internalWeight=100., affineWeight=1e3, maxIter_cg=50,
                                 maxIter_al=50, mu=1e-4)
         f.optimizeMatching()
 

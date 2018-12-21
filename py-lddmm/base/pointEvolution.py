@@ -779,10 +779,10 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=F
             simpleOutput = False
 
     if KparDiff.localMaps:
-        foo = pfor.shoot1orderlocal(x0, at, y0, nt0, A, b, KparDiff.sigma, KparDiff.order, 1+KparDiff.localMaps[0],
-                                    1+KparDiff.localMaps[1], withJ, withnu, M, N, dim, K, KparDiff.localMaps[0].size)
+        foo = pfor.shoot1orderlocal(x0, at, y0, nt0, A, b, KparDiff.sigma, KparDiff.order,  1+KparDiff.localMaps[0],
+                                    1+KparDiff.localMaps[1], withJ, withnu, KparDiff.sigma.size, M, N, dim, K, KparDiff.localMaps[0].size)
     else:
-        foo = pfor.shoot1order(x0, at, y0, nt0, A, b, KparDiff.sigma, KparDiff.order, withJ, withnu,
+        foo = pfor.shoot1order(x0, at, y0, nt0, A, b, KparDiff.sigma, KparDiff.order, withJ, withnu, KparDiff.sigma.size,
                                M, N, dim, K)
     if simpleOutput:
         return foo[0]
@@ -815,10 +815,10 @@ def landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine = None)
             A[k,...] = np.eye(dim) 
             
     if KparDiff.localMaps:
-        pxt = pfor.adjoint1orderlocal(xt, at, px1, A, KparDiff.sigma, KparDiff.order, 1+KparDiff.localMaps[0],
-                                      1+KparDiff.localMaps[1], regweight, M, N, dim, KparDiff.localMaps[0].size)
+        pxt = pfor.adjoint1orderlocal(xt, at, px1, A, KparDiff.sigma, KparDiff.order,  1+KparDiff.localMaps[0],
+                                      1 + KparDiff.localMaps[1], regweight, KparDiff.sigma.size,  M, N, dim, KparDiff.localMaps[0].size)
     else:
-        pxt = pfor.adjoint1order(xt, at, px1, A, KparDiff.sigma, KparDiff.order, regweight, M, N, dim)
+        pxt = pfor.adjoint1order(xt, at, px1, A, KparDiff.sigma, KparDiff.order, regweight, KparDiff.sigma.size, M, N, dim)
     return pxt, xt
 
 def landmarkHamiltonianCovector_py(x0, at, px1, KparDiff, regweight, affine = None):

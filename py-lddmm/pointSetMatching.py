@@ -617,7 +617,7 @@ class PointSetMatching(object):
                 gu = np.argmax(np.dot(xDef1, self.u), axis=1)[:,np.newaxis]
                 train_err = np.sum(np.not_equal(gu, self.fv1) * self.wTr)/self.swTr
                 logging.info('Training Error {0:0f}'.format(train_err))
-                if train_err > 0.001:
+                if train_err > 10:
                     self.param.sigmaError *= 1 - min(train_err, 0.05)
                     logging.info('Reducing sigma:  {0:f}'.format(self.param.sigmaError))
                     self.reset = True
@@ -870,7 +870,7 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
 
     #typeData = 'Dolls'
     localMaps = None
-    relearnRate = 1
+    relearnRate = 20
     u0 = None
     affine = 'none'
     dct = False
@@ -964,7 +964,7 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
         #x0Tr = np.concatenate((x0Tr,0.5*np.random.normal(0,1,(NTr,d1))), axis=1)
         #x0Te = np.concatenate((x0Te,0.5*np.random.normal(0,1,(NTe,d1))), axis=1)
         #d += d1
-        #localMaps = PointSetMatching().localMaps1D(d)
+        #localMaps = PointSetMatching().localMaps1D(d+1)
 
     elif typeData in ('MoG','MoGHN'):
         d = 10
@@ -1274,7 +1274,7 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
     print 'Estimated sigma:', sigma
     x0Tr /= sigma
     x0Te /= sigma
-    sigma = 1.0
+    sigma = np.array([0.5, 1.0, 2.0])
 
     fu = pointSets.learnLogisticL2(x0Tr, x1Tr, w=wTr, l1Cost=l1Cost)
     while np.fabs(fu).max() < 1e-8:
@@ -1299,7 +1299,7 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
     f = PointSetMatching(Template=x0Tr0, Target=x1Tr, outputDir=outputDir, param=sm, regWeight=1.,
                          saveTrajectories=True, pplot=True, testSet=(x0Te0, x1Te), addDim = addDim, u0=u0,
                          normalizeInput=False, l1Cost = l1Cost, relearnRate=relearnRate, randomInit=randomInit,
-                         affine='none', testGradient=True, affineWeight=10.,
+                         affine='none', testGradient=False, affineWeight=10.,
                          maxIter=1500)
 
     testInit = TestErrors()
@@ -1356,11 +1356,11 @@ if __name__ == "__main__":
     #AllTD = {'helixes3':(100,), 'helixes10':(100,200,500,1000),
     #          'helixes20':(100,200,500,1000), 'Dolls':(100,200,500,1000),
     #          'Segments11':(100,200,500,1000), 'TwoSegments':(100,200,500,1000),'TwoSegmentsCumSum':(100,200,500,1000), 'RBF':(100,200,500,1000)}
-    AllTD = {'helixes3':(100,)}
+    #AllTD = {'Line':(100,)}
     classif = True
 
     if classif:
-        #AllTD = {'TwoSegmentsCumSum':(100,)}
+        AllTD = {'helixes10':(200,)}
         #typeData = 'Dolls'
 
         outputDir0 = '/Users/younes/Development/Results/Classif'

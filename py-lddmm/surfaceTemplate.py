@@ -50,6 +50,9 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                  internalWeight=1.0, lambdaPrior = 1.0, regWeight = 1.0, affineWeight = 1.0, verb=True, sgd = None,
                  rotWeight = None, scaleWeight = None, transWeight = None, testGradient=False, saveFile = 'evolution',
                  affine = 'none', outputDir = '.'):
+
+
+
         if HyperTmpl is None:
             if fileHTempl is None:
                 print 'Please provide A hyper-template surface'
@@ -71,6 +74,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                 self.fv1.append(surfaces.Surface(surf=ff))
 
         self.Ntarg = len(self.fv1)
+        #lambdaPrior *= np.sqrt(self.Ntarg)
         self.npt = self.fv0.vertices.shape[0]
         self.dim = self.fv0.vertices.shape[1]
         self.saveRate = 1
@@ -84,6 +88,12 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 #                return
 #            else:
 #                os.mkdir(outputDir)
+
+        if self.fv0.surfArea() > 0:
+            self.fv0.flipFaces()
+        for ff in self.fv1:
+            if ff.surfArea():
+                ff.flipFaces()
 
         self.fv0.saveVTK(self.outputDir +'/'+ 'HyperTemplate.vtk')
         for kk in range(self.Ntarg):
@@ -117,6 +127,12 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             self.param = SurfaceTemplateParam()
         else:
             self.param = param
+        if self.param.algorithm == 'bfgs':
+             self.euclideanGradient = True
+        else:
+            self.euclideanGradient = False
+
+        self.set_fun(self.param.errorType)
 
         self.Tsize = int(round(1.0/self.param.timeStep))
         
@@ -226,7 +242,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         else:
             for k,f in enumerate(_fvDef):
                 if self.select[k]:
-                    obj += c*self.param.fun_obj(f, self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
+                    obj += c*self.fun_obj(f, self.fv1[k]) / (self.param.sigmaError**2)
         #print 'dataterm = ', obj + self.obj0
         return obj
         
@@ -236,7 +252,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             c = float(self.Ntarg) / self.select.sum()
             for k,fv in enumerate(self.fv1):
                 if self.select[k]:
-                    self.obj0 += c*self.param.fun_obj0(fv, self.param.KparDist) / (self.param.sigmaError**2)
+                    self.obj0 += c*self.fun_obj0(fv) / (self.param.sigmaError**2)
 
             self.obj = self.obj0
 
@@ -252,7 +268,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                 if self.select[kk]:
                     foo = self.objectiveFunDef(a, self.AfftAll[kk], withTrajectory=True, x0 = self.fvTmpl.vertices)
                     ff.updateVertices(np.squeeze(foo[1][-1]))
-                    self.obj += c*(foo[0] + self.param.fun_obj(ff, self.fv1[kk], self.param.KparDist) / (self.param.sigmaError**2))
+                    self.obj += c*(foo[0] + self.fun_obj(ff, self.fv1[kk]) / (self.param.sigmaError**2))
                     self.xtAll[kk] = np.copy(foo[1])
                     self.fvDef[kk] = surfaces.Surface(surf=ff)
 
@@ -352,7 +368,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         if self.param.errorType == 'L2Norm':
             px1 = -surfaces.L2NormGradient(self.fvDef[kk], self.fv1[kk].vfld) / self.param.sigmaError ** 2
         else:
-            px1 = -self.param.fun_objGrad(self.fvDef[kk], self.fv1[kk], self.param.KparDist) / self.param.sigmaError**2
+            px1 = -self.fun_objGrad(self.fvDef[kk], self.fv1[kk]) / self.param.sigmaError**2
             #print 'in fun' ,kk
         A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
         dim2 = self.dim**2
@@ -547,6 +563,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         # [grd2] = self.dotProduct(grd, [grd])
         # self.coeffAff = self.coeffAff1
         # self.gradEps = max(0.1, np.sqrt(grd2) / 10000)
+        meanObj = 0
         if self.sgd < self.Ntarg:
             for k in range(self.maxIter):
                 self.select = np.zeros(self.Ntarg, dtype=bool)
@@ -557,9 +574,14 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                     s += str(sel[kk]) + ' '
                     self.select[sel[kk]] = True
                 logging.info('\nRandom step ' + str(k) + ' ' + s)
-                self.epsMax = .01/(k+1)
+                self.epsMax = 1./(k+1)
                 self.reset = True
-                cg.cg(self, verb=self.verb, maxIter=10, TestGradient=False, epsInit=0.01)
+                cg.cg(self, verb=self.verb, maxIter=3, TestGradient=False, epsInit=0.01)
+                meanObj += self.objIni
+                logging.info('\nMean Objective {0:f}'.format(meanObj/(k+1)))
+            nv0 = self.fv0.vertices.shape[0]
+            self.fv0.subDivide(1)
+            self.fv0.Simplify(nv0)
 
             #sgd = (10, 0.00001)
         else:
@@ -575,20 +597,38 @@ if __name__ == "__main__":
         htmpl = fv[0]
 
     else:
-        fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/2_qc_flipped_registered/*_1_*_hippo_*_reg.byu')
+        #hf = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/amygdala/4_create_population_based_template/newTemplate.byu'
+        hf = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_06052013/erc/4_create_population_based_template/newTemplate.byu'
+        #hf = '/Users/younes/Development/Data/sculptris/Dataset/surface1.vtk'
+        ftmpl = surfaces.Surface(filename=hf)
+        x0 = ftmpl.vertices.mean(axis=0)
+        dst = np.sqrt(((ftmpl.vertices - x0)**2).sum(axis=1)).mean(axis=0)
+        M=100
+        [x,y,z] = np.mgrid[0:2*M+5, 0:2*M+5, 0:2*M+5]/float(M)
+        x = x-1
+        y = y-1
+        z = z-1
+        I1 = 1 - (x**2 + y**2 + z**2)
+        htmpl = Surface()
+        htmpl.Isosurface(I1, value = 0, target=1000, scales=[1, 1, 1], smooth=0.01)
+        x1 = htmpl.vertices.mean(axis=0)
+        dst1 = np.sqrt(((htmpl.vertices - x0)**2).sum(axis=1)).mean(axis=0)
+        htmpl.updateVertices( (htmpl.vertices-x1)*dst/dst1 + x0)
+        htmpl.flipFaces()
+        #fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/amygdala/2_qc_flipped_registered/*_1_*_amyg_*_reg.byu')
+        fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_06052013/erc/2_qc_flipped_registered/*_1_*_erc_*_reg.byu')
         if (len(fls) > 0):
             for name in fls:
                 fv.append(surfaces.Surface(filename=name))
-        hf = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/4_create_population_based_template_smooth/newTemplate.byu'
-        htmpl = surfaces.Surface(filename=hf)
+
 
     loggingUtils.setup_default_logging('/Users/younes/Results/surfaceTemplate2', fileName='info.txt', stdOutput = True)
     logging.info('Read {0:d} surfaces'.format(len(fv)))
     K1 = kfun.Kernel(name='laplacian', sigma = 5)
     K2 = kfun.Kernel(name='gauss', sigma = 2.5)
 
-    sm = SurfaceTemplateParam(timeStep=0.1, KparDiff=K1, KparDist=K2, sigmaError=1., errorType='current')
-    f = SurfaceTemplate(HyperTmpl=htmpl, Targets=fv, outputDir='/Users/younes/Results/surfaceTemplateBiocard',param=sm, testGradient=False,
+    sm = SurfaceTemplateParam(timeStep=0.1, KparDiff=K1, KparDist=K2, sigmaError=1., errorType='varifold')
+    f = SurfaceTemplate(HyperTmpl=htmpl, Targets=fv, outputDir='/Users/younes/Results/surfaceTemplateBiocardERC',param=sm, testGradient=False,
                         lambdaPrior = 1, maxIter=1000, affine='none', rotWeight=10., sgd=10,
                         transWeight = 1., scaleWeight=10., affineWeight=100.)
     f.computeTemplate()
