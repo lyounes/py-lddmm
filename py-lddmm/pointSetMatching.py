@@ -137,7 +137,7 @@ class PointSetMatching(object):
                 self.fv0 = np.concatenate((self.fv0,
                                            0.01*np.random.normal(size=(self.fv0.shape[0],addDim))), axis=1)
 
-        self.saveRate = 50
+        self.saveRate = 10
         self.relearnRate = relearnRate
         self.iter = 0
         self.setOutputDir(outputDir)
@@ -617,7 +617,7 @@ class PointSetMatching(object):
                 gu = np.argmax(np.dot(xDef1, self.u), axis=1)[:,np.newaxis]
                 train_err = np.sum(np.not_equal(gu, self.fv1) * self.wTr)/self.swTr
                 logging.info('Training Error {0:0f}'.format(train_err))
-                if train_err > 0.001:
+                if train_err > 10:
                     self.param.sigmaError *= 1 - min(train_err, 0.05)
                     logging.info('Reducing sigma:  {0:f}'.format(self.param.sigmaError))
                     self.reset = True
@@ -791,8 +791,8 @@ class PointSetMatching(object):
         logging.info('Gradient lower bound: %f' %(self.gradEps))
         self.coeffAff = self.coeffAff1
         #self.restartRate = self.relearnRate
-        #cg.cg(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
-        bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
+        cg.cg(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
+        #bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
         #return self.at, self.xt
 
     def learnLogistic(self, u0=None, random = 1.0):
@@ -964,7 +964,7 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
         #x0Tr = np.concatenate((x0Tr,0.5*np.random.normal(0,1,(NTr,d1))), axis=1)
         #x0Te = np.concatenate((x0Te,0.5*np.random.normal(0,1,(NTe,d1))), axis=1)
         #d += d1
-        #localMaps = PointSetMatching().localMaps1D(d)
+        #localMaps = PointSetMatching().localMaps1D(d+1)
 
     elif typeData in ('MoG','MoGHN'):
         d = 10
@@ -1274,7 +1274,7 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
     print 'Estimated sigma:', sigma
     x0Tr /= sigma
     x0Te /= sigma
-    sigma = 1.0
+    sigma = np.array([0.5, 1.0, 2.0])
 
     fu = pointSets.learnLogisticL2(x0Tr, x1Tr, w=wTr, l1Cost=l1Cost)
     while np.fabs(fu).max() < 1e-8:
@@ -1360,7 +1360,7 @@ if __name__ == "__main__":
     classif = True
 
     if classif:
-        AllTD = {'TwoSegmentsCumSum':(200,)}
+        AllTD = {'helixes10':(200,)}
         #typeData = 'Dolls'
 
         outputDir0 = '/Users/younes/Development/Results/Classif'

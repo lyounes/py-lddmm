@@ -597,7 +597,8 @@ if __name__ == "__main__":
         htmpl = fv[0]
 
     else:
-        hf = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/amygdala/4_create_population_based_template/newTemplate.byu'
+        #hf = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/amygdala/4_create_population_based_template/newTemplate.byu'
+        hf = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_06052013/erc/4_create_population_based_template/newTemplate.byu'
         #hf = '/Users/younes/Development/Data/sculptris/Dataset/surface1.vtk'
         ftmpl = surfaces.Surface(filename=hf)
         x0 = ftmpl.vertices.mean(axis=0)
@@ -614,7 +615,8 @@ if __name__ == "__main__":
         dst1 = np.sqrt(((htmpl.vertices - x0)**2).sum(axis=1)).mean(axis=0)
         htmpl.updateVertices( (htmpl.vertices-x1)*dst/dst1 + x0)
         htmpl.flipFaces()
-        fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/amygdala/2_qc_flipped_registered/*_1_*_amyg_*_reg.byu')
+        #fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/amygdala/2_qc_flipped_registered/*_1_*_amyg_*_reg.byu')
+        fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_06052013/erc/2_qc_flipped_registered/*_1_*_erc_*_reg.byu')
         if (len(fls) > 0):
             for name in fls:
                 fv.append(surfaces.Surface(filename=name))
@@ -626,7 +628,7 @@ if __name__ == "__main__":
     K2 = kfun.Kernel(name='gauss', sigma = 2.5)
 
     sm = SurfaceTemplateParam(timeStep=0.1, KparDiff=K1, KparDist=K2, sigmaError=1., errorType='varifold')
-    f = SurfaceTemplate(HyperTmpl=htmpl, Targets=fv, outputDir='/Users/younes/Results/surfaceTemplateBiocardAmyg',param=sm, testGradient=False,
+    f = SurfaceTemplate(HyperTmpl=htmpl, Targets=fv, outputDir='/Users/younes/Results/surfaceTemplateBiocardERC',param=sm, testGradient=False,
                         lambdaPrior = 1, maxIter=1000, affine='none', rotWeight=10., sgd=10,
                         transWeight = 1., scaleWeight=10., affineWeight=100.)
     f.computeTemplate()
