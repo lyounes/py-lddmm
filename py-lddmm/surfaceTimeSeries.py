@@ -94,7 +94,7 @@ class SurfaceMatching(object):
         self.outputDir = outputDir
         if not os.access(outputDir, os.W_OK):
             if os.access(outputDir, os.F_OK):
-                print 'Cannot save in ' + outputDir
+                print('Cannot save in ' + outputDir)
                 return
             else:
                 os.mkdir(outputDir)
@@ -127,7 +127,7 @@ class SurfaceMatching(object):
         self.fv0Fine = surfaces.Surface(surf=self.fv0)
         if (subsampleTargetSize > 0):
             self.fv0.Simplify(subsampleTargetSize)
-            print 'simplified template', self.fv0.vertices.shape[0]
+            print('simplified template', self.fv0.vertices.shape[0])
         v0 = self.fv0.surfVolume()
         #print 'v0', v0
         if self.param.errorType == 'L2Norm' and v0 < 0:
@@ -196,7 +196,7 @@ class SurfaceMatching(object):
         self.outputDir = outputDir
         if not os.access(outputDir, os.W_OK):
             if os.access(outputDir, os.F_OK):
-                print 'Cannot save in ' + outputDir
+                print('Cannot save in ' + outputDir)
                 return
             else:
                 os.makedirs(outputDir)
@@ -286,7 +286,7 @@ class SurfaceMatching(object):
             ff[k].updateVertices(np.squeeze(foo[1][self.jumpIndex[k], :, :]))
         objTry += self.dataTerm(ff)
         if np.isnan(objTry):
-            print 'Warning: nan in updateTry'
+            print('Warning: nan in updateTry')
             return 1e500
 
         if (objRef is None) | (objTry < objRef):

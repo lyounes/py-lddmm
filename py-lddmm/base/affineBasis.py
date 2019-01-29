@@ -3,7 +3,7 @@ import numpy as np
 class AffineBasis:
     def __init__(self, dim=3, affine='affine'):
         u = 1.0/np.sqrt(2.0)
-        dimSym = (dim * (dim-1))/2
+        dimSym = (dim * (dim-1))// 2
         affCode = 0
         rotCode = 0 
         self.dim = dim

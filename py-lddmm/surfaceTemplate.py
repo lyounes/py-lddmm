@@ -9,6 +9,11 @@ from base.affineBasis import AffineBasis
 from base import loggingUtils
 from base.surfaces import Surface
 import glob
+import matplotlib
+matplotlib.use("TKAgg")
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 
 
@@ -48,14 +53,14 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 
     def __init__(self, HyperTmpl=None, Targets=None, fileHTempl=None, fileTarg=None, param=None, maxIter=1000,
                  internalWeight=1.0, lambdaPrior = 1.0, regWeight = 1.0, affineWeight = 1.0, verb=True, sgd = None,
-                 rotWeight = None, scaleWeight = None, transWeight = None, testGradient=False, saveFile = 'evolution',
+                 rotWeight = None, scaleWeight = None, transWeight = None, testGradient=False, pplot = True, saveFile = 'evolution',
                  affine = 'none', outputDir = '.'):
 
 
 
         if HyperTmpl is None:
             if fileHTempl is None:
-                print 'Please provide A hyper-template surface'
+                print('Please provide A hyper-template surface')
                 return
             else:
                 self.fv0 = surfaces.Surface(filename=fileHTempl)
@@ -63,7 +68,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             self.fv0 = surfaces.Surface(surf=HyperTmpl)
         if Targets is None:
             if fileTarg is None:
-                print 'Please provide Target surfaces'
+                print('Please provide Target surfaces')
                 return
             else:
                 for ff in fileTarg:
@@ -81,6 +86,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         self.iter = 0
         self.setOutputDir(outputDir)
         self.saveFile = saveFile
+        self.pplot = pplot
 #        self.outputDir = outputDir
 #        if not os.access(outputDir, os.W_OK):
 #            if os.access(outputDir, os.F_OK):
@@ -420,11 +426,11 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             for kk in range(self.Ntarg):
                 procGrd.append(mp.Process(target = self.gradientComponent, args=(q,kk)))
             for kk in range(self.Ntarg):
-                print kk, self.Ntarg
+                logging.info('{0:d}, {1:d}'.format(kk, self.Ntarg))
                 procGrd[kk].start()
-            print "end start"
+            logging.info("end start")
             for kk in range(self.Ntarg):
-                print "join", kk
+                logging.info("join {0:d}".format(kk))
                 procGrd[kk].join()
                 self.compGrd[kk] = True
             # print 'all joined'
@@ -550,6 +556,16 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                                                                   withTrajectory=True, x0 = self.fvTmpl.vertices, withJacobian=True)
                 self.fvDef[kk].updateVertices(self.xtAll[kk][self.xtAll[kk].shape[0]-1, ...])
                 self.fvDef[kk].saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = Jt[-1, :], scal_name='Jacobian')
+        if self.pplot:
+            fig=plt.figure(1)
+            #fig.clf()
+            ax = Axes3D(fig,)
+            lim0 = self.addSurfaceToPlot(self.fvTmpl, ax, ec = 'k', fc = 'b')
+            ax.set_xlim(lim0[0][0], lim0[0][1])
+            ax.set_ylim(lim0[1][0], lim0[1][1])
+            ax.set_zlim(lim0[2][0], lim0[2][1])
+            #ax.auto_scale()
+            plt.pause(0.1)
         #logging.info('Obj Fun: ' + str(self.objectiveFun(force=True)))
 
 
@@ -573,8 +589,9 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                 for kk in range(self.sgd):
                     s += str(sel[kk]) + ' '
                     self.select[sel[kk]] = True
+                #self.select[144] = True
                 logging.info('\nRandom step ' + str(k) + ' ' + s)
-                self.epsMax = 1./(k+1)
+                self.epsMax = .1/(k+1)
                 self.reset = True
                 cg.cg(self, verb=self.verb, maxIter=3, TestGradient=False, epsInit=0.01)
                 meanObj += self.objIni
@@ -610,7 +627,7 @@ if __name__ == "__main__":
         z = z-1
         I1 = 1 - (x**2 + y**2 + z**2)
         htmpl = Surface()
-        htmpl.Isosurface(I1, value = 0, target=1000, scales=[1, 1, 1], smooth=0.01)
+        htmpl.Isosurface(I1, value = 0, target=250, scales=[1, 1, 1], smooth=0.01)
         x1 = htmpl.vertices.mean(axis=0)
         dst1 = np.sqrt(((htmpl.vertices - x0)**2).sum(axis=1)).mean(axis=0)
         htmpl.updateVertices( (htmpl.vertices-x1)*dst/dst1 + x0)
@@ -624,12 +641,13 @@ if __name__ == "__main__":
 
     loggingUtils.setup_default_logging('/Users/younes/Results/surfaceTemplate2', fileName='info.txt', stdOutput = True)
     logging.info('Read {0:d} surfaces'.format(len(fv)))
+    K0 = kfun.Kernel(name='laplacian', sigma = 1.)
     K1 = kfun.Kernel(name='laplacian', sigma = 5)
     K2 = kfun.Kernel(name='gauss', sigma = 2.5)
 
-    sm = SurfaceTemplateParam(timeStep=0.1, KparDiff=K1, KparDist=K2, sigmaError=1., errorType='varifold')
-    f = SurfaceTemplate(HyperTmpl=htmpl, Targets=fv, outputDir='/Users/younes/Results/surfaceTemplateBiocardERC',param=sm, testGradient=False,
-                        lambdaPrior = 1, maxIter=1000, affine='none', rotWeight=10., sgd=10,
+    sm = SurfaceTemplateParam(timeStep=0.1, KparDiff0=K0, KparDiff=K1, KparDist=K2, sigmaError=1., errorType='current')
+    f = SurfaceTemplate(HyperTmpl=htmpl, Targets=fv, outputDir='/Users/younes/Results/surfaceTemplateBiocardERC',param=sm, testGradient=True,
+                        lambdaPrior = .1, maxIter=1000, affine='none', rotWeight=10., sgd=5,
                         transWeight = 1., scaleWeight=10., affineWeight=100.)
     f.computeTemplate()
 

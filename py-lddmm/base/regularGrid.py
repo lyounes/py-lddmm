@@ -12,9 +12,9 @@ try:
     import vtk.util.numpy_support as v2n
     gotVTK = True
 except ImportError:
-    print 'could not import VTK functions'
+    print('could not import VTK functions')
     gotVTK = False
-import rg_fort
+from base import rg_fort
 
 def meshgrid2(arrs):
     arrs = tuple(reversed(arrs))

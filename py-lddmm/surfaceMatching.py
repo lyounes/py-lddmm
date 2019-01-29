@@ -6,8 +6,8 @@ from base import conjugateGradient as cg, kernelFunctions as kfun, pointEvolutio
 import base.surfaces as surfaces
 from base import pointSets
 from base.affineBasis import AffineBasis, getExponential, gradExponential
-import matplotlib
 from functools import partial
+import matplotlib
 matplotlib.use("TKAgg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -243,12 +243,12 @@ class SurfaceMatching(object):
     def set_fun(self, errorType):
         self.param.errorType = errorType
         if errorType == 'current':
-            print 'Running Current Matching'
+            print('Running Current Matching')
             self.fun_obj0 = partial(surfaces.currentNorm0, KparDist=self.param.KparDist, weight=1.)
             self.fun_obj = partial(surfaces.currentNormDef, KparDist=self.param.KparDist, weight=1.)
             self.fun_objGrad = partial(surfaces.currentNormGradient, KparDist=self.param.KparDist, weight=1.)
         elif errorType == 'currentMagnitude':
-            print 'Running Current Matching'
+            print('Running Current Matching')
             self.fun_obj0 = lambda fv1 : 0
             self.fun_obj = partial(surfaces.currentMagnitude, KparDist=self.param.KparDist)
             self.fun_objGrad = partial(surfaces.currentMagnitudeGradient, KparDist=self.param.KparDist)
@@ -256,7 +256,7 @@ class SurfaceMatching(object):
             # self.fun_obj = curves.currentNormDef
             # self.fun_objGrad = curves.currentNormGradient
         elif errorType=='measure':
-            print 'Running Measure Matching'
+            print('Running Measure Matching')
             self.fun_obj0 = partial(surfaces.measureNorm0, KparDist=self.param.KparDist)
             self.fun_obj = partial(surfaces.measureNormDef,KparDist=self.param.KparDist)
             self.fun_objGrad = partial(surfaces.measureNormGradient,KparDist=self.param.KparDist)
@@ -269,7 +269,7 @@ class SurfaceMatching(object):
             self.fun_obj = None
             self.fun_objGrad = None
         else:
-            print 'Unknown error Type: ', self.param.errorType
+            print('Unknown error Type: ', self.param.errorType)
 
     def addSurfaceToPlot(self, fv1, ax, ec = 'b', fc = 'r', al=.5, lw=1):
         x = fv1.vertices[fv1.faces[:,0],:]
@@ -687,8 +687,8 @@ class SurfaceMatching(object):
             e1 = self.internalCost(self.fvDef, Phi+eps*dPhi1)
             e2 = self.internalCost(fv22, Phi)
             grad = self.internalCostGrad(self.fvDef, Phi)
-            print 'Laplacian:', (e1-e0)/eps, (grad[0]*dPhi1).sum()
-            print 'Gradient:', (e2-e0)/eps, (grad[1]*dPhi2).sum()
+            print('Laplacian:', (e1-e0)/eps, (grad[0]*dPhi1).sum())
+            print('Gradient:', (e2-e0)/eps, (grad[1]*dPhi2).sum())
             
         if self.iter >= self.affBurnIn:
             self.coeffAff = self.coeffAff2

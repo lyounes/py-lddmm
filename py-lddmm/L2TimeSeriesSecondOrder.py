@@ -22,7 +22,7 @@ def compute(tmpl, targetDir, outputDir, display=True, geodesic=False, rescale=Fa
     fv = []
     fv0 = surfaces.Surface(filename=tmpl)
     j = 0 
-    print targetDir+'/imageOutput_time_{0:d}_channel_0.vtk'.format(j)
+    print(targetDir+'/imageOutput_time_{0:d}_channel_0.vtk'.format(j))
     while os.path.exists(targetDir+'/imageOutput_time_{0:d}_channel_0.vtk'.format(j)):
         fv = fv + [targetDir + '/imageOutput_time_{0:d}_channel_0.vtk'.format(j) ]
         j += 1

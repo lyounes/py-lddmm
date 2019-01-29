@@ -72,9 +72,9 @@ def main():
     fv.vertices *= args.scaleFactor
     if args.flipTarget:
         logging.info('Flipping Target Orientation')
-        print surfaces.currentNormDef(tmpl, fv, sm.KparDist)
+        print(surfaces.currentNormDef(tmpl, fv, sm.KparDist))
         fv.flipFaces()
-        print surfaces.currentNormDef(tmpl, fv, sm.KparDist)
+        print(surfaces.currentNormDef(tmpl, fv, sm.KparDist))
     #print fv.vertices
 
     if args.rigid:

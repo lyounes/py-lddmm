@@ -38,7 +38,7 @@ def main():
     tmpl.Simplify(target=1000)
 
     for name in files:
-        print 'Processing', name
+        print('Processing', name)
         fv = surfaces.Surface(filename=name)
         f = SurfaceMatching(Template=tmpl, Target=fv, outputDir=args.tmpOut,param=sm, testGradient=False,
                             maxIter=1000, affine= 'none', rotWeight=1., transWeight = 1., scaleWeight=10., affineWeight=100.)

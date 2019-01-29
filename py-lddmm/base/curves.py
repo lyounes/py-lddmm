@@ -6,7 +6,7 @@ try:
     from vtk import *
     gotVTK = True
 except ImportError:
-    print 'could not import VTK functions'
+    print('could not import VTK functions')
     gotVTK = False
     
 #import kernelFunctions as kfun
@@ -65,7 +65,7 @@ class Curve:
         elif ext=='.vtk':
             self.readVTK(filename)
         else:
-            print 'Unknown Curve Extension:', ext
+            print('Unknown Curve Extension:', ext)
             self.vertices = np.empty(0)
             self.centers = np.empty(0)
             self.component = np.empty(0)
@@ -205,7 +205,7 @@ class Curve:
             
             npoints = int(g.GetNumberOfPoints())
             nfaces = int(g.GetNumberOfLines())
-            print 'Dimensions:', npoints, nfaces, g.GetNumberOfCells()
+            print('Dimensions:', npoints, nfaces, g.GetNumberOfCells())
             V = np.zeros([npoints, 2])
             for kk in range(npoints):
                 V[kk, :] = np.array(g.GetPoint(kk)[0:2])
@@ -257,7 +257,7 @@ class Curve:
         is1 = np.int_(is1)
 
         if ((is0+is1).max() !=2) | ((is0+is1).min()!=2):
-            print 'Problems with curve in orientEdges: wrong topology'
+            print('Problems with curve in orientEdges: wrong topology')
             return
 
         count = np.zeros(self.vertices.shape[0])
@@ -287,7 +287,7 @@ class Curve:
             if count[F[j,1]] > 0.5:
                 j += 1
                 if (j < self.faces.shape[0]):
-                    print 'Early loop in curve:', j, self.faces.shape[0]
+                    print('Early loop in curve:', j, self.faces.shape[0])
                 break
             count[F[j,1]]=1
             kcur = F[j,1]
@@ -311,7 +311,7 @@ class Curve:
             J = J[0]
             #print kj, ' ', J, len(J)
             if (len(J)>0):
-                print "duplicate:", kj, J[0]
+                print("duplicate:", kj, J[0])
                 w[kj] = J[0]
             else:
                 w[kj] = N
@@ -328,7 +328,7 @@ class Curve:
         nj = 0
         for kj in range(Nf):
             if np.fabs(self.faces[kj,0] - self.faces[kj,1]) == 0:
-                print 'Empty face: ', kj, nj
+                print('Empty face: ', kj, nj)
             else:
                 newf[nj,:] = self.faces[kj,:]
                 newc[nj] = self.component[kj]
@@ -350,7 +350,7 @@ class Curve:
             is1[self.faces[k,1]] += 1
         #print is0 + is1
         if ((is0.max() !=1) | (is0.min() !=1) | (is1.max() != 1) | (is1.min() != 1)):
-            print 'Problem in Curve'
+            print('Problem in Curve')
             #print is0+is1
             return 1
         else:
@@ -572,7 +572,7 @@ class Curve:
         self.faces = np.copy(f[0:lf,:])
         self.computeCentersLengths()
         self.component = np.zeros(self.faces.shape[0], dtype=int)
-        print 'resampling', self.length(), self.vertices.shape[0]
+        print('resampling', self.length(), self.vertices.shape[0])
         self.resample(ds)
 
 
@@ -1242,7 +1242,7 @@ def diffNormGradInvariant(fv, phi, variables='both'):
     elif variables == 'x':
         return gradx
     else:
-        print 'Incorrect option in diffNormGradInvariant'
+        print('Incorrect option in diffNormGradInvariant')
 
 
 def diffNormGradInvariant3D(fv, phi, variables='both'):
@@ -1303,7 +1303,7 @@ def diffNormGradInvariant3D(fv, phi, variables='both'):
     elif variables == 'x':
         return gradx
     else:
-        print 'Incorrect option in diffNormGradInvariant'
+        print('Incorrect option in diffNormGradInvariant3D')
 
 def diffNormGrad(fv, phi, variables='both', weight=1.):
     gradphi = None
@@ -1346,7 +1346,7 @@ def diffNormGrad(fv, phi, variables='both', weight=1.):
     elif variables == 'x':
         return gradx
     else:
-        print 'Incorrect option in diffNormGrad'
+        print('Incorrect option in diffNormGrad')
 
 def diffH1Alpha(fv, phi, variables='both'):
     phi1 = phi[fv.faces[:,0],:]
@@ -1392,7 +1392,7 @@ def diffH1Alpha(fv, phi, variables='both'):
     elif variables == 'x':
         return gradx
     else:
-        print 'Incorrect option in diffH1Alpha'
+        print('Incorrect option in diffH1Alpha')
         
 def diffH1AlphaInvariant(fv, phi, variables='both'):
     phi1 = phi[fv.faces[:,0],:]
@@ -1443,5 +1443,5 @@ def diffH1AlphaInvariant(fv, phi, variables='both'):
     elif variables == 'x':
         return gradx
     else:
-        print 'Incorrect option in diffH1AlphaInvariant'
+        print('Incorrect option in diffH1AlphaInvariant')
 

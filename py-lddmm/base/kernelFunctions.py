@@ -1,5 +1,5 @@
 import numpy as np
-import kernelFunctions_fort as kff
+from base import kernelFunctions_fort as kff
 from scipy.spatial import distance as dfun
 
 #import kernelMatrix_fort
@@ -191,7 +191,7 @@ def kernelMatrixLaplacianPrecompute(x, firstVar=None, grid=None, par=[1., 3], di
         if grid is None:
             u = dfun.pdist(x)/sig
         else:
-            u = np.sqrt(((grid[..., newaxis, :] - x)**2).sum(axis=-1))/sig
+            u = np.sqrt(((grid[..., np.newaxis, :] - x)**2).sum(axis=-1))/sig
     else:
         u = dfun.cdist(firstVar, x)/sig
     precomp = [u, np.exp(-u)]
@@ -216,7 +216,7 @@ def  kernelMatrix(Kpar, x, firstVar=None, grid=None, diff = False, diff2=False, 
     elif Kpar.name == 'laplacian':
         res = kernelMatrixLaplacian(x,firstVar=firstVar, grid=grid, par = [Kpar.sigma, Kpar.order], diff=diff, diff2=diff2, constant_plane = constant_plane, precomp=precomp)
     else:
-        print 'unknown Kernel type'
+        print('unknown Kernel type')
         return []
 
     #Kpar.prev_x = x
@@ -281,7 +281,7 @@ class KernelSpec:
                 s2 = np.sqrt(2.0)
                 self.affine_basis.append(np.mat([ [0,1], [-1,0]])/s2)
             else:
-                print 'euclidian kernels only available in dimension 2 or 3'
+                print('Euclidian kernels only available in dimensions 2 or 3')
                 return
 
 
