@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.linalg as LA
 from base import surfaces
 import logging
 import surfaceMatching as smatch
@@ -591,7 +592,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                     self.select[sel[kk]] = True
                 #self.select[144] = True
                 logging.info('\nRandom step ' + str(k) + ' ' + s)
-                self.epsMax = .1/(k+1)
+                self.epsMax = .1/(self.sgd*(k+1))
                 self.reset = True
                 cg.cg(self, verb=self.verb, maxIter=3, TestGradient=False, epsInit=0.01)
                 meanObj += self.objIni
@@ -608,46 +609,85 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 if __name__ == "__main__":
     fv = []
     Test = False
-    if Test:
-        for k in range(1,11):
-            fv.append(Surface(filename ='/Users/younes/Development/Data/sculptris/Dataset/surface'+str(k)+'.vtk'))
-        htmpl = fv[0]
-
-    else:
-        #hf = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/amygdala/4_create_population_based_template/newTemplate.byu'
-        hf = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_06052013/erc/4_create_population_based_template/newTemplate.byu'
-        #hf = '/Users/younes/Development/Data/sculptris/Dataset/surface1.vtk'
-        ftmpl = surfaces.Surface(filename=hf)
-        x0 = ftmpl.vertices.mean(axis=0)
-        dst = np.sqrt(((ftmpl.vertices - x0)**2).sum(axis=1)).mean(axis=0)
-        M=100
-        [x,y,z] = np.mgrid[0:2*M+5, 0:2*M+5, 0:2*M+5]/float(M)
-        x = x-1
-        y = y-1
-        z = z-1
-        I1 = 1 - (x**2 + y**2 + z**2)
-        htmpl = Surface()
-        htmpl.Isosurface(I1, value = 0, target=250, scales=[1, 1, 1], smooth=0.01)
-        x1 = htmpl.vertices.mean(axis=0)
-        dst1 = np.sqrt(((htmpl.vertices - x0)**2).sum(axis=1)).mean(axis=0)
-        htmpl.updateVertices( (htmpl.vertices-x1)*dst/dst1 + x0)
-        htmpl.flipFaces()
-        #fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/amygdala/2_qc_flipped_registered/*_1_*_amyg_*_reg.byu')
-        fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_06052013/erc/2_qc_flipped_registered/*_1_*_erc_*_reg.byu')
-        if (len(fls) > 0):
-            for name in fls:
-                fv.append(surfaces.Surface(filename=name))
-
-
     loggingUtils.setup_default_logging('/Users/younes/Results/surfaceTemplate2', fileName='info.txt', stdOutput = True)
-    logging.info('Read {0:d} surfaces'.format(len(fv)))
     K0 = kfun.Kernel(name='laplacian', sigma = 1.)
     K1 = kfun.Kernel(name='laplacian', sigma = 5)
     K2 = kfun.Kernel(name='gauss', sigma = 2.5)
 
     sm = SurfaceTemplateParam(timeStep=0.1, KparDiff0=K0, KparDiff=K1, KparDist=K2, sigmaError=1., errorType='current')
-    f = SurfaceTemplate(HyperTmpl=htmpl, Targets=fv, outputDir='/Users/younes/Results/surfaceTemplateBiocardERC',param=sm, testGradient=True,
-                        lambdaPrior = .1, maxIter=1000, affine='none', rotWeight=10., sgd=5,
+    if Test:
+        for k in range(1,11):
+            fv.append(Surface(filename ='/Users/younes/Development/Data/sculptris/Dataset/surface'+str(k)+'.vtk'))
+        logging.info('Read {0:d} surfaces'.format(len(fv)))
+        htmpl = fv[0]
+
+    else:
+        fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/2_qc_flipped_registered/*_1_*_hippo_*_reg.byu')
+        #fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_06052013/erc/2_qc_flipped_registered/*_1_*_erc_*_reg.byu')
+        if (len(fls) > 0):
+            for name in fls:
+                fv.append(surfaces.Surface(filename=name))
+        logging.info('Read {0:d} surfaces'.format(len(fv)))
+        J = np.zeros((3,3))
+        x0 = np.zeros(3)
+        nv = 0
+        for f in fv:
+            x00 = f.vertices.mean(axis=0)
+            x0 += x00
+            nv += f.vertices.shape[0]
+            vm = f.vertices - x00
+            J += (vm[:,:,np.newaxis]*vm[:, np.newaxis, :]).mean(axis=0)
+        J /= len(fv)
+        x0 /= len(fv)
+        nv = int(nv/len(fv))
+
+
+        # f0 = SurfaceTemplate(HyperTmpl=fv[0] ,Targets=fv ,
+        #                     outputDir='/Users/younes/Results/surfaceTemplateBiocardHippocampus', param=sm,
+        #                     testGradient=True ,
+        #                     lambdaPrior=1 ,maxIter=10 ,affine='none' ,rotWeight=10. ,sgd=10 ,
+        #                     transWeight=1. ,scaleWeight=10. ,affineWeight=100.)
+        # f0.computeTemplate()
+        #
+        # #hf = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/4_create_population_based_template/newTemplate.byu'
+        # #hf = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_06052013/erc/4_create_population_based_template/newTemplate.byu'
+        # #hf = '/Users/younes/Development/Data/sculptris/Dataset/surface1.vtk'
+        # #ftmpl = surfaces.Surface(filename=hf)
+        # ftmpl = f0.fvTmpl
+        # x0 = ftmpl.vertices.mean(axis=0)
+        # vm = ftmpl.vertices - x0
+        # J = (vm[:,:,np.newaxis]*vm[:, np.newaxis, :]).mean(axis=0)
+        w,v = LA.eigh(J)
+        emax = np.sqrt(w.max())
+        J = LA.inv(J)
+        #c0 = (np.dot(ftmpl.vertices, J)*ftmpl.vertices).sum()/ftmpl.vertices.shape[0]
+        #dst = np.sqrt(((ftmpl.vertices - x0)**2).sum(axis=1)).mean(axis=0)
+        M = 100
+        [x,y,z] = np.mgrid[0:2*M+1, 0:2*M+1, 0:2*M+1] / M
+        x = emax*(x-1)
+        y = emax*(y-1)
+        z = emax*(z-1)
+        I1 = (x**2 * J[0,0] + 2*x*y*J[0,1] + 2*x*z*J[0,2] + y**2*J[1,1] + 2*y*z*J[1,2] + z**2*J[2,2])
+        I1 = 1 - I1
+        #I1 = 1 - (x**2 + y**2 + z**2)
+        htmpl = Surface()
+        htmpl.Isosurface(I1, value = 0, target=max(500, nv), scales=[1, 1, 1], smooth=0.01)
+        #x1 = htmpl.vertices.mean(axis=0)
+        #dst1 = np.sqrt(((htmpl.vertices - x0)**2).sum(axis=1)).mean(axis=0)
+        #htmpl.updateVertices((htmpl.vertices - x1) * dst / dst1 + x0)
+        htmpl.vertices -= M
+        vm = htmpl.vertices
+        J = (vm[:,:,np.newaxis]*vm[:, np.newaxis, :]).mean(axis=0)
+        w,v = LA.eigh(J)
+        emax2 = np.sqrt(w.max())
+        #c = (np.dot(htmpl.vertices, J)*htmpl.vertices).sum()/htmpl.vertices.shape[0]
+        htmpl.updateVertices(htmpl.vertices * (emax/emax2) + x0)
+
+        htmpl.flipFaces()
+
+
+    f = SurfaceTemplate(HyperTmpl=htmpl, Targets=fv, outputDir='/Users/younes/Results/surfaceTemplateBiocardHippocampus',param=sm, testGradient=True,
+                        lambdaPrior = 1, maxIter=100, affine='none', rotWeight=10., sgd=10,
                         transWeight = 1., scaleWeight=10., affineWeight=100.)
     f.computeTemplate()
 
