@@ -592,9 +592,9 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                     self.select[sel[kk]] = True
                 #self.select[144] = True
                 logging.info('\nRandom step ' + str(k) + ' ' + s)
-                self.epsMax = .1/(self.sgd*(k+1))
+                self.epsMax = 10./(self.sgd*(k+1))
                 self.reset = True
-                cg.cg(self, verb=self.verb, maxIter=3, TestGradient=False, epsInit=0.01)
+                cg.cg(self, verb=self.verb, maxIter=10, TestGradient=False, epsInit=0.01)
                 meanObj += self.objIni
                 logging.info('\nMean Objective {0:f}'.format(meanObj/(k+1)))
             nv0 = self.fv0.vertices.shape[0]
@@ -610,11 +610,11 @@ if __name__ == "__main__":
     fv = []
     Test = False
     loggingUtils.setup_default_logging('/Users/younes/Results/surfaceTemplate2', fileName='info.txt', stdOutput = True)
-    K0 = kfun.Kernel(name='laplacian', sigma = 1.)
+    K0 = kfun.Kernel(name='laplacian', sigma = 5.)
     K1 = kfun.Kernel(name='laplacian', sigma = 5)
     K2 = kfun.Kernel(name='gauss', sigma = 2.5)
 
-    sm = SurfaceTemplateParam(timeStep=0.1, KparDiff0=K0, KparDiff=K1, KparDist=K2, sigmaError=1., errorType='current')
+    sm = SurfaceTemplateParam(timeStep=0.1, KparDiff0=K0, KparDiff=K1, KparDist=K2, sigmaError=1., errorType='varifold')
     if Test:
         for k in range(1,11):
             fv.append(Surface(filename ='/Users/younes/Development/Data/sculptris/Dataset/surface'+str(k)+'.vtk'))
@@ -622,7 +622,7 @@ if __name__ == "__main__":
         htmpl = fv[0]
 
     else:
-        fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/2_qc_flipped_registered/*_1_*_hippo_*_reg.byu')
+        fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/amygdala/2_qc_flipped_registered/*_1_*_amyg_*_reg.byu')
         #fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_06052013/erc/2_qc_flipped_registered/*_1_*_erc_*_reg.byu')
         if (len(fls) > 0):
             for name in fls:
@@ -686,8 +686,8 @@ if __name__ == "__main__":
         htmpl.flipFaces()
 
 
-    f = SurfaceTemplate(HyperTmpl=htmpl, Targets=fv, outputDir='/Users/younes/Results/surfaceTemplateBiocardHippocampus',param=sm, testGradient=True,
-                        lambdaPrior = 1, maxIter=100, affine='none', rotWeight=10., sgd=10,
+    f = SurfaceTemplate(HyperTmpl=htmpl, Targets=fv, outputDir='/Users/younes/Results/surfaceTemplateBiocardAmygdala',param=sm, testGradient=True,
+                        lambdaPrior = 1, maxIter=100, affine='none', rotWeight=10., sgd=5,
                         transWeight = 1., scaleWeight=10., affineWeight=100.)
     f.computeTemplate()
 
