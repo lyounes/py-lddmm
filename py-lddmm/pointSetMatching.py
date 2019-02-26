@@ -210,7 +210,7 @@ class PointSetMatching(object):
             else:
                 self.u = u0
             #print self.u
-            print "Non-negative coefficients", (np.fabs(self.u).sum(axis=1) > 1e-10).sum()
+            print("Non-negative coefficients", (np.fabs(self.u).sum(axis=1) > 1e-10).sum())
             if self.intercept:
                 xDef1 = np.concatenate((np.ones((self.fvDef.shape[0], 1)), self.fvDef), axis=1)
             else:
@@ -1271,7 +1271,7 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
 
     dst = np.sqrt(((x0Tr[:, np.newaxis, :] - x0Tr[np.newaxis,:,:])**2).sum(axis=2))
     sigma = np.percentile(dst[np.tril_indices(NTr)], 50)
-    print 'Estimated sigma:', sigma
+    print('Estimated sigma:', sigma)
     x0Tr /= sigma
     x0Te /= sigma
     sigma = np.array([0.5, 1.0, 2.0])
@@ -1310,13 +1310,13 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
     yTr = clf.predict(x0Tr)
     yTe = clf.predict(x0Te)
     testInit.SVM = np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(f.wTe)) / f.swTe
-    print 'SVM prediction:', np.sum(np.not_equal(yTr, np.ravel(x1Tr))*np.ravel(f.wTr))/f.swTr, \
-        np.sum(np.not_equal(yTe, np.ravel(x1Te))*np.ravel(f.wTe))/f.swTe
+    print('SVM prediction:', np.sum(np.not_equal(yTr, np.ravel(x1Tr))*np.ravel(f.wTr))/f.swTr,
+        np.sum(np.not_equal(yTe, np.ravel(x1Te))*np.ravel(f.wTe))/f.swTe)
 
     clf = svm.LinearSVC(class_weight='balanced')
     clf.fit(x0Tr, np.ravel(x1Tr))
     yTe = clf.predict(x0Te)
-    print 'Linear SVM prediction:', np.sum(np.not_equal(yTe, np.ravel(x1Te))*np.ravel(f.wTe))/f.swTe
+    print('Linear SVM prediction:', np.sum(np.not_equal(yTe, np.ravel(x1Te))*np.ravel(f.wTe))/f.swTe)
     testInit.linSVM = np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(f.wTe)) / f.swTe
 
     clf = RandomForestClassifier(n_estimators=100, class_weight='balanced')
@@ -1324,26 +1324,26 @@ def Classify(typeData, l1Cost = 1.0, addDim = 1, sigError = 0.01, randomInit=0.0
     yTr = clf.predict(x0Tr)
     yTe = clf.predict(x0Te)
     testInit.RF = np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(f.wTe)) / f.swTe
-    print 'RF prediction:', np.sum(np.not_equal(yTr, np.ravel(x1Tr))*np.ravel(f.wTr))/f.swTr, \
-        np.sum(np.not_equal(yTe, np.ravel(x1Te))*np.ravel(f.wTe))/f.swTe
+    print('RF prediction:', np.sum(np.not_equal(yTr, np.ravel(x1Tr))*np.ravel(f.wTr))/f.swTr,
+        np.sum(np.not_equal(yTe, np.ravel(x1Te))*np.ravel(f.wTe))/f.swTe)
 
     clf = KNeighborsClassifier()
     clf.fit(x0Tr, np.ravel(x1Tr))
     yTr = clf.predict(x0Tr)
     yTe = clf.predict(x0Te)
     testInit.knn = np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(f.wTe)) / f.swTe
-    print 'kNN prediction:', np.sum(np.not_equal(yTr, np.ravel(x1Tr)) * np.ravel(f.wTr)) / f.swTr, \
-        np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(f.wTe)) / f.swTe
+    print('kNN prediction:', np.sum(np.not_equal(yTr, np.ravel(x1Tr)) * np.ravel(f.wTr)) / f.swTr,
+        np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(f.wTe)) / f.swTe)
 
     clf = MLPClassifier(max_iter=10000,hidden_layer_sizes=(100,)*1)
     clf.fit(x0Tr, np.ravel(x1Tr))
     yTr = clf.predict(x0Tr)
     yTe = clf.predict(x0Te)
     testInit.mlp = np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(f.wTe)) / f.swTe
-    print 'MLP prediction:', np.sum(np.not_equal(yTr, np.ravel(x1Tr)) * np.ravel(f.wTr)) / f.swTr, \
-        np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(f.wTe)) / f.swTe
+    print('MLP prediction:', np.sum(np.not_equal(yTr, np.ravel(x1Tr)) * np.ravel(f.wTr)) / f.swTr,
+        np.sum(np.not_equal(yTe, np.ravel(x1Te)) * np.ravel(f.wTe)) / f.swTe)
 
-    print testInit
+    print(testInit)
     if localMaps is not None:
         K1.localMaps = localMaps
 
@@ -1369,7 +1369,7 @@ if __name__ == "__main__":
         #                       NTe=2000, outputDir=outputDir0)
         for typeData in AllTD.keys():
             for NTr in AllTD[typeData]:
-                print typeData, 'NTr = ', NTr
+                print(typeData, 'NTr = ', NTr)
                 outputDir = outputDir0+'/'+typeData+'_{0:d}'.format(NTr)
                 f,testInit = Classify(typeData, l1Cost = 1., addDim = 1, sigError = .01, randomInit=0.05, removeNullDirs = False, NTr = NTr, NTe = 2000, outputDir=outputDir)
 

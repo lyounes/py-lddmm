@@ -29,7 +29,7 @@ class SurfaceMatchingParam:
             self.fun_obj = surfaces.measureNormDef
             self.fun_objGrad = surfaces.measureNormGradient
         else:
-            print 'Unknown error Type: ', self.errorType
+            print('Unknown error Type: ', self.errorType)
         if KparDiff == None:
             self.KparDiff = kfun.Kernel(name = self.typeKernel, sigma = self.sigmaKernel)
         else:
@@ -66,7 +66,7 @@ class SurfaceMatching:
                  subsampleTargetSize=-1, testGradient=True, saveFile = 'evolution', outputDir = '.'):
         if Template==None:
             if fileTempl==None:
-                print 'Please provide a template surface'
+                print('Please provide a template surface')
                 return
             else:
                 self.fv0 = surfaces.Surface(filename=fileTempl)
@@ -74,20 +74,20 @@ class SurfaceMatching:
             self.fv0 = surfaces.Surface(surf=Template)
         if Target==None:
             if fileTarg==None:
-                print 'Please provide a list of target surfaces'
+                print('Please provide a list of target surfaces')
                 return
             else:
-                self.fv1 = [] ;
+                self.fv1 = []
                 for f in fileTarg:
                     self.fv1.append(surfaces.Surface(filename=f))
         else:
-            self.fv1 = [] ;
+            self.fv1 = []
             for s in Target:
                 self.fv1.append(surfaces.Surface(surf=s))
 
         if Fiber==None:
             if fileFiber is None:
-                print 'Please provide fiber structure'
+                print('Please provide fiber structure')
                 return
             else:
                 (self.y0, self.v0) = read3DVectorField(fileFiber)
@@ -103,7 +103,7 @@ class SurfaceMatching:
         self.outputDir = outputDir
         if not os.access(outputDir, os.W_OK):
             if os.access(outputDir, os.F_OK):
-                print 'Cannot save in ' + outputDir
+                print('Cannot save in ' + outputDir)
                 return
             else:
                 os.mkdir(outputDir)
@@ -126,7 +126,7 @@ class SurfaceMatching:
                 v1 = s.surfVolume()
                 if (v0*v1 < 0):
                     s.flipFaces()
-            print 'simplified template', self.fv0.vertices.shape[0]
+            print('simplified template', self.fv0.vertices.shape[0])
         self.x0 = self.fv0.vertices
         self.fvDef = []
         for k in range(self.nTarg):
@@ -158,7 +158,7 @@ class SurfaceMatching:
         self.outputDir = outputDir
         if not os.access(outputDir, os.W_OK):
             if os.access(outputDir, os.F_OK):
-                print 'Cannot save in ' + outputDir
+                print('Cannot save in ' + outputDir)
                 return
             else:
                 os.makedirs(outputDir)
@@ -245,7 +245,7 @@ class SurfaceMatching:
             ff[k].updateVertices(np.squeeze(foo[1][(k+1)*self.Tsize1, :, :]))
         objTry += self.dataTerm(ff)
         if np.isnan(objTry):
-            print 'Warning: nan in updateTry'
+            print('Warning: nan in updateTry')
             return 1e500
 
         if (objRef == None) | (objTry < objRef):
@@ -345,7 +345,7 @@ class SurfaceMatching:
         [grd2] = self.dotProduct(grd, [grd])
 
         self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
-        print 'Gradient lower bound:', self.gradEps
+        print('Gradient lower bound:', self.gradEps)
         #print 'x0:', self.x0
         #print 'y0:', self.y0
         

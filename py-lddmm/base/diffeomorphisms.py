@@ -35,7 +35,7 @@ class gridScalars:
             elif ext =='.vtk':
                self.readVTK(fileName)
          else:
-            print "get_image: unsupported input dimensions"
+            print("get_image: unsupported input dimensions")
             return
 
 
@@ -105,7 +105,7 @@ class gridScalars:
 
          #sz = ls[7:10]
          #datatype = ls[17]
-         print  "Datatype: ", datatype
+         print("Datatype: ", datatype)
 
       with open(nm+'.img', 'r') as ff:
          nbVox = sz[0]*sz[1]*sz[2]
@@ -119,11 +119,11 @@ class gridScalars:
             ls = struct.unpack(lend+nbVox*'f', ff.read())
          elif datatype == 32:
             ls = struct.unpack(lend+2*nbVox*'f', ff.read())
-            print 'Warning: complex input not handled'
+            print('Warning: complex input not handled')
          elif datatype == 64:
             ls = struct.unpack(lend+nbVox*'d', ff.read())
          else:
-            print 'Unknown datatype'
+            print('Unknown datatype')
             return
 
       #self.data = np.float_(np.array(ls)).resize(sz)
@@ -143,7 +143,7 @@ class gridScalars:
          self.header = tuple(ls)
          sz = ls[33:36]
          datatype = ls[47]
-         print "Datatype: ", datatype
+         print("Datatype: ", datatype)
 
       with open(nm+'.img', 'r') as ff:
          nbVox = sz[0]*sz[1]*sz[2]
@@ -157,11 +157,11 @@ class gridScalars:
             ls = struct.unpack(lend+nbVox*'f', ff.read())
          elif datatype == 32:
             ls = struct.unpack(lend+2*nbVox*'f', ff.read())
-            print 'Warning: complex input not handled'
+            print('Warning: complex input not handled')
          elif datatype == 64:
             ls = struct.unpack(lend+nbVox*'d', ff.read())
          else:
-            print 'Unknown datatype'
+            print('Unknown datatype')
             return
       #self.data = np.float_(np.array(ls)).resize(sz)
       self.data = np.reshape(np.array(ls), sz).astype(float)
@@ -184,7 +184,7 @@ class Diffeomorphism:
 
 def multilinInterp(img, diffeo):
    if img.ndim > 3:
-      print 'interpolate only in dimension 1 to 3'
+      print('interpolate only in dimension 1 to 3')
       return
    for k in range(img.ndim, 3):
       np.expand_dims(img, k)
@@ -195,7 +195,7 @@ def multilinInterp(img, diffeo):
          tooLarge = True
          if tooLarge:
             dfo = np.copy(diffeo)
-            dfo = max(df0, 0)
+            dfo = max(dfo, 0)
             for k in range(img.ndim):
                dfo[k, :, :, :] = min(dfo[k, :,:,:], img.shape[k]-1)
       else:
@@ -225,11 +225,11 @@ def multilinInterp(img, diffeo):
 
 def gradient(img, resol=None):
    if img.ndim > 3:
-      print 'gradient only in dimension 1 to 3'
+      print('gradient only in dimension 1 to 3')
       return
    for k in range(img.ndim, 3):
       np.expand_dims(img, k)
-      np.expand_dims(diffeo, k)
+      #np.expand_dims(diffeo, k)
 
    if img.ndim == 3:
       if resol == None:
@@ -265,7 +265,7 @@ def gradient(img, resol=None):
 
 def jacobianDeterminant(diffeo, resol=[1.,1.,1.], periodic=False):
    if diffeo.ndim > 4:
-      print 'No jacobian in dimension larget than 3'
+      print('No jacobian in dimension larger than 3')
       return
 
    if diffeo.ndim == 4:
@@ -306,7 +306,7 @@ def jacobianDeterminant(diffeo, resol=[1.,1.,1.], periodic=False):
 
 def jacobianMatrix(diffeo, resol=[1.,1.,1.], periodic=False):
    if diffeo.ndim > 4:
-      print 'No jacobian in dimension larget than 3'
+      print('No jacobian in dimension larger than 3')
       return
 
    if diffeo.ndim == 4:

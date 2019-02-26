@@ -6,12 +6,12 @@ try:
     from vtk import *
     gotVTK = True
 except ImportError:
-    print 'could not import VTK functions'
+    print('could not import VTK functions')
     gotVTK = False
 
-import surfaces
-from pointSets import epsilonNet
-import conjugateGradient as cg, kernelFunctions as kfun
+from base import surfaces
+from base.pointSets import epsilonNet
+import base.conjugateGradient as cg, base.kernelFunctions as kfun
 
 
 def generateDiffeonsFromSegmentation(fv, rate):
@@ -55,7 +55,6 @@ def generateDiffeonsFromDecimation(fv, target):
                 break
             else:
                 n0 = fv2.faces.shape[0]
-                print fv2.faces.shape[0]
         #fv2.Simplify(target)
         m = fv2.faces.shape[0]
         c = np.zeros([m, 3])
@@ -82,7 +81,7 @@ def generateDiffeons(fv, c, idx):
     a, foo = fv.computeVertexArea()
     #print idx
     nc = idx.max()
-    print 'Computed', nc+1, 'diffeons'
+    print('Computed', nc+1, 'diffeons')
     S = np.zeros([nc+1, 3, 3])
     #C = np.zeros([nc, 3])
     for k in range(nc+1):
@@ -192,7 +191,7 @@ def multiMatInverse1(S, isSym=False):
         detR = S
     elif (dim == 2):
         detR = np.multiply(S[:,0, 0], S[:, 1, 1]) - np.multiply(S[:,0, 1], S[:, 1, 0])
-	R = np.zeros(S.shape)
+        R = np.zeros(S.shape)
         R[:, 0, 0] = S[:, 1, 1].copy()
         R[:, 1, 1] = S[:, 0, 0].copy()
         R[:, 0, 1] = -S[:, 0, 1]
@@ -206,7 +205,7 @@ def multiMatInverse1(S, isSym=False):
                 +S[:, 0, 1] * S[:, 1, 2] * S[:, 2, 0]
                 +S[:, 0, 2] * S[:, 1, 0] * S[:, 2, 1])
             #detR = np.divide(1, detR)
-	R = np.zeros(S.shape)
+        R = np.zeros(S.shape)
         R[:, 0, 0] = S[:, 1, 1] * S[:, 2, 2] - S[:, 1, 2] * S[:, 2, 1]
         R[:, 1, 1] = S[:, 0, 0] * S[:, 2, 2] - S[:, 0, 2] * S[:, 2, 0]
         R[:, 2, 2] = S[:, 1, 1] * S[:, 0, 0] - S[:, 1, 0] * S[:, 0, 1]
@@ -232,7 +231,7 @@ def multiMatInverse2(S, isSym=False):
         R = np.divide(1, S)
         detR = S
     elif (dim == 2):
-	R = np.zeros([N, M, dim, dim])
+        R = np.zeros([N, M, dim, dim])
         detR = np.multiply(S[:, :,0, 0], S[:, :, 1, 1]) - np.multiply(S[:, :,0, 1], S[:, :, 1, 0])
         R[:, :, 0, 0] = S[:, :, 1, 1].copy()
         R[:, :, 1, 1] = S[:, :, 0, 0].copy()
@@ -240,7 +239,7 @@ def multiMatInverse2(S, isSym=False):
         R[:, :, 1, 0] = -S[:, :, 1, 0]
         R = R / detR.reshape([N, M, 1, 1])
     elif (dim==3):
-	R = np.zeros([N, M, dim, dim])
+        R = np.zeros([N, M, dim, dim])
         detR = (S[:, :, 0, 0] * S[:, :, 1, 1] * S[:, :, 2, 2] 
                 -S[:, :, 0, 0] * S[:, :, 1, 2] * S[:, :, 2, 1]
                 -S[:, :, 0, 1] * S[:, :, 1, 0] * S[:, :, 2, 2]
@@ -457,9 +456,9 @@ def approximateSurfaceCurrent(c, S, fv, sig):
     b = LA.solve(g1, np.dot(g2, nu))
     n0 = surfaces.currentNorm0(fv, kfun.Kernel(name='gauss', sigma=sig))
     n1 = diffeonCurrentNormDef(c,S,b,fv,sig)
-    print 'Norm before approx:', n0
-    print 'Diff after approx:', n0 + n1
-    print 'Norm of Projection:', (b*np.dot(g1, b)).sum(), -n1
+    print('Norm before approx:', n0)
+    print('Diff after approx:', n0 + n1)
+    print('Norm of Projection:', (b*np.dot(g1, b)).sum(), -n1)
     return b
 
 def diffeonCurrentNormDef(c, S, b, fv, sig):
@@ -484,14 +483,14 @@ def testDiffeonCurrentNormGradient(c, S, b, fv, sig):
     eps = 1e-7
     dc = np.random.randn(c.shape[0], c.shape[1])
     obj = diffeonCurrentNormDef(c+eps*dc,S,b,fv, sig)
-    print 'c Variation:', (obj-obj0)/eps, (gc*dc).sum()
+    print('c Variation:', (obj-obj0)/eps, (gc*dc).sum())
     dS = np.random.randn(S.shape[0], S.shape[1], S.shape[2])
     dS += dS.transpose((0,2,1))
     obj = diffeonCurrentNormDef(c,S+eps*dS,b,fv, sig)
-    print 'S Variation:', (obj-obj0)/eps, (gS*dS).sum()
+    print('S Variation:', (obj-obj0)/eps, (gS*dS).sum())
     db = np.random.randn(b.shape[0], b.shape[1])
     obj = diffeonCurrentNormDef(c,S,b+eps*db,fv, sig)
-    print 'b Variation:', (obj-obj0)/eps, (gb*db).sum()
+    print('b Variation:', (obj-obj0)/eps, (gb*db).sum())
     
 
 def diffeonCurrentNormGradient(c, S, b, fv, sig):
@@ -548,7 +547,7 @@ class gdOptimizer:
                  DiffeonEpsForNet=None, sigmaDist = 2.5,
                  maxIter=1000, testGradient=False):
         if surf==None:
-            print 'Please provide a surface'
+            print('Please provide a surface')
             return
         else:
             self.fv0 = surfaces.Surface(surf=surf)
@@ -576,7 +575,7 @@ class gdOptimizer:
         else:
             (self.c0, self.S0, self.b0) = Diffeons
 
-	self.ndf = self.c0.shape[0]
+        self.ndf = self.c0.shape[0]
         self.dim = self.c0.shape[1]
         self.obj = None
         self.objTry = None
@@ -606,7 +605,7 @@ class gdOptimizer:
         objTry = self.obj0 + self.dataTerm(cTry, STry, bTry)
 
         if np.isnan(objTry):
-            print 'Warning: nan in updateTry'
+            print('Warning: nan in updateTry')
             return 1e500
 
         if (objRef == None) | (objTry < objRef):
@@ -694,7 +693,7 @@ class gdOptimizer:
             [grd2] = self.dotProduct(grd, [grd])
             self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
 
-        print 'Gradient lower bound: ', self.gradEps
+        print('Gradient lower bound: ', self.gradEps)
         cg.cg(self, verb = True, maxIter = self.maxIter, TestGradient=self.testGradient)
         #return self.at, self.xt
 

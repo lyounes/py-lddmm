@@ -18,7 +18,7 @@ def read3DVector(filename):
                     v[i,k] = float(ln0[k])
                 
     except IOError:
-        print 'cannot open ', filename
+        print('cannot open ', filename)
         raise
     return v
 
@@ -79,7 +79,7 @@ def loadlmk(filename, dim=3):
                         x[:, 2] = x[:, 2] * float(scales[2]) + float(centers[2])
                 
     except IOError:
-        print 'cannot open ', filename
+        print('cannot open ', filename)
         raise
     return x, label
 

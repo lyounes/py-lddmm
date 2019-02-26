@@ -32,7 +32,7 @@ class SurfaceMatchingParam(surfaceMatching.SurfaceMatchingParam):
             self.fun_obj = gd.diffeonCurrentNormDef
             self.fun_objGrad = gd.diffeonCurrentNormGradient
         else:
-            print 'Unknown error Type: ', self.errorType
+            print('Unknown error Type: ', self.errorType)
 	
  
 
@@ -65,7 +65,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                  rotWeight = None, scaleWeight = None, transWeight = None, testGradient=False, saveFile = 'evolution', affine = 'none', outputDir = '.'):
         if Template==None:
             if fileTempl==None:
-                print 'Please provide a template surface'
+                print('Please provide a template surface')
                 return
             else:
                 self.fv0 = surfaces.Surface(filename=fileTempl)
@@ -73,7 +73,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             self.fv0 = surfaces.Surface(surf=Template)
         if Target==None:
             if fileTarg==None:
-                print 'Please provide a target surface'
+                print('Please provide a target surface')
                 return
             else:
                 self.fv1 = surfaces.Surface(filename=fileTarg)
@@ -155,7 +155,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 self.b0 = gdOpt.b0
             else:
                 self.x0 = self.fv0.vertices
-            print 'simplified template', self.fv0.vertices.shape[0]
+            print('simplified template', self.fv0.vertices.shape[0])
         self.fvDef = surfaces.Surface(surf=self.fv0)
         self.ndf = self.c0.shape[0]
         self.Tsize = int(round(1.0/self.param.timeStep))
@@ -166,7 +166,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         self.xt = np.tile(self.x0, [self.Tsize+1, 1, 1])
         self.ct = np.tile(self.c0, [self.Tsize+1, 1, 1])
         self.St = np.tile(self.S0, [self.Tsize+1, 1, 1, 1])
-        print 'error type:', self.param.errorType
+        print('error type:', self.param.errorType)
 	if self.param.errorType =='diffeonCurrent':
 	    self.xSt = np.tile(self.xS0, [self.Tsize+1, 1, 1, 1])
 	    self.bt = np.tile(self.b0, [self.Tsize+1, 1, 1])
@@ -283,7 +283,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             objTry += self.obj0 + self.dataTerm(ff)
 
         if np.isnan(objTry):
-            print 'Warning: nan in updateTry'
+            print('Warning: nan in updateTry')
             return 1e500
 
         if (objRef == None) | (objTry < objRef):
@@ -426,7 +426,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         self.iter += 1
         if (self.iter % self.saveRate == 0) :
             if self.dcurr:
-                print 'saving...'
+                print('saving...')
                 (obj1, self.ct, self.St, self.bt, self.xt, self.xSt, Jt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True, withJacobian=True)
                 dim2 = self.dim**2
                 A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
@@ -506,7 +506,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             g0 = gd.computeProducts(np.squeeze(ctPrev[t,:,:]),np.squeeze(StPrev[t,:,:]), self.param.sigmaKernel)
             n0 = np.multiply(self.at[t, :, :], np.dot(g0, self.at[t, :, :])).sum()
             n1 = np.multiply(at[t, :, :], np.dot(g1, at[t, :, :])).sum()
-            print 'norms: ', n0, n1
+            print('norms: ', n0, n1)
             # fvDef.updateVertices(np.squeeze(self.xt[t, :, :]))
             # (AV, AF) = fvDef.computeVertexArea()
             # weights = np.zeros([c0.shape[0], self.c0.shape[0]])
@@ -540,12 +540,12 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         if self.dcurr:
             (obj, self.ct, self.St, self.bt, self.xt, self.xSt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             data = (self.xt[-1,:,:], self.xSt[-1,:,:,:], self.bt[-1,:,:])
-            print 'objDef = ', obj, 'dataterm = ',  obj0 + self.dataTerm(data)* (self.param.sigmaError**2)
-            print obj0 + surfaces.currentNormDef(self.fv0, self.fv1, self.param.KparDist)
+            print('objDef = ', obj, 'dataterm = ',  obj0 + self.dataTerm(data)* (self.param.sigmaError**2))
+            print(obj0 + surfaces.currentNormDef(self.fv0, self.fv1, self.param.KparDist))
         else:
             (obj, self.ct, self.St, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
-            print 'objDef = ', obj, 'dataterm = ',  obj0 + self.dataTerm(self.fvDef)
+            print('objDef = ', obj, 'dataterm = ',  obj0 + self.dataTerm(self.fvDef))
 
         if self.gradEps < 0:
             grd = self.getGradient(self.gradCoeff)
@@ -553,7 +553,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
             self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
 
-        print 'Gradient lower bound: ', self.gradEps
+        print('Gradient lower bound: ', self.gradEps)
         cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient)
         #return self.at, self.xt
 

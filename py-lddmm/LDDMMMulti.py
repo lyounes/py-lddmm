@@ -121,8 +121,8 @@ if __name__=="__main__":
 
     args = parser.parse_args()
     if args.target == None or args.template == None:
-        print 'Error: At least one template and one target are required'
-        print 'use -h option for help' 
+        print('Error: At least one template and one target are required')
+        print('use -h option for help')
         exit()
 
     compute(args, noArgs=False)

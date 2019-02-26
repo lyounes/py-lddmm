@@ -61,7 +61,7 @@ class CurveMatching:
                  testGradient=False, saveFile = 'evolution', affine = 'none', outputDir = '.', pplot=True):
         if Template==None:
             if fileTempl==None:
-                print 'Please provide a template curve'
+                print('Please provide a template curve')
                 return
             else:
                 self.fv0 = curves.Curve(filename=fileTempl)
@@ -69,7 +69,7 @@ class CurveMatching:
             self.fv0 = curves.Curve(curve=Template)
         if Target==None:
             if fileTarg==None:
-                print 'Please provide a target curve'
+                print('Please provide a target curve')
                 return
             else:
                 self.fv1 = curves.Curve(filename=fileTarg)
@@ -96,7 +96,7 @@ class CurveMatching:
         self.outputDir = outputDir
         if not os.access(outputDir, os.W_OK):
             if os.access(outputDir, os.F_OK):
-                print 'Cannot save in ' + outputDir
+                print('Cannot save in ' + outputDir)
                 return
             else:
                 os.mkdir(outputDir)
@@ -221,7 +221,7 @@ class CurveMatching:
     def set_fun(self, errorType):
         self.param.errorType = errorType
         if errorType == 'current':
-            print 'Running Current Matching'
+            print('Running Current Matching')
             self.fun_obj0 = partial(curves.currentNorm0, KparDist=self.param.KparDist, weight=1.)
             self.fun_obj = partial(curves.currentNormDef, KparDist=self.param.KparDist, weight=1.)
             self.fun_objGrad = partial(curves.currentNormGradient, KparDist=self.param.KparDist, weight=1.)
@@ -229,7 +229,7 @@ class CurveMatching:
             # self.fun_obj = curves.currentNormDef
             # self.fun_objGrad = curves.currentNormGradient
         elif errorType=='measure':
-            print 'Running Measure Matching'
+            print('Running Measure Matching')
             self.fun_obj0 = partial(curves.measureNorm0, KparDist=self.param.KparDist)
             self.fun_obj = partial(curves.measureNormDef,KparDist=self.param.KparDist)
             self.fun_objGrad = partial(curves.measureNormGradient,KparDist=self.param.KparDist)
@@ -265,7 +265,7 @@ class CurveMatching:
                 self.fv1.updateVertices(np.roll(self.fv1.vertices, bestk, axis=0))
 
         else:
-            print 'Unknown error Type: ', self.param.errorType
+            print('Unknown error Type: ', self.param.errorType)
 
     def dataTerm(self, _fvDef):
         obj = self.fun_obj(_fvDef, self.fv1) / (self.param.sigmaError**2)
@@ -328,8 +328,6 @@ class CurveMatching:
             (self.obj, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
             self.obj += self.obj0 + self.dataTerm(self.fvDef)
-            print self.obj0, self.obj
-
         return self.obj
 
     def getVariable(self):
@@ -349,7 +347,7 @@ class CurveMatching:
         ff.updateVertices(np.squeeze(foo[1][-1, :, :]))
         objTry += self.dataTerm(ff)
         if np.isnan(objTry):
-            print 'Warning: nan in updateTry'
+            print('Warning: nan in updateTry')
             return 1e500
 
         if (objRef == None) | (objTry < objRef):
@@ -585,8 +583,8 @@ class CurveMatching:
             e1 = self.internalCost(self.fvDef, Phi+eps*dPhi1)
             e2 = self.internalCost(fv22, Phi)
             grad = self.internalCostGrad(self.fvDef, Phi)
-            print 'Laplacian:', (e1-e0)/eps, (grad[0]*dPhi1).sum()
-            print 'Gradient:', (e2-e0)/eps, (grad[1]*dPhi2).sum()
+            print('Laplacian:', (e1-e0)/eps, (grad[0]*dPhi1).sum())
+            print('Gradient:', (e2-e0)/eps, (grad[1]*dPhi2).sum())
 
         if self.saveRate > 0 and self.iter%self.saveRate==0:
             if self.dim==2:
@@ -667,7 +665,7 @@ class CurveMatching:
         [grd2] = self.dotProduct(grd, [grd])
 
         self.gradEps = max(self.gradLB, np.sqrt(grd2) / 10000)
-        print 'Gradient bound:', self.gradEps
+        print('Gradient bound:', self.gradEps)
         kk = 0
         while os.path.isfile(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk'):
             os.remove(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk')

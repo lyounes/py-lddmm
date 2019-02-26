@@ -62,7 +62,7 @@ class ImageMatchingParam:
             self.fun_obj = ImageMatchingDist
             self.fun_objGrad = ImageMatchingGradient
         else:
-            print 'Unknown error Type: ', self.errorType
+            print('Unknown error Type: ', self.errorType)
         if KparDiff == None:
             self.KparDiff = kfun.Kernel(name = self.typeKernel, sigma = self.sigmaKernel)
         else:
@@ -99,7 +99,7 @@ class ImageMatching:
                  rotWeight = None, scaleWeight = None, transWeight = None, testGradient=False, saveFile = 'evolution', affine = 'none', outputDir = '.'):
         if Template==None:
             if fileTempl==None:
-                print 'Please provide a template image'
+                print('Please provide a template image')
                 return
             else:
                 self.im0 = diffeo.gridScalars(filename=fileTempl)
@@ -108,7 +108,7 @@ class ImageMatching:
             #print self.im0.data.shape, Template.data.shape
         if Target==None:
             if fileTarg==None:
-                print 'Please provide a target image'
+                print('Please provide a target image')
                 return
             else:
                 self.im1 = diffeo.gridScalars(filename=fileTarg)
@@ -117,7 +117,6 @@ class ImageMatching:
 
             #zoom = np.minimum(np.array(self.im0.data.shape).astype(float)/np.array(self.im1.data.shape), np.ones(self.im0.data.ndim))
         zoom = np.array(self.im0.data.shape).astype(float)/np.array(self.im1.data.shape)
-        print zoom
         self.im1.data = Img.interpolation.zoom(self.im1.data, zoom, order=0)
 
         # Include template in bigger image
@@ -200,7 +199,7 @@ class ImageMatching:
                     self.c0[jj, :] = self.c0[kk, :]
                     jj += 1
             self.c0 = self.c0[0:jj, :]
-            print 'keeping ', jj, ' diffeons' 
+            print('keeping ', jj, ' diffeons')
                 #print self.im0.resol
             self.c0 = targetMargin - templateMargin + self.im0.origin + self.c0 * self.im0.resol
             self.S0 = np.tile( (DecimationTarget*np.diag(self.im0.resol)/2)**2, [self.c0.shape[0], 1, 1])
@@ -250,7 +249,7 @@ class ImageMatching:
         self.grt = np.tile(self.gr0, np.insert(np.ones(self.dim+1, dtype=int), 0, self.Tsize+1))
         self.ct = np.tile(self.c0, [self.Tsize+1, 1, 1])
         self.St = np.tile(self.S0, [self.Tsize+1, 1, 1, 1])
-        print 'error type:', self.param.errorType
+        print('error type:', self.param.errorType)
         self.obj = None
         self.objTry = None
         self.gradCoeff = self.ndf
@@ -263,7 +262,7 @@ class ImageMatching:
         self.outputDir = outputDir
         if not os.access(outputDir, os.W_OK):
             if os.access(outputDir, os.F_OK):
-                print 'Cannot save in ' + outputDir
+                print('Cannot save in ' + outputDir)
                 return
             else:
                 os.makedirs(outputDir)
@@ -335,7 +334,7 @@ class ImageMatching:
         objTry += self.dataTerm(grt[-1,...], Jt[-1,...])
 
         if np.isnan(objTry):
-            print 'Warning: nan in updateTry'
+            print('Warning: nan in updateTry')
             return 1e500
 
         if (objRef == None) | (objTry < objRef):
@@ -481,7 +480,7 @@ class ImageMatching:
         #print self.obj0
         self.iter += 1
         if (self.iter % self.saveRate) == 0:
-            print 'saving...'
+            print('saving...')
             (obj1, self.ct, self.St, self.grt, self.Jt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             dim2 = self.dim**2
             A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
@@ -530,7 +529,7 @@ class ImageMatching:
 
             self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
 
-        print 'Gradient lower bound: ', self.gradEps
+        print('Gradient lower bound: ', self.gradEps)
         if self.param.algorithm == 'cg':
             cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=0.01)
         elif self.param.algorithm == 'bfgs':

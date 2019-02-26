@@ -5,7 +5,7 @@ try:
     from vtk import *
     gotVTK = True
 except ImportError:
-    print 'could not import VTK functions'
+    print('could not import VTK functions')
     gotVTK = False
 import os
 
@@ -109,7 +109,7 @@ class Grid:
             try:
                 u.Update()
             except VTK_ERROR:
-                print 'error'
+                print('error')
 
             v = u.GetOutput()
             npoints = int(v.GetNumberOfPoints())
@@ -129,7 +129,7 @@ class Grid:
                 m += 1
             self.ncol = m+1
             self.nrow = npoints/self.ncol
-            print npoints, self.ncol*self.nrow
+            print(npoints, self.ncol*self.nrow)
 
             self.vertices = V
             self.faces = np.int_(F)

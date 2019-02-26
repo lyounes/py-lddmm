@@ -7,7 +7,7 @@ try:
     from vtk import *
     gotVTK = True
 except ImportError:
-    print 'could not import VTK functions'
+    print('could not import VTK functions')
     gotVTK = False
 
 
@@ -32,14 +32,14 @@ def main():
     for name in files:
         fv = surfaces.Surface(filename = name)
         z[k] = np.fabs(fv.surfVolume())
-        print name, z[k]
+        print(name, z[k])
         k+=1
 
     mean = z.sum() / z.shape[0]
     #print mean
     k0 = np.argmin(np.fabs(z-mean))
     fv = surfaces.Surface(filename = files[k0])
-    print 'keeping ' + files[k0] 
+    print('keeping ' + files[k0])
     minx = fv.vertices[:,0].min() 
     maxx = fv.vertices[:,0].max() 
     miny = fv.vertices[:,1].min() 

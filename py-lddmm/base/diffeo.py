@@ -4,6 +4,7 @@ import sys
 import struct
 import numpy as np
 import scipy as sp
+import logging
 import scipy.ndimage as Img
 from PIL import Image
 
@@ -12,7 +13,7 @@ try:
     import vtk.util.numpy_support as v2n
     gotVTK = True
 except ImportError:
-    print 'could not import VTK functions'
+    print('could not import VTK functions')
     gotVTK = False
 
 import array
@@ -40,13 +41,13 @@ class gridScalars:
             if (dim == 1):
                 self.resol = 1.
                 self.origin = 0.
-                with open(filename, 'r') as ff:
+                with open(fileName, 'r') as ff:
                     ln0 = ff.readline()
                     while (len(ln0) == 0) | (ln0=='\n'):
                         ln0 = ff.readline()
                     ln = ln0.split()
                     nb = int(ln[0])
-                    self.data = zeros(nb)
+                    self.data = np.zeros(nb)
                     j = 0 
                     while j < nb:
                         ln = ln0.readline.split()
@@ -74,7 +75,7 @@ class gridScalars:
                 elif ext =='.vtk':
                     self.readVTK(fileName)
             else:
-                print "get_image: unsupported input dimensions"
+                print("get_image: unsupported input dimensions")
                 return
         elif not(grid==None):
             self.data = np.copy(grid.data)
@@ -149,7 +150,7 @@ class gridScalars:
             frmt = 28*'B'+'i'+'h'+2*'B'+8*'h'+12*'B'+4*'h'+16*'f'+2*'i'+168*'B'+8*'i'
             ff.write(struct.pack(frmt, *self.header.tolist()))
         with open(nm+'.img', 'w') as ff:
-            print self.data.max()
+            print(self.data.max())
             #array.array('f', self.data[::-1,::-1,::-1].T.flatten()).tofile(ff)
             array.array('f', self.data.T.flatten()).tofile(ff)
             #uu = self.data[::-1,::-1,::-1].flatten()
@@ -181,7 +182,7 @@ class gridScalars:
                 self.hist_orient = 0
             if withBug:
                 self.hist_orient = 0
-            print "Orientation: ", int(self.hist_orient)
+            print("Orientation: ", int(self.hist_orient))
 
 
         with open(nm+'.img', 'r') as ff:
@@ -198,11 +199,11 @@ class gridScalars:
                 ls2 = struct.unpack(lend+nbVox*'f', s)
             elif datatype == 32:
                 ls2 = struct.unpack(lend+2*nbVox*'f', s)
-                print 'Warning: complex input not handled'
+                print('Warning: complex input not handled')
             elif datatype == 64:
                 ls2 = struct.unpack(lend+nbVox*'d', s)
             else:
-                print 'Unknown datatype'
+                print('Unknown datatype')
                 return
 
             #ls = np.array(ls)
@@ -274,7 +275,7 @@ class Diffeomorphism:
 def multilinInterp(img, diffeo):
     ndim = img.ndim
     if ndim > 3:
-        print 'interpolate only in dimension 1 to 3'
+        print('interpolate only in dimensions 1 to 3')
         return
 
     #print diffeo.shape
@@ -309,7 +310,7 @@ def multilinInterp(img, diffeo):
                 + r[2,...] * ((1-r[1, ...]) * ((1-r[0, ...]) * img[I[0, ...], I[1,...], J[2, ...]] + r[0, ...] * img[J[0, ...], I[1,...], J[2,...]])
                             + r[1, ...] * ((1-r[0, ...]) * img[I[0, ...], J[1,...], J[2, ...]] + r[0, ...] * img[J[0, ...], J[1,...], J[2,...]])))
     else:
-        print 'interpolate only in dimension 1 to 3'
+        print('interpolate only in dimensions 1 to 3')
         return
 
     return res
@@ -317,7 +318,7 @@ def multilinInterp(img, diffeo):
 def multilinInterpGradient(img, diffeo):
     ndim = img.ndim
     if ndim > 3:
-        print 'interpolate only in dimension 1 to 3'
+        print('interpolate only in dimensions 1 to 3')
         return
 
     #print diffeo.shape
@@ -368,7 +369,7 @@ def multilinInterpGradient(img, diffeo):
                 + ((1-r[1, ...]) * ((1-r[0, ...]) * img[I[0, ...], I[1,...], J[2, ...]] + r[0, ...] * img[J[0, ...], I[1,...], J[2,...]])
                     + r[1, ...] * ((1-r[0, ...]) * img[I[0, ...], J[1,...], J[2, ...]] + r[0, ...] * img[J[0, ...], J[1,...], J[2,...]])))
     else:
-        print 'interpolate only in dimension 1 to 3'
+        print('interpolate only in dimensions 1 to 3')
         return
 
     return res
@@ -377,7 +378,7 @@ def multilinInterpGradient(img, diffeo):
 # Computes gradient
 def gradient(img, resol=None):
     if img.ndim > 3:
-        print 'gradient only in dimension 1 to 3'
+        print('gradient only in dimensions 1 to 3')
         return
 
     if img.ndim == 3:
@@ -415,7 +416,7 @@ def gradient(img, resol=None):
 # Computes Jacobian determinant
 def jacobianDeterminant(diffeo, resol=[1.,1.,1.], periodic=False):
     if diffeo.ndim > 4:
-        print 'No jacobian in dimension larget than 3'
+        print('No jacobian in dimension larger than 3')
         return
 
     if diffeo.ndim == 4:
@@ -457,7 +458,7 @@ def jacobianDeterminant(diffeo, resol=[1.,1.,1.], periodic=False):
 # Computes differential
 def jacobianMatrix(diffeo, resol=[1.,1.,1.], periodic=False):
     if diffeo.ndim > 4:
-        print 'No jacobian in dimension larget than 3'
+        print('No jacobian in dimension larger than 3')
         return
 
     if diffeo.ndim == 4:

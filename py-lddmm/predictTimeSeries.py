@@ -22,8 +22,8 @@ def runLongitudinalSurface(minL=3, atrophy=False):
            group[k] = row['group']
            files += [row['filename']]
            k+=1
-    print files[0:5]
-    print cap[0:5]
+    print(files[0:5])
+    print(cap[0:5])
     I1 = np.nonzero(np.logical_and(group==2,cap>0))[0][0:3]
     I2 = np.nonzero(np.logical_and(group==3,cap>0))[0][0:4]
     I3 = np.nonzero(np.logical_and(group==4,cap>0))[0][0:3]
@@ -48,17 +48,17 @@ def runLongitudinalSurface(minL=3, atrophy=False):
     t = []
     for i0 in range(len(It)):
         i = It[i0]
-        print i, files[i], cap[i]
+        print(i, files[i], cap[i])
         try:
             fv += [surfaces.Surface(filename=files[I[i]] + '.byu')]
             t += [cap[i]]
             j += 1
         except NameError as e:
-            print e
+            print(e)
 
     t = np.array(t)
     t = 1 +  4 * (t-t.min())/(t.max() - t.min())
-    print t
+    print(t)
     if atrophy:
         f = match.SurfaceMatching(Template=fv0, Targets=fv, outputDir=outputDir, param=sm, regWeight=.1, times = t,
                                         affine='euclidean', testGradient=True, affineWeight=.1,  maxIter_cg=1000, mu=0.0001)

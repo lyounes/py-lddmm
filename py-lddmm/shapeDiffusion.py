@@ -136,7 +136,7 @@ def diffusion(c0, t1, K, dt = 0.1, iso_par = 1., area_par=1., peri_par = 1.0, st
         #plt.quiver(x[:,0], x[:,1], ka[:,0], ka[:,1])
         #print (c.enclosedArea() - a)/dt, (nu*Kv).sum()/dt
         #print lbd*(c.length()**2/c.enclosedArea() - l**2/a)/dt, (v*Kv).sum()/dt**2
-        print t,Ns, l-l0, a-a0, l**2/(a*4*np.pi) -r0, x1.shape[0]
+        print(t,Ns, l-l0, a-a0, l**2/(a*4*np.pi) -r0, x1.shape[0])
         #t += dt
     return c
 

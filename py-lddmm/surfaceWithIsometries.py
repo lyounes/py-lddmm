@@ -30,10 +30,10 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
                  affineWeight = 1.0, testGradient=False, mu = 0.1, outputDir='.', saveFile = 'evolution',
                  internalWeight=1.0, pplot=True,
                  affine='none', rotWeight = None, scaleWeight = None, transWeight = None,  maxIter_cg=1000, maxIter_al=100):
-        print 'Initializing class'
+        print('Initializing class')
         if Template==None:
             if fileTempl==None:
-                print 'Please provide a template surface'
+                print('Please provide a template surface')
                 return
             else:
                 self.fv0 = surfaces.Surface(filename=fileTempl)
@@ -41,7 +41,7 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
             self.fv0 = surfaces.Surface(surf=Template)
         if Target==None:
             if fileTarg==None:
-                print 'Please provide a target surface'
+                print('Please provide a target surface')
                 return
             else:
                 self.fv1 = surfaces.Surface(filename=fileTarg)
@@ -53,7 +53,7 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
 
         if Isometries == None:
             if centerRadius == None:
-                print 'Isometries must be specified'
+                print('Isometries must be specified')
                 return
             else:
                 Isometries = []
@@ -76,7 +76,7 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
 
         self.c = np.array(self.c)
         self.nconstr = self.c.shape[0]
-        print 'Number of constrained edges: ', self.c.shape[0], 'out of', len(self.fv0.edges)
+        print('Number of constrained edges: ', self.c.shape[0], 'out of', len(self.fv0.edges))
         self.I0 = np.zeros([self.fv0.vertices.shape[0], self.c.shape[0]])
         #self.I1 = np.zeros(self.fv0.vertices.shape[0], self.c.shape[0])
 
@@ -93,7 +93,7 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
         self.outputDir = outputDir  
         if not os.access(outputDir, os.W_OK):
             if os.access(outputDir, os.F_OK):
-                print 'Cannot save in ' + outputDir
+                print('Cannot save in ' + outputDir)
                 return
             else:
                 os.mkdir(outputDir)
@@ -196,8 +196,8 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
         ux = self.constraintTerm(xtTry)
         [l, dx] = self.constraintTermGrad(xt)
         vx = np.multiply(dx, xtTry-xt).sum()/eps
-        print 'Testing constraints:'
-        print 'var x:', self.Tsize*(ux[0]-u0[0])/(eps), -vx 
+        print('Testing constraints:')
+        print('var x:', self.Tsize*(ux[0]-u0[0])/(eps), -vx)
 
     def  objectiveFunDef(self, at, Afft, withTrajectory = False, withJacobian = False):
         param = self.param
@@ -404,7 +404,7 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
         (obj1, self.xt, Jt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True, withJacobian=True)
         #self.testConstraintTerm(self.xt)
         if self.nconstr > 0:
-            print 'mean constraint', np.sqrt((self.cval**2).sum()/self.cval.size), np.fabs(self.cval).sum() / self.cval.size
+            print('mean constraint', np.sqrt((self.cval**2).sum()/self.cval.size), np.fabs(self.cval).sum() / self.cval.size)
         a0, foo = self.fv0.computeVertexArea()
         for kk in range(self.Tsize+1):
             #print self.xt[kk, :, :]
@@ -435,13 +435,13 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
         it = 0
 
         while (self.muEps > 0.005) & (it<self.maxIter_al)  :
-            print 'Starting Minimization: gradEps = ', self.gradEps, ' muEps = ', self.muEps, ' mu = ', self.mu
+            print('Starting Minimization: gradEps = ', self.gradEps, ' muEps = ', self.muEps, ' mu = ', self.mu)
             cg.cg(self, verb = self.verb, maxIter = self.maxIter_cg, TestGradient = self.testGradient, epsInit = 0.1)
             if self.nconstr == 0:
                 break
             for t in range(self.lmb.shape[0]):
                 self.lmb[t, :] -= self.cval[t, :]/self.mu
-            print 'mean lambdas', np.fabs(self.lmb).sum() / self.lmb.size
+            print('mean lambdas', np.fabs(self.lmb).sum() / self.lmb.size)
             if self.converged:
                 self.gradEps *= .75
                 if (((self.cval**2).sum()/self.cval.size) > self.muEps**2):

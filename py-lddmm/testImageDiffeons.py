@@ -40,7 +40,7 @@ def compute(createImages=True):
             #im1 = gridScalars(fileName = path+'image_0031.jpg', dim=2)
             #im2 = gridScalars(fileName = path+'image_0043.jpg', dim=2)
             #im2.saveImg('/Users/younes/Development/Results/Diffeons/Images/imTest.png', normalize=True)
-            print im2.data.max()
+            print(im2.data.max())
         else:
             #f1.append(surfaces.Surface(filename = path+'amygdala/biocardAmyg 2/'+sub2+'_amyg_L.byu'))
             im1 = gridScalars(fileName='/Users/younes/Development/Results/Diffeons/Images/im1.png', dim=2)

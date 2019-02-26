@@ -22,7 +22,7 @@ def rotpart(U):
     dD = np.sqrt(D) 
     if (d<0):
         #flip smallest eigenvalue
-        print 'Not rotation', dD
+        print('Not rotation', dD)
         dD[0] = - dD[0]
     R = np.dot(U, np.dot(Q, np.dot(np.diag(1./dD), Q.T)))
     return R
@@ -73,7 +73,7 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
         Msurf = 0
         if landmarks == None:
             lmk = False
-            print 'Provide either surface files or landmarks or both'
+            print('Provide either surface files or landmarks or both')
             return
         else:
             lmk = True
@@ -186,7 +186,7 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
             #ener = rotWeight*(3-np.trace(R)) + (np.multiply(w, d) + t*(np.multiply(w1, np.log(w1)) + np.multiply(w2, np.log(w2)))).sum()
 
             if verb:
-                print 'ener = ', ener, 'var = ', np.fabs((R-Rold)).sum(), np.fabs((T-Told)).sum() 
+                print('ener = ', ener, 'var = ', np.fabs((R-Rold)).sum(), np.fabs((T-Told)).sum())
 
             if (k > 21) and (np.fabs((R-Rold)).sum() < 1e-3) and (np.fabs((T-Told)).sum() < 1e-2):
                 break
@@ -203,7 +203,7 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
     
         if not translationOnly: 
             U = np.dot(Y.T, X) #+ rotWeight * np.eye(dimn)
-            print U
+            print(U)
             if rotationOnly:
                 R = rotpart(U)
             else:

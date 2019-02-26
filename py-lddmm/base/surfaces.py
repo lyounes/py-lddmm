@@ -1,8 +1,11 @@
 import os
 import numpy as np
 import scipy as sp
-import conjugateGradient as cg
-import diffeo
+#import conjugateGradient as cg
+try:
+    import diffeo
+except ImportError:
+    from base import diffeo
 import scipy.linalg as spLA
 from scipy.sparse import coo_matrix
 import glob
@@ -12,7 +15,7 @@ try:
     import vtk.util.numpy_support as v2n
     gotVTK = True
 except ImportError:
-    print 'could not import VTK functions'
+    print('could not import VTK functions')
     gotVTK = False
 
 
@@ -147,7 +150,7 @@ class Surface:
 
         for k in range(nv):
             if (np.fabs(AV[k]) <1e-10):
-                print 'Warning: vertex ', k, 'has no face; use removeIsolated'
+                logging.info('Warning: vertex {0:1} has no face; use removeIsolated'.format(k))
         #print 'sum check area:', AF.sum(), AV.sum()
         return AV, AF
 
@@ -324,7 +327,7 @@ class Surface:
             z= self.surfVolume()
             if (z > 0):
                 self.flipFaces()
-                print 'flipping volume', z, self.surfVolume()
+                logging.info('flipping volume {0:f} {1:f}'.format(z, self.surfVolume()))
         else:
             raise Exception('Cannot run Simplify without VTK')
 
@@ -558,7 +561,7 @@ class Surface:
                 isOriented[j] = True
                 #print 'oriented face', j, lastOriented,  'out of',  nf,  ';  total active', len(activeList) 
             else:
-                print 'Unable to orient face', j 
+                logging.info('Unable to orient face {0:d}'.format(j))
                 return
         self.vertices = v ;
         self.faces = f ;
@@ -596,7 +599,7 @@ class Surface:
             J = J[0]
             # print kj, ' ', J, len(J)
             if (len(J) > 0):
-                print "duplicate:", kj, J[0]
+                logging.info("duplicate: {0:d} {1:d}".format(kj, J[0]))
                 w[kj] = J[0]
             else:
                 w[kj] = N
@@ -612,7 +615,7 @@ class Surface:
         nj = 0
         for kj in range(Nf):
             if len(set(self.faces[kj,:]))< 3:
-                print 'Empty face: ', kj, nj
+                logging.info('Empty face: {0:d} {1:d}'.format(kj, nj))
             else:
                 newf[nj, :] = self.faces[kj, :]
                 #newc[nj] = self.component[kj]
@@ -1205,7 +1208,7 @@ class Surface:
             ln0 = readskip(f,'#')
             ln = ln0.split()
             if ln[0].lower() != 'off':
-                print 'Not OFF format'
+                logging.info('Not OFF format')
                 return
             ln = readskip(f,'#').split()
             # read header
@@ -1226,7 +1229,7 @@ class Surface:
             for k in range(nfaces):
                 ln = readskip(f,'#').split()
                 if (int(ln[0]) != 3):
-                    print 'Reading only triangulated surfaces'
+                    logging.info('Reading only triangulated surfaces')
                     return
                 self.faces[k, 0] = int(ln[1]) 
                 self.faces[k, 1] = int(ln[2]) 
@@ -1368,7 +1371,7 @@ class Surface:
                     if not wrote_pd_hdr:
                         fvtkout.write(('\nPOINT_DATA {0: d}').format(V.shape[0]))
                         wrote_pd_hdr = True
-                    nf = len(vtkFields.scalars)/2
+                    nf = len(vtkFields.scalars)//2
                     for k in range(nf):
                         fvtkout.write('\nSCALARS '+ vtkFields.scalars[2*k] +' float 1\nLOOKUP_TABLE default')
                         for ll in range(V.shape[0]):
@@ -1445,7 +1448,8 @@ class Surface:
         self.img.data /= self.img.data.max() + 1e-10
         self.Isosurface(self.img.data, smooth=0.001)
         if with_vfld:
-            smoothData = cg.linearcg(lambda x: -diffeo.laplacian(x), -self.img.data, iterMax=500)
+            #smoothData = cg.linearcg(lambda x: -diffeo.laplacian(x), -self.img.data, iterMax=500)
+            smoothData = sp.sparse.linalg.cg(lambda x: -diffeo.laplacian(x), -self.img.data, maxiter=500)
             self.vfld = diffeo.gradient(smoothData)
     
     # Reads .vtk file
@@ -1453,7 +1457,8 @@ class Surface:
         self.img = diffeo.gridScalars(data=img)
         self.img.data /= self.img.data.max() + 1e-10
         self.Isosurface(self.img.data)
-        smoothData = cg.linearcg(lambda x: -diffeo.laplacian(x), -self.img.data, iterMax=500)
+        smoothData = sp.sparse.linalg.cg(lambda x: -diffeo.laplacian(x) ,-self.img.data ,maxiter=500)
+        #smoothData = cg.linearcg(lambda x: -diffeo.laplacian(x), -self.img.data, iterMax=500)
         self.vfld = diffeo.gradient(smoothData)
     
     # Reads .obj file

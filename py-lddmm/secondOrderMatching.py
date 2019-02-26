@@ -56,7 +56,7 @@ class SurfaceMatching:
 
         if Template==None:
             if fileTempl==None:
-                print 'Please provide a template surface'
+                print('Please provide a template surface')
                 return
             else:
                 self.fv0 = surfaces.Surface(filename=fileTempl)
@@ -65,7 +65,7 @@ class SurfaceMatching:
             
         if Targets==None:
             if fileTarg==None:
-                print 'Please provide a list of target surfaces'
+                print('Please provide a list of target surfaces')
                 return
             else:
                 self.fv1 = []
@@ -102,7 +102,7 @@ class SurfaceMatching:
         self.outputDir = outputDir
         if not os.access(outputDir, os.W_OK):
             if os.access(outputDir, os.F_OK):
-                print 'Cannot save in ' + outputDir
+                print('Cannot save in ' + outputDir)
                 return
             else:
                 os.mkdir(outputDir)
@@ -146,7 +146,7 @@ class SurfaceMatching:
         self.fv0Fine = surfaces.Surface(surf=self.fv0)
         if (subsampleTargetSize > 0):
             self.fv0.Simplify(subsampleTargetSize)
-            print 'simplified template', self.fv0.vertices.shape[0]
+            print('simplified template', self.fv0.vertices.shape[0])
             
         v0 = self.fv0.surfVolume()
         #print 'v0', v0
@@ -222,7 +222,7 @@ class SurfaceMatching:
         self.outputDir = outputDir
         if not os.access(outputDir, os.W_OK):
             if os.access(outputDir, os.F_OK):
-                print 'Cannot save in ' + outputDir
+                print('Cannot save in ' + outputDir)
                 return
             else:
                 os.makedirs(outputDir)
@@ -355,7 +355,7 @@ class SurfaceMatching:
             ff[k].updateVertices(np.squeeze(foo[3][self.jumpIndex[k], :, :]))
         objTry += self.dataTerm(ff)
         if np.isnan(objTry):
-            print 'Warning: nan in updateTry'
+            print('Warning: nan in updateTry')
             return 1e500
 
         if (objRef == None) | (objTry < objRef):

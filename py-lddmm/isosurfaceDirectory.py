@@ -1,4 +1,3 @@
-#!/opt/local/bin/python2.7
 import os
 from os import path
 import glob
@@ -27,7 +26,7 @@ def main():
 
     sf = surfaces.Surface()
     for name in glob.glob(args.dirIn+'/'+args.pattern):
-        print 'Processing ', name
+        print('Processing ', name)
         u = path.split(name)
         [nm,ext] = path.splitext(u[1])
         v = diffeo.gridScalars(fileName=name, force_axun = args.axun, withBug=args.withbug)

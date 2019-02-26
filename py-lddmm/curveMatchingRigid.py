@@ -29,12 +29,12 @@ class CurveMatchingRigidParam(matchingParam.MatchingParam):
         self.internalCost = internalCost
                                          
         if errorType == 'current':
-            print 'Running Current Matching'
+            print('Running Current Matching')
             self.fun_obj0 = curves.currentNorm0
             self.fun_obj = curves.currentNormDef
             self.fun_objGrad = curves.currentNormGradient
         elif errorType=='measure':
-            print 'Running Measure Matching'
+            print('Running Measure Matching')
             self.fun_obj0 = curves.measureNorm0
             self.fun_obj = curves.measureNormDef
             self.fun_objGrad = curves.measureNormGradient
@@ -47,7 +47,7 @@ class CurveMatchingRigidParam(matchingParam.MatchingParam):
             self.fun_obj = curves.varifoldNormComponentDef
             self.fun_objGrad = curves.varifoldNormComponentGradient
         else:
-            print 'Unknown error Type: ', self.errorType
+            print('Unknown error Type: ', self.errorType)
 
 class Direction:
     def __init__(self):
@@ -98,7 +98,7 @@ class CurveMatchingRigid:
             self.fv0 = curves.Curve(curve=Template)
         if Target is None:
             if fileTarg is None:
-                print 'Please provide a target curve'
+                print('Please provide a target curve')
                 return
             else:
                 self.fv1 = curves.Curve(filename=fileTarg)
@@ -140,13 +140,13 @@ class CurveMatchingRigid:
 
         self.nptc = self.fv0.vertices.shape[0] + self.xc.shape[0]
         if not(self.dim == 2):
-            print 'This program runs in 2D only'
+            print('This program runs in 2D only')
             return
             
         self.outputDir = outputDir
         if not os.access(outputDir, os.W_OK):
             if os.access(outputDir, os.F_OK):
-                print 'Cannot save in ' + outputDir
+                print('Cannot save in ' + outputDir)
                 return
             else:
                 os.mkdir(outputDir)
@@ -376,8 +376,8 @@ class CurveMatchingRigid:
         grd2 = self.gradRepellZ(z,v)
         obj1 = self.costRepell(z, v+eps*dv)
         obj2 = self.costRepell(z+eps*dz, v)
-        print 'test repell grad v:', (obj1-obj0)/eps, (grd*dv).sum()
-        print 'test repell grad z:', (obj2-obj0)/eps, (grd2*dz).sum()
+        print('test repell grad v:', (obj1-obj0)/eps, (grd*dv).sum())
+        print('test repell grad z:', (obj2-obj0)/eps, (grd2*dz).sum())
 
 
     def objectiveFunRigid(self, xt, at, taut, timeStep = None):
@@ -407,7 +407,7 @@ class CurveMatchingRigid:
         obj0 = self.objectiveFunRigid(z[np.newaxis,...], a[np.newaxis,...], tau[np.newaxis,...], timeStep=1.)
         obj = self.objectiveFunRigid(z2[np.newaxis,...], a[np.newaxis,...], tau[np.newaxis,...], timeStep=1.)
         grad = self.gradRigid(z, a, tau)
-        print 'testGradRigid:', (obj-obj0)/eps, (grad*dz).sum()
+        print('testGradRigid:', (obj-obj0)/eps, (grad*dz).sum())
 
     def objectiveFunPotential(self, xt, timeStep=None):
         if self.parpot is None:
@@ -456,7 +456,7 @@ class CurveMatchingRigid:
         obj0 = self.objectiveFunPotential(z[np.newaxis,...])
         obj = self.objectiveFunPotential(z2[np.newaxis,...])
         grad = self.gradPotential(z)
-        print 'testGradPotential:', self.Tsize*(obj-obj0)/eps, (grad*dz).sum()
+        print('testGradPotential:', self.Tsize*(obj-obj0)/eps, (grad*dz).sum())
 
     def  _objectiveFun(self, at, taut, withTrajectory = False):
         (obj, xt) = self.objectiveFunDef(at, taut, withTrajectory=True)
@@ -497,7 +497,7 @@ class CurveMatchingRigid:
         ff.updateVertices(np.squeeze(foo[1][-1, :, :]))
         objTry += self.dataTerm(ff)
         if np.isnan(objTry):
-            print 'Warning: nan in updateTry'
+            print('Warning: nan in updateTry')
             return 1e500
 
         if (objRef == None) | (objTry < objRef):
@@ -706,7 +706,7 @@ class CurveMatchingRigid:
         dth = np.random.normal(0,1,theta.shape)
         obj1 = self.__repellCost(theta+eps*dth, z, KM)
         grad = self.__repellJac(theta, z, KM, doTest=False)
-        print 'test Repell Jac:', (obj1-obj0)/eps, (grad*dth).sum()
+        print('test Repell Jac:', (obj1-obj0)/eps, (grad*dth).sum())
 
     def computeMKM(self, z):
         zc = np.concatenate([z,self.xc])
@@ -891,8 +891,8 @@ class CurveMatchingRigid:
                     else:
                         theta = self.solveMKM2(z,rho)
                 except Exception as excp:
-                    print 'Exception:', excp
-                    print 'solved until t=',t*timeStep
+                    print('Exception:', excp)
+                    print('solved until t=',t*timeStep)
                     return xt[0:t,...], at[0:t,...], taut[0:t,...]
                 at[t,:] = theta[range(0,len(theta),self.dim+1)]
                 taut[t, :, 0] = theta[range(1, len(theta), self.dim + 1)]
@@ -911,8 +911,8 @@ class CurveMatchingRigid:
                     else:
                         theta = self.solveMKM2(z,rho)
                 except Exception as excp:
-                    print 'Exception:', excp
-                    print 'solved until t=',t*timeStep
+                    print('Exception:', excp)
+                    print('solved until t=',t*timeStep)
                     return xt[0:t,...], at[0:t,...], taut[0:t,...]
 
                 at[t,:] = theta[range(0,len(theta),self.dim+1)]
@@ -939,8 +939,8 @@ class CurveMatchingRigid:
             try:
                 rho -= timeStep * self.gradHamiltonianQ(z, rho, a, tau)
             except Exception as excp:
-                print 'Exception:', excp
-                print 'solved until t=',t*timeStep
+                print('Exception:', excp)
+                print('solved until t=',t*timeStep)
                 return xt[0:t,...], at[0:t,...], taut[0:t,...]
             H = self.computeHamiltonian(z, rho, a, tau)
 
@@ -1018,8 +1018,8 @@ class CurveMatchingRigid:
                     else:
                         theta = self.solveMKM2(z,rho)
                 except Exception as excp:
-                    print 'Exception:', excp
-                    print 'solved until t=',t*timeStep
+                    print('Exception:', excp)
+                    print('solved until t=',t*timeStep)
                     return xt[0:t,...], at[0:t,...], taut[0:t,...]
                 at[t,:] = theta[range(0,len(theta),self.dim+1)]
                 taut[t, :, 0] = theta[range(1, len(theta), self.dim + 1)]
@@ -1217,9 +1217,9 @@ class CurveMatchingRigid:
         obj3 = self.computeHamiltonian_(p, z, a, tau+eps*dtau, timeStep)
         gradQ = self.gradHamiltonianQ_(p, z, a, tau, timeStep)
         gradTh = self.gradHamiltonianTheta_(p, z, a, tau, timeStep)
-        print 'Test Hamiltonian, Q:', (obj1-obj0)/eps, (gradQ*dz).sum()
-        print 'Test Hamiltonian, a:', (obj2-obj0)/eps, -timeStep*(gradTh[0]*da).sum()
-        print 'Test Hamiltonian, tau:', (obj3-obj0)/eps, -timeStep*(gradTh[1]*dtau).sum()
+        print('Test Hamiltonian, Q:', (obj1-obj0)/eps, (gradQ*dz).sum())
+        print('Test Hamiltonian, a:', (obj2-obj0)/eps, -timeStep*(gradTh[0]*da).sum())
+        print('Test Hamiltonian, tau:', (obj3-obj0)/eps, -timeStep*(gradTh[1]*dtau).sum())
         #self.__minitest__(z,a,tau)
 
     def hamiltonianCovector(self, px1, affine = None):
@@ -1554,7 +1554,7 @@ class CurveMatchingRigid:
         [grd2] = self.dotProduct(grd, [grd])
 
         self.gradEps = max(self.gradLB, np.sqrt(grd2) / 10000000)
-        print 'Gradient bound:', self.gradEps
+        print('Gradient bound:', self.gradEps)
         kk = 0
         while os.path.isfile(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk'):
             os.remove(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk')

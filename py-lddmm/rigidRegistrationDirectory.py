@@ -52,11 +52,11 @@ def main():
     
     #ff = open('suspicious.txt', 'w')
     for (kk, name) in enumerate(left):
-        print 'Processing ', name
+        print('Processing ', name)
         u = path.split(name)
         [nm,ext] = path.splitext(u[1])
         if args.cont & (path.exists(args.dirOut+'/'+nm+'_rig.dat')):
-            print 'found', args.dirOut+'/'+nm+'_rig.dat' 
+            print('found', args.dirOut+'/'+nm+'_rig.dat')
         if (args.cont == False) | (path.exists(args.dirOut+'/'+nm+'_rig.dat')==False):
             sf = surfaces.Surface(filename = name)
             if lmk:
@@ -89,11 +89,11 @@ def main():
             sf.savebyu(args.dirOut+'/'+nm+'_reg.byu')
 
     for (kk, name) in enumerate(right):
-        print 'Processing ', name
+        print('Processing ', name)
         u = path.split(name)
         [nm,ext] = path.splitext(u[1])
         if args.cont & (path.exists(args.dirOut+'/'+nm+'_rig.dat')):
-            print 'found', args.dirOut+'/'+nm+'_rig.dat' 
+            print('found', args.dirOut+'/'+nm+'_rig.dat')
         if (args.cont==False) | (path.exists(args.dirOut+'/'+nm+'_rig.dat')==False):
             sf = surfaces.Surface(filename = name)
             if lmk:

@@ -43,7 +43,7 @@ def runLongitudinalSurface(template, targetList, minL=3, atrophy=False, splines=
             fv += [fv1]
             logging.info(fn)
         except NameError as e:
-            print e
+            print(e)
     logging.info(outputDir)
         ## Reversing order to test bias
         #fv.reverse()
@@ -70,12 +70,12 @@ def runLongitudinalSurface(template, targetList, minL=3, atrophy=False, splines=
             f = match.SurfaceMatching(Template=fv0, Targets=fv, outputDir=outputDir, param=sm, regWeight=.1,
                                     affine='none', testGradient=False, affineWeight=.1,  maxIter=1000)
     except NameError:
-        print 'exception'
+        print('exception')
 
     try:
         f.optimizeMatching()
     except NameError:
-        print 'Exception'
+        print('Exception')
  
 
 if __name__=="__main__":
