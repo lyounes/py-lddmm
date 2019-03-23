@@ -8,7 +8,7 @@ from base import pointSets
 from base.affineBasis import AffineBasis, getExponential, gradExponential
 from functools import partial
 import matplotlib
-matplotlib.use("TKAgg")
+matplotlib.use("QT5Agg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -237,7 +237,8 @@ class SurfaceMatching(object):
             ax.set_xlim(min(lim0[0][0],lim1[0][0]), max(lim0[0][1],lim1[0][1]))
             ax.set_ylim(min(lim0[1][0],lim1[1][0]), max(lim0[1][1],lim1[1][1]))
             ax.set_zlim(min(lim0[2][0],lim1[2][0]), max(lim0[2][1],lim1[2][1]))
-            plt.pause(0.1)
+            fig.canvas.flush_events()
+            #plt.pause(0.1)
 
 
     def set_fun(self, errorType):
@@ -272,19 +273,7 @@ class SurfaceMatching(object):
             print('Unknown error Type: ', self.param.errorType)
 
     def addSurfaceToPlot(self, fv1, ax, ec = 'b', fc = 'r', al=.5, lw=1):
-        x = fv1.vertices[fv1.faces[:,0],:]
-        y = fv1.vertices[fv1.faces[:,1],:]
-        z = fv1.vertices[fv1.faces[:,2],:]
-        a = np.concatenate([x,y,z], axis=1)
-        poly = [ [a[i,j*3:j*3+3] for j in range(3)] for i in range(a.shape[0])]
-        tri = Poly3DCollection(poly, alpha=al, linewidths=lw)
-        tri.set_edgecolor(ec)
-        tri.set_facecolor(fc)
-        ax.add_collection3d(tri)
-        xlim = [fv1.vertices[:,0].min(),fv1.vertices[:,0].max()]
-        ylim = [fv1.vertices[:,1].min(),fv1.vertices[:,1].max()]
-        zlim = [fv1.vertices[:,2].min(),fv1.vertices[:,2].max()]
-        return [xlim, ylim, zlim]
+        return fv1.addToPlot(ax, ec = ec, fc = fc, al=al, lw=lw)
 
     def setOutputDir(self, outputDir):
         self.outputDir = outputDir
@@ -786,8 +775,9 @@ class SurfaceMatching(object):
             ax.set_xlim(min(lim0[0][0],lim1[0][0]), max(lim0[0][1],lim1[0][1]))
             ax.set_ylim(min(lim0[1][0],lim1[1][0]), max(lim0[1][1],lim1[1][1]))
             ax.set_zlim(min(lim0[2][0],lim1[2][0]), max(lim0[2][1],lim1[2][1]))
+            fig.canvas.flush_events()
             #plt.axis('equal')
-            plt.pause(0.1)
+            #plt.pause(0.1)
 
 
 
