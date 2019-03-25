@@ -78,7 +78,6 @@ if __name__ == "__main__":
 
     # Read target surface file.
     hf = './TestData/ERC.vtk'
-    #hf = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_06052013/erc/4_create_population_based_template/newTemplate.byu'
     fv = surfaces.Surface(filename = hf)
 
     BuildLaminar(fv, '/Users/younes/Development/Results/pancake_hippo')
