@@ -83,7 +83,7 @@ def main():
                 except IOError:
                     (R, T) = rigidRegistration(surfaces=(sf.vertices, tmpl.vertices), rotationOnly=True, verb=False, temperature=10., annealing=True, rotWeight=1.)
             else:
-                (R, T) = rigidRegistration(surfaces=(sf.vertices, tmpl.vertices), rotationOnly=True, verb=False, temperature=10., annealing=True, rotWeight=1.)
+                (R, T) = rigidRegistration(surfaces=(sf.vertices, tmpl.vertices), rotationOnly=False, verb=False, temperature=10., annealing=True, rotWeight=1.)
             saveRigid(args.dirOut+'/'+nm+'_rig.dat', R, T)
             sf.vertices = np.dot(sf.vertices, R.T) + T
             sf.savebyu(args.dirOut+'/'+nm+'_reg.byu')
@@ -120,7 +120,7 @@ def main():
                 except IOError:
                     (R, T) = rigidRegistration(surfaces = (sf.vertices, tmpl.vertices), flipMidPoint=True, rotationOnly=True, verb=False, temperature=10., annealing=True, rotWeight=1.)
             else:
-                (R, T) = rigidRegistration(surfaces = (sf.vertices, tmpl.vertices), flipMidPoint=True, rotationOnly=True, verb=False, temperature=10., annealing=True, rotWeight=1.)
+                (R, T) = rigidRegistration(surfaces = (sf.vertices, tmpl.vertices), flipMidPoint=True, rotationOnly=False, verb=False, temperature=10., annealing=True, rotWeight=1.)
             sf.faces = sf.faces[:, [0,2,1]]
             saveRigid(args.dirOut+'/'+nm+'_rig.dat', R, T)
             sf.vertices = np.dot(sf.vertices, R.T) + T
