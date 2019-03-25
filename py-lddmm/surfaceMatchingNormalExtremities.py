@@ -6,6 +6,8 @@ from base import pointSets
 from base import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils, bfgs
 import surfaceMatching
 from base.affineBasis import *
+import matplotlib
+matplotlib.use("QT5Agg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 #from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -604,7 +606,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             ax.set_xlim(min(lim0[0][0], lim1[0][0]), max(lim0[0][1], lim1[0][1]))
             ax.set_ylim(min(lim0[1][0], lim1[1][0]), max(lim0[1][1], lim1[1][1]))
             ax.set_zlim(min(lim0[2][0], lim1[2][0]), max(lim0[2][1], lim1[2][1]))
-            plt.pause(0.1)
+            fig.canvas.flush_events()
 
     def optimizeMatching(self):
         self.coeffZ = 10.
