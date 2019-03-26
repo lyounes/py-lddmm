@@ -25,7 +25,7 @@ def BuildLaminar(target, outputDir):
     fig.canvas.flush_events()
 
     # Register the pancake to the target
-    sigmaKernel = 0.5
+    sigmaKernel = 1.
     sigmaDist = 1.
     sigmaError = 1.
     internalWeight = 10.
@@ -61,7 +61,10 @@ def BuildLaminar(target, outputDir):
     sm = SMPN(timeStep=0.1, algorithm='bfgs', KparDiff=K1, sigmaDist=1.,
               sigmaError=.1, errorType='varifold')
 
-    fv2.flipFaces()
+    if target.surfVolume() > 0:
+        fv1.flipFaces()
+    else:
+        fv2.flipFaces()
 
     f = SMN(Template=fv1, Target=fv2, outputDir=outputDir, param=sm, regWeight=1.,
             saveTrajectories=True, symmetric=False, pplot=True,
