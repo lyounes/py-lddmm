@@ -1,3 +1,4 @@
+import numpy as np
 import numpy.linalg as la
 import logging
 import base.surfaces as surfaces
@@ -23,10 +24,12 @@ from mpl_toolkits.mplot3d import Axes3D
 #      typeKernel: 'gauss' or 'laplacian'
 class SurfaceMatchingParam(surfaceMatching.SurfaceMatchingParam):
     def __init__(self, timeStep=.1, algorithm='bfgs', Wolfe=True, KparDiff=None, KparDist=None, KparDiffOut=None, sigmaKernel=6.5, sigmaKernelOut=6.5,
-                 sigmaDist=2.5, sigmaError=1.0, typeKernel='gauss', errorType='varifold'):
-        surfaceMatching.SurfaceMatchingParam.__init__(self, timeStep=timeStep, KparDiff=KparDiff, KparDist=KparDist,
-                                                      sigmaKernel=sigmaKernel, sigmaDist=sigmaDist,
-                                                      sigmaError=sigmaError, typeKernel=typeKernel, errorType=errorType)
+                 sigmaDist=2.5, sigmaError=1.0, typeKernel='gauss', errorType='varifold', internalCost=None):
+        surfaceMatching.SurfaceMatchingParam.__init__(self, timeStep=timeStep, KparDiff=KparDiff,
+                                                      KparDist=KparDist, sigmaKernel=sigmaKernel,
+                                                      sigmaDist=sigmaDist, algorithm = algorithm, Wolfe=Wolfe,
+                                                      sigmaError=sigmaError, typeKernel=typeKernel,
+                                                      errorType=errorType, internalCost=internalCost)
         self.sigmaKernelOut = sigmaKernelOut
         if KparDiffOut == None:
             self.KparDiffOut = kfun.Kernel(name=self.typeKernel, sigma=self.sigmaKernelOut)
