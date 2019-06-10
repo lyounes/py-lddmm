@@ -955,7 +955,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
         self.gradEps = np.sqrt(grd2) / 100
         self.muEps = 1.0
-        self.restartRate = 100 ;
+        self.restartRate = 100
         it = 0
         self.startTimeClock = time.clock()
         self.startTime = time.time()

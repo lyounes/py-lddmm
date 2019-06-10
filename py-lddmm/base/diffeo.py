@@ -160,7 +160,7 @@ class gridScalars:
     # Reads in analyze file
     def loadAnalyze(self, filename, force_axun=False, withBug=False):
         [nm, ext] = os.path.splitext(filename)
-        with open(nm+'.hdr', 'r') as ff:
+        with open(nm+'.hdr', 'rb') as ff:
             frmt = 28*'B'+'i'+'h'+2*'B'+8*'h'+12*'B'+4*'h'+16*'f'+2*'i'+168*'B'+8*'i'
             lend = '<'
             ls = struct.unpack(lend+'i', ff.read(4))
@@ -185,7 +185,7 @@ class gridScalars:
             print("Orientation: ", int(self.hist_orient))
 
 
-        with open(nm+'.img', 'r') as ff:
+        with open(nm+'.img', 'rb') as ff:
             nbVox = sz[0]*sz[1]*sz[2]
             s = ff.read()
             #print s[0:30]

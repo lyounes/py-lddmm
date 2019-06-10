@@ -86,11 +86,9 @@ def generateDiffeons(fv, c, idx):
     #C = np.zeros([nc, 3])
     for k in range(nc+1):
         I = np.flatnonzero(idx==k)
-	#print I
         nI = len(I)
         aI = a[I]
         ak = aI.sum()
-	#C[k, :] = (fv.vertices[I, :]*a[I]).sum(axis=0)/ak ; 
         y = (fv.vertices[I, :] - c[k, :])
         SS = (y.reshape([nI, 3, 1]) * aI.reshape([nI, 1, 1]) * y.reshape([nI, 1, 3])).sum(axis=0)/ak
         [D,v] = LA.eig(SS)
@@ -145,10 +143,10 @@ def saveDiffeons(fileName, c, S):
             fvtkout.write('\n {0: .5f} {1: .5f} {2: .5f}'.format(v[ll, 0, 1], v[ll, 1, 1], v[ll, 2, 1]))
 
 
-        # fvtkout.write('\nTENSORS tensors float')
-        # for ll in range(S.shape[0]):
-        #     for kk in range(3):
-        #         fvtkout.write('\n {0: .5f} {1: .5f} {2: .5f}'.format(S[ll, kk, 0], S[ll, kk, 1], S[ll, kk, 2]))
+        fvtkout.write('\nTENSORS tensors float')
+        for ll in range(S.shape[0]):
+            for kk in range(3):
+                fvtkout.write('\n {0: .5f} {1: .5f} {2: .5f}'.format(S[ll, kk, 0], S[ll, kk, 1], S[ll, kk, 2]))
         fvtkout.write('\n')
 
 

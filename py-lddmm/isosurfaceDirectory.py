@@ -46,7 +46,7 @@ def main():
 
         sf.edgeRecover()
         #print sf.surfVolume()
-        sf.savebyu(args.dirOut+'/'+nm+'.byu')
+        sf.saveVTK(args.dirOut+'/'+nm+'.vtk')
 
 if __name__=="__main__":
     main()

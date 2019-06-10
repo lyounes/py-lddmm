@@ -1,9 +1,11 @@
-from Surfaces.surfaces import *
-from Common.kernelFunctions import *
-from Diffeons.gaussianDiffeonsSurfaceMatching import *
+import numpy as np
+import logging
+from base.surfaces import Surface
+import base.gaussianDiffeons as gd
+from base import conjugateGradient as cg, diffeo, kernelFunctions as kfun, pointEvolution as evol, bfgs, loggingUtils
+from gaussianDiffeonsSurfaceMatching import *
 
 def compute(createsurfaces=True):
-
     if createsurfaces:
         [x,y,z] = np.mgrid[0:200, 0:200, 0:200]/100.
         y = y-1
@@ -48,18 +50,19 @@ def compute(createsurfaces=True):
         #return fv1, fv2
 
     ## Object kernel
-    r0 = 50./fv1.vertices.shape[0]
+    r0 = 100./fv1.vertices.shape[0]
     T0 = 100
     withDiffeons=True
 
-    sm = SurfaceMatchingParam(timeStep=0.1, sigmaKernel=10., sigmaDist=5., sigmaError=1.,
-                              errorType='diffeonCurrent')
-        #errorType='current')
+    sm = SurfaceMatchingParam(timeStep=0.1, sigmaKernel=10., sigmaDist=5., sigmaError=1.,algorithm=bfgs,
+                              #errorType='diffeonCurrent')
+                              errorType='current')
 
     if withDiffeons:
         gdOpt = gd.gdOptimizer(surf=fv1, sigmaDist = .5, DiffeonEpsForNet = r0, testGradient=False, maxIter=100)
         gdOpt.optimize()
-        f = SurfaceMatching(Template=fv1, Target=fv2, outputDir='/Users/younes/Development/Results/Diffeons/BallsAlt50_500_d',param=sm, testGradient=False,
+        outputDir = '/Users/younes/Development/Results/Diffeons/BallsAlt50_500_d'
+        f = SurfaceMatching(Template=fv1, Target=fv2, outputDir=outputDir,param=sm, testGradient=False,
         Diffeons = (gdOpt.c0, gdOpt.S0, gdOpt.idx),
         subsampleTargetSize = 500,
         #DecimationTarget=100,
@@ -67,7 +70,8 @@ def compute(createsurfaces=True):
                             #DiffeonSegmentationRatio=r0,
                             maxIter=10000, affine='none', rotWeight=1., transWeight = 1., scaleWeight=10., affineWeight=100.)
     else:
-        f = SurfaceMatching(Template=fv1, Target=fv2, outputDir='/Users/younes/Development/Results/Diffeons/Scale100_250_0',param=sm, testGradient=False,
+        outputDir = '/Users/younes/Development/Results/Diffeons/Scale100_250_0'
+        f = SurfaceMatching(Template=fv1, Target=fv2, outputDir=outputDir,param=sm, testGradient=False,
                             subsampleTargetSize = 250,
                             zeroVar=True,
                             #DecimationTarget=T0,
@@ -75,6 +79,7 @@ def compute(createsurfaces=True):
                             #DiffeonSegmentationRatio=r0,
                             maxIter=10000, affine='none', rotWeight=1., transWeight = 1., scaleWeight=10., affineWeight=100.)
 
+    loggingUtils.setup_default_logging(outputDir, fileName='info', stdOutput=True)
     f.optimizeMatching()
     return f
     #f.maxIter = 200
@@ -93,4 +98,4 @@ def compute(createsurfaces=True):
     return f
 
 if __name__=="__main__":
-    compute()
+    compute(False)

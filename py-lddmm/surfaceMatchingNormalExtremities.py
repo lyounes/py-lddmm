@@ -7,6 +7,7 @@ from base import pointSets
 from base import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils, bfgs
 import surfaceMatching
 from base.affineBasis import *
+import examples
 import matplotlib
 matplotlib.use("QT5Agg")
 import matplotlib.pyplot as plt
@@ -658,6 +659,13 @@ def run(opt=None):
         if opt == 'Corner':
             fvBottom = surfaces.Surface(filename='/Users/younes/Development/Data/NormalData/cornerTemplate.byu')
             fvTop = surfaces.Surface(filename='/Users/younes/Development/Data/NormalData/cornerTarget.byu')
+        if opt == 'cat':
+            fvBottom = surfaces.Surface(filename='/Users/younes/Development/Data/fromKwame/cat/Template.vtk')
+            fvBottom.smooth(n=100)
+            fvBottom.Simplify(target=2500)
+            fvTop = surfaces.Surface(filename='/Users/younes/Development/Data/fromKwame/cat/Target.vtk')
+            fvTop.smooth(n=100)
+            fvTop.Simplify(target=2500)
         elif opt == 'SueData':
             probDir = '/cis/home/younes/MorphingData/SUE/023_S_4035_L_mo00_ERC_and_TEC/'
             fvTop = surfaces.Surface(filename=probDir + 'Template.vtk')
@@ -721,31 +729,9 @@ def run(opt=None):
 
             #fvBottom.vertices[:, 1] += 15 - 15 / s1
         elif opt == 'flowers':
-            [x, y, z] = np.mgrid[0:200, 0:200, 0:200] / 100.
-            ay = np.fabs(y - 1)
-            az = np.fabs(z - 1)
-            ax = np.fabs(x - 0.5)
-            s2 = np.sqrt(2)
-            c1 = np.sqrt(0.06)
-            c2 = np.sqrt(0.03)
-            c3 = 0.1
-
-            th = np.arctan2(ax, az)
-            I1 = c1 ** 2 - (ax ** 2 + 0.5 * ay ** 2 + az ** 2) * (1+0.25*np.cos(6*th))
-            #I2 = -(ax ** 2 + 0.5 * ay ** 2 + az ** 2) * (1+0.5*np.cos(6*th))  + c2 ** 2
-            I2 = -(ax ** 2 + 0.5 * ay ** 2 + az ** 2)  + c2 ** 2
-            fvTop = surfaces.Surface()
-            fvTop.Isosurface(I1, value=0, target=3000, scales=[1, 1, 1], smooth=-0.01)
-            fvTop = fvTop.truncate((np.array([0,1,0,95]), np.array([0,-1,0,-105])))
-
-            fvBottom = surfaces.Surface()
-            fvBottom.Isosurface(I2, value=0, target=3000, scales=[1, 1, 1], smooth=-0.01)
-            fvBottom = fvBottom.truncate((np.array([0,1,0,95]), np.array([0,-1,0,-105])))
-
-            # th = np.arctan2(fvTop.vertices[:,0], fvTop.vertices[:,2])[:,np.newaxis]
-            # fvTop.updateVertices(fvTop.vertices* (1+0.5*np.cos(6*th)))
-            # th = np.arctan2(fvBottom.vertices[:,0], fvBottom.vertices[:,2])[:,np.newaxis]
-            # fvBottom.updateVertices(fvBottom.vertices* (1+0.5*np.cos(6*th)))
+            fvBottom,fvTop = examples.flowers()
+        elif opt == 'waves':
+            fvBottom,fvTop = examples.waves(w1=(2,0.25), d=20,delta=5)
 
         #fvTop = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/DH1MiddleOuter.byu')
         #fvBottom = surfaces.Surface(filename='/cis/home/younes/MorphingData/Tilaksurfaces/Separated_Cuts/DH1MiddleInner.byu')
@@ -793,7 +779,7 @@ def run(opt=None):
             # K2 = kfun.Kernel(sigma = 2.5)
             # print fv0.normGrad(fv0.vertices)
             # print fv0.normGrad(fv0.vertices)
-            sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, algorithm='bfgs', KparDiff=K1, sigmaDist=1.,
+            sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.05, algorithm='bfgs', KparDiff=K1, sigmaDist=1.,
                                                       sigmaError=.1, errorType='varifold', internalCost='h1')
 
             fTemp = surfaces.Surface(surf=fvBottom)
@@ -814,4 +800,4 @@ def run(opt=None):
 
 
 if __name__ == "__main__":
-    run(opt='flowers')
+    run(opt='cat')

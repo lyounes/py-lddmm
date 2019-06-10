@@ -426,27 +426,28 @@ class Surface:
                 g = smoother.GetOutput()
 
             #dc = vtkDecimatePro()
-            red = 1 - min(np.float(target)/g.GetNumberOfPoints(), 1)
-            #print 'Reduction: ', red
-            dc = vtkQuadricDecimation()
-            dc.SetTargetReduction(red)
-            #dc.AttributeErrorMetricOn()
-            #dc.SetDegree(10)
-            #dc.SetSplitting(0)
-            if vtkVersion.GetVTKMajorVersion() >= 6:
-                dc.SetInputData(g)
-            else:
-                dc.SetInput(g)
-                #dc.SetInput(g)
-            #print dc
-            dc.Update()
-            g = dc.GetOutput()
+            if target>0:
+                red = 1 - min(np.float(target)/g.GetNumberOfPoints(), 1)
+                #print 'Reduction: ', red
+                dc = vtkQuadricDecimation()
+                dc.SetTargetReduction(red)
+                #dc.AttributeErrorMetricOn()
+                #dc.SetDegree(10)
+                #dc.SetSplitting(0)
+                if vtkVersion.GetVTKMajorVersion() >= 6:
+                    dc.SetInputData(g)
+                else:
+                    dc.SetInput(g)
+                    #dc.SetInput(g)
+                #print dc
+                dc.Update()
+                g = dc.GetOutput()
             #print 'points:', g.GetNumberOfPoints()
             cp = vtkCleanPolyData()
             if vtkVersion.GetVTKMajorVersion() >= 6:
-                cp.SetInputData(dc.GetOutput())
+                cp.SetInputData(g)
             else:
-                cp.SetInput(dc.GetOutput())
+                cp.SetInput(g)
                 #        cp.SetInput(dc.GetOutput())
             #cp.SetPointMerging(1)
             cp.ConvertPolysToLinesOn()
@@ -855,7 +856,7 @@ class Surface:
         res.computeCentersAreas()
         return res
 
-    def createFlatApproximation(self):
+    def createFlatApproximation(self, thickness=None):
         a = self.computeVertexArea()[0]
         A = a.sum()
         x0 = (self.vertices * a[:,np.newaxis]).sum(axis=0)/A
@@ -874,17 +875,21 @@ class Surface:
         u0 = x*v[0,0] + y*v[1,0] + z*v[2,0]
         u1 = x*v[0,1] + y*v[1,1] + z*v[2,1]
         u2 = x*v[0,2] + y*v[1,2] + z*v[2,2]
-        I1 = np.logical_and((u2**2/w[2] + u1**2/w[1]) < 3, u0**2 < w[0])
+        if thickness is None:
+            w0 = w[0]
+        else:
+            w0 = (thickness/2)**2
+        I1 = np.logical_and((u2 ** 2 / w[2] + u1 ** 2 / w[1]) < 3, u0 ** 2 < w0)
         h = Surface()
-        h.Isosurface(I1, value = 1, target=max(1000, self.vertices.shape[0]), scales=[1, 1, 1], smooth=0.1)
+        h.Isosurface(I1, value = 1, target=max(1000, self.vertices.shape[0]), scales=[1, 1, 1], smooth=0.0001)
         h.updateVertices(x0 + (h.vertices-M)*emax/M)
         labels = np.zeros(h.vertices.shape[0], dtype=int)
         for j in range(labels.shape[0]):
             x = h.vertices[j,:] - x0
             u2 = x[0]  * v[0, 0] + x[1] * v[1, 0] + x[2] * v[2, 0]
-            if np.fabs(u2-np.sqrt(w[0])) < emax/M:
+            if np.fabs(u2-np.sqrt(w0)) < emax/M:
                 labels[j] = 1
-            elif np.fabs(u2+np.sqrt(w[0])) < emax/M:
+            elif np.fabs(u2+np.sqrt(w0)) < emax/M:
                 labels[j] = 2
         return h, labels
 
