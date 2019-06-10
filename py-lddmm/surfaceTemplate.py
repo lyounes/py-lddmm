@@ -622,7 +622,7 @@ if __name__ == "__main__":
         htmpl = fv[0]
 
     else:
-        fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/amygdala/2_qc_flipped_registered/*_1_*_amyg_*_reg.byu')
+        fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus/2_qc_flipped_registered/*_1_*_hippo_*_reg.byu')
         #fls = glob.glob('/cis/project/biocard/data/2mm_complete_set_surface_mapping_06052013/erc/2_qc_flipped_registered/*_1_*_erc_*_reg.byu')
         if (len(fls) > 0):
             for name in fls:
@@ -686,7 +686,7 @@ if __name__ == "__main__":
         htmpl.flipFaces()
 
 
-    f = SurfaceTemplate(HyperTmpl=htmpl, Targets=fv, outputDir='/Users/younes/Results/surfaceTemplateBiocardAmygdala',param=sm, testGradient=True,
+    f = SurfaceTemplate(HyperTmpl=htmpl, Targets=fv, outputDir='/Users/younes/Results/surfaceTemplateBiocardHippocampus',param=sm, testGradient=False,
                         lambdaPrior = 1, maxIter=100, affine='none', rotWeight=10., sgd=5,
                         transWeight = 1., scaleWeight=10., affineWeight=100.)
     f.computeTemplate()
