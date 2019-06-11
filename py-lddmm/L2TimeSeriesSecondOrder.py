@@ -4,8 +4,8 @@ import logging
 from base import loggingUtils
 import base.surfaces as surfaces
 from base.kernelFunctions import Kernel
-import surfaceMatching
-import secondOrderMatching as match
+from base import surfaceMatching
+from base import secondOrderMatching as match
 #import secondOrderMatching as match
 
 def compute(tmpl, targetDir, outputDir, display=True, geodesic=False, rescale=False):

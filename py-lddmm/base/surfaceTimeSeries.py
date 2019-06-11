@@ -1,10 +1,10 @@
 import logging
 import numpy.linalg as la
-from base import surfaces
-from base.pointSets import *
-from base import conjugateGradient as cg, pointEvolution as evol
-from base.affineBasis import *
-from surfaceMatching import SurfaceMatchingParam
+from . import surfaces
+from .pointSets import *
+from . import conjugateGradient as cg, pointEvolution as evol
+from ..affineBasis import *
+from .surfaceMatching import SurfaceMatchingParam
 
 ## Parameter class for matching
 #      timeStep: time discretization

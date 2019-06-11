@@ -2,12 +2,12 @@ import logging
 import glob
 import numpy.linalg as la
 #import scipy as sp
-import base.surfaces as surfaces
-from base.pointSets import *
-from surfaceMatching import SurfaceMatchingParam
+from . import surfaces
+from .pointSets import *
+from .surfaceMatching import SurfaceMatchingParam
 #import kernelFunctions as kfun
-from base import conjugateGradient as cg, pointEvolution as evol, bfgs
-from base.affineBasis import getExponential, gradExponential, AffineBasis
+from . import conjugateGradient as cg, pointEvolution as evol, bfgs
+from .affineBasis import getExponential, gradExponential, AffineBasis
 
 ## Parameter class for matching
 #      timeStep: time discretization

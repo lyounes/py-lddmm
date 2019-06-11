@@ -2,11 +2,11 @@ import os
 import glob
 import logging
 #import scipy as sp
-import base.curves as curves
-from base import pointSets
+from . import curves
+from . import pointSets
 #import kernelFunctions as kfun
-from base import conjugateGradient as cg, grid, matchingParam, pointEvolution as evol, bfgs
-from base.affineBasis import *
+from . import conjugateGradient as cg, grid, matchingParam, pointEvolution as evol, bfgs
+from .affineBasis import *
 import matplotlib
 matplotlib.use("TKAgg")
 import matplotlib.pyplot as plt

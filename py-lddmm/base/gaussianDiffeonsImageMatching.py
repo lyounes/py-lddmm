@@ -1,11 +1,10 @@
 import os
 import numpy.linalg as LA
-from PIL import Image
 import scipy.ndimage as Img
 import scipy.stats.mstats as stats
-import base.gaussianDiffeons as gd
-from base import conjugateGradient as cg, diffeo, kernelFunctions as kfun, pointEvolution as evol, bfgs
-from base.affineBasis import *
+from . import gaussianDiffeons as gd
+from . import conjugateGradient as cg, diffeo, kernelFunctions as kfun, pointEvolution as evol, bfgs
+from .affineBasis import *
 from PIL import Image
 
 ## Parameter class for matching

@@ -1,10 +1,12 @@
 import numpy.linalg as LA
 import numpy as np
-import base.gaussianDiffeons as gd
-from base import conjugateGradient as cg, kernelFunctions as kfun, surfaces
-import base.pointEvolution as evol
-import surfaceMatching
-from base.affineBasis import AffineBasis
+from .bfgs import bfgs
+from . import gaussianDiffeons as gd
+from . import conjugateGradient as cg, kernelFunctions as kfun, surfaces
+from . import pointEvolution as evol
+from . import surfaceMatching
+from .surfaceMatching import Direction
+from .affineBasis import AffineBasis
 
 ## Parameter class for matching
 #      timeStep: time discretization
@@ -37,10 +39,10 @@ class SurfaceMatchingParam(surfaceMatching.SurfaceMatchingParam):
 	
  
 
-class Direction:
-    def __init__(self):
-        self.diff = []
-        self.aff = []
+# class Direction:
+#     def __init__(self):
+#         self.diff = []
+#         self.aff = []
 
 
 ## Main class for surface matching
@@ -64,51 +66,54 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                  DiffeonEpsForNet=None, DiffeonSegmentationRatio=None, zeroVar=False, fileTempl=None,
                  fileTarg=None, param=None, maxIter=1000, regWeight = 1.0, affineWeight = 1.0, verb=True,
                  rotWeight = None, scaleWeight = None, transWeight = None, testGradient=False, saveFile = 'evolution', affine = 'none', outputDir = '.'):
-        if Template==None:
-            if fileTempl==None:
-                print('Please provide a template surface')
-                return
-            else:
-                self.fv0 = surfaces.Surface(filename=fileTempl)
-        else:
-            self.fv0 = surfaces.Surface(surf=Template)
-        if Target==None:
-            if fileTarg==None:
-                print('Please provide a target surface')
-                return
-            else:
-                self.fv1 = surfaces.Surface(filename=fileTarg)
-        else:
-            self.fv1 = surfaces.Surface(surf=Target)
+        super().__init__(Template=Template, Target=Target, subsampleTargetSize=subsampleTargetSize,fileTempl=fileTempl,fileTarg=fileTarg,param=param,
+                       maxIter=maxIter,regWeight=regWeight,affineWeight=affineWeight,verb=verb,rotWeight=rotWeight,scaleWeight=scaleWeight, transWeight=transWeight,
+                       testGradient=testGradient, saveFile=saveFile,affine=affine,outputDir=outputDir)
+        # if Template==None:
+        #     if fileTempl==None:
+        #         print('Please provide a template surface')
+        #         return
+        #     else:
+        #         self.fv0 = surfaces.Surface(filename=fileTempl)
+        # else:
+        #     self.fv0 = surfaces.Surface(surf=Template)
+        # if Target==None:
+        #     if fileTarg==None:
+        #         print('Please provide a target surface')
+        #         return
+        #     else:
+        #         self.fv1 = surfaces.Surface(filename=fileTarg)
+        # else:
+        #     self.fv1 = surfaces.Surface(surf=Target)
 
         self.fv0Fine = surfaces.Surface(surf=self.fv0)
         self.saveRate = 10
-        self.iter = 0
-        self.gradEps = -1
-        self.npt = self.fv0.vertices.shape[0]
-        self.dim = self.fv0.vertices.shape[1]
-        self.setOutputDir(outputDir)
-        self.maxIter = maxIter
-        self.verb = verb
-        self.testGradient = testGradient
-        self.regweight = regWeight
-        self.affine = affine
-        affB = AffineBasis(self.dim, affine)
-        self.affineDim = affB.affineDim
-        self.affineBasis = affB.basis
-        self.affineWeight = affineWeight * np.ones([self.affineDim, 1])
-        if (len(affB.rotComp) > 0) & (rotWeight != None):
-            self.affineWeight[affB.rotComp] = rotWeight
-        if (len(affB.simComp) > 0) & (scaleWeight != None):
-            self.affineWeight[affB.simComp] = scaleWeight
-        if (len(affB.transComp) > 0) & (transWeight != None):
-            self.affineWeight[affB.transComp] = transWeight
-
-        if param==None:
-            self.param = SurfaceMatchingParam()
-        else:
-            self.param = param
-        self.x0 = self.fv0.vertices
+        # self.iter = 0
+        # self.gradEps = -1
+        # self.npt = self.fv0.vertices.shape[0]
+        # self.dim = self.fv0.vertices.shape[1]
+        # self.setOutputDir(outputDir)
+        # self.maxIter = maxIter
+        # self.verb = verb
+        # self.testGradient = testGradient
+        # self.regweight = regWeight
+        # self.affine = affine
+        # affB = AffineBasis(self.dim, affine)
+        # self.affineDim = affB.affineDim
+        # self.affineBasis = affB.basis
+        # self.affineWeight = affineWeight * np.ones([self.affineDim, 1])
+        # if (len(affB.rotComp) > 0) & (rotWeight != None):
+        #     self.affineWeight[affB.rotComp] = rotWeight
+        # if (len(affB.simComp) > 0) & (scaleWeight != None):
+        #     self.affineWeight[affB.simComp] = scaleWeight
+        # if (len(affB.transComp) > 0) & (transWeight != None):
+        #     self.affineWeight[affB.transComp] = transWeight
+        #
+        # if param==None:
+        #     self.param = SurfaceMatchingParam()
+        # else:
+        #     self.param = param
+        # self.x0 = self.fv0.vertices
         if Diffeons==None:
             if EpsilonNet==None:
                 if DecimationTarget==None:
@@ -157,14 +162,14 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             else:
                 self.x0 = self.fv0.vertices
             print('simplified template', self.fv0.vertices.shape[0])
-        self.fvDef = surfaces.Surface(surf=self.fv0)
+        #self.fvDef = surfaces.Surface(surf=self.fv0)
         self.ndf = self.c0.shape[0]
-        self.Tsize = int(round(1.0/self.param.timeStep))
+        #self.Tsize = int(round(1.0/self.param.timeStep))
         self.at = np.zeros([self.Tsize, self.c0.shape[0], self.x0.shape[1]])
         self.atTry = np.zeros([self.Tsize, self.c0.shape[0], self.x0.shape[1]])
-        self.Afft = np.zeros([self.Tsize, self.affineDim])
-        self.AfftTry = np.zeros([self.Tsize, self.affineDim])
-        self.xt = np.tile(self.x0, [self.Tsize+1, 1, 1])
+        # self.Afft = np.zeros([self.Tsize, self.affineDim])
+        # self.AfftTry = np.zeros([self.Tsize, self.affineDim])
+        # self.xt = np.tile(self.x0, [self.Tsize+1, 1, 1])
         self.ct = np.tile(self.c0, [self.Tsize+1, 1, 1])
         self.St = np.tile(self.S0, [self.Tsize+1, 1, 1, 1])
         print('error type:', self.param.errorType)
@@ -175,12 +180,12 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         else:
             self.dcurr=False
 
-        self.obj = None
-        self.objTry = None
+        # self.obj = None
+        # self.objTry = None
         self.gradCoeff = self.ndf
-        self.saveFile = saveFile
-        self.fv0.saveVTK(self.outputDir+'/Template.vtk')
-        self.fv1.saveVTK(self.outputDir+'/Target.vtk')
+        # self.saveFile = saveFile
+        # self.fv0.saveVTK(self.outputDir+'/Template.vtk')
+        # self.fv1.saveVTK(self.outputDir+'/Target.vtk')
 
 
     def  objectiveFunDef(self, at, Afft, withTrajectory = False, withJacobian=False, initial = None):
@@ -298,10 +303,15 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
 
 
-    def endPointGradient(self):
+    def endPointGradient(self, endpoint=None):
+        if endpoint is None:
+            if self.dcurr:
+                endpoint = [self.xt[-1, :, :], self.xSt[-1, :, :, :], self.bt[-1, :, :]]
+            else:
+                endpoint = self.fvDef
         if self.dcurr:
             #print self.bt.shape
-            (px, pxS, pb) = self.param.fun_objGrad(self.xt[-1, :, :], self.xSt[-1, :, :, :], self.bt[-1, :, :], 
+            (px, pxS, pb) = self.param.fun_objGrad(endpoint[0], endpoint[1], endpoint[2],
                                                    self.fv1, self.param.KparDist.sigma)
             pc = np.zeros(self.c0.shape)
             pS = np.zeros(self.S0.shape)
@@ -312,29 +322,47 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             pb = pb / self.param.sigmaError**2
             return (pc, pS, pb, px, pxS)
         else:
-            px = self.param.fun_objGrad(self.fvDef, self.fv1, self.param.KparDist)/ self.param.sigmaError**2
+            px = self.param.fun_objGrad(endpoint, self.fv1, self.param.KparDist)/ self.param.sigmaError**2
             pc = np.zeros(self.c0.shape)
             pS = np.zeros(self.S0.shape)
             return (pc, pS, px) 
 
 
-    def getGradient(self, coeff=1.0):
-        A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-        dim2 = self.dim**2
-        if self.affineDim > 0:
-            for t in range(self.Tsize):
-                AB = np.dot(self.affineBasis, self.Afft[t])
-                A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-                A[1][t] = AB[dim2:dim2+self.dim]
+    def getGradient(self, coeff=1.0, update=None):
+        if update is None:
+            at = self.at
+            endPoint = self.fvDef
+            A = self.affB.getTransforms(self.Afft)
+        else:
+            A = self.affB.getTransforms(self.Afft - update[1]*update[0].aff)
+            at = self.at - update[1] *update[0].diff
+            #xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
+            if self.dcurr:
+                ct ,St ,bt ,xt ,xSt = evol.gaussianDiffeonsEvolutionEuler(self.c0 ,self.S0 ,at ,self.param.sigmaKernel ,affine=A,
+                                                                       withNormals=self.b0 ,withDiffeonSet=(self.x0 ,self.xS0))
+                endPoint = [xt[-1, :, :], xSt[-1, :, :, :], bt[-1, :, :]]
+            else:
+                ct ,St ,xt = evol.gaussianDiffeonsEvolutionEuler(self.c0 ,self.S0 ,at ,self.param.sigmaKernel ,
+                                                                 affine=A ,withPointSet=self.x0)
+                endPoint = surfaces.Surface(surf=self.fv0)
+                endPoint.updateVertices(xt[-1, :, :])
+
+        # A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+        # dim2 = self.dim**2
+        # if self.affineDim > 0:
+        #     for t in range(self.Tsize):
+        #         AB = np.dot(self.affineBasis, self.Afft[t])
+        #         A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
+        #         A[1][t] = AB[dim2:dim2+self.dim]
 
         if self.dcurr:
-            (pc1, pS1, pb1, px1, pxS1) = self.endPointGradient()
+            (pc1, pS1, pb1, px1, pxS1) = self.endPointGradient(endpoint=endPoint)
             foo = evol.gaussianDiffeonsGradientNormals(self.c0, self.S0, self.b0, self.x0, self.xS0,
-                                                       self.at, -pc1, -pS1, -pb1, -px1, -pxS1, self.param.sigmaKernel, self.regweight, affine=A)
+                                                       at, -pc1, -pS1, -pb1, -px1, -pxS1, self.param.sigmaKernel, self.regweight, affine=A, euclidean=self.euclideanGradient)
         else:
-            (pc1, pS1, px1) = self.endPointGradient()
+            (pc1, pS1, px1) = self.endPointGradient(endpoint=endPoint)
             foo = evol.gaussianDiffeonsGradientPset(self.c0, self.S0, self.x0,
-                                                    self.at, -pc1, -pS1, -px1, self.param.sigmaKernel, self.regweight, affine=A)
+                                                    at, -pc1, -pS1, -px1, self.param.sigmaKernel, self.regweight, affine=A, euclidean=self.euclideanGradient)
 
         grd = Direction()
         grd.diff = foo[0]/(coeff*self.Tsize)
@@ -351,19 +379,19 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
 
 
-    def addProd(self, dir1, dir2, beta):
-        dir = Direction()
-        dir.diff = dir1.diff + beta * dir2.diff
-        dir.aff = dir1.aff + beta * dir2.aff
-        return dir
-
-    def copyDir(self, dir0):
-        dir = Direction()
-        dir.diff = np.copy(dir0.diff)
-        dir.aff = np.copy(dir0.aff)
-        return dir
-
-
+    # def addProd(self, dir1, dir2, beta):
+    #     dir = Direction()
+    #     dir.diff = dir1.diff + beta * dir2.diff
+    #     dir.aff = dir1.aff + beta * dir2.aff
+    #     return dir
+    #
+    # def copyDir(self, dir0):
+    #     dir = Direction()
+    #     dir.diff = np.copy(dir0.diff)
+    #     dir.aff = np.copy(dir0.aff)
+    #     return dir
+    #
+    #
     def randomDir(self):
         dirfoo = Direction()
         dirfoo.diff = np.random.randn(self.Tsize, self.ndf, self.dim)
@@ -372,7 +400,6 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
     def dotProduct(self, g1, g2):
         res = np.zeros(len(g2))
-        dim2 = self.dim**2
         for t in range(self.Tsize):
             c = np.squeeze(self.ct[t, :, :])
             S = np.squeeze(self.St[t, :, :, :])
@@ -389,6 +416,21 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 if self.affineDim > 0:
                     res[ll] += np.multiply(uu, gr.aff[t]).sum()
                     #                    +np.multiply(g1[1][t, dim2:dim2+self.dim], gr[1][t, dim2:dim2+self.dim]).sum())
+                ll = ll + 1
+
+        return res
+
+    def dotProduct_euclidean(self, g1, g2):
+        res = np.zeros(len(g2))
+        for t in range(self.Tsize):
+            gg = np.squeeze(g1.diff[t, :, :])
+            uu = np.multiply(g1.aff[t], self.affineWeight.reshape(g1.aff[t].shape))
+            ll = 0
+            for gr in g2:
+                ggOld = np.squeeze(gr.diff[t, :, :])
+                res[ll]  = res[ll] + np.multiply(ggOld,gg).sum()
+                if self.affineDim > 0:
+                    res[ll] += np.multiply(uu, gr.aff[t]).sum()
                 ll = ll + 1
 
         return res
@@ -545,6 +587,9 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
 
         print('Gradient lower bound: ', self.gradEps)
-        cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient)
+        if self.param.algorithm == 'cg':
+            cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient)
+        else:
+            bfgs(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient)
         #return self.at, self.xt
 

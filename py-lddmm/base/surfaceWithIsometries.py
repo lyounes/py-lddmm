@@ -1,9 +1,9 @@
 import os
-from base import conjugateGradient as cg, pointEvolution as evol
-import surfaceMatching, base.surfaces as surfaces
+from . import conjugateGradient as cg, pointEvolution as evol
+from . import surfaceMatching, surfaces
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-from base.affineBasis import *
+from .affineBasis import *
 
 
 ## Main class for surface matching

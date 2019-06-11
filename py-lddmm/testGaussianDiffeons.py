@@ -1,9 +1,9 @@
 import numpy as np
 import logging
 from base.surfaces import Surface
-import base.gaussianDiffeons as gd
+from base import gaussianDiffeons as gd
 from base import conjugateGradient as cg, diffeo, kernelFunctions as kfun, pointEvolution as evol, bfgs, loggingUtils
-from gaussianDiffeonsSurfaceMatching import *
+from base.gaussianDiffeonsSurfaceMatching import *
 
 def compute(createsurfaces=True):
     if createsurfaces:
@@ -54,12 +54,12 @@ def compute(createsurfaces=True):
     T0 = 100
     withDiffeons=True
 
-    sm = SurfaceMatchingParam(timeStep=0.1, sigmaKernel=10., sigmaDist=5., sigmaError=1.,algorithm=bfgs,
+    sm = SurfaceMatchingParam(timeStep=0.1, sigmaKernel=20., sigmaDist=5., sigmaError=1.,algorithm=bfgs,
                               #errorType='diffeonCurrent')
                               errorType='current')
 
     if withDiffeons:
-        gdOpt = gd.gdOptimizer(surf=fv1, sigmaDist = .5, DiffeonEpsForNet = r0, testGradient=False, maxIter=100)
+        gdOpt = gd.gdOptimizer(surf=fv1, sigmaDist = .5, DiffeonEpsForNet = r0, testGradient=True, maxIter=100)
         gdOpt.optimize()
         outputDir = '/Users/younes/Development/Results/Diffeons/BallsAlt50_500_d'
         f = SurfaceMatching(Template=fv1, Target=fv2, outputDir=outputDir,param=sm, testGradient=False,

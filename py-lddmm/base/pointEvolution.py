@@ -477,7 +477,7 @@ def gaussianDiffeonsCovectorNormals(c0, S0, b0, x0, xS0,  at, pc1, pS1, pb1, px1
     return pct, pSt, pbt, pxt, pxSt, ct, St, bt, xt, xSt
     
 # Computes gradient after covariant evolution for deformation cost a^TK(x,x) a
-def gaussianDiffeonsGradientPset(c0, S0, x0, at, pc1, pS1, px1, sigma, regweight, getCovector = False, affine = None, withJacobian=None):
+def gaussianDiffeonsGradientPset(c0, S0, x0, at, pc1, pS1, px1, sigma, regweight, getCovector = False, affine = None, withJacobian=None, euclidean=False):
     if not(withJacobian is None):
         #print withJacobian
         J0 = withJacobian[0]
@@ -521,8 +521,11 @@ def gaussianDiffeonsGradientPset(c0, S0, x0, at, pc1, pS1, px1, sigma, regweight
             dA[t] = (px * x).sum(axis=tuple(range(x.ndim-1))) + np.dot(pc.T, c) - 2*np.multiply(pS.reshape([M, dim, dim, 1]), S.reshape([M, dim, 1, dim])).sum(axis=1).sum(axis=0)
             db[t] = px.sum(axis=tuple(range(x.ndim-1))) + pc.sum(axis=0)
 
-        (L, W) = LA.eigh(gcc)
-        dat[t, :, :] = LA.solve(gcc+(L.max()/1000)*np.eye(M), da)
+        if euclidean:
+            dat[t,:,:] = da
+        else:
+            (L, W) = LA.eigh(gcc)
+            dat[t, :, :] = LA.solve(gcc+(L.max()/1000)*np.eye(M), da)
         #dat[t, :, :] = LA.solve(gcc, da)
 
     if affine is None:
@@ -548,7 +551,7 @@ def gaussianDiffeonsGradientPset(c0, S0, x0, at, pc1, pS1, px1, sigma, regweight
             else:
                 return dat, dA, db, ct, St, xt, pct, pSt, pxt
 
-def gaussianDiffeonsGradientNormals(c0, S0, b0, x0, xS0, at, pc1, pS1, pb1, px1, pxS1, sigma, regweight, getCovector = False, affine = None):
+def gaussianDiffeonsGradientNormals(c0, S0, b0, x0, xS0, at, pc1, pS1, pb1, px1, pxS1, sigma, regweight, getCovector = False, affine = None, euclidean=False):
     (pct, pSt, pbt, pxt, pxSt, ct, St, bt, xt, xSt) = gaussianDiffeonsCovectorNormals(c0, S0, b0, x0, xS0, at,
                                                                                       pc1, pS1, pb1, px1, pxS1, sigma, regweight, affine=affine)
 
@@ -580,8 +583,11 @@ def gaussianDiffeonsGradientNormals(c0, S0, b0, x0, xS0, at, pc1, pS1, pb1, px1,
             dA[t] = -np.dot(b.T, pb) + np.dot(pc.T, c) - 2*np.multiply(pS.reshape([M, dim, dim, 1]), S.reshape([M, dim, 1, dim])).sum(axis=1).sum(axis=0)
             db[t] = pc.sum(axis=0)
 
-        (L, W) = LA.eigh(gcc)
-        dat[t, :, :] = LA.solve(gcc+(L.max()/1000)*np.eye(M), da)
+        if euclidean:
+            dat[t,:,:] = da
+        else:
+            (L, W) = LA.eigh(gcc)
+            dat[t, :, :] = LA.solve(gcc+(L.max()/1000)*np.eye(M), da)
         #dat[t, :, :] = LA.solve(gcc, da)
 
     if affine is None:

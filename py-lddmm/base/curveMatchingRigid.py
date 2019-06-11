@@ -4,12 +4,12 @@ import matplotlib
 matplotlib.use("TKAgg")
 import scipy.linalg as la
 import scipy.optimize as sopt
-import base.curves as curves
-from base import conjugateGradient as cg, grid, matchingParam, pointEvolution as evol, loggingUtils, bfgs
-from base.affineBasis import *
+from . import curves
+from . import conjugateGradient as cg, grid, matchingParam, pointEvolution as evol, loggingUtils, bfgs
+from .affineBasis import *
 import matplotlib.pyplot as plt
 import matplotlib.animation as manimation
-from base.kernelFunctions import Kernel
+from .kernelFunctions import Kernel
 import logging
 from tqdm import *
 
@@ -1982,5 +1982,5 @@ class CurveMatchingRigid:
         plt.show()
         return f
 
-if __name__ == "__main__":
-    CurveMatchingRigid().runMatch()
+#if __name__ == "__main__":
+#    CurveMatchingRigid().runMatch()

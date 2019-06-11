@@ -3,7 +3,7 @@ from os import path
 import glob
 import argparse
 from base import pointSets, surfaces
-from affineRegistration import *
+from base.affineRegistration import *
 
 
 def main():
