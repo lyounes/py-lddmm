@@ -4,6 +4,7 @@ from base.surfaces import Surface
 from base import gaussianDiffeons as gd
 from base import conjugateGradient as cg, diffeo, kernelFunctions as kfun, pointEvolution as evol, bfgs, loggingUtils
 from base.gaussianDiffeonsSurfaceMatching import *
+from  base import examples
 
 def compute(createsurfaces=True):
     if createsurfaces:
@@ -44,8 +45,9 @@ def compute(createsurfaces=True):
                 fv2.flipFaces()
         else:
             #f1.append(surfaces.Surface(filename = path+'amygdala/biocardAmyg 2/'+sub2+'_amyg_L.byu'))
-            fv1 = Surface(filename='/Users/younes/Development/Results/Diffeons/fv1Alt.vtk')
-            fv2  = Surface(filename='/Users/younes/Development/Results/Diffeons/fv2Alt.vtk')
+            fv1 ,fv2 = examples.flowers()
+            # fv1 = Surface(filename='/Users/younes/Development/Results/Diffeons/fv1Alt.vtk')
+            # fv2  = Surface(filename='/Users/younes/Development/Results/Diffeons/fv2Alt.vtk')
 
         #return fv1, fv2
 
@@ -70,7 +72,8 @@ def compute(createsurfaces=True):
                             #DiffeonSegmentationRatio=r0,
                             maxIter=10000, affine='none', rotWeight=1., transWeight = 1., scaleWeight=10., affineWeight=100.)
     else:
-        outputDir = '/Users/younes/Development/Results/Diffeons/Scale100_250_0'
+        #outputDir = '/Users/younes/Development/Results/Diffeons/Scale100_250_0'
+        outputDir = '/Users/younes/Development/Results/Diffeons/flowers'
         f = SurfaceMatching(Template=fv1, Target=fv2, outputDir=outputDir,param=sm, testGradient=False,
                             subsampleTargetSize = 250,
                             zeroVar=True,
