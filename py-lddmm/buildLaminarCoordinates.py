@@ -4,15 +4,16 @@ import numpy as np
 from base import loggingUtils
 from base import surfaces
 from base.kernelFunctions import Kernel
-from affineRegistration import rigidRegistration
-from surfaceMatching import SurfaceMatching as SM, SurfaceMatchingParam as SMP
-from surfaceMatchingNormalExtremities import SurfaceMatching as SMN, SurfaceMatchingParam as SMPN
+from base.affineRegistration import rigidRegistration
+from base.surfaceMatching import SurfaceMatching as SM, SurfaceMatchingParam as SMP
+from base.surfaceMatchingNormalExtremities import SurfaceMatching as SMN, SurfaceMatchingParam as SMPN
+from base import examples
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 def BuildLaminar(target, outputDir, pancakeThickness=None, runRegistration=True):
     # Step 1: Create a labeled  "pancake" approximation to the target
-    h, lab = target.createFlatApproximation(thickness=pancakeThickness)
+    h, lab, width = target.createFlatApproximation(thickness=pancakeThickness)
     #h.smooth()
     fig = plt.figure(1)
     # fig.clf()
@@ -26,10 +27,10 @@ def BuildLaminar(target, outputDir, pancakeThickness=None, runRegistration=True)
 
     # Step2: Register the target to the template
     if runRegistration:
-        sigmaKernel = 2.
-        sigmaDist = 2.5
-        sigmaError = .1
-        internalWeight = 50.
+        sigmaKernel = width
+        sigmaDist = .25*width
+        sigmaError = 1.
+        internalWeight = 10.
         internalCost = 'h1'
 
         K1 = Kernel(name='laplacian', sigma=sigmaKernel)
@@ -120,10 +121,11 @@ if __name__ == "__main__":
     # Read target surface file.
     hf = './TestData/ERC.vtk'
     #hf = '/USERS/younes/Development/Data/labeledTarget.vtk'
-    fv = surfaces.Surface(filename = hf)
+    #fv = surfaces.Surface(filename = hf)
+    fv = examples.ellipsoid(a=0.5, b=0.5, c=0.25, d=100)
 
-    BuildLaminar(fv, '/Users/younes/Development/Results/pancake_hippo',
-                 pancakeThickness = 2., runRegistration=True)
+    BuildLaminar(fv, '/Users/younes/Development/Results/pancake_ellipsoid',
+                 pancakeThickness = 5, runRegistration=True)
 
     plt.ioff()
     plt.show()

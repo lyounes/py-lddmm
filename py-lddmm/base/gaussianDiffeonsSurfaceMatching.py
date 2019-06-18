@@ -16,8 +16,9 @@ from .affineBasis import AffineBasis
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class SurfaceMatchingParam(surfaceMatching.SurfaceMatchingParam):
-    def __init__(self, timeStep = .1, sigmaKernel = 6.5, algorithm='bfgs', sigmaDist=2.5, sigmaError=1.0, errorType='measure'):
-        surfaceMatching.SurfaceMatchingParam.__init__(self, timeStep = timeStep, sigmaKernel =  sigmaKernel,
+    def __init__(self, timeStep = .1, sigmaKernel = 6.5, algorithm='bfgs',
+                 sigmaDist=2.5, sigmaError=1.0, errorType='measure'):
+        super().__init__(timeStep = timeStep, sigmaKernel =  sigmaKernel, errorType=errorType,
                        algorithm=algorithm, sigmaDist = sigmaDist, sigmaError = sigmaError, typeKernel ='gauss')
         self.KparDiff = kfun.Kernel(name = self.typeKernel, sigma = self.sigmaKernel)
         self.KparDist = kfun.Kernel(name = 'gauss', sigma = self.sigmaDist)
@@ -26,10 +27,14 @@ class SurfaceMatchingParam(surfaceMatching.SurfaceMatchingParam):
             self.fun_obj0 = surfaces.currentNorm0
             self.fun_obj = surfaces.currentNormDef
             self.fun_objGrad = surfaces.currentNormGradient
-        elif errorType=='measure':
+        elif errorType == 'measure':
             self.fun_obj0 = surfaces.measureNorm0
             self.fun_obj = surfaces.measureNormDef
             self.fun_objGrad = surfaces.measureNormGradient
+        elif errorType == 'varifold':
+            self.fun_obj0 = surfaces.varifoldNorm0
+            self.fun_obj = surfaces.varifoldNormDef
+            self.fun_objGrad = surfaces.varifoldNormGradient
         elif errorType=='diffeonCurrent':
             self.fun_obj0 = gd.diffeonCurrentNorm0
             self.fun_obj = gd.diffeonCurrentNormDef
@@ -304,7 +309,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
 
     def endPointGradient(self, endpoint=None):
-        if endpoint is None:
+        if endpoint is not None:
             if self.dcurr:
                 endpoint = [self.xt[-1, :, :], self.xSt[-1, :, :, :], self.bt[-1, :, :]]
             else:

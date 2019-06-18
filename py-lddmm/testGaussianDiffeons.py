@@ -1,33 +1,23 @@
-import numpy as np
-import logging
+#import numpy as np
+#import logging
 from base.surfaces import Surface
 from base import gaussianDiffeons as gd
 from base import conjugateGradient as cg, diffeo, kernelFunctions as kfun, pointEvolution as evol, bfgs, loggingUtils
 from base.gaussianDiffeonsSurfaceMatching import *
+from base import examples
 
 def compute(createsurfaces=True):
     if createsurfaces:
-        [x,y,z] = np.mgrid[0:200, 0:200, 0:200]/100.
-        y = y-1
-        z = z-1
-        s2 = np.sqrt(2)
+        fv1, fv2 = examples.bumps2(centers1 = ([-0.1,-0.3], [.3,0.25], [-0.1,.3], [.25,-.3]),
+          scale1 = (.5, .5, .5, .5),
+          weights1 = (.3, .3, .3, .3),
+          centers2 = ([.3,-.3], [-.3, .3], [.3, .3], [-.3,-.3]),
+          scale2 = (.3,.3,.3, .3),
+          weights2 = (.5,.5,.5, .5),
+          d=25)
 
-        I1 = .06 - ((x-.50)**2 + 0.5*y**2 + z**2)  
-        fv1 = Surface()
-        fv1.Isosurface(I1, value = 0, target=2000, scales=[1, 1, 1], smooth=0.01)
-
-        #return fv1
-        
-        u = (z + y)/s2
-        v = (z - y)/s2
-        I1 = np.maximum(0.05 - (x-.6)**2 - 0.5*y**2 - z**2, 0.03 - (x-.50)**2 - 0.5*y**2 - z**2)  
-        #I1 = .06 - ((x-.50)**2 + 0.75*y**2 + z**2)  
-        #I1 = .095 - ((x-.7)**2 + v**2 + 0.5*u**2) 
-        fv2 = Surface()
-        fv2.Isosurface(I1, value = 0, target=2000, scales=[1, 1, 1], smooth=0.01)
-
-        fv1.saveVTK('/Users/younes/Development/Results/Diffeons/fv1alt.vtk')
-        fv2.saveVTK('/Users/younes/Development/Results/Diffeons/fv2alt.vtk')
+        # fv1.saveVTK('/Users/younes/Development/Results/Diffeons/fv1alt.vtk')
+        # fv2.saveVTK('/Users/younes/Development/Results/Diffeons/fv2alt.vtk')
     else:
         if False:
             #path = '/Users/younes/Development/project/ncbc/data/template/PDS-II/AllScan1_PDSII/shape_analysis/hippocampus/'
@@ -54,9 +44,9 @@ def compute(createsurfaces=True):
     T0 = 100
     withDiffeons=True
 
-    sm = SurfaceMatchingParam(timeStep=0.1, sigmaKernel=20., sigmaDist=5., sigmaError=1.,algorithm=bfgs,
+    sm = SurfaceMatchingParam(timeStep=0.1, sigmaKernel=5., sigmaDist=5., sigmaError=1.,algorithm='bfgs',
                               #errorType='diffeonCurrent')
-                              errorType='current')
+                              errorType='varifold')
 
     if withDiffeons:
         gdOpt = gd.gdOptimizer(surf=fv1, sigmaDist = .5, DiffeonEpsForNet = r0, testGradient=True, maxIter=100)
@@ -72,8 +62,8 @@ def compute(createsurfaces=True):
     else:
         outputDir = '/Users/younes/Development/Results/Diffeons/Scale100_250_0'
         f = SurfaceMatching(Template=fv1, Target=fv2, outputDir=outputDir,param=sm, testGradient=False,
-                            subsampleTargetSize = 250,
-                            zeroVar=True,
+                            subsampleTargetSize = 500,
+                            #zeroVar=True,
                             #DecimationTarget=T0,
                             #DiffeonEpsForNet = r0,
                             #DiffeonSegmentationRatio=r0,
@@ -98,4 +88,4 @@ def compute(createsurfaces=True):
     return f
 
 if __name__=="__main__":
-    compute(False)
+    compute(True)
