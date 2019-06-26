@@ -1,7 +1,7 @@
-import base.surfaces as surfaces
-from base.pointSets import *
-from base import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol
-from base.affineBasis import *
+from . import surfaces
+from .pointSets import *
+from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol
+from .affineBasis import *
 
 ## Parameter class for matching
 #      timeStep: time discretization

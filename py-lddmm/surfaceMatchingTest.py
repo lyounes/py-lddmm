@@ -13,8 +13,8 @@ def compute(model):
     sigmaKernel = 0.5
     sigmaDist = 5.
     sigmaError = 1.
-    internalWeight = 10.
-    internalCost = None
+    internalWeight = 200.
+    internalCost = 'h1'
     if model=='Balls':
         M=100
         [x,y,z] = np.mgrid[0:2*M, 0:2*M, 0:2*M]/float(M)
@@ -201,4 +201,4 @@ def compute(model):
 
 
 if __name__=="__main__":
-    compute('snake')
+    compute('biocardMulti')

@@ -2,7 +2,7 @@ import argparse
 from base import loggingUtils
 from base.surfaces import *
 from base.kernelFunctions import *
-from surfaceMultiPhase import *
+from base.surfaceMultiPhase import *
 
 def compute(args=None, noArgs=True):
     if noArgs:

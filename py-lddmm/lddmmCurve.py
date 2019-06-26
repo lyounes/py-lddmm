@@ -5,7 +5,7 @@ from base import curves
 import logging
 from base import loggingUtils
 from base.kernelFunctions import *
-from affineRegistration import *
+from base.affineRegistration import *
 
 
 def main():

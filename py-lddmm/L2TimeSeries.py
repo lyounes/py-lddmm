@@ -3,7 +3,7 @@ import argparse
 from base import loggingUtils
 import base.surfaces as surfaces
 from base.kernelFunctions import *
-import surfaceMatching
+from base import surfaceMatching
 #import secondOrderMatching as match
 
 def compute(tmpl, targetDir, outputDir, display=True, Atrophy=False, rescale=False):

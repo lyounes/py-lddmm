@@ -1,7 +1,7 @@
 import csv
 from base import loggingUtils, surfaces
 from base.kernelFunctions import *
-import surfaceMatching, surfaceTimeSeries as match
+from base import surfaceMatching, surfaceTimeSeries as match
 
 
 def runLongitudinalSurface(minL=3, atrophy=False):

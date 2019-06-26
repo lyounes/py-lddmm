@@ -1,6 +1,8 @@
 import numpy as np
 import logging
 
+# added comment to test git, 4-26-19
+
 # Class running BFGS
 # opt is an optimizable class that must provide the following functions:
 #   getVariable(): current value of the optimzed variable
@@ -44,7 +46,10 @@ def __prod(x, a):
 def __copyDir(x):
     return np.copy(x)
 
-def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, memory=25, Wolfe = False):
+def __stopCondition():
+    return True
+
+def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, memory=25, Wolfe = True):
 
     if (hasattr(opt, 'getVariable')==False | hasattr(opt, 'objectiveFun')==False | hasattr(opt, 'updateTry')==False | hasattr(opt, 'acceptVarTry')==False | hasattr(opt, 'getGradient')==False):
         logging.error('Error: required functions are not provided')
@@ -61,6 +66,11 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
         addProd = __addProd
     else:
         addProd = opt.addProd
+
+    if not(hasattr(opt, 'stopCondition')):
+        stopCondition = __stopCondition
+    else:
+        stopCondition = opt.stopCondition
 
     if not(hasattr(opt, 'prod')):
         prod = __prod
@@ -115,77 +125,90 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
         if hasattr(opt, 'startOfIteration'):
             opt.startOfIteration()
 
-        if opt.reset:
-            opt.obj = None
-            obj = opt.objectiveFun()
+        try_BFGS = True
+        while(try_BFGS):
+            if opt.reset:
+                opt.obj = None
+                obj = opt.objectiveFun()
 
-        grd = opt.getGradient(gradCoeff)
+            grd = opt.getGradient(gradCoeff)
 
-        if TestGradient:
-            if hasattr(opt, 'randomDir'):
-                dirfoo = opt.randomDir()
+            if TestGradient:
+                if hasattr(opt, 'randomDir'):
+                    dirfoo = opt.randomDir()
+                else:
+                    dirfoo = np.random.normal(size=grd.shape)
+                epsfoo = 1e-8
+                objfoo = opt.updateTry(dirfoo, epsfoo, obj-1e10)
+                [grdfoo] = dotProduct(grd, [dirfoo])
+                logging.info('Test Gradient: %.4f %.4f' %((objfoo - obj)/epsfoo, -grdfoo * gradCoeff ))
+
+            if (not opt.reset)  and it > 0:
+                storedGrad.append([diffVar, addProd(grd, grdOld, -1)])
+                if len(storedGrad) > memory:
+                    storedGrad.pop(0)
+                q = copyDir(grd)
+                rho = []
+                alpha = []
+                for m in reversed(storedGrad):
+                    rho.append(1/dotProduct(m[1], [m[0]])[0])
+                    alpha.append(rho[-1]*dotProduct(m[0],[q])[0])
+                    q = addProd(q, m[1], -alpha[-1])
+                rho.reverse()
+                alpha.reverse()
+                m = storedGrad[-1]
+                c = dotProduct(m[0],[m[1]])[0]/dotProduct(m[1],[m[1]])[0]
+                if c < 1e-10:
+                    c = 1
+                q = prod(q,c)
+                for k,m in enumerate(storedGrad):
+                    beta = rho[k] * dotProduct(m[1],[q])[0]
+                    q = addProd(q, m[0], alpha[k]-beta)
+                #q = opt.prod(q,-1)
             else:
-                dirfoo = np.random.normal(size=grd.shape)
-            epsfoo = 1e-8
-            objfoo = opt.updateTry(dirfoo, epsfoo, obj-1e10)
-            [grdfoo] = dotProduct(grd, [dirfoo])
-            logging.info('Test Gradient: %.4f %.4f' %((objfoo - obj)/epsfoo, -grdfoo * gradCoeff ))
-
-        if (not opt.reset)  and it > 0:
-            storedGrad.append([diffVar, addProd(grd, grdOld, -1)])
-            if len(storedGrad) > memory:
-                storedGrad.pop(0)
-            q = copyDir(grd)
-            rho = []
-            alpha = []
-            for m in reversed(storedGrad):
-                rho.append(1/dotProduct(m[1], [m[0]])[0])
-                alpha.append(rho[-1]*dotProduct(m[0],[q])[0])
-                q = addProd(q, m[1], -alpha[-1])
-            rho.reverse()
-            alpha.reverse()
-            m = storedGrad[-1]
-            c = dotProduct(m[0],[m[1]])[0]/dotProduct(m[1],[m[1]])[0]
-            if c < 1e-10:
-                c = 1
-            q = prod(q,c)
-            for k,m in enumerate(storedGrad):
-                beta = rho[k] * dotProduct(m[1],[q])[0]
-                q = addProd(q, m[0], alpha[k]-beta)
-            #q = opt.prod(q,-1)
-        else:
-            storedGrad = []
-            q = copyDir(grd)
-            opt.reset = False
+                storedGrad = []
+                q = copyDir(grd)
+                #opt.reset = False
 
 
 
-        grd2 = dotProduct(grd, [grd])[0]
-        grdTry = np.sqrt(np.maximum(1e-20,dotProduct(q,[q])[0]))
-        dir0 = copyDir(q)
+            grd2 = dotProduct(grd, [grd])[0]
+            grdTry = np.sqrt(np.maximum(1e-20,dotProduct(q,[q])[0]))
+            dir0 = copyDir(q)
 
-        grdOld = copyDir(grd)
+            grdOld = copyDir(grd)
 
-        if Wolfe:
-            eps *= 2.
-            if eps > 1.:
-                eps = 1.
-        else:
-            epsBig = epsMax / (grdTry)
-            if eps > epsBig:
-                eps = epsBig
+            if Wolfe:
+                eps *= 2.
+                if eps > 1.:
+                    eps = 1.
+            else:
+                epsBig = epsMax / (grdTry)
+                if eps > epsBig:
+                    eps = epsBig
 
-        objTry = opt.updateTry(dir0, eps, obj)
+            objTry = opt.updateTry(dir0, eps, obj)
 
-        if objTry > obj:
-            #fprintf(1, 'iteration %d: obj = %.5f, eps = %.5f\n', it, objTry, eps) ;
-            epsSmall = np.maximum(1e-6/(grdTry), epsMin)
-            #print 'Testing small variation, eps = {0: .10f}'.format(epsSmall)
-            objTry0 = opt.updateTry(dir0, epsSmall, obj)
-            if objTry0 > obj:
-                logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, gradient: {3:.5f}'.format(it+1, obj, eps, np.sqrt(grd2)))
-                logging.info('Stopping Gradient Descent: bad direction')
-                break
+            if objTry > obj:
+                #fprintf(1, 'iteration %d: obj = %.5f, eps = %.5f\n', it, objTry, eps) ;
+                epsSmall = np.maximum(1e-6/(grdTry), epsMin)
+                #print 'Testing small variation, eps = {0: .10f}'.format(epsSmall)
+                objTry0 = opt.updateTry(dir0, epsSmall, obj)
+                if objTry0 > obj:
+                    if opt.reset:
+                        logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, gradient: {3:.5f}'.format(it+1, obj, eps, np.sqrt(grd2)))
+                        logging.info('Stopping Gradient Descent: bad direction')
+                        break
+                    else:
+                        logging.info('Resetting BFGS')
+                        opt.reset = True
+                else:
+                    try_BFGS = False
+            else:
+                try_BFGS = False
+
+
+        opt.reset = False
 
 
 
@@ -245,7 +268,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
 
 
         #print obj+obj0, objTry+obj0
-        if (np.fabs(obj-objTry) < 1e-10):
+        if (np.fabs(obj-objTry) < 1e-6) and stopCondition():
             logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, gradient: {3:.5f}'.format(it+1, obj, eps, np.sqrt(grd2)))
             if it > burnIn:
                 logging.info('Stopping Gradient Descent: small variation')
@@ -261,7 +284,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
         if verb | (it == maxIter):
             logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, gradient: {3:.5f}'.format(it+1, obj, eps, np.sqrt(grd2)))
 
-        if np.sqrt(grd2) <gradEps:
+        if np.sqrt(grd2) <gradEps and stopCondition():
             logging.info('Stopping Gradient Descent: small gradient')
             opt.converged = True
             if hasattr(opt, 'endOfProcedure'):

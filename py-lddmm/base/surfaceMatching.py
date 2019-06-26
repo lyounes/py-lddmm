@@ -2,10 +2,10 @@ import os
 import numpy as np
 import numpy.linalg as la
 import logging
-from base import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, bfgs
-import base.surfaces as surfaces
-from base import pointSets
-from base.affineBasis import AffineBasis, getExponential, gradExponential
+from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, bfgs
+from . import surfaces
+from . import pointSets
+from .affineBasis import AffineBasis, getExponential, gradExponential
 from functools import partial
 import matplotlib
 matplotlib.use("QT5Agg")
@@ -77,10 +77,10 @@ class SurfaceMatching(object):
         else:
             self.param = param
 
-        if self.param.algorithm == 'bfgs':
-             self.euclideanGradient = True
+        if self.param.algorithm == 'cg':
+             self.euclideanGradient = False
         else:
-            self.euclideanGradient = False
+            self.euclideanGradient = True
 
         self.set_fun(self.param.errorType)
 
@@ -117,6 +117,7 @@ class SurfaceMatching(object):
             #print np.fabs(self.fv1.surfel-self.fv0.surfel).max()
 
         self.saveRate = 10
+        self.gradEps = -1
         self.randomInit = True
         self.iter = 0
         self.setOutputDir(outputDir)
@@ -638,7 +639,6 @@ class SurfaceMatching(object):
     def dotProduct_euclidean(self, g1, g2):
         res = np.zeros(len(g2))
         for t in range(self.Tsize):
-            z = np.squeeze(self.xt[t, :, :])
             u = np.squeeze(g1.diff[t, :, :])
             uu = (g1.aff[t]*self.affineWeight.reshape(g1.aff[t].shape))
             ll = 0

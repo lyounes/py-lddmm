@@ -1,4 +1,4 @@
-import kernelFunctions as kfun
+from . import kernelFunctions as kfun
 
 
 ## Parameter class for matching

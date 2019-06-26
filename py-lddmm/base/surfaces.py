@@ -4,13 +4,14 @@ import os
 import numpy as np
 import scipy as sp
 import scipy.linalg as LA
+from skimage import measure
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 try:
     import diffeo
 except ImportError:
-    from base import diffeo
+    from . import diffeo
 import scipy.linalg as spLA
 from scipy.sparse import coo_matrix
 import glob
@@ -363,7 +364,13 @@ class Surface:
         else:
             raise Exception('Cannot run smooth without VTK')
 
-            
+
+    def Isosurface_ski(self, data, value=0.5, step = 1):
+        verts,faces,n,v = measure.marching_cubes_lewiner(data, allow_degenerate=False, level=value,step_size=step)
+        self.__init__(FV=(faces,verts))
+
+
+
     # Computes isosurfaces using vtk               
     def Isosurface(self, data, value=0.5, target=1000.0, scales = [1., 1., 1.], smooth = 0.1, fill_holes = 1., orientation=1):
         if gotVTK:
@@ -426,27 +433,28 @@ class Surface:
                 g = smoother.GetOutput()
 
             #dc = vtkDecimatePro()
-            red = 1 - min(np.float(target)/g.GetNumberOfPoints(), 1)
-            #print 'Reduction: ', red
-            dc = vtkQuadricDecimation()
-            dc.SetTargetReduction(red)
-            #dc.AttributeErrorMetricOn()
-            #dc.SetDegree(10)
-            #dc.SetSplitting(0)
-            if vtkVersion.GetVTKMajorVersion() >= 6:
-                dc.SetInputData(g)
-            else:
-                dc.SetInput(g)
-                #dc.SetInput(g)
-            #print dc
-            dc.Update()
-            g = dc.GetOutput()
+            if target>0:
+                red = 1 - min(np.float(target)/g.GetNumberOfPoints(), 1)
+                #print 'Reduction: ', red
+                dc = vtkQuadricDecimation()
+                dc.SetTargetReduction(red)
+                #dc.AttributeErrorMetricOn()
+                #dc.SetDegree(10)
+                #dc.SetSplitting(0)
+                if vtkVersion.GetVTKMajorVersion() >= 6:
+                    dc.SetInputData(g)
+                else:
+                    dc.SetInput(g)
+                    #dc.SetInput(g)
+                #print dc
+                dc.Update()
+                g = dc.GetOutput()
             #print 'points:', g.GetNumberOfPoints()
             cp = vtkCleanPolyData()
             if vtkVersion.GetVTKMajorVersion() >= 6:
-                cp.SetInputData(dc.GetOutput())
+                cp.SetInputData(g)
             else:
-                cp.SetInput(dc.GetOutput())
+                cp.SetInput(g)
                 #        cp.SetInput(dc.GetOutput())
             #cp.SetPointMerging(1)
             cp.ConvertPolysToLinesOn()
@@ -855,7 +863,7 @@ class Surface:
         res.computeCentersAreas()
         return res
 
-    def createFlatApproximation(self):
+    def createFlatApproximation(self, thickness=None, M=50):
         a = self.computeVertexArea()[0]
         A = a.sum()
         x0 = (self.vertices * a[:,np.newaxis]).sum(axis=0)/A
@@ -866,7 +874,7 @@ class Surface:
         #J = LA.inv(J)
         #c0 = (np.dot(ftmpl.vertices, J)*ftmpl.vertices).sum()/ftmpl.vertices.shape[0]
         #dst = np.sqrt(((ftmpl.vertices - x0)**2).sum(axis=1)).mean(axis=0)
-        M = 100
+        #M = 100
         [x,y,z] = np.mgrid[0:2*M+1, 0:2*M+1, 0:2*M+1] / M
         x = emax*(x-1)
         y = emax*(y-1)
@@ -874,19 +882,25 @@ class Surface:
         u0 = x*v[0,0] + y*v[1,0] + z*v[2,0]
         u1 = x*v[0,1] + y*v[1,1] + z*v[2,1]
         u2 = x*v[0,2] + y*v[1,2] + z*v[2,2]
-        I1 = np.logical_and((u2**2/w[2] + u1**2/w[1]) < 3, u0**2 < w[0])
+        if thickness is None:
+            w0 = w[0]
+        else:
+            w0 = (thickness/2)**2
+        I1 = np.logical_and((u2 ** 2 / w[2] + u1 ** 2 / w[1]) < 3, u0 ** 2 < w0)
         h = Surface()
-        h.Isosurface(I1, value = 1, target=max(1000, self.vertices.shape[0]), scales=[1, 1, 1], smooth=0.1)
+        h.Isosurface_ski(data=I1, value=.5, step=3)
+        print('Vertices', h.vertices.shape[0])
+        #h.Isosurface(I1, value = 1, target=max(1000, self.vertices.shape[0]), scales=[1, 1, 1], smooth=0.0001)
         h.updateVertices(x0 + (h.vertices-M)*emax/M)
         labels = np.zeros(h.vertices.shape[0], dtype=int)
         for j in range(labels.shape[0]):
             x = h.vertices[j,:] - x0
             u2 = x[0]  * v[0, 0] + x[1] * v[1, 0] + x[2] * v[2, 0]
-            if np.fabs(u2-np.sqrt(w[0])) < emax/M:
+            if np.fabs(u2-np.sqrt(w0)) < emax/M:
                 labels[j] = 1
-            elif np.fabs(u2+np.sqrt(w[0])) < emax/M:
+            elif np.fabs(u2+np.sqrt(w0)) < emax/M:
                 labels[j] = 2
-        return h, labels
+        return h, labels, np.sqrt(w0)
 
     def addToPlot(self, ax, ec = 'b', fc = 'r', al=.5, lw=1):
         x = self.vertices[self.faces[:,0],:]

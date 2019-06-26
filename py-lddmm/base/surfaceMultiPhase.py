@@ -2,11 +2,11 @@ import os
 import scipy.linalg as spLA
 import logging
 import time
-from base import surfaces
+from . import surfaces
 #import pointEvolution_fort as evol_omp
-from base import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol
-import surfaceMatching
-from base.affineBasis import *
+from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol
+from . import surfaceMatching
+from .affineBasis import *
 
 
 ## Parameter class for matching
@@ -955,7 +955,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
 
         self.gradEps = np.sqrt(grd2) / 100
         self.muEps = 1.0
-        self.restartRate = 100 ;
+        self.restartRate = 100
         it = 0
         self.startTimeClock = time.clock()
         self.startTime = time.time()
