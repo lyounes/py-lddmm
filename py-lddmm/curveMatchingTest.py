@@ -295,7 +295,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
                                        stdOutput = True)   
     
     sm = CurveMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError, errorType='varifold', internalCost='h1Invariant')
-    f = CurveMatching(Template=ftemp, Target=ftarg, outputDir=dirOut+'/Development/Results/curveMatching'+model+'HLDDMM_0p2_nocomp25',param=sm, testGradient=False,
+    f = CurveMatching(Template=ftemp, Target=ftarg, outputDir=dirOut+'/Development/Results/curveMatching'+model+'HLDDMM_0p2_nocomp25',param=sm, testGradient=True,
                       regWeight=1., internalWeight=internalWeight, maxIter=10000, affine='none', rotWeight=1, transWeight = 1, scaleWeight=100., affineWeight=100.)
  
     f.optimizeMatching()

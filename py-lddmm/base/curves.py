@@ -10,7 +10,7 @@ except ImportError:
     gotVTK = False
     
 #import kernelFunctions as kfun
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 # General curve class
 class Curve:
@@ -150,7 +150,8 @@ class Curve:
         return ka, nrm, kan
             
     # Computes isocontours using vtk               
-    def Isocontour(self, data, value=0.5, target=100.0, scales = [1., 1.], smooth = 30, fill_holes = 1., singleComponent = True):
+    def Isocontour(self, data, value=0.5, target=100.0, scales = (1., 1.),
+                   smooth = 30, fill_holes = 1., singleComponent = True):
         if gotVTK:
             #data = self.LocalSignedDistance(data0, value)
             img = vtkImageData()
@@ -230,6 +231,7 @@ class Curve:
             self.orientEdges()
             self.removeDuplicates()
             self.computeCentersLengths()
+            self.remesh(N=target)
             #print self.faces.shape
             #self.checkEdges()
         else:
@@ -547,6 +549,31 @@ class Curve:
             self.computeCentersLengths()
         else:
             raise Exception('Cannot read VTK files without VTK functions')
+
+    def remesh(self, N=100, closed=True, rhoTol=0.9):
+        v = np.zeros(self.vertices.shape)
+        inface = -np.ones(self.vertices.shape, dtype=int)
+        for k in range(self.faces.shape[0]):
+            inface[self.faces[k,0],0] = k
+            inface[self.faces[k,1],1] = k
+
+        k0 = self.faces[0, 0]
+        k1 = self.faces[0, 1]
+        j = 0
+        v[j, :] = self.vertices[k0, :]
+        while k1 != k0:
+            j += 1
+            v[j,:] = self.vertices[k1, :]
+            f = inface[k1, 0]
+            k1 = self.faces[f,1]
+            if k1 <0:
+                break
+
+        if j < self.vertices.shape[0] - 1:
+            print('Unable to remesh the curve')
+        else:
+            x = remesh(v, N=N, closed= (k1==k0), rhoTol=rhoTol)
+            self.__init__(pointSet=x)
 
     def resample(self, ds):
         ll = np.sqrt((self.linel**2).sum(axis=1))
