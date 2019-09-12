@@ -2,8 +2,9 @@
 from os import path
 import glob
 import argparse
-from base import pointSets, surfaces
-from base.affineRegistration import *
+import numpy as np
+from .base import pointSets, surfaces
+from .base.affineRegistration import rigidRegistration, saveRigid
 
 
 def main():

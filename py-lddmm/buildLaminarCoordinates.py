@@ -1,13 +1,13 @@
 import matplotlib
 matplotlib.use("QT5Agg")
 import numpy as np
-from base import loggingUtils
-from base import surfaces
-from base.kernelFunctions import Kernel
-from base.affineRegistration import rigidRegistration
-from base.surfaceMatching import SurfaceMatching as SM, SurfaceMatchingParam as SMP
-from base.surfaceMatchingNormalExtremities import SurfaceMatching as SMN, SurfaceMatchingParam as SMPN
-from base import examples
+from .base import loggingUtils
+from .base import surfaces
+from .base.kernelFunctions import Kernel
+from .base.affineRegistration import rigidRegistration
+from .base.surfaceMatching import SurfaceMatching as SM, SurfaceMatchingParam as SMP
+from .base.surfaceMatchingNormalExtremities import SurfaceMatching as SMN, SurfaceMatchingParam as SMPN
+from .base import examples
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 

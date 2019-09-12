@@ -2,6 +2,7 @@ import os
 import numpy as np
 import numpy.linalg as la
 import logging
+import h5py
 from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, bfgs
 from . import surfaces
 from . import pointSets
@@ -779,6 +780,41 @@ class SurfaceMatching(object):
             #plt.axis('equal')
             #plt.pause(0.1)
 
+
+    def saveHD5(self, fileName):
+        fout = h5py.File(fileName, 'w')
+        LDDMMResult = fout.create_group('LDDMM Results')
+        template = LDDMMResult.create_group('template')
+        template.create_dataset('vertices', data=self.fv0.vertices)
+        template.create_dataset('faces', data=self.fv0.vertices)
+        target = LDDMMResult.create_group('target')
+        target.create_dataset('vertices', data=self.fv1.vertices)
+        target.create_dataset('faces', data=self.fv1.vertices)
+        deformedTemplate = LDDMMResult.create_group('deformedTemplate')
+        deformedTemplate.create_dataset('vertices', data=self.fv1.vertices)
+        deformedTemplate.create_dataset('faces', data=self.fv1.vertices)
+        variables = LDDMMResult.create_group('variables')
+        variables.create_dataset('alpha', self.at)
+        variables.create_dataset('affine', self.Afft)
+        descriptors = LDDMMResult.create_group('descriptors')
+
+        A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+        dim2 = self.dim**2
+        if self.affineDim > 0:
+            for t in range(self.Tsize):
+                AB = np.dot(self.affineBasis, self.Afft[t])
+                A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
+                A[1][t] = AB[dim2:dim2 + self.dim]
+        (xt, Jt) = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
+                                                     withJacobian=True)
+
+        AV0 = self.fv0.computeVertexArea()
+        AV = self.fvDef.computeVertexArea()[0]/AV0[0]
+        descriptors.create_dataset('Jacobian', data=Jt[-1,:])
+        descriptors.create_dataset('Surface Jacobian', data=AV)
+        descriptors.create_dataset('Displacement', data=xt[-1,...]-xt[0,...])
+
+        fout.close()
 
 
     def endOfProcedure(self):
