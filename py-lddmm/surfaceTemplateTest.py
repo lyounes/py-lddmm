@@ -1,8 +1,8 @@
-from base.surfaces import Surface
-from base.kernelFunctions import Kernel
+from .base.surfaces import Surface
+from .base.kernelFunctions import Kernel
 #from surfaceMatching import SurfaceMatchingParam
-from surfaceTemplate import SurfaceTemplate, SurfaceTemplateParam
-from base import loggingUtils
+from .base.surfaceTemplate import SurfaceTemplate, SurfaceTemplateParam
+from .base import loggingUtils
 
 
 def main():

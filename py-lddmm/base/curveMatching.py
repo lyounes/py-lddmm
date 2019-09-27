@@ -4,11 +4,9 @@ import logging
 #import scipy as sp
 from . import curves
 from . import pointSets
-#import kernelFunctions as kfun
+from . import kernelFunctions as kfun
 from . import conjugateGradient as cg, grid, matchingParam, pointEvolution as evol, bfgs
 from .affineBasis import *
-import matplotlib
-matplotlib.use("TKAgg")
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from functools import partial

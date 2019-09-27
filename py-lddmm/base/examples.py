@@ -1,5 +1,26 @@
 import numpy as np
-from base.surfaces import Surface
+from .curves import Curve
+from .surfaces import Surface
+from matplotlib import pyplot as plt
+
+def peanut(r = (1,1), delta = 0.5, sigma = .25, theta = 0, tau = (0,0), d = 100):
+    [x, y] = np.mgrid[0:2*d, 0:2*d] / d
+    y = y - 1
+    x = x - 1
+    dx = delta*np.cos(theta)
+    dy = delta*np.sin(theta)
+    s2 = 2*sigma*sigma
+    I1 = r[0]*np.exp(- ((x-dx)**2 + (y-dy)**2)/s2) + r[1]*np.exp(- ((x+dx)**2 + (y+dy)**2)/s2)
+    val = (r[0]+r[1])*np.exp(- (dx**2 + dy**2)/s2)*0.75
+    #plt.imshow(I1>val)
+    #plt.show()
+    print(I1.min(), I1.max(), val)
+    fv = Curve()
+    fv.Isocontour(I1, value=val, target=150, scales=[1, 1])
+    fv.updateVertices(fv.vertices + d*np.array(tau))
+
+    return fv
+
 
 def flowers(n=6):
     [x, y, z] = np.mgrid[0:200, 0:200, 0:200] / 100.
@@ -116,3 +137,14 @@ def ellipsoid(a=.5, b=.5, c=.5, d=25):
     fv.Isosurface_ski(I1, value=0, step=5)
     print('vertices',fv.vertices.shape[0])
     return fv
+
+def split_ellipsoid(a=.5, b=.5, c=.5, d=25):
+    [x, y, z] = np.mgrid[0:2*d, 0:2*d, 0:2*d] / d - 1
+    I1 = (1 - (x/a)**2 - (y/b)**2 - (z/c)**2)
+    fv = Surface()
+    #fv.Isosurface(I1, value=0, target=1000, scales=[1, 1, 1], smooth=0.01)
+    fv.Isosurface_ski(I1, value=0, step=1)
+    fvTop = fv.truncate((np.array([0, 0, 1, d *(1+ 0.25*c)]),))
+    fvBottom = fv.truncate((np.array([0, 0, -1, -d*(1-0.25*c)]),))
+
+    return fvBottom, fvTop
