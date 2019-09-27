@@ -1,83 +1,282 @@
 import numpy as np
+from scipy.sparse import coo_matrix
 
 class AffineBasis:
     def __init__(self, dim=3, affine='affine'):
         u = 1.0/np.sqrt(2.0)
-        dimSym = (dim * (dim-1))// 2
-        affCode = 0
-        rotCode = 0 
+        dimSym = (dim * (dim+1))// 2
+        dimSkew = (dim * (dim-1))// 2
+        translation = False
+        sym = False
+        skew_sym = False
+        scale = False
+        diagonal = False
+        # affCode = 0
+        # rotCode = 0
         self.dim = dim
+        if dim > 25:
+            self.sparse = True
+        else:
+            self.sparse = False
         self.rotComp = []
         self.simComp = []
-        self.affComp = []
+        #self.affComp = []
         self.transComp = []
+        self.diagComp = []
+        self.symComp = []
         if affine == 'affine':
-            affCode = 1
-            rotCode = 1
-            self.affineDim = 2* (dimSym + dim)
+            # affCode = 1
+            # rotCode = 1
+            translation = True
+            skew_sym = True
+            sym = True
+            scale = True
+            diagonal = True
+            #self.affineDim = 2* (dimSym + dim)
         elif affine == 'similitude':
-            affCode = 2
-            rotCode = 1
-            self.affineDim = dimSym + 1 + dim
+            translation = True
+            skew_sym = True
+            scale = True
+            # affCode = 2
+            # rotCode = 1
+            #self.affineDim = dimSym + 1 + dim
         elif affine == 'euclidean':
-            affCode = 3
+            translation = True
+            skew_sym = True
+            #affCode = 3
             rotCode = 1
-            self.affineDim = dimSym + dim
+            #self.affineDim = dimSym + dim
         elif affine == 'translation':
-            affCode = 4
-            self.affineDim = dim
-        elif affine == 'scale':
-            affCode = 2
-            self.affineDim = dim + 1
+            translation = True
+            #affCode = 4
+            #self.affineDim = dim
+        elif affine == 'diagonal':
+            translation = True
+            scale = True
+            diagonal = True
+            #affCode = 2
+            #self.affineDim = dim + 1
         else:
-            affCode = 5
+            #affCode = 5
             self.basis = []
-            self.affineDim = 0
-        if affCode <= 4:
-            self.basis = np.zeros([2 * (dimSym + dim), self.affineDim])
+            #self.affineDim = 0
 
-        self.affCode = affCode
-        k = 0
-        if affCode <= 1:
-            for i in range(dimSym):
-                for j in range(i+1, dim):
-                    self.basis[i*dim + j, k] = u
-                    self.basis[j*dim + i, k] = u
-                    k+=1
-            for i in range(dim-1):
-                uu = np.sqrt((1 - 1.0/(i+2)))/(i+1.)
-                self.basis[(i+1)*dim + (i+1), k] = np.sqrt(1 - 1.0/(i+2))
-                for j in range(i+1):
-                    self.basis[j*dim + j, k] = -uu
+        self.affineDim = dim * translation + dim * diagonal + scale + skew_sym * dimSkew + sym * dimSkew
+
+        if self.sparse:
+            maxDim = 2 * (dimSkew + dim)* self.affineDim
+            I = np.zeros(maxDim, dtype=int)
+            J = np.zeros(maxDim, dtype=int)
+            V = np.zeros(maxDim)
+
+            #self.affCode = affCode
+            kk = 0
+            k = 0
+            if translation:
+                k0 = k
+                for i in range(dim):
+                    I[kk] = i + dim**2
+                    J[kk] = k
+                    V[kk] = 1
+                    kk += 1
+                    k += 1
+                self.transComp = range(k0, k)
+            if skew_sym:
+                k0 = k
+                for i in range(dim):
+                    for j in range(i+1, dim):
+                        I[kk] = i*dim+j
+                        J[kk] = k
+                        V[kk] = u
+                        kk += 1
+                        I[kk] = j*dim+i
+                        J[kk] = k
+                        V[kk] = -u
+                        kk += 1
+                        k+=1
+                self.rotComp = range(k0,k)
+            if scale:
+                k0=k
+                for i in range(dim):
+                    I[kk] = i*dim+i
+                    J[kk] = k
+                    V[kk] = 1./np.sqrt(dim)
+                    kk += 1
                 k += 1
-            self.affComp = range(k)
-        if affCode <= 2:
-            k0=k
-            for i in range(dim):
-                self.basis[i*dim+i,k] = 1./np.sqrt(dim)
-            k += 1
-            self.simComp = range(k0, k)
-        if rotCode == 1:
-            k0 = k
-            for i in range(dim):
-                for j in range(i+1, dim):
-                    self.basis[i*dim + j, k] = u
-                    self.basis[j*dim + i, k] = -u
-                    k+=1
-            self.rotComp = range(k0,k)
-        if affCode <= 4:
-            k0 = k
-            for i in range(dim):
-                self.basis[i+dim**2, k] = 1
+                self.simComp = range(k0, k)
+            if diagonal:
+                k0 = k
+                for i in range(dim-1):
+                    uu = np.sqrt((1 - 1.0/(i+2)))/(i+1.)
+                    I[kk] = (i+1)*dim + (i+1)
+                    J[kk] = k
+                    V[kk] = np.sqrt(1 - 1.0/(i+2))
+                    kk += 1
+                    for j in range(i+1):
+                        I[kk] = j*dim+j
+                        J[kk] = k
+                        V[kk] = -uu
+                        kk += 1
+                    k += 1
+                self.diagComp = range(k0, k)
+            if sym:
+                k0 = k
+                for i in range(dim):
+                    for j in range(i+1, dim):
+                        I[kk] = i*dim+j
+                        J[kk] = k
+                        V[kk] = u
+                        kk += 1
+                        I[kk] = j*dim+i
+                        J[kk] = k
+                        V[kk] = u
+                        kk += 1
+                        k+=1
+                self.symComp = range(k0, k)
+
+
+            # if affCode <= 1:
+            #     for i in range(dimSym):
+            #         for j in range(i+1, dim):
+            #             I[kk] = i*dim+j
+            #             J[kk] = k
+            #             V[kk] = u
+            #             kk += 1
+            #             k+=1
+            #     for i in range(dim-1):
+            #         uu = np.sqrt((1 - 1.0/(i+2)))/(i+1.)
+            #         I[kk] = (i+1)*dim + (i+1)
+            #         J[kk] = k
+            #         V[kk] = np.sqrt(1 - 1.0/(i+2))
+            #         kk += 1
+            #         for j in range(i+1):
+            #             I[kk] = j*dim+j
+            #             J[kk] = k
+            #             V[kk] = -uu
+            #             kk += 1
+            #         k += 1
+            #     self.affComp = range(k)
+            # if affCode <= 2:
+            #     k0=k
+            #     for i in range(dim):
+            #         I[kk] = i*dim+i
+            #         J[kk] = k
+            #         V[kk] = 1./np.sqrt(dim)
+            #         kk += 1
+            #     k += 1
+            #     self.simComp = range(k0, k)
+            # if rotCode == 1:
+            #     k0 = k
+            #     for i in range(dim):
+            #         for j in range(i+1, dim):
+            #             I[kk] = i*dim+j
+            #             J[kk] = k
+            #             V[kk] = u
+            #             kk += 1
+            #             I[kk] = j*dim+i
+            #             J[kk] = k
+            #             V[kk] = -u
+            #             kk += 1
+            #             k+=1
+            #     self.rotComp = range(k0,k)
+            # if affCode <= 4:
+            #     k0 = k
+            #     for i in range(dim):
+            #         I[kk] = i + dim**2
+            #         J[kk] = k
+            #         V[kk] = 1
+            #         kk += 1
+            #         k += 1
+            #     self.transComp = range(k0, k)
+            self.basis = coo_matrix((V[:kk], (I[:kk], J[:kk])), shape=(2 * (dimSkew + dim), self.affineDim))
+        else:
+            #if affCode <= 4:
+            self.basis = np.zeros([2 * (dimSkew + dim), self.affineDim])
+
+            #self.affCode = affCode
+            k = 0
+            if translation:
+                k0 = k
+                for i in range(dim):
+                    self.basis[i + dim ** 2 ,k] = 1
+                    k += 1
+                self.transComp = range(k0 ,k)
+            if skew_sym:
+                k0 = k
+                for i in range(dim):
+                    for j in range(i + 1, dim):
+                        self.basis[i * dim + j, k] = u
+                        self.basis[j * dim + i, k] = -u
+                        k += 1
+                self.rotComp = range(k0 ,k)
+            if scale:
+                k0 = k
+                for i in range(dim):
+                    self.basis[i * dim + i, k] = 1. / np.sqrt(dim)
                 k += 1
-            self.transComp = range(k0, k)
+                self.simComp = range(k0, k)
+            if diagonal:
+                k0 = k
+                for i in range(dim - 1):
+                    uu = np.sqrt((1 - 1.0 / (i + 2))) / (i + 1.)
+                    self.basis[(i + 1) * dim + (i + 1), k] = np.sqrt(1 - 1.0 / (i + 2))
+                    for j in range(i + 1):
+                        self.basis[j * dim + j, k] = -uu
+                    k += 1
+                self.diagComp = range(k0, k)
+            if sym:
+                k0 = k
+                for i in range(dim):
+                    for j in range(i + 1, dim):
+                        self.basis[i * dim + j, k] = u
+                        self.basis[j * dim + i, k] = u
+                        k += 1
+                self.symComp = range(k0, k)
+
+
+            # if affCode <= 1:
+            #     for i in range(dimSym):
+            #         for j in range(i + 1, dim):
+            #             self.basis[i * dim + j, k] = u
+            #             self.basis[j * dim + i, k] = u
+            #             k += 1
+            #     for i in range(dim - 1):
+            #         uu = np.sqrt((1 - 1.0 / (i + 2))) / (i + 1.)
+            #         self.basis[(i + 1) * dim + (i + 1), k] = np.sqrt(1 - 1.0 / (i + 2))
+            #         for j in range(i + 1):
+            #             self.basis[j * dim + j, k] = -uu
+            #         k += 1
+            #     self.affComp = range(k)
+            # if affCode <= 2:
+            #     k0 = k
+            #     for i in range(dim):
+            #         self.basis[i * dim + i, k] = 1. / np.sqrt(dim)
+            #     k += 1
+            #     self.simComp = range(k0, k)
+            # if rotCode == 1:
+            #     k0 = k
+            #     for i in range(dim):
+            #         for j in range(i + 1, dim):
+            #             self.basis[i * dim + j, k] = u
+            #             self.basis[j * dim + i, k] = -u
+            #             k += 1
+            #     self.rotComp = range(k0, k)
+            # if affCode <= 4:
+            #     k0 = k
+            #     for i in range(dim):
+            #         self.basis[i + dim ** 2, k] = 1
+            #         k += 1
+            #     self.transComp = range(k0, k)
 
     def getTransforms(self, Afft):
         Tsize = Afft.shape[0]
         dim2 = self.dim**2
         A = [np.zeros([Tsize, self.dim, self.dim]), np.zeros([Tsize, self.dim])]
         if self.affineDim > 0:
-            AB = (self.basis[np.newaxis,:,:]*Afft[:,np.newaxis,:]).sum(axis=2)
+            AB = np.zeros((Tsize, self.basis.shape[0]))
+            for t in range(Tsize):
+                AB[t, :] = self.basis.dot(Afft[t,:])
+            #AB = (self.basis[np.newaxis,:,:]*Afft[:,np.newaxis,:]).sum(axis=2)
             A[0] = AB[:,0:dim2].reshape([Tsize, self.dim,self.dim])
             A[1] = AB[:,dim2:dim2+self.dim]
             # for t in range(Tsize):

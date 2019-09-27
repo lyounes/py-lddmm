@@ -7,6 +7,8 @@ import scipy as sp
 import logging
 import scipy.ndimage as Img
 from PIL import Image
+import nibabel
+
 
 try:
     from vtk import *
@@ -25,7 +27,7 @@ from PIL.Image import core as _imaging
 class gridScalars:
     # initializes either form a previous array (data) or from a file 
     def __init__(self, grid=None, data=None, fileName = None, dim = 3, resol = 1., origin= 0., force_axun=False, withBug=False):
-        if not (data is None):
+        if data is not None:
             self.data = np.copy(data)
             if type(resol) == float:
                 self.resol = resol *np.ones(data.ndim)
@@ -36,7 +38,7 @@ class gridScalars:
             else:
                 self.origin = np.copy(origin)
             self.dim = dim
-        elif not (fileName==None):
+        elif fileName is not None:
             self.dim = dim 
             if (dim == 1):
                 self.resol = 1.
@@ -77,7 +79,7 @@ class gridScalars:
             else:
                 print("get_image: unsupported input dimensions")
                 return
-        elif not(grid==None):
+        elif grid is not None:
             self.data = np.copy(grid.data)
             self.resol = np.copy(grid.resol)
             self.origin = np.copy(grid.origin)
@@ -137,111 +139,116 @@ class gridScalars:
 
     # Saves in analyze file
     def saveAnalyze(self, filename):
-        [nm, ext] = os.path.splitext(filename)
-        with open(nm+'.hdr', 'w') as ff:
-            x = 348
-            ff.write(struct.pack('i', x))
-            self.header[33] = self.data.shape[0]
-            self.header[34] = self.data.shape[1]
-            self.header[35] = self.data.shape[2]
-            self.header[53] = 16
-            self.header[57:60] = self.resol
-            self.header[178] = 1
-            frmt = 28*'B'+'i'+'h'+2*'B'+8*'h'+12*'B'+4*'h'+16*'f'+2*'i'+168*'B'+8*'i'
-            ff.write(struct.pack(frmt, *self.header.tolist()))
-        with open(nm+'.img', 'w') as ff:
-            print(self.data.max())
-            #array.array('f', self.data[::-1,::-1,::-1].T.flatten()).tofile(ff)
-            array.array('f', self.data.T.flatten()).tofile(ff)
-            #uu = self.data[::-1,::-1,::-1].flatten()
-            #print uu.max()
-            #uu.tofile(ff)
+        nibabel.AnalyzeImage(self.data, None).to_filename(filename)
+        # [nm, ext] = os.path.splitext(filename)
+        # with open(nm+'.hdr', 'wb') as ff:
+        #     x = 348
+        #     self.header = np.zeros(250, dtype=int)
+        #     ff.write(struct.pack('i', x))
+        #     self.header[33] = self.data.shape[0]
+        #     self.header[34] = self.data.shape[1]
+        #     self.header[35] = self.data.shape[2]
+        #     self.header[53] = 16
+        #     self.header[57:60] = self.resol
+        #     self.header[178] = 1
+        #     frmt = 28*'B'+'i'+'h'+2*'B'+8*'h'+12*'B'+4*'h'+16*'f'+2*'i'+168*'B'+8*'i'
+        #     ff.write(struct.pack(frmt, *self.header.tolist()))
+        # with open(nm+'.img', 'wb') as ff:
+        #     print(self.data.max())
+        #     #array.array('f', self.data[::-1,::-1,::-1].T.flatten()).tofile(ff)
+        #     array.array('f', self.data.T.flatten()).tofile(ff)
+        #     #uu = self.data[::-1,::-1,::-1].flatten()
+        #     #print uu.max()
+        #     #uu.tofile(ff)
 
     # Reads in analyze file
     def loadAnalyze(self, filename, force_axun=False, withBug=False):
-        [nm, ext] = os.path.splitext(filename)
-        with open(nm+'.hdr', 'rb') as ff:
-            frmt = 28*'B'+'i'+'h'+2*'B'+8*'h'+12*'B'+4*'h'+16*'f'+2*'i'+168*'B'+8*'i'
-            lend = '<'
-            ls = struct.unpack(lend+'i', ff.read(4))
-            x = int(ls[0])
-            #print 'x=',x
-            if not (x == 348):
-                lend = '>'
-            ls = struct.unpack(lend+frmt, ff.read())
-            self.header = np.array(ls)
-            #print ls
-    
-            sz = ls[33:36]
-            #print sz
-            datatype = ls[53]
-            #print  "Datatype: ", datatype
-            self.resol = ls[57:60]
-            self.hist_orient = ls[178]
-            if force_axun:
-                self.hist_orient = 0
-            if withBug:
-                self.hist_orient = 0
-            print("Orientation: ", int(self.hist_orient))
+        img = nibabel.load(filename)
 
-
-        with open(nm+'.img', 'rb') as ff:
-            nbVox = sz[0]*sz[1]*sz[2]
-            s = ff.read()
-            #print s[0:30]
-            if datatype == 2:
-                ls2 = struct.unpack(lend+nbVox*'B', s)
-            elif datatype == 4:
-                ls2 = struct.unpack(lend+nbVox*'h', s)
-            elif datatype == 8:
-                ls2 = struct.unpack(lend+nbVox*'i', s)
-            elif datatype == 16:
-                ls2 = struct.unpack(lend+nbVox*'f', s)
-            elif datatype == 32:
-                ls2 = struct.unpack(lend+2*nbVox*'f', s)
-                print('Warning: complex input not handled')
-            elif datatype == 64:
-                ls2 = struct.unpack(lend+nbVox*'d', s)
-            else:
-                print('Unknown datatype')
-                return
+        # [nm, ext] = os.path.splitext(filename)
+        # with open(nm+'.hdr', 'rb') as ff:
+        #     frmt = 28*'B'+'i'+'h'+2*'B'+8*'h'+12*'B'+4*'h'+16*'f'+2*'i'+168*'B'+8*'i'
+        #     lend = '<'
+        #     ls = struct.unpack(lend+'i', ff.read(4))
+        #     x = int(ls[0])
+        #     #print 'x=',x
+        #     if not (x == 348):
+        #         lend = '>'
+        #     ls = struct.unpack(lend+frmt, ff.read())
+        #     self.header = np.array(ls)
+        #     #print ls
+        #
+        #     sz = ls[33:36]
+        #     #print sz
+        #     datatype = ls[53]
+        #     #print  "Datatype: ", datatype
+        #     self.resol = ls[57:60]
+        #     self.hist_orient = ls[178]
+        #     if force_axun:
+        #         self.hist_orient = 0
+        #     if withBug:
+        #         self.hist_orient = 0
+        #     print("Orientation: ", int(self.hist_orient))
+        #
+        #
+        # with open(nm+'.img', 'rb') as ff:
+        #     nbVox = sz[0]*sz[1]*sz[2]
+        #     s = ff.read()
+        #     #print s[0:30]
+        #     if datatype == 2:
+        #         ls2 = struct.unpack(lend+nbVox*'B', s)
+        #     elif datatype == 4:
+        #         ls2 = struct.unpack(lend+nbVox*'h', s)
+        #     elif datatype == 8:
+        #         ls2 = struct.unpack(lend+nbVox*'i', s)
+        #     elif datatype == 16:
+        #         ls2 = struct.unpack(lend+nbVox*'f', s)
+        #     elif datatype == 32:
+        #         ls2 = struct.unpack(lend+2*nbVox*'f', s)
+        #         print('Warning: complex input not handled')
+        #     elif datatype == 64:
+        #         ls2 = struct.unpack(lend+nbVox*'d', s)
+        #     else:
+        #         print('Unknown datatype')
+        #         return
 
             #ls = np.array(ls)
             #print ls
         #print 'size:', sz
-        self.data = np.float_(ls2)
-        self.data.resize(sz[::-1])
+        self.data = img.get_fdata().astype(float)
+        #self.data.resize(sz[::-1])
         #self.data.resize(sz)
         #print 'size:', self.data.shape
         self.data = self.data.T
+        self.resol = [img.affine[0,0], img.affine[1,1], img.affine[2,2]]
         #self.data = self.data[::-1,::-1,::-1]
         #print 'size:', self.data.shape
         #print self.resol, ls[57]
-        if self.hist_orient == 1:
-            # self.resol = [ls[57],ls[58], ls[59]]
-            self.resol = [ls[58],ls[57], ls[59]]
-            #self.data = self.data.swapaxes(1,2)
-            #self.data = self.data[::-1,::-1,::-1].swapaxes(1,2)
-            #print self.resol
-            #print self.data.shape
-        elif self.hist_orient == 2:
-            self.resol = [ls[58],ls[59], ls[57]]
-            self.data = self.data[::-1,::-1,::-1].swapaxes(0,1).swapaxes(1,2)
-        elif self.hist_orient == 3:
-            self.resol = [ls[57],ls[58], ls[59]]
-            self.data  = self.data[:, ::-1, :]
-        elif self.hist_orient == 4:
-            self.resol = [ls[58],ls[57], ls[59]]
-            self.data = self.data[:,  ::-1, :].swapaxes(0,1)
-        elif self.hist_orient == 5:
-            self.resol = [ls[58],ls[59], ls[57]]
-            self.data = self.data[:,::-1,:].swapaxes(0,1).swapaxes(1,2)
-        else:
-            self.resol = [ls[57],ls[58], ls[59]]
-            if withBug:
-                self.data  = self.data[::-1,::-1,::-1]
-                #self.saveAnalyze('Data/foo.hdr')
-        
+        # if self.hist_orient == 1:
+        #     # self.resol = [ls[57],ls[58], ls[59]]
+        #     self.resol = [ls[58],ls[57], ls[59]]
+        #     #self.data = self.data.swapaxes(1,2)
+        #     #self.data = self.data[::-1,::-1,::-1].swapaxes(1,2)
+        #     #print self.resol
+        #     #print self.data.shape
+        # elif self.hist_orient == 2:
+        #     self.resol = [ls[58],ls[59], ls[57]]
+        #     self.data = self.data[::-1,::-1,::-1].swapaxes(0,1).swapaxes(1,2)
+        # elif self.hist_orient == 3:
+        #     self.resol = [ls[57],ls[58], ls[59]]
+        #     self.data  = self.data[:, ::-1, :]
+        # elif self.hist_orient == 4:
+        #     self.resol = [ls[58],ls[57], ls[59]]
+        #     self.data = self.data[:,  ::-1, :].swapaxes(0,1)
+        # elif self.hist_orient == 5:
+        #     self.resol = [ls[58],ls[59], ls[57]]
+        #     self.data = self.data[:,::-1,:].swapaxes(0,1).swapaxes(1,2)
+        # else:
+        #     self.resol = [ls[57],ls[58], ls[59]]
+        #     if withBug:
+        #         self.data  = self.data[::-1,::-1,::-1]
+        #         #self.saveAnalyze('Data/foo.hdr')
+        #
 
     def zeroPad(self, h):
         d = np.copy(self.data)
