@@ -182,7 +182,7 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
         
             d = (RX**2).sum(axis=1).reshape([N,1]) - 2 * np.dot(RX, Y1.T) + (Y1**2).sum(axis=1).reshape([1,M])
             dSurf = d[0:Nsurf, 0:Msurf] 
-            ener = rotWeight*(dimn-np.trace(R)) + (np.multiply(w, d)).sum() + t*(np.multiply(w1Surf, np.log(w1Surf)) + np.multiply(w2Surf, np.log(w2Surf))).sum()
+            ener = rotWeight*(dimn-np.trace(R)) + (w*d).sum() + t*((w1Surf*np.log(w1Surf)) + (w2Surf*np.log(w2Surf))).sum()
             #ener = rotWeight*(3-np.trace(R)) + (np.multiply(w, d) + t*(np.multiply(w1, np.log(w1)) + np.multiply(w2, np.log(w2)))).sum()
 
             if verb:

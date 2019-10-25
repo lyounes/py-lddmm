@@ -69,7 +69,7 @@ class SurfaceMatching(object):
 
     def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000,
                  regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
-                 subsampleTargetSize=-1,
+                 subsampleTargetSize=-1, affineOnly = False,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
                  testGradient=True, saveFile = 'evolution',
                  saveTrajectories = False, affine = 'none', outputDir = '.',pplot=True):
@@ -130,6 +130,7 @@ class SurfaceMatching(object):
         self.testGradient = testGradient
         self.internalWeight = internalWeight
         self.regweight = regWeight
+        self.affineOnly = affineOnly
         self.affine = affine
         self.affB = AffineBasis(self.dim, affine)
         self.affineDim = self.affB.affineDim
@@ -511,13 +512,14 @@ class SurfaceMatching(object):
             a = np.squeeze(at[k, :, :])
             px = np.squeeze(pxt[k+1, :, :])
             #print 'testgr', (2*a-px).sum()
-            v = kernel.applyK(z,a)
-            if self.internalCost:
-                Lv = self.internalCostGrad(foo, v, variables='phi') 
-                #Lv = -foo.laplacian(v) 
-                dat[k, :, :] = 2*regWeight*a-px + self.internalWeight * regWeight * Lv
-            else:
-                dat[k, :, :] = 2*regWeight*a-px
+            if not self.affineOnly:
+                v = kernel.applyK(z,a)
+                if self.internalCost:
+                    Lv = self.internalCostGrad(foo, v, variables='phi')
+                    #Lv = -foo.laplacian(v)
+                    dat[k, :, :] = 2*regWeight*a-px + self.internalWeight * regWeight * Lv
+                else:
+                    dat[k, :, :] = 2*regWeight*a-px
 
             if not (affine is None):
                 dA[k] = gradExponential(A[k]*timeStep, px, xt[k]) #.reshape([self.dim**2, 1])/timeStep
@@ -607,7 +609,10 @@ class SurfaceMatching(object):
 
     def randomDir(self):
         dirfoo = Direction()
-        dirfoo.diff = np.random.randn(self.Tsize, self.npt, self.dim)
+        if self.affineOnly:
+            dirfoo.diff = np.zeros((self.Tsize, self.npt, self.dim))
+        else:
+            dirfoo.diff = np.random.randn(self.Tsize, self.npt, self.dim)
         dirfoo.initx = np.random.randn(self.npt, self.dim)
         dirfoo.aff = np.random.randn(self.Tsize, self.affineDim)
         return dirfoo

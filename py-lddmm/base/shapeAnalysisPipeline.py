@@ -1,13 +1,14 @@
 import pandas as pd
 import numpy as np
-from .base import diffeo
-from .base import surfaces
-from .base import pointSets
-from .base.affineRegistration import rigidRegistration, saveRigid
-from .base import surfaceTemplate as sTemp
-from .base import surfaceMatching as smatch
-from .base import loggingUtils, kernelFunctions as kfun
+from . import diffeo
+from . import surfaces
+from . import pointSets
+from .affineRegistration import rigidRegistration, saveRigid
+from . import surfaceTemplate as sTemp
+from . import surfaceMatching as smatch
+from . import loggingUtils, kernelFunctions as kfun
 from os import path
+import os
 
 
 
@@ -34,15 +35,23 @@ class Pipeline:
                  dirTemplate='step3_template', dirReg='step4_registration'):
         self.data = pd.read_csv(fileIn)
         self.dirMain = dirMain
-        self.dirSurf = dirSurf
-        self.dirRigid = dirRigid
-        self.dirTemplate = dirTemplate
-        self.dirReg = dirReg
+        self.dirSurf = self.dirMain + '/' + dirSurf
+        self.dirRigid = self.dirMain + '/' + dirRigid
+        self.dirTemplate = self.dirMain + '/' + dirTemplate
+        self.dirReg = self.dirMain + '/' + dirReg
+        self.fileIn = fileIn
         if dirOutput is None:
             self.dirOutput = dirMain + '/tmp'
         else:
-            self.dirOutput = dirOutput
+            self.dirOutput = self.dirMain + '/' + dirOutput
         self.rigTemplate = None
+        for dir in (self.dirMain, self.dirOutput, self.dirSurf, self.dirRigid, self.dirTemplate, self.dirReg):
+            if not os.access(dir,os.W_OK):
+                if os.access(dir,os.F_OK):
+                    print('Cannot save in ' + dir)
+                    return
+                else:
+                    os.makedirs(dir)
         if 'path_left_surf' not in self.data.columns:
             self.data['path_left_surf'] = 'none'
         if 'path_right_surf' not in self.data.columns:
@@ -58,7 +67,7 @@ class Pipeline:
                          withBug = False, smooth=False, targetSize=1000):
         ## Reads binary images from original directory, computes and save triangulated surfaces
         sf = surfaces.Surface()
-        for record in self.data:
+        for index, record in self.data.iterrows():
             for side in ('left', 'right'):
                 v = diffeo.gridScalars(fileName=record['path_'+side], force_axun=axun, withBug = withBug)
                 if zeroPad:
@@ -74,14 +83,17 @@ class Pipeline:
                 # print sf.surfVolume()
                 u = path.split(record['path_'+side])
                 [nm ,ext] = path.splitext(u[1])
-                record['path_'+side+'_surf'] = self.dirMain + '/' + self.dirSurf + '/' + nm + '.vtk'
-                sf.saveVTK(record['path_'+side+'_surf'])
+                #record[1]['path_'+side+'_surf'] = self.dirSurf + '/' + nm + '.vtk'
+                self.data.at[index, 'path_'+side+'_surf'] =  self.dirSurf + '/' + nm + '.vtk'
+                print(self.dirSurf + '/' + nm + '.vtk')
+                sf.saveVTK(self.data.at[index, 'path_'+side+'_surf'])
+        self.data.to_csv(self.fileIn)
 
     def Step2_Rigid(self):
         tmpl = None
         tmplLmk = None
         cLmk = None
-        for record in self.data:
+        for index,record in self.data.iterrows():
             for side in ('left', 'right'):
                 pSurf = record['path_'+side+'_surf']
                 pLmk = record['path_'+side+'_lmk']
@@ -122,21 +134,22 @@ class Pipeline:
                     #pointSets.savelmk(yyl, args.dirOut + '/' + nm + '_reg.lmk')
                 else:
                     (R, T) = rigidRegistration(surfaces=(sf.vertices, tmpl.vertices), rotationOnly=False,
-                                               flipMidPoint=flip, verb=False,
-                                               temperature=10., annealing=True, rotWeight=1.)
+                                               flipMidPoint=flip, verb=True,
+                                               temperature=.1, annealing=True, rotWeight=.001)
 
-            sf.updateVertices(np.dot(sf.vertices, R.T) + T)
-            record['path_' + side + '_rigid'] = self.dirMain + '/' + self.dirRigid + '/' + nm + '.vtk'
-            sf.saveVTK(record['path_' + side + '_rigid'])
-
+                sf.updateVertices(np.dot(sf.vertices, R.T) + T)
+                print(self.dirRigid + '/' + nm + '.vtk')
+                self.data.at[index, 'path_' + side + '_rigid'] = self.dirRigid + '/' + nm + '.vtk'
+                sf.saveVTK(self.data.at[index, 'path_' + side + '_rigid'])
+        self.data.to_csv(self.fileIn)
 
     def Step3_Template(self):
         loggingUtils.setup_default_logging(self.dirOutput, fileName='info.txt', stdOutput=True)
 
         fv = []
-        for record in self.data:
+        for index, record in self.data.iterrows():
             for side in ('left', 'right'):
-                pSurf = record['path_'+side+'_rigid']
+                pSurf = record.at[index, 'path_'+side+'_rigid']
                 sf = surfaces.Surface(filename=pSurf)
                 fv.append((sf))
 
@@ -157,11 +170,11 @@ class Pipeline:
                                   transWeight=1., scaleWeight=10., affineWeight=100.)
         f.computeTemplate()
 
-        f.fvTmpl.saveVTK(self.dirMain+'/'+self.dirTemplate+'/template.vtk')
+        f.fvTmpl.saveVTK(self.dirTemplate+'/template.vtk')
 
-    def Step3_Registration(self):
-        fv0 = surfaces.Surface(filename=self.dirMain+'/'+self.dirTemplate+'/template.vtk')
-        for record in self.data:
+    def Step4_Registration(self):
+        fv0 = surfaces.Surface(filename=self.dirTemplate+'/template.vtk')
+        for index, record in self.data.iterrows():
             for side in ('left', 'right'):
                 pSurf = record['path_'+side+'_rigid']
                 fv = surfaces.Surface(filename=pSurf)
@@ -172,5 +185,5 @@ class Pipeline:
                 f.optimizeMatching()
                 u = path.split(pSurf)
                 [nm, ext] = path.splitext(u[1])
-                record['path_' + side + '_reg'] = self.dirMain + '/' + self.dirReg + '/' + nm + '.hd5'
-                f.saveHD5(record['path_' + side + '_reg'])
+                self.data.at[index, 'path_' + side + '_reg'] = self.dirReg + '/' + nm + '.hd5'
+                f.saveHD5(self.data.at[index, 'path_' + side + '_reg'])
