@@ -29,6 +29,7 @@ class gridScalars:
     def __init__(self, grid=None, data=None, fileName = None, dim = 3, resol = 1., origin= 0., force_axun=False, withBug=False):
         if data is not None:
             self.data = np.copy(data)
+            self.affine = np.eye(dim+1)
             if type(resol) == float:
                 self.resol = resol *np.ones(data.ndim)
             else:
@@ -43,6 +44,7 @@ class gridScalars:
             if (dim == 1):
                 self.resol = 1.
                 self.origin = 0.
+                self.affine = np.eye(dim + 1)
                 with open(fileName, 'r') as ff:
                     ln0 = ff.readline()
                     while (len(ln0) == 0) | (ln0=='\n'):
@@ -59,6 +61,7 @@ class gridScalars:
             elif (dim==2):
                 self.resol  = [1., 1.]
                 self.origin = [0., 0.]
+                self.affine = np.eye(dim + 1)
                 # u = vtkImageReader2()
                 # u.setFileName(fileName)
                 # u.Update()
@@ -71,18 +74,23 @@ class gridScalars:
                 #np.array(img.convert("L").getdata())
                 #self.data.resize(img.size)
             elif (dim == 3):
+                self.affine = np.eye(dim + 1)
                 (nm, ext) = os.path.splitext(fileName)
-                if ext=='.hdr':
+                if ext=='.hdr' or ext=='.img':
                     self.loadAnalyze(fileName, force_axun= force_axun, withBug=withBug)
                 elif ext =='.vtk':
                     self.readVTK(fileName)
             else:
                 print("get_image: unsupported input dimensions")
                 return
+            self.data = np.squeeze(self.data)
+            if len(self.data.shape) > dim:
+                self.data = np.mean(self.data, axis=0)
         elif grid is not None:
             self.data = np.copy(grid.data)
             self.resol = np.copy(grid.resol)
             self.origin = np.copy(grid.origin)
+            self.affine = np.copy(grid.affine)
             self.dim = grid.dim
 
     def save(self, filename):
@@ -163,92 +171,95 @@ class gridScalars:
 
     # Reads in analyze file
     def loadAnalyze(self, filename, force_axun=False, withBug=False):
-        img = nibabel.load(filename)
+        #img = nibabel.load(filename)
 
-        # [nm, ext] = os.path.splitext(filename)
-        # with open(nm+'.hdr', 'rb') as ff:
-        #     frmt = 28*'B'+'i'+'h'+2*'B'+8*'h'+12*'B'+4*'h'+16*'f'+2*'i'+168*'B'+8*'i'
-        #     lend = '<'
-        #     ls = struct.unpack(lend+'i', ff.read(4))
-        #     x = int(ls[0])
-        #     #print 'x=',x
-        #     if not (x == 348):
-        #         lend = '>'
-        #     ls = struct.unpack(lend+frmt, ff.read())
-        #     self.header = np.array(ls)
-        #     #print ls
+        [nm, ext] = os.path.splitext(filename)
+        with open(nm+'.hdr', 'rb') as ff:
+            frmt = 28*'B'+'i'+'h'+2*'B'+8*'h'+12*'B'+4*'h'+16*'f'+2*'i'+168*'B'+8*'i'
+            lend = '<'
+            ls = struct.unpack(lend+'i', ff.read(4))
+            x = int(ls[0])
+            #print 'x=',x
+            if not (x == 348):
+                lend = '>'
+            ls = struct.unpack(lend+frmt, ff.read())
+            self.header = np.array(ls)
+            #print ls
+
+            sz = ls[33:36]
+            #print sz
+            datatype = ls[53]
+            #print  "Datatype: ", datatype
+            self.resol = ls[57:60]
+            self.hist_orient = ls[178]
+            if force_axun:
+                self.hist_orient = 0
+            if withBug:
+                self.hist_orient = 0
+            print("Orientation: ", int(self.hist_orient))
         #
-        #     sz = ls[33:36]
-        #     #print sz
-        #     datatype = ls[53]
-        #     #print  "Datatype: ", datatype
-        #     self.resol = ls[57:60]
-        #     self.hist_orient = ls[178]
-        #     if force_axun:
-        #         self.hist_orient = 0
-        #     if withBug:
-        #         self.hist_orient = 0
-        #     print("Orientation: ", int(self.hist_orient))
         #
-        #
-        # with open(nm+'.img', 'rb') as ff:
-        #     nbVox = sz[0]*sz[1]*sz[2]
-        #     s = ff.read()
-        #     #print s[0:30]
-        #     if datatype == 2:
-        #         ls2 = struct.unpack(lend+nbVox*'B', s)
-        #     elif datatype == 4:
-        #         ls2 = struct.unpack(lend+nbVox*'h', s)
-        #     elif datatype == 8:
-        #         ls2 = struct.unpack(lend+nbVox*'i', s)
-        #     elif datatype == 16:
-        #         ls2 = struct.unpack(lend+nbVox*'f', s)
-        #     elif datatype == 32:
-        #         ls2 = struct.unpack(lend+2*nbVox*'f', s)
-        #         print('Warning: complex input not handled')
-        #     elif datatype == 64:
-        #         ls2 = struct.unpack(lend+nbVox*'d', s)
-        #     else:
-        #         print('Unknown datatype')
-        #         return
+        with open(nm+'.img', 'rb') as ff:
+            nbVox = sz[0]*sz[1]*sz[2]
+            s = ff.read()
+            #print s[0:30]
+            if datatype == 2:
+                ls2 = struct.unpack(lend+nbVox*'B', s)
+            elif datatype == 4:
+                ls2 = struct.unpack(lend+nbVox*'h', s)
+            elif datatype == 8:
+                ls2 = struct.unpack(lend+nbVox*'i', s)
+            elif datatype == 16:
+                ls2 = struct.unpack(lend+nbVox*'f', s)
+            elif datatype == 32:
+                ls2 = struct.unpack(lend+2*nbVox*'f', s)
+                print('Warning: complex input not handled')
+            elif datatype == 64:
+                ls2 = struct.unpack(lend+nbVox*'d', s)
+            else:
+                print('Unknown datatype')
+                return
 
             #ls = np.array(ls)
             #print ls
         #print 'size:', sz
-        self.data = img.get_fdata().astype(float)
-        #self.data.resize(sz[::-1])
-        #self.data.resize(sz)
+        self.data = np.float_(ls2)
+        self.data.resize(sz[::-1])
+        #self.data = img.get_fdata().astype(float)
         #print 'size:', self.data.shape
         self.data = self.data.T
-        self.resol = [img.affine[0,0], img.affine[1,1], img.affine[2,2]]
+        #self.resol = [img.affine[0,0], img.affine[1,1], img.affine[2,2]]
+        #self.affine = img.affine
+        #return
         #self.data = self.data[::-1,::-1,::-1]
         #print 'size:', self.data.shape
         #print self.resol, ls[57]
-        # if self.hist_orient == 1:
-        #     # self.resol = [ls[57],ls[58], ls[59]]
-        #     self.resol = [ls[58],ls[57], ls[59]]
-        #     #self.data = self.data.swapaxes(1,2)
-        #     #self.data = self.data[::-1,::-1,::-1].swapaxes(1,2)
-        #     #print self.resol
-        #     #print self.data.shape
-        # elif self.hist_orient == 2:
-        #     self.resol = [ls[58],ls[59], ls[57]]
-        #     self.data = self.data[::-1,::-1,::-1].swapaxes(0,1).swapaxes(1,2)
-        # elif self.hist_orient == 3:
-        #     self.resol = [ls[57],ls[58], ls[59]]
-        #     self.data  = self.data[:, ::-1, :]
-        # elif self.hist_orient == 4:
-        #     self.resol = [ls[58],ls[57], ls[59]]
-        #     self.data = self.data[:,  ::-1, :].swapaxes(0,1)
-        # elif self.hist_orient == 5:
-        #     self.resol = [ls[58],ls[59], ls[57]]
-        #     self.data = self.data[:,::-1,:].swapaxes(0,1).swapaxes(1,2)
-        # else:
-        #     self.resol = [ls[57],ls[58], ls[59]]
-        #     if withBug:
-        #         self.data  = self.data[::-1,::-1,::-1]
-        #         #self.saveAnalyze('Data/foo.hdr')
-        #
+        if self.hist_orient == 1:
+            # self.resol = [ls[57],ls[58], ls[59]]
+            self.resol = [ls[58],ls[57], ls[59]]
+            #self.data = self.data.swapaxes(1,2)
+            #self.data = self.data[::-1,::-1,::-1].swapaxes(1,2)
+            #print self.resol
+            #print self.data.shape
+        elif self.hist_orient == 2:
+            self.resol = [ls[58],ls[59], ls[57]]
+            self.data = self.data[::-1,::-1,::-1].swapaxes(0,1).swapaxes(1,2)
+        elif self.hist_orient == 3:
+            self.resol = [ls[57],ls[58], ls[59]]
+            self.data  = self.data[:, ::-1, :]
+        elif self.hist_orient == 4:
+            self.resol = [ls[58],ls[57], ls[59]]
+            self.data = self.data[:,  ::-1, :].swapaxes(0,1)
+        elif self.hist_orient == 5:
+            self.resol = [ls[58],ls[59], ls[57]]
+            self.data = self.data[:,::-1,:].swapaxes(0,1).swapaxes(1,2)
+        else:
+            self.resol = [ls[57],ls[58], ls[59]]
+            if withBug:
+                self.data  = self.data[::-1,::-1,::-1]
+                #self.saveAnalyze('Data/foo.hdr')
+        return
+
 
     def zeroPad(self, h):
         d = np.copy(self.data)
