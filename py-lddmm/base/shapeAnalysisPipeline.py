@@ -4,7 +4,7 @@ import scipy.linalg as LA
 from . import diffeo
 from . import surfaces
 from . import pointSets
-from .affineRegistration import rigidRegistration, saveRigid
+from .affineRegistration import rigidRegistration, rigidRegistration_multi, saveRigid
 from . import surfaceTemplate as sTemp
 from . import surfaceMatching as smatch
 from . import loggingUtils, kernelFunctions as kfun
@@ -81,6 +81,8 @@ class Pipeline:
                     sf.Isosurface(v.data ,value=t ,target=targetSize ,scales=v.resol ,smooth=-1)
 
                 sf.edgeRecover()
+                #sf.updateVertices(np.dot(sf.vertices, v.affine[:3,:3].T) + v.affine[:3,3])
+                #sf.updateVertices(np.dot(sf.vertices-v.affine[np.newaxis, :3,3], la.inv(v.affine[:3,:3]).T))
                 # print sf.surfVolume()
                 u = path.split(record['path_'+side])
                 [nm ,ext] = path.splitext(u[1])
@@ -90,14 +92,17 @@ class Pipeline:
                 sf.saveVTK(self.data.at[index, 'path_'+side+'_surf'])
         self.data.to_csv(self.fileIn)
 
-    def Step2_Rigid(self):
+    def Step2_Rigid_old(self):
         tmpl = None
         tmplLmk = None
         cLmk = None
         for index,record in self.data.iterrows():
             for side in ('left', 'right'):
                 pSurf = record['path_'+side+'_surf']
-                pLmk = record['path_'+side+'_lmk']
+                if 'path_'+side+'_lmk' in record.index:
+                    pLmk = record['path_'+side+'_lmk']
+                else:
+                    pLmk = 'none'
                 if side == 'left':
                     flip = False
                 else:
@@ -146,6 +151,37 @@ class Pipeline:
                 print(self.dirRigid + '/' + nm + '.vtk')
                 self.data.at[index, 'path_' + side + '_rigid'] = self.dirRigid + '/' + nm + '.vtk'
                 sf.saveVTK(self.data.at[index, 'path_' + side + '_rigid'])
+        self.data.to_csv(self.fileIn)
+
+    def Step2_Rigid(self):
+        tmpl_left = None
+        tmpl_v = None
+        for index,record in self.data.iterrows():
+            pSurf_left = record['path_left_surf']
+            pSurf_right = record['path_right_surf']
+
+            if tmpl_left is None:
+                tmpl_left = surfaces.Surface(filename = pSurf_left)
+                tmpl_right = surfaces.Surface(filename = pSurf_right)
+                tmpl_v = [tmpl_left.vertices, tmpl_right.vertices]
+
+            u = path.split(pSurf_left)
+            [nm_left, ext] = path.splitext(u[1])
+            u = path.split(pSurf_right)
+            [nm_right, ext] = path.splitext(u[1])
+            sf_left = surfaces.Surface(filename = pSurf_left)
+            sf_right = surfaces.Surface(filename = pSurf_right)
+            sf_v = [sf_left.vertices, sf_right.vertices]
+            (R, T) = rigidRegistration_multi((sf_v, tmpl_v), rotationOnly=True,
+                                       verb=True, temperature=.1, annealing=False, rotWeight=.001)
+
+            sf_left.updateVertices(np.dot(sf_left.vertices, R.T) + T)
+            sf_right.updateVertices(np.dot(sf_right.vertices, R.T) + T)
+            print(self.dirRigid + '/' + nm_left + '.vtk')
+            self.data.at[index, 'path_left_rigid'] = self.dirRigid + '/' + nm_left + '.vtk'
+            self.data.at[index, 'path_right_rigid'] = self.dirRigid + '/' + nm_right + '.vtk'
+            sf_left.saveVTK(self.data.at[index, 'path_left_rigid'])
+            sf_right.saveVTK(self.data.at[index, 'path_right_rigid'])
         self.data.to_csv(self.fileIn)
 
     def Step3_Template(self):

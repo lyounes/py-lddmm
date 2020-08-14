@@ -259,3 +259,139 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
         #print R, T
     return R,T
 
+
+def rigidRegistration_multi(surfaces, temperature=1.0, rotWeight=1.0, rotationOnly=False, translationOnly=False,
+                            annealing=True, verb=False):
+    #  [R, T] = rigidRegistrationSurface(X0, Y0, t)
+    # compute rigid registration using soft-assign maps
+    # computes R (orthogonal matrix) and T (translation so that Y0 ~ R*X0+T
+    # X0 and Y0 are point sets (size npoints x dimension)
+    # OPT.t: scale parameter for soft assign(default : 1)
+    # OPT.rotationOnly: 1 to estimate rotations only, 0 for rotations and
+    # symmetries (0: default)
+
+    #  Warning: won't work with large data sets (npoints should be less than a
+    #  few thousands).
+
+    X0 = surfaces[1]
+    Y1 = surfaces[0]
+    Nsurf = np.zeros(len(X0), dtype=int)
+    Msurf = np.zeros(len(Y1), dtype=int)
+    for k,s in enumerate(X0):
+        Nsurf[k] = s.shape[0]
+    for k,s in enumerate(Y1):
+        Msurf[k] = s.shape[0]
+
+
+    rotWeight *= Nsurf.sum()
+
+    t1 = temperature
+
+    dimn = X0[0].shape[1]
+    ns = len(X0)
+
+    # Alternate minimization for surfaces with or without landmarks
+    R = np.eye(dimn)
+    T = np.zeros([1, dimn])
+    RX = []
+    dSurf = []
+    for k in range(ns):
+        RX.append(np.dot(X0[k], R.T) + T)
+        dSurf.append((RX[k] ** 2).sum(axis=1).reshape([Nsurf[k], 1]) - 2 * np.dot(RX[k], Y1[k].T)
+                 + (Y1[k] ** 2).sum(axis=1).reshape([1, Msurf[k]]))
+    Rold = np.copy(R)
+    Told = np.copy(T)
+    t0 = 10 * t1
+    t = t0
+    c = .89
+    w1 = []
+    w2 = []
+    w = []
+    for k in range(ns):
+        w1.append(np.zeros([Nsurf[k], Msurf[k]]))
+        w2.append(np.zeros([Nsurf[k], Msurf[k]]))
+        w.append(np.zeros([Nsurf[k], Msurf[k]]))
+
+    for k0 in range(10000):
+        # new weights
+        if annealing and (k0 < 21):
+            t = t * c
+        for k in range(ns):
+            dmin = dSurf[k].min()
+            wSurf = np.minimum((dSurf[k] - dmin) / t, 500.)
+            wSurf = np.exp(-wSurf)
+            # wSurf = w[0:Nsurf, 0:Msurf]
+
+            #    w = sinkhorn(w, 100) ;
+            Z = wSurf.sum(axis=1)
+            w1[k] = wSurf / Z[:, np.newaxis]
+            Z = wSurf.sum(axis=0)
+            w2[k] = wSurf / Z[np.newaxis, :]
+            w[k] = w1[k] + w2[k]
+            # ener = rotWeight*(3-np.trace(R)) + (np.multiply(w, d) + t*(np.multiply(w1Surf, np.log(w1Surf)) + np.multiply(w2Surf, np.log(w2Surf)))).sum()
+            # if verb:
+            #    print 'ener = ', ener
+
+            # new transformation
+        mx = np.zeros(dimn)
+        my = np.zeros(dimn)
+        Z = 0
+        for k in range(ns):
+            wX = np.dot(w[k].T, X0[k]).sum(axis=0)
+            wY = np.dot(w[k], Y1[k]).sum(axis=0)
+
+            Z += w[k].sum()
+            # print Z, dSurf.min(), dSurf.max()
+            mx += wX
+            my += wY
+        mx /= Z
+        my /= Z
+
+        Y = []
+        X = []
+        for k in range(ns):
+            Y.append(Y1[k] - my)
+            X.append(X0[k] - mx)
+
+        if not translationOnly:
+            U = np.zeros((dimn, dimn))
+            for k in range(ns):
+                U += np.dot(np.dot(w[k], Y[k]).T, X[k])
+            U += rotWeight * np.eye(dimn)
+            if rotationOnly:
+                R = rotpart(U)
+            else:
+                sU = linalg.inv(np.real(linalg.sqrtm(np.dot(U.T, U))))
+                R = np.dot(U, sU)
+
+        T = my - np.dot(mx, R.T)
+        # print R, T
+        RX = []
+        dSurf = []
+        for k in range(ns):
+            RX.append(np.dot(X0[k], R.T) + T)
+            dSurf.append((RX[k] ** 2).sum(axis=1).reshape([Nsurf[k], 1]) - 2 * np.dot(RX[k], Y1[k].T)
+                     + (Y1[k] ** 2).sum(axis=1).reshape([1, Msurf[k]]))
+
+        ener = rotWeight * (dimn - np.trace(R))
+        for k in range(ns):
+            ener += (w[k] * dSurf[k]).sum() + t * (
+                    (w1[k] * np.log(w1[k])) + (w2[k] * np.log(w2[k]))).sum()
+        # ener = rotWeight*(3-np.trace(R)) + (np.multiply(w, d) + t*(np.multiply(w1, np.log(w1)) + np.multiply(w2, np.log(w2)))).sum()
+
+        if verb:
+            print('ener = ', ener, 'var = ', np.fabs((R - Rold)).sum(), np.fabs((T - Told)).sum())
+
+        if (k0 > 21) and (np.fabs((R - Rold)).sum() < 1e-3) and (np.fabs((T - Told)).sum() < 1e-2):
+            break
+        else:
+            Told = np.copy(T)
+            Rold = np.copy(R)
+
+    R = linalg.inv(R)
+    T = - np.dot(T, R.T)
+    T = T.reshape([1, dimn])
+
+    # print R,T
+    return R, T
+

@@ -120,7 +120,7 @@ class SurfaceMatching(object):
 
         self.saveRate = 10
         self.gradEps = -1
-        self.randomInit = True
+        self.randomInit = False
         self.iter = 0
         self.setOutputDir(outputDir)
         self.dim = self.fv0.vertices.shape[1]
@@ -248,12 +248,12 @@ class SurfaceMatching(object):
     def set_fun(self, errorType):
         self.param.errorType = errorType
         if errorType == 'current':
-            print('Running Current Matching')
+            #print('Running Current Matching')
             self.fun_obj0 = partial(surfaces.currentNorm0, KparDist=self.param.KparDist, weight=1.)
             self.fun_obj = partial(surfaces.currentNormDef, KparDist=self.param.KparDist, weight=1.)
             self.fun_objGrad = partial(surfaces.currentNormGradient, KparDist=self.param.KparDist, weight=1.)
         elif errorType == 'currentMagnitude':
-            print('Running Current Matching')
+            #print('Running Current Matching')
             self.fun_obj0 = lambda fv1 : 0
             self.fun_obj = partial(surfaces.currentMagnitude, KparDist=self.param.KparDist)
             self.fun_objGrad = partial(surfaces.currentMagnitudeGradient, KparDist=self.param.KparDist)
@@ -261,7 +261,7 @@ class SurfaceMatching(object):
             # self.fun_obj = curves.currentNormDef
             # self.fun_objGrad = curves.currentNormGradient
         elif errorType=='measure':
-            print('Running Measure Matching')
+            #print('Running Measure Matching')
             self.fun_obj0 = partial(surfaces.measureNorm0, KparDist=self.param.KparDist)
             self.fun_obj = partial(surfaces.measureNormDef,KparDist=self.param.KparDist)
             self.fun_objGrad = partial(surfaces.measureNormGradient,KparDist=self.param.KparDist)
@@ -838,12 +838,13 @@ class SurfaceMatching(object):
         [grd2] = self.dotProduct(grd, [grd])
 
         self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
+        self.epsMax = 5.
         logging.info('Gradient lower bound: %f' %(self.gradEps))
         self.coeffAff = self.coeffAff1
         if self.param.algorithm == 'cg':
             cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=0.1)
         elif self.param.algorithm == 'bfgs':
             bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=1.,
-                      Wolfe=self.param.wolfe, memory=25)
+                      Wolfe=self.param.wolfe, memory=50)
         #return self.at, self.xt
 

@@ -1,8 +1,8 @@
 import numpy as np
-from base import gaussianDiffeons as gd
+from . import gaussianDiffeons as gd
 import numpy.linalg as LA
-from base import pointEvolution_fort as pfor
-from base import affineBasis
+from . import pointEvolution_fort as pfor
+from . import affineBasis
 
 
 def gaussianDiffeonsEvolutionEuler(c0, S0, at, sigma, affine = None, withJacobian=False, withPointSet=None, withNormals=None,
@@ -599,7 +599,7 @@ def gaussianDiffeonsGradientNormals(c0, S0, b0, x0, xS0, at, pc1, pS1, pb1, px1,
         if getCovector == False:
             return dat, dA, db, ct, St, bt, xt, xSt
         else:
-            return dat, dA, db, ct, St, bt, xt, xSt, pct, pSt, pbt, pxT, pxSt
+            return dat, dA, db, ct, St, bt, xt, xSt, pct, pSt, pbt, pxt, pxSt
 
 
 def landmarkEPDiff(T, x0, a0, KparDiff, affine = None, withJacobian=False, withNormals=None, withPointSet=None):
@@ -759,7 +759,7 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=F
     else:
         nt0 = np.zeros([N,dim])
         
-    if not(affine is None or len(affine[0])==0):
+    if affine is not None and len(affine[0])!=0:
         A0 = affine[0]
         b = affine[1]
         A = np.zeros([M,dim,dim])
@@ -785,12 +785,8 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=F
             withJ = 1
             simpleOutput = False
 
-    if KparDiff.localMaps:
-        foo = pfor.shoot1orderlocal(x0, at, y0, nt0, A, b, KparDiff.sigma, KparDiff.order,  1+KparDiff.localMaps[0],
-                                    1+KparDiff.localMaps[1], withJ, withnu, KparDiff.sigma.size, M, N, dim, K, KparDiff.localMaps[0].size)
-    else:
-        foo = pfor.shoot1order(x0, at, y0, nt0, A, b, KparDiff.sigma, KparDiff.order, withJ, withnu, KparDiff.sigma.size,
-                               M, N, dim, K)
+    foo = pfor.shoot1order(x0, at, y0, nt0, A, b, KparDiff.sigma, KparDiff.order, withJ, withnu, KparDiff.sigma.size,
+                            M, N, dim, K)
     if simpleOutput:
         return foo[0]
     else:
