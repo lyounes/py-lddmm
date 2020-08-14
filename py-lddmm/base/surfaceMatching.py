@@ -3,6 +3,7 @@ import numpy as np
 import numpy.linalg as la
 import logging
 import h5py
+import glob
 from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, bfgs
 from . import surfaces
 from . import pointSets
@@ -23,7 +24,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class SurfaceMatchingParam:
-    def __init__(self, timeStep = .1, algorithm='bfgs', Wolfe=True, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist = 2.5,
+    def __init__(self, timeStep = .1, algorithm='cg', Wolfe=True, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist = 2.5,
                  sigmaError = 1.0, errorType = 'measure',  typeKernel='gauss', internalCost = None):
         self.timeStep = timeStep
         self.sigmaKernel = sigmaKernel
@@ -279,7 +280,7 @@ class SurfaceMatching(object):
     def addSurfaceToPlot(self, fv1, ax, ec = 'b', fc = 'r', al=.5, lw=1):
         return fv1.addToPlot(ax, ec = ec, fc = fc, al=al, lw=lw)
 
-    def setOutputDir(self, outputDir):
+    def setOutputDir(self, outputDir, clean=True):
         self.outputDir = outputDir
         if not os.access(outputDir, os.W_OK):
             if os.access(outputDir, os.F_OK):
@@ -287,6 +288,11 @@ class SurfaceMatching(object):
                 return
             else:
                 os.makedirs(outputDir)
+
+        if clean:
+            fileList = glob.glob(outputDir + '/*.vtk')
+            for f in fileList:
+                os.remove(f)
 
 
     def dataTerm(self, _fvDef, _fvInit = None):
@@ -803,8 +809,8 @@ class SurfaceMatching(object):
         deformedTemplate.create_dataset('vertices', data=self.fv1.vertices)
         deformedTemplate.create_dataset('faces', data=self.fv1.vertices)
         variables = LDDMMResult.create_group('variables')
-        variables.create_dataset('alpha', self.at)
-        variables.create_dataset('affine', self.Afft)
+        variables.create_dataset('alpha', data=self.at)
+        variables.create_dataset('affine', data=self.Afft)
         descriptors = LDDMMResult.create_group('descriptors')
 
         A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]

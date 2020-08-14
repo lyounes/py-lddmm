@@ -942,9 +942,11 @@ class Surface:
         for i in range(count):
             whiteImage.GetPointData().GetScalars().SetTuple1(i ,inval)
 
+        orig2 = self.vertices.mean(axis=0)
+
         pol2stenc = vtk.vtkPolyDataToImageStencil()
         pol2stenc.SetInputData(vpoints)
-        pol2stenc.SetOutputOrigin(origin)
+        pol2stenc.SetOutputOrigin((orig2[0], orig2[1], orig2[2]))
         pol2stenc.SetOutputSpacing(spacing, spacing, spacing)
         pol2stenc.SetOutputWholeExtent(whiteImage.GetExtent())
         pol2stenc.Update()
@@ -958,13 +960,15 @@ class Surface:
 
         result = img2stenc.GetOutput()
 
-        img = np.zeros((ln,ln,ln))
-        ii = 0
-        for i in range(ln):
-            for j in range(ln):
-                for k in range(ln):
-                    img[i,j,k] = result.GetPointData().GetScalars().GetTuple1(ii)
-                    ii += 1
+        img = v2n.vtk_to_numpy(result.GetPointData().GetScalars())
+        img = np.reshape(img, (ln,ln,ln)).astype(float)
+        # img = np.zeros((ln,ln,ln))
+        # ii = 0
+        # for j in range(ln):
+        #     for i in range(ln):
+        #         for k in range(ln):
+        #             img[j,i,k] = result.GetPointData().GetScalars().GetTuple1(ii)
+        #             ii += 1
 
         return img
 

@@ -141,9 +141,9 @@ class gridScalars:
             ff.write('SCALARS '+scalarName+' double 1\nLOOKUP_TABLE default\n')
             if sys.byteorder[0] == 'l':
                 tmp = self.data.byteswap()
-                tmp.T.tofile(ff)
+                tmp.tofile(ff)
             else:
-                self.data.T.tofile(ff, order='F')
+                self.data.T.tofile(ff)
 
     # Saves in analyze file
     def saveAnalyze(self, filename):

@@ -15,16 +15,24 @@ def rigidRegistrationLmk(x, y):
     return R,T
 
 
-def rotpart(U):
-    d = linalg.det(U)
-    UU = np.dot(U.T, U)
-    [D, Q] = linalg.eigh(UU)
-    dD = np.sqrt(D) 
-    if (d<0):
-        #flip smallest eigenvalue
-        print('Not rotation', dD)
-        dD[0] = - dD[0]
-    R = np.dot(U, np.dot(Q, np.dot(np.diag(1./dD), Q.T)))
+def rotpart(A, rotation=True):
+    #d = linalg.det(A)
+    U, S, Vh = linalg.svd(A)
+    # UU = np.dot(U.T, U)
+    # [D, Q] = linalg.eigh(UU)
+    # dD = np.sqrt(D)
+    if rotation and linalg.det(A)<0:
+        #nr = True
+        # print('Not rotation')
+        j = np.argmin(S)
+        Vh[j,:] *= -1
+    #else:
+    #    nr = False
+    #     dD[0] = - dD[0]
+    #R = np.dot(U, np.dot(Q, np.dot(np.diag(1./dD), Q.T)))
+    R = np.dot(U, Vh)
+    # if nr and linalg.det(R) > 0:
+    #     print('(fixed)')
     return R
 
 def saveRigid(filename, R, T):
@@ -55,7 +63,8 @@ def _flipMidPoint(Y,X):
 
 
 
-def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotationOnly=False, translationOnly=False, flipMidPoint=False, annealing = True, verb=False, landmarks = None):
+def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotationOnly=False, translationOnly=False, flipMidPoint=False,
+                      annealing = True, verb=False, landmarks = None, normals = None):
 #  [R, T] = rigidRegistrationSurface(X0, Y0, t)
 # compute rigid registration using soft-assign maps
 # computes R (orthogonal matrix) and T (translation so that Y0 ~ R*X0+T
@@ -67,13 +76,14 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
 #  Warning: won't work with large data sets (npoints should be less than a
 #  few thousands).
 
-    if (surfaces == None):
+    if (surfaces is None):
         surf = False
+        norm = False
         Nsurf = 0
         Msurf = 0
-        if landmarks == None:
+        if landmarks is None:
             lmk = False
-            print('Provide either surface files or landmarks or both')
+            print('Provide either surface points or landmarks or both')
             return
         else:
             lmk = True
@@ -86,7 +96,7 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
         Y0 = surfaces[0]
         Nsurf = X0.shape[0]
         Msurf = Y0.shape[0]
-        if landmarks == None:
+        if landmarks is None:
             lmk = False
             N = Nsurf
             M = Msurf
@@ -98,18 +108,33 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
             M = Msurf + Nlmk
             X0 = np.concatenate((X0, landmarks[1]))
             Y0 = np.concatenate((Y0, landmarks[0]))
+        if normals is None:
+            norm = False
+        else:
+            norm = True
+            norm0 = normals[0]
+            norm1 = normals[1]
 
+    norm = False
     if lmk:
         if len(landmarks)==3:
             lmkWeight = landmarks[2]
         else:
             lmkWeight = 1.0
 
+    if norm:
+        if len(normals) == 3:
+            normWeight = normals[2]
+        else:
+            normWeight = 1
+
     rotWeight *= X0.shape[0]
             
     t1 = temperature
     if flipMidPoint:
         [Y1, S1, T1] = _flipMidPoint(Y0, X0)
+        if norm:
+            norm0 *= -1
         #print S1, T1
     else:
         Y1 = Y0
@@ -123,7 +148,10 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
         T= np.zeros([1, dimn])
         RX = np.dot(X0,  R.T) + T
         d = (RX**2).sum(axis=1).reshape([N,1]) - 2 * np.dot(RX, Y1.T) + (Y1**2).sum(axis=1).reshape([1,M])
-        dSurf = d[0:Nsurf, 0:Msurf] 
+        if norm:
+            Rn = np.dot(norm0, R.T)
+            d[0:Nsurf, 0:Msurf] += normWeight*((Rn**2).sum(axis=1).reshape([Nsurf,1]) - 2 * np.dot(Rn, norm1.T) + (norm1**2).sum(axis=1).reshape([1,Msurf]))
+        dSurf = d[0:Nsurf, 0:Msurf]
         Rold = np.copy(R)
         Told = np.copy(T)
         t0 = 10*t1
@@ -170,18 +198,25 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
     
             if not translationOnly: 
                 U = np.dot( np.dot(w, Y).T, X) + rotWeight * np.eye(dimn)
-                if rotationOnly:
-                    R = rotpart(U)
-                else:
-                    sU = linalg.inv(np.real(linalg.sqrtm(np.dot(U.T, U))))
-                    R = np.dot(U, sU)
+                if norm:
+                    U += normWeight * np.dot(np.dot(w1Surf+w2Surf, norm0).T, norm1)
+                R = rotpart(U, rotation=rotationOnly)
+                # if rotationOnly:
+                #     R = rotpart(U)
+                # else:
+                #     sU = linalg.inv(np.real(linalg.sqrtm(np.dot(U.T, U))))
+                #     R = np.dot(U, sU)
 
             T = my - np.dot(mx, R.T)
             #print R, T
             RX = np.dot(X0, R.T) + T
         
             d = (RX**2).sum(axis=1).reshape([N,1]) - 2 * np.dot(RX, Y1.T) + (Y1**2).sum(axis=1).reshape([1,M])
-            dSurf = d[0:Nsurf, 0:Msurf] 
+            if norm:
+                Rn = np.dot(norm0 ,R.T)
+                d[0:Nsurf, 0:Msurf] += normWeight * ((Rn ** 2).sum(axis=1).reshape([Nsurf ,1]) - 2 * np.dot(Rn ,norm1.T) + (
+                            norm1 ** 2).sum(axis=1).reshape([1 ,Msurf]))
+            dSurf = d[0:Nsurf, 0:Msurf]
             ener = rotWeight*(dimn-np.trace(R)) + (w*d).sum() + t*((w1Surf*np.log(w1Surf)) + (w2Surf*np.log(w2Surf))).sum()
             #ener = rotWeight*(3-np.trace(R)) + (np.multiply(w, d) + t*(np.multiply(w1, np.log(w1)) + np.multiply(w2, np.log(w2)))).sum()
 
@@ -203,7 +238,7 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
     
         if not translationOnly: 
             U = np.dot(Y.T, X) #+ rotWeight * np.eye(dimn)
-            print(U)
+            #print(U)
             if rotationOnly:
                 R = rotpart(U)
             else:
