@@ -164,8 +164,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 lv = vt * lmb[t,:,np.newaxis]
             #lnu = np.multiply(nu, np.mat(lmb[t, npt:npt1]).T)
             #print lnu.shape
-            dxcval[t] = self.param.KparDiff.applyDiffKT(x, a[np.newaxis,...], lnu[np.newaxis,...])
-            dxcval[t] += self.param.KparDiff.applyDiffKT(x, lnu[np.newaxis,...], a[np.newaxis,...])
+            dxcval[t] = self.param.KparDiff.applyDiffKT(x, a, lnu)
+            dxcval[t] += self.param.KparDiff.applyDiffKT(x, lnu, a)
             #dxcval[t] += np.dot(lnu, A)
             if self.useKernelDotProduct:
                 dacval[t] = np.copy(lnu)
@@ -321,9 +321,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             z = np.squeeze(xt[M-t-1, :, :])
             a = np.squeeze(at[M-t-1, :, :])
             zpx = np.copy(dxcval[M-t-1])
-            a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...]))
-            a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
-            zpx += self.param.KparDiff.applyDiffKT(z, a1, a2)
+            zpx += self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
             if self.affineDim > 0:
                 pxt[M-t-1, :, :] = np.dot(px, self.affB.getExponential(timeStep*A[0][M-t-1])) + timeStep * zpx
                 #zpx += np.dot(px, A[0][M-t-1])

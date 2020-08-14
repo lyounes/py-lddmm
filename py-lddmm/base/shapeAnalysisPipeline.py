@@ -186,7 +186,7 @@ class Pipeline:
         fv = []
         for index, record in self.data.iterrows():
             for side in ('left', 'right'):
-                pSurf = record.at[index, 'path_'+side+'_rigid']
+                pSurf = record.at['path_'+side+'_rigid']
                 sf = surfaces.Surface(filename=pSurf)
                 fv.append((sf))
 

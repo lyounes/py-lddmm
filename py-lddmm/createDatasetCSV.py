@@ -46,9 +46,10 @@ def makeFileList(dataDir):
 
 
 if __name__=="__main__":
-    dataDir =  os.getenv('HOME') + "/OneDrive - Johns Hopkins University/RESEARCH/DATA/Dataset"
+    dataDir =  os.getenv('HOME') + "/OneDrive - Johns Hopkins University/RESEARCH/Data/Dataset"
 
-    makeFileList(dataDir)
-    #pip = Pipeline(dataDir+'/fileList.csv', dataDir+'/Pipeline')
+    #makeFileList(dataDir)
+    pip = Pipeline(dataDir+'/fileList.csv', dataDir+'/Pipeline')
     #pip.Step1_Isosurface()
     #pip.Step2_Rigid()
+    pip.Step3_Template()

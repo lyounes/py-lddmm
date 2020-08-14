@@ -154,8 +154,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             lv = vt * lmb[t, :, np.newaxis] / 2
             lnu += lv / (np.maximum(normvt[:, np.newaxis], 1e-6))
             # lv = lv * vnu[:,np.newaxis]
-            dxcval[t] = self.param.KparDiff.applyDiffKT(x, a[np.newaxis, ...], lnu[np.newaxis, ...])
-            dxcval[t] += self.param.KparDiff.applyDiffKT(x, lnu[np.newaxis, ...], a[np.newaxis, ...])
+            dxcval[t] = self.param.KparDiff.applyDiffKT(x, a, lnu)
+            dxcval[t] += self.param.KparDiff.applyDiffKT(x, lnu, a)
             if self.euclideanGradient:
                 dacval[t] = self.param.KparDiff.applyK(x, lnu)
             else:
@@ -316,15 +316,16 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 grd = self.internalCostGrad(foo, v)
                 Lv = grd[0]
                 DLv = self.internalWeight * self.regweight * grd[1]
-                a1 = np.concatenate((px[np.newaxis, ...], a[np.newaxis, ...], -2 * self.regweight * a[np.newaxis, ...],
-                                     -self.internalWeight * self.regweight * a[np.newaxis, ...], Lv[np.newaxis, ...]))
-                a2 = np.concatenate((a[np.newaxis, ...], px[np.newaxis, ...], a[np.newaxis, ...], Lv[np.newaxis, ...],
-                                     -self.internalWeight * self.regweight * a[np.newaxis, ...]))
-                zpx += self.param.KparDiff.applyDiffKT(z, a1, a2) - DLv
+                # a1 = np.concatenate((px[np.newaxis, ...], a[np.newaxis, ...], -2 * self.regweight * a[np.newaxis, ...],
+                #                      -self.internalWeight * self.regweight * a[np.newaxis, ...], Lv[np.newaxis, ...]))
+                # a2 = np.concatenate((a[np.newaxis, ...], px[np.newaxis, ...], a[np.newaxis, ...], Lv[np.newaxis, ...],
+                #                      -self.internalWeight * self.regweight * a[np.newaxis, ...]))
+                zpx += self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight,lddmm=True,
+                                                       extra_term=-self.internalWeight * self.regweight*Lv) - DLv
             else:
-                a1 = np.concatenate((px[np.newaxis, ...], a[np.newaxis, ...], -2 * self.regweight * a[np.newaxis, ...]))
-                a2 = np.concatenate((a[np.newaxis, ...], px[np.newaxis, ...], a[np.newaxis, ...]))
-                zpx += self.param.KparDiff.applyDiffKT(z, a1, a2)
+                # a1 = np.concatenate((px[np.newaxis, ...], a[np.newaxis, ...], -2 * self.regweight * a[np.newaxis, ...]))
+                # a2 = np.concatenate((a[np.newaxis, ...], px[np.newaxis, ...], a[np.newaxis, ...]))
+                zpx += self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
             if self.affineDim > 0:
                 pxt[M - t - 1, :, :] = np.dot(px, self.affB.getExponential(timeStep * A[0][M - t - 1])) + timeStep * zpx
                 # zpx += np.dot(px, A[0][M-t-1])
@@ -557,11 +558,11 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 AV = (AV[0] / AV0[0]) - 1
                 vf = surfaces.vtkFields()
                 vf.scalars.append('Jacobian')
-                vf.scalars.append(np.exp(Jt[kk, :]))
+                vf.scalars.append(np.exp(Jt[kk, :, 0]))
                 vf.scalars.append('Jacobian_T')
                 vf.scalars.append(AV)
                 vf.scalars.append('Jacobian_N')
-                vf.scalars.append(np.exp(Jt[kk, :]) / (AV + 1) - 1)
+                vf.scalars.append(np.exp(Jt[kk, :, 0]) / (AV + 1) - 1)
                 vf.scalars.append('displacement')
                 vf.scalars.append(displ)
                 if kk < self.Tsize:

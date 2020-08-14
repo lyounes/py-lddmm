@@ -3,8 +3,8 @@ from base import surfaces
 from base import loggingUtils
 from base.surfaces import Surface
 from base.kernelFunctions import Kernel
-from affineRegistration import rigidRegistration
-from surfaceMatching import SurfaceMatching, SurfaceMatchingParam
+from base.affineRegistration import rigidRegistration
+from base.surfaceMatching import SurfaceMatching, SurfaceMatchingParam
 import matplotlib.pyplot as plt
 plt.ion()
 def compute(model):
@@ -186,7 +186,7 @@ def compute(model):
     ## Object kernel
     K1 = Kernel(name='laplacian', sigma = sigmaKernel)
 
-    sm = SurfaceMatchingParam(timeStep=0.1, algorithm='bfgs', KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
+    sm = SurfaceMatchingParam(timeStep=0.1, algorithm='cg', KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
                               errorType='varifold', internalCost=internalCost)
     f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='/Users/younes/Development/Results/'+model+'LDDMM5p0H5000',param=sm,
                         testGradient=True,
@@ -201,4 +201,4 @@ def compute(model):
 
 
 if __name__=="__main__":
-    compute('biocardMulti')
+    compute('Hippo1')

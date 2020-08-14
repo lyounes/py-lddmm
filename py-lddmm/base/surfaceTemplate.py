@@ -550,13 +550,13 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             self.updateAllTraj = True
         (obj1, self.xt, Jt) = self.objectiveFunDef(self.at, self.Afft, kernel = self.param.KparDiff0, withTrajectory=True, withJacobian=True)
         self.fvTmpl.updateVertices(np.squeeze(self.xt[-1, :, :]))
-        self.fvTmpl.saveVTK(self.outputDir +'/'+ 'Template.vtk', scalars = Jt[-1], scal_name='Jacobian')
+        self.fvTmpl.saveVTK(self.outputDir +'/'+ 'Template.vtk', scalars = Jt[-1, :,0], scal_name='Jacobian')
         for kk in range(self.Ntarg):
             if self.select[kk]:
                 (obj1, self.xtAll[kk], Jt) = self.objectiveFunDef(self.atAll[kk], self.AfftAll[kk], kernel = self.param.KparDiff,
                                                                   withTrajectory=True, x0 = self.fvTmpl.vertices, withJacobian=True)
                 self.fvDef[kk].updateVertices(self.xtAll[kk][self.xtAll[kk].shape[0]-1, ...])
-                self.fvDef[kk].saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = Jt[-1, :], scal_name='Jacobian')
+                self.fvDef[kk].saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = Jt[-1, :,0], scal_name='Jacobian')
         if self.pplot:
             fig=plt.figure(1)
             #fig.clf()

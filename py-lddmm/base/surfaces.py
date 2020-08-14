@@ -1775,8 +1775,8 @@ def currentNormGradient(fvDef, fv1, KparDist, weight=1.):
     dim = c1.shape[1]
 
     z1 = (KparDist.applyK(c1, cr1) - KparDist.applyK(c2, cr2, firstVar=c1))/2
-    dz1 = (1./3.) * (KparDist.applyDiffKT(c1, cr1[np.newaxis,...], cr1[np.newaxis,...]) -
-                     KparDist.applyDiffKT(c2, cr1[np.newaxis,...], cr2[np.newaxis,...], firstVar=c1))
+    dz1 = (1./3.) * (KparDist.applyDiffKT(c1, cr1, cr1) -
+                     KparDist.applyDiffKT(c2, cr1, cr2, firstVar=c1))
 
     xDef1 = xDef[fvDef.faces[:, 0], :]
     xDef2 = xDef[fvDef.faces[:, 1], :]
@@ -1836,8 +1836,8 @@ def measureNormGradient(fvDef, fv1, KparDist):
     z1 = KparDist.applyK(c1, a1[:, np.newaxis]) - KparDist.applyK(c2, a2[:, np.newaxis], firstVar=c1)
     z1 = np.multiply(z1, cr1)
     #print a1.shape, c1.shape
-    dz1 = (1./3.) * (KparDist.applyDiffKT(c1, a1[np.newaxis,:,np.newaxis], a1[np.newaxis,:,np.newaxis]) -
-                      KparDist.applyDiffKT(c2, a1[np.newaxis,:,np.newaxis], a2[np.newaxis,:,np.newaxis], firstVar=c1))
+    dz1 = (1./3.) * (KparDist.applyDiffKT(c1, a1[:,np.newaxis], a1[:,np.newaxis]) -
+                      KparDist.applyDiffKT(c2, a1[:,np.newaxis], a2[:,np.newaxis], firstVar=c1))
                         
 
     xDef1 = xDef[fvDef.faces[:, 0], :]
@@ -1917,9 +1917,11 @@ def varifoldNormGradient(fvDef, fv1, KparDist, weight=1.):
     beta1 = a1[:,np.newaxis]*a1[np.newaxis,:] * (1 + d*cr1cr1**2) 
     beta2 = a1[:,np.newaxis]*a2[np.newaxis,:] * (1 + d*cr1cr2**2)
 
-    u1 = (2*d*cr1cr1[...,np.newaxis]*cr1[np.newaxis,...] - d*(cr1cr1**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
+    u1 = (2*d*cr1cr1[...,np.newaxis]*cr1[np.newaxis,...]
+          - d*(cr1cr1**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
           + cr1[:,np.newaxis,:])*a1[np.newaxis,:,np.newaxis]
-    u2 = (2*d*cr1cr2[...,np.newaxis]*cr2[np.newaxis,...] - d*(cr1cr2**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
+    u2 = (2*d*cr1cr2[...,np.newaxis]*cr2[np.newaxis,...]
+          - d*(cr1cr2**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
           + cr1[:,np.newaxis,:])*a2[np.newaxis,:,np.newaxis]
 
     z1 = KparDist.applyK(c1, u1,matrixWeights=True) - KparDist.applyK(c2, u2, firstVar=c1, matrixWeights=True)

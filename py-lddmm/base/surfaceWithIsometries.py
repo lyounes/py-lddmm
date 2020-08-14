@@ -326,15 +326,16 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
                 DLv = self.internalWeight * self.regweight * grd[1]
                 #                Lv = -2*foo.laplacian(v)
                 #                DLv = self.internalWeight*foo.diffNormGrad(v)
-                a1 = np.concatenate((px[np.newaxis, ...], a[np.newaxis, ...], -2 * self.regweight * a[np.newaxis, ...],
-                                     -self.internalWeight * self.regweight * a[np.newaxis, ...], Lv[np.newaxis, ...]))
-                a2 = np.concatenate((a[np.newaxis, ...], px[np.newaxis, ...], a[np.newaxis, ...], Lv[np.newaxis, ...],
-                                     -self.internalWeight * self.regweight * a[np.newaxis, ...]))
-                zpx += self.param.KparDiff.applyDiffKT(z, a1, a2) - DLv
+                # a1 = np.concatenate((px[np.newaxis, ...], a[np.newaxis, ...], -2 * self.regweight * a[np.newaxis, ...],
+                #                      -self.internalWeight * self.regweight * a[np.newaxis, ...], Lv[np.newaxis, ...]))
+                # a2 = np.concatenate((a[np.newaxis, ...], px[np.newaxis, ...], a[np.newaxis, ...], Lv[np.newaxis, ...],
+                #                      -self.internalWeight * self.regweight * a[np.newaxis, ...]))
+                zpx += self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight,lddmm=True,
+                                                       extra_term=self.internalWeight*self.regweight*Lv) - DLv
             else:
-                a1 = np.concatenate((px[np.newaxis, ...], a[np.newaxis, ...], -2 * self.regweight * a[np.newaxis, ...]))
-                a2 = np.concatenate((a[np.newaxis, ...], px[np.newaxis, ...], a[np.newaxis, ...]))
-                zpx += self.param.KparDiff.applyDiffKT(z, a1, a2)
+                # a1 = np.concatenate((px[np.newaxis, ...], a[np.newaxis, ...], -2 * self.regweight * a[np.newaxis, ...]))
+                # a2 = np.concatenate((a[np.newaxis, ...], px[np.newaxis, ...], a[np.newaxis, ...]))
+                zpx += self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
             #zpx += self.param.KparDiff.applyDiffKT(z, a1, a2)
             if self.affineDim > 0:
                 zpx += np.dot(px, A[0][M-t-1])
