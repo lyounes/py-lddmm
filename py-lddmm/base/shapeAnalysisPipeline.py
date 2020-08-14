@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import scipy.linalg as LA
 from . import diffeo
 from . import surfaces
 from . import pointSets
@@ -104,6 +105,7 @@ class Pipeline:
 
                 if tmpl is None:
                     tmpl = surfaces.Surface(filename = pSurf)
+                    tmplNorm = tmpl.computeVertexNormals()
                     if pLmk != 'none':
                         tmplLmk, foo = pointSets.loadlmk(pLmk)
                         R0, T0 = rigidRegistration(surfaces = (tmplLmk, tmpl.vertices),
@@ -115,6 +117,7 @@ class Pipeline:
                 u = path.split(pSurf)
                 [nm, ext] = path.splitext(u[1])
                 sf = surfaces.Surface(filename = pSurf)
+                sfNorm = sf.computeVertexNormals()
                 if tmplLmk is not None and pLmk != 'none':
                     y, foo = pointSets.loadlmk(pLmk)
                     R0, T0 = rigidRegistration(surfaces = (y, sf.vertices),  translationOnly=True,
@@ -125,7 +128,8 @@ class Pipeline:
                                                  temperature=10., annealing=True, rotWeight=1.)
                     yy = np.dot(sf.vertices, R0.T) + T0
                     yyl = np.dot(y, R0.T) + T0
-                    (R, T) = rigidRegistration(surfaces = (yy, tmpl.vertices), landmarks=(yyl, tmplLmk, cLmk),
+                    (R, T) = rigidRegistration(surfaces = (yy, tmpl.vertices), normals= (sfNorm, tmplNorm),
+                                               landmarks=(yyl, tmplLmk, cLmk),
                                                flipMidPoint=flip, rotationOnly=True, verb=False,
                                                temperature=10., annealing=False, rotWeight=1.)
                     T += np.dot(T0, R.T)
@@ -133,7 +137,8 @@ class Pipeline:
                     #yyl = np.dot(y, R.T) + T
                     #pointSets.savelmk(yyl, args.dirOut + '/' + nm + '_reg.lmk')
                 else:
-                    (R, T) = rigidRegistration(surfaces=(sf.vertices, tmpl.vertices), rotationOnly=False,
+                    (R, T) = rigidRegistration(surfaces=(sf.vertices, tmpl.vertices), normals= (sfNorm, tmplNorm),
+                                               rotationOnly=False,
                                                flipMidPoint=flip, verb=True,
                                                temperature=.1, annealing=True, rotWeight=.001)
 
@@ -149,24 +154,65 @@ class Pipeline:
         fv = []
         for index, record in self.data.iterrows():
             for side in ('left', 'right'):
-                pSurf = record.at[index, 'path_'+side+'_rigid']
+                pSurf = record['path_'+side+'_rigid']
                 sf = surfaces.Surface(filename=pSurf)
                 fv.append((sf))
 
-        fv0 = surfaces.Surface(surf=fv[0])
-        vert = np.zeros(fv0.vertices.shape)
-        for sf in fv:
-            vert += sf.vertices
-        vert /= len(fv)
-        fv0.updateVertices(vert)
+        J = np.zeros((3,3))
+        x0 = np.zeros(3)
+        nv = 0
+        for f in fv:
+            x00 = f.vertices.mean(axis=0)
+            x0 += x00
+            nv += f.vertices.shape[0]
+            vm = f.vertices - x00
+            J += (vm[:,:,np.newaxis]*vm[:, np.newaxis, :]).mean(axis=0)
+        J /= len(fv)
+        x0 /= len(fv)
+        nv = int(nv/len(fv))
+        w,v = LA.eigh(J)
+        emax = np.sqrt(w.max())
+        J = LA.inv(J)
+        #c0 = (np.dot(ftmpl.vertices, J)*ftmpl.vertices).sum()/ftmpl.vertices.shape[0]
+        #dst = np.sqrt(((ftmpl.vertices - x0)**2).sum(axis=1)).mean(axis=0)
+        M = 100
+        [x,y,z] = np.mgrid[0:2*M+1, 0:2*M+1, 0:2*M+1] / M
+        x = emax*(x-1)
+        y = emax*(y-1)
+        z = emax*(z-1)
+        I1 = (x**2 * J[0,0] + 2*x*y*J[0,1] + 2*x*z*J[0,2] + y**2*J[1,1] + 2*y*z*J[1,2] + z**2*J[2,2])
+        I1 = 1 - I1
+        #I1 = 1 - (x**2 + y**2 + z**2)
+
+        htmpl = surfaces.Surface()
+        htmpl.Isosurface(I1, value = 0, target=max(1000, nv), scales=[1, 1, 1], smooth=0.01)
+        #x1 = htmpl.vertices.mean(axis=0)
+        #dst1 = np.sqrt(((htmpl.vertices - x0)**2).sum(axis=1)).mean(axis=0)
+        #htmpl.updateVertices((htmpl.vertices - x1) * dst / dst1 + x0)
+        htmpl.vertices -= M
+        vm = htmpl.vertices
+        J = (vm[:,:,np.newaxis]*vm[:, np.newaxis, :]).mean(axis=0)
+        w,v = LA.eigh(J)
+        emax2 = np.sqrt(w.max())
+        #c = (np.dot(htmpl.vertices, J)*htmpl.vertices).sum()/htmpl.vertices.shape[0]
+        htmpl.updateVertices(htmpl.vertices * (emax/emax2) + x0)
+
+        htmpl.flipFaces()
+
+        # fv0 = surfaces.Surface(surf=fv[0])
+        # vert = np.zeros(fv0.vertices.shape)
+        # for sf in fv:
+        #     vert += sf.vertices
+        # vert /= len(fv)
+        # fv0.updateVertices(vert)
 
         K1 = kfun.Kernel(name='laplacian', sigma=6.5)
         K2 = kfun.Kernel(name='gauss', sigma=1.0)
 
-        sm = sTemp.SurfaceTemplateParam(timeStep=0.1, KparDiff=K1, KparDist=K2, sigmaError=1., errorType='current')
-        f = sTemp.SurfaceTemplate(HyperTmpl=fv0, Targets=fv,
+        sm = sTemp.SurfaceTemplateParam(timeStep=0.1, KparDiff=K1, KparDist=K2, sigmaError=1., errorType='varifold')
+        f = sTemp.SurfaceTemplate(HyperTmpl=htmpl, Targets=fv,
                                   outputDir=self.dirOutput, param=sm, testGradient=False, sgd = 10,
-                                  lambdaPrior=.01, maxIter=1000, affine='euclidean', rotWeight=10.,
+                                  lambdaPrior=.01, maxIter=100, affine='euclidean', rotWeight=10.,
                                   transWeight=1., scaleWeight=10., affineWeight=100.)
         f.computeTemplate()
 
@@ -174,13 +220,17 @@ class Pipeline:
 
     def Step4_Registration(self):
         fv0 = surfaces.Surface(filename=self.dirTemplate+'/template.vtk')
+        K1 = kfun.Kernel(name='laplacian' ,sigma=5.)
+
+        sm = smatch.SurfaceMatchingParam(timeStep=0.1, algorithm='cg', KparDiff=K1, sigmaDist=5., sigmaError=1., errorType='varifold', internalCost = 'h1')
         for index, record in self.data.iterrows():
             for side in ('left', 'right'):
                 pSurf = record['path_'+side+'_rigid']
+                print(pSurf)
                 fv = surfaces.Surface(filename=pSurf)
-                f = smatch.SurfaceMatching(Template=fv0, Target=fv, outputDir=self.dirOutput,
+                f = smatch.SurfaceMatching(Template=fv0, Target=fv, outputDir=self.dirOutput, param = sm,
                                            testGradient=False, symmetric=False, saveTrajectories = False,
-                                           internalWeight = None, maxIter=2000, affine='none', pplot=False)
+                                           internalWeight = 100, maxIter=500, affine='none', pplot=False)
 
                 f.optimizeMatching()
                 u = path.split(pSurf)

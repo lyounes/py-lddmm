@@ -752,7 +752,7 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=F
     simpleOutput = True
     withJ = 0
     withnu = 0
-    if not (withNormals is None):
+    if withNormals is not None:
         withnu = 1
         simpleOutput = False
         nt0 = withNormals
@@ -771,7 +771,7 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=F
         for k in range(M):
             A[k,...] = np.eye(dim) 
         
-    if not (withPointSet is None):
+    if withPointSet is not None:
         simpleOutput = False
         K = withPointSet.shape[0]
         y0 = withPointSet
@@ -782,6 +782,7 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=F
         K = 1
         y0 = np.zeros([K,dim])
         if withJacobian:
+            withJ = 1
             simpleOutput = False
 
     if KparDiff.localMaps:
@@ -794,9 +795,9 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=F
         return foo[0]
     else:
         output = [foo[0]]
-        if not (withPointSet is None):
+        if withPointSet is not None:
             output.append(foo[1])
-        if not (withNormals is None):
+        if withNormals is not None:
             output.append(foo[3])
         if withJacobian:
             output.append(foo[2])
