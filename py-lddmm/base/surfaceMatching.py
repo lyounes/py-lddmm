@@ -3,6 +3,7 @@ import numpy as np
 import numpy.linalg as la
 import logging
 import h5py
+import glob
 from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, bfgs
 from . import surfaces
 from . import pointSets
@@ -23,7 +24,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class SurfaceMatchingParam:
-    def __init__(self, timeStep = .1, algorithm='bfgs', Wolfe=True, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist = 2.5,
+    def __init__(self, timeStep = .1, algorithm='cg', Wolfe=True, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist = 2.5,
                  sigmaError = 1.0, errorType = 'measure',  typeKernel='gauss', internalCost = None):
         self.timeStep = timeStep
         self.sigmaKernel = sigmaKernel
@@ -69,7 +70,7 @@ class SurfaceMatching(object):
 
     def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000,
                  regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
-                 subsampleTargetSize=-1,
+                 subsampleTargetSize=-1, affineOnly = False,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
                  testGradient=True, saveFile = 'evolution',
                  saveTrajectories = False, affine = 'none', outputDir = '.',pplot=True):
@@ -119,7 +120,7 @@ class SurfaceMatching(object):
 
         self.saveRate = 10
         self.gradEps = -1
-        self.randomInit = True
+        self.randomInit = False
         self.iter = 0
         self.setOutputDir(outputDir)
         self.dim = self.fv0.vertices.shape[1]
@@ -130,6 +131,7 @@ class SurfaceMatching(object):
         self.testGradient = testGradient
         self.internalWeight = internalWeight
         self.regweight = regWeight
+        self.affineOnly = affineOnly
         self.affine = affine
         self.affB = AffineBasis(self.dim, affine)
         self.affineDim = self.affB.affineDim
@@ -246,12 +248,12 @@ class SurfaceMatching(object):
     def set_fun(self, errorType):
         self.param.errorType = errorType
         if errorType == 'current':
-            print('Running Current Matching')
+            #print('Running Current Matching')
             self.fun_obj0 = partial(surfaces.currentNorm0, KparDist=self.param.KparDist, weight=1.)
             self.fun_obj = partial(surfaces.currentNormDef, KparDist=self.param.KparDist, weight=1.)
             self.fun_objGrad = partial(surfaces.currentNormGradient, KparDist=self.param.KparDist, weight=1.)
         elif errorType == 'currentMagnitude':
-            print('Running Current Matching')
+            #print('Running Current Matching')
             self.fun_obj0 = lambda fv1 : 0
             self.fun_obj = partial(surfaces.currentMagnitude, KparDist=self.param.KparDist)
             self.fun_objGrad = partial(surfaces.currentMagnitudeGradient, KparDist=self.param.KparDist)
@@ -259,7 +261,7 @@ class SurfaceMatching(object):
             # self.fun_obj = curves.currentNormDef
             # self.fun_objGrad = curves.currentNormGradient
         elif errorType=='measure':
-            print('Running Measure Matching')
+            #print('Running Measure Matching')
             self.fun_obj0 = partial(surfaces.measureNorm0, KparDist=self.param.KparDist)
             self.fun_obj = partial(surfaces.measureNormDef,KparDist=self.param.KparDist)
             self.fun_objGrad = partial(surfaces.measureNormGradient,KparDist=self.param.KparDist)
@@ -277,7 +279,7 @@ class SurfaceMatching(object):
     def addSurfaceToPlot(self, fv1, ax, ec = 'b', fc = 'r', al=.5, lw=1):
         return fv1.addToPlot(ax, ec = ec, fc = fc, al=al, lw=lw)
 
-    def setOutputDir(self, outputDir):
+    def setOutputDir(self, outputDir, clean=True):
         self.outputDir = outputDir
         if not os.access(outputDir, os.W_OK):
             if os.access(outputDir, os.F_OK):
@@ -285,6 +287,11 @@ class SurfaceMatching(object):
                 return
             else:
                 os.makedirs(outputDir)
+
+        if clean:
+            fileList = glob.glob(outputDir + '/*.vtk')
+            for f in fileList:
+                os.remove(f)
 
 
     def dataTerm(self, _fvDef, _fvInit = None):
@@ -511,13 +518,14 @@ class SurfaceMatching(object):
             a = np.squeeze(at[k, :, :])
             px = np.squeeze(pxt[k+1, :, :])
             #print 'testgr', (2*a-px).sum()
-            v = kernel.applyK(z,a)
-            if self.internalCost:
-                Lv = self.internalCostGrad(foo, v, variables='phi') 
-                #Lv = -foo.laplacian(v) 
-                dat[k, :, :] = 2*regWeight*a-px + self.internalWeight * regWeight * Lv
-            else:
-                dat[k, :, :] = 2*regWeight*a-px
+            if not self.affineOnly:
+                v = kernel.applyK(z,a)
+                if self.internalCost:
+                    Lv = self.internalCostGrad(foo, v, variables='phi')
+                    #Lv = -foo.laplacian(v)
+                    dat[k, :, :] = 2*regWeight*a-px + self.internalWeight * regWeight * Lv
+                else:
+                    dat[k, :, :] = 2*regWeight*a-px
 
             if not (affine is None):
                 dA[k] = gradExponential(A[k]*timeStep, px, xt[k]) #.reshape([self.dim**2, 1])/timeStep
@@ -607,7 +615,10 @@ class SurfaceMatching(object):
 
     def randomDir(self):
         dirfoo = Direction()
-        dirfoo.diff = np.random.randn(self.Tsize, self.npt, self.dim)
+        if self.affineOnly:
+            dirfoo.diff = np.zeros((self.Tsize, self.npt, self.dim))
+        else:
+            dirfoo.diff = np.random.randn(self.Tsize, self.npt, self.dim)
         dirfoo.initx = np.random.randn(self.npt, self.dim)
         dirfoo.aff = np.random.randn(self.Tsize, self.affineDim)
         return dirfoo
@@ -794,8 +805,8 @@ class SurfaceMatching(object):
         deformedTemplate.create_dataset('vertices', data=self.fv1.vertices)
         deformedTemplate.create_dataset('faces', data=self.fv1.vertices)
         variables = LDDMMResult.create_group('variables')
-        variables.create_dataset('alpha', self.at)
-        variables.create_dataset('affine', self.Afft)
+        variables.create_dataset('alpha', data=self.at)
+        variables.create_dataset('affine', data=self.Afft)
         descriptors = LDDMMResult.create_group('descriptors')
 
         A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
@@ -827,12 +838,13 @@ class SurfaceMatching(object):
         [grd2] = self.dotProduct(grd, [grd])
 
         self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
+        self.epsMax = 5.
         logging.info('Gradient lower bound: %f' %(self.gradEps))
         self.coeffAff = self.coeffAff1
         if self.param.algorithm == 'cg':
             cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=0.1)
         elif self.param.algorithm == 'bfgs':
             bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=1.,
-                      Wolfe=self.param.wolfe, memory=25)
+                      Wolfe=self.param.wolfe, memory=50)
         #return self.at, self.xt
 

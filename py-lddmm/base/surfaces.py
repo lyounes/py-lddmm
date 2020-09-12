@@ -267,7 +267,7 @@ class Surface:
         else:
             raise Exception('Cannot run toPolyData without VTK')
 
-    def fromPolyData(self, g, scales=[1.,1.,1.]):
+    def fromPolyData(self, g, scales=(1.,1.,1.)):
         npoints = int(g.GetNumberOfPoints())
         nfaces = int(g.GetNumberOfPolys())
         logging.info('Dimensions: %d %d %d' %(npoints, nfaces, g.GetNumberOfCells()))
@@ -372,7 +372,7 @@ class Surface:
 
 
     # Computes isosurfaces using vtk               
-    def Isosurface(self, data, value=0.5, target=1000.0, scales = [1., 1., 1.], smooth = 0.1, fill_holes = 1., orientation=1):
+    def Isosurface(self, data, value=0.5, target=1000.0, scales = (1., 1., 1.), smooth = 0.1, fill_holes = 1., orientation=1):
         if gotVTK:
             #data = self.LocalSignedDistance(data0, value)
             if isinstance(data, vtkImageData):
@@ -864,9 +864,12 @@ class Surface:
         return res
 
     def createFlatApproximation(self, thickness=None, M=50):
+        # Compute center
         a = self.computeVertexArea()[0]
         A = a.sum()
         x0 = (self.vertices * a[:,np.newaxis]).sum(axis=0)/A
+
+        # Inertial operator
         vm = self.vertices - x0
         J = ((vm[:, :, np.newaxis] * vm[:, np.newaxis, :])*a[:, np.newaxis, np.newaxis]).sum(axis=0)/A
         w,v = LA.eigh(J)
@@ -875,32 +878,99 @@ class Surface:
         #c0 = (np.dot(ftmpl.vertices, J)*ftmpl.vertices).sum()/ftmpl.vertices.shape[0]
         #dst = np.sqrt(((ftmpl.vertices - x0)**2).sum(axis=1)).mean(axis=0)
         #M = 100
-        [x,y,z] = np.mgrid[0:2*M+1, 0:2*M+1, 0:2*M+1] / M
-        x = emax*(x-1)
-        y = emax*(y-1)
-        z = emax*(z-1)
-        u0 = x*v[0,0] + y*v[1,0] + z*v[2,0]
-        u1 = x*v[0,1] + y*v[1,1] + z*v[2,1]
-        u2 = x*v[0,2] + y*v[1,2] + z*v[2,2]
         if thickness is None:
             w0 = w[0]
         else:
             w0 = (thickness/2)**2
-        I1 = np.logical_and((u2 ** 2 / w[2] + u1 ** 2 / w[1]) < 3, u0 ** 2 < w0)
+
+        [x,y,z] = np.mgrid[0:2*M+1, 0:2*M+1, 0:2*M+1] / M
+        x = emax*(x-1)
+        y = emax*(y-1)
+        z = emax*(z-1)
+        I1 = np.logical_and((z ** 2 / w[2] + y ** 2 / w[1]) < 3, x ** 2 < w0)
         h = Surface()
         h.Isosurface_ski(data=I1, value=.5, step=3)
+        labels = np.zeros(h.vertices.shape[0], dtype=int)
+        u2 = (h.vertices[:,0] - M) * (emax/M)
+        for j in range(labels.shape[0]):
+            #u2 = x[0]  * v[0, 0] + x[1] * v[1, 0] + x[2] * v[2, 0]
+            if np.fabs(u2[j]-np.sqrt(w0)) < emax/M:
+                labels[j] = 1
+            elif np.fabs(u2[j]+np.sqrt(w0)) < emax/M:
+                labels[j] = 2
+
+        u = np.dot(h.vertices-M, v.T)
+        # u = np.zeros(hv.shape)
+        # u[0,:] = x*v[0,0] + y*v[1,0] + z*v[2,0]
+        # u[1,:] = x*v[0,1] + y*v[1,1] + z*v[2,1]
+        # u[2,:] = x*v[0,2] + y*v[1,2] + z*v[2,2]
+        #h.updateVertices(u)
+        # I1 = np.logical_and((u2 ** 2 / w[2] + u1 ** 2 / w[1]) < 3, u0 ** 2 < w0)
+        # h = Surface()
+        # h.Isosurface_ski(data=I1, value=.5, step=3)
         print('Vertices', h.vertices.shape[0])
         #h.Isosurface(I1, value = 1, target=max(1000, self.vertices.shape[0]), scales=[1, 1, 1], smooth=0.0001)
-        h.updateVertices(x0 + (h.vertices-M)*emax/M)
-        labels = np.zeros(h.vertices.shape[0], dtype=int)
-        for j in range(labels.shape[0]):
-            x = h.vertices[j,:] - x0
-            u2 = x[0]  * v[0, 0] + x[1] * v[1, 0] + x[2] * v[2, 0]
-            if np.fabs(u2-np.sqrt(w0)) < emax/M:
-                labels[j] = 1
-            elif np.fabs(u2+np.sqrt(w0)) < emax/M:
-                labels[j] = 2
+        h.updateVertices(x0 + (u)*emax/M)
+        # labels = np.zeros(h.vertices.shape[0], dtype=int)
+        # for j in range(labels.shape[0]):
+        #     x = h.vertices[j,:] - x0
+        #     u2 = x[0]  * v[0, 0] + x[1] * v[1, 0] + x[2] * v[2, 0]
+        #     if np.fabs(u2-np.sqrt(w0)) < emax/M:
+        #         labels[j] = 1
+        #     elif np.fabs(u2+np.sqrt(w0)) < emax/M:
+        #         labels[j] = 2
         return h, labels, np.sqrt(w0)
+
+
+    def compute3DVolumeImage(self, xmin = 0, xmax = 100, spacing = 1., origin = None):
+        ln = xmax - xmin + 1
+        vpoints = self.toPolyData()
+        whiteImage = vtk.vtkImageData()
+        whiteImage.SetSpacing(spacing ,spacing ,spacing)
+        whiteImage.SetDimensions(ln ,ln ,ln)
+        whiteImage.SetExtent(xmin , xmax , xmin ,xmax ,xmin,xmax)
+        bounds = vpoints.GetBounds()
+        if origin is None:
+            origin = np.zeros(3)
+            for i in range(3):
+                origin[i] = bounds[2*i] + spacing / 2
+        whiteImage.SetOrigin(origin[0] ,origin[1] ,origin[2])
+        whiteImage.AllocateScalars(vtk.VTK_UNSIGNED_CHAR ,1)
+        count = whiteImage.GetNumberOfPoints()
+        inval = 255
+        outval = 0
+        for i in range(count):
+            whiteImage.GetPointData().GetScalars().SetTuple1(i ,inval)
+
+        orig2 = self.vertices.mean(axis=0)
+
+        pol2stenc = vtk.vtkPolyDataToImageStencil()
+        pol2stenc.SetInputData(vpoints)
+        pol2stenc.SetOutputOrigin((orig2[0], orig2[1], orig2[2]))
+        pol2stenc.SetOutputSpacing(spacing, spacing, spacing)
+        pol2stenc.SetOutputWholeExtent(whiteImage.GetExtent())
+        pol2stenc.Update()
+
+        img2stenc = vtk.vtkImageStencil()
+        img2stenc.SetInputData(whiteImage)
+        img2stenc.SetStencilConnection(pol2stenc.GetOutputPort())
+        img2stenc.ReverseStencilOff()
+        img2stenc.SetBackgroundValue(outval)
+        img2stenc.Update()
+
+        result = img2stenc.GetOutput()
+
+        img = v2n.vtk_to_numpy(result.GetPointData().GetScalars())
+        img = np.reshape(img, (ln,ln,ln)).astype(float)
+        # img = np.zeros((ln,ln,ln))
+        # ii = 0
+        # for j in range(ln):
+        #     for i in range(ln):
+        #         for k in range(ln):
+        #             img[j,i,k] = result.GetPointData().GetScalars().GetTuple1(ii)
+        #             ii += 1
+
+        return img
 
     def addToPlot(self, ax, ec = 'b', fc = 'r', al=.5, lw=1):
         x = self.vertices[self.faces[:,0],:]

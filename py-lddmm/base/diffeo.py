@@ -7,6 +7,8 @@ import scipy as sp
 import logging
 import scipy.ndimage as Img
 from PIL import Image
+import nibabel
+
 
 try:
     from vtk import *
@@ -25,8 +27,9 @@ from PIL.Image import core as _imaging
 class gridScalars:
     # initializes either form a previous array (data) or from a file 
     def __init__(self, grid=None, data=None, fileName = None, dim = 3, resol = 1., origin= 0., force_axun=False, withBug=False):
-        if not (data is None):
+        if data is not None:
             self.data = np.copy(data)
+            self.affine = np.eye(dim+1)
             if type(resol) == float:
                 self.resol = resol *np.ones(data.ndim)
             else:
@@ -36,11 +39,12 @@ class gridScalars:
             else:
                 self.origin = np.copy(origin)
             self.dim = dim
-        elif not (fileName==None):
+        elif fileName is not None:
             self.dim = dim 
             if (dim == 1):
                 self.resol = 1.
                 self.origin = 0.
+                self.affine = np.eye(dim + 1)
                 with open(fileName, 'r') as ff:
                     ln0 = ff.readline()
                     while (len(ln0) == 0) | (ln0=='\n'):
@@ -57,6 +61,7 @@ class gridScalars:
             elif (dim==2):
                 self.resol  = [1., 1.]
                 self.origin = [0., 0.]
+                self.affine = np.eye(dim + 1)
                 # u = vtkImageReader2()
                 # u.setFileName(fileName)
                 # u.Update()
@@ -69,18 +74,23 @@ class gridScalars:
                 #np.array(img.convert("L").getdata())
                 #self.data.resize(img.size)
             elif (dim == 3):
+                self.affine = np.eye(dim + 1)
                 (nm, ext) = os.path.splitext(fileName)
-                if ext=='.hdr':
+                if ext=='.hdr' or ext=='.img':
                     self.loadAnalyze(fileName, force_axun= force_axun, withBug=withBug)
                 elif ext =='.vtk':
                     self.readVTK(fileName)
             else:
                 print("get_image: unsupported input dimensions")
                 return
-        elif not(grid==None):
+            self.data = np.squeeze(self.data)
+            if len(self.data.shape) > dim:
+                self.data = np.mean(self.data, axis=0)
+        elif grid is not None:
             self.data = np.copy(grid.data)
             self.resol = np.copy(grid.resol)
             self.origin = np.copy(grid.origin)
+            self.affine = np.copy(grid.affine)
             self.dim = grid.dim
 
     def save(self, filename):
@@ -131,34 +141,38 @@ class gridScalars:
             ff.write('SCALARS '+scalarName+' double 1\nLOOKUP_TABLE default\n')
             if sys.byteorder[0] == 'l':
                 tmp = self.data.byteswap()
-                tmp.T.tofile(ff)
+                tmp.tofile(ff)
             else:
-                self.data.T.tofile(ff, order='F')
+                self.data.T.tofile(ff)
 
     # Saves in analyze file
     def saveAnalyze(self, filename):
-        [nm, ext] = os.path.splitext(filename)
-        with open(nm+'.hdr', 'w') as ff:
-            x = 348
-            ff.write(struct.pack('i', x))
-            self.header[33] = self.data.shape[0]
-            self.header[34] = self.data.shape[1]
-            self.header[35] = self.data.shape[2]
-            self.header[53] = 16
-            self.header[57:60] = self.resol
-            self.header[178] = 1
-            frmt = 28*'B'+'i'+'h'+2*'B'+8*'h'+12*'B'+4*'h'+16*'f'+2*'i'+168*'B'+8*'i'
-            ff.write(struct.pack(frmt, *self.header.tolist()))
-        with open(nm+'.img', 'w') as ff:
-            print(self.data.max())
-            #array.array('f', self.data[::-1,::-1,::-1].T.flatten()).tofile(ff)
-            array.array('f', self.data.T.flatten()).tofile(ff)
-            #uu = self.data[::-1,::-1,::-1].flatten()
-            #print uu.max()
-            #uu.tofile(ff)
+        nibabel.AnalyzeImage(self.data, None).to_filename(filename)
+        # [nm, ext] = os.path.splitext(filename)
+        # with open(nm+'.hdr', 'wb') as ff:
+        #     x = 348
+        #     self.header = np.zeros(250, dtype=int)
+        #     ff.write(struct.pack('i', x))
+        #     self.header[33] = self.data.shape[0]
+        #     self.header[34] = self.data.shape[1]
+        #     self.header[35] = self.data.shape[2]
+        #     self.header[53] = 16
+        #     self.header[57:60] = self.resol
+        #     self.header[178] = 1
+        #     frmt = 28*'B'+'i'+'h'+2*'B'+8*'h'+12*'B'+4*'h'+16*'f'+2*'i'+168*'B'+8*'i'
+        #     ff.write(struct.pack(frmt, *self.header.tolist()))
+        # with open(nm+'.img', 'wb') as ff:
+        #     print(self.data.max())
+        #     #array.array('f', self.data[::-1,::-1,::-1].T.flatten()).tofile(ff)
+        #     array.array('f', self.data.T.flatten()).tofile(ff)
+        #     #uu = self.data[::-1,::-1,::-1].flatten()
+        #     #print uu.max()
+        #     #uu.tofile(ff)
 
     # Reads in analyze file
     def loadAnalyze(self, filename, force_axun=False, withBug=False):
+        #img = nibabel.load(filename)
+
         [nm, ext] = os.path.splitext(filename)
         with open(nm+'.hdr', 'rb') as ff:
             frmt = 28*'B'+'i'+'h'+2*'B'+8*'h'+12*'B'+4*'h'+16*'f'+2*'i'+168*'B'+8*'i'
@@ -171,7 +185,7 @@ class gridScalars:
             ls = struct.unpack(lend+frmt, ff.read())
             self.header = np.array(ls)
             #print ls
-    
+
             sz = ls[33:36]
             #print sz
             datatype = ls[53]
@@ -183,8 +197,8 @@ class gridScalars:
             if withBug:
                 self.hist_orient = 0
             print("Orientation: ", int(self.hist_orient))
-
-
+        #
+        #
         with open(nm+'.img', 'rb') as ff:
             nbVox = sz[0]*sz[1]*sz[2]
             s = ff.read()
@@ -211,9 +225,12 @@ class gridScalars:
         #print 'size:', sz
         self.data = np.float_(ls2)
         self.data.resize(sz[::-1])
-        #self.data.resize(sz)
+        #self.data = img.get_fdata().astype(float)
         #print 'size:', self.data.shape
         self.data = self.data.T
+        #self.resol = [img.affine[0,0], img.affine[1,1], img.affine[2,2]]
+        #self.affine = img.affine
+        #return
         #self.data = self.data[::-1,::-1,::-1]
         #print 'size:', self.data.shape
         #print self.resol, ls[57]
@@ -241,7 +258,8 @@ class gridScalars:
             if withBug:
                 self.data  = self.data[::-1,::-1,::-1]
                 #self.saveAnalyze('Data/foo.hdr')
-        
+        return
+
 
     def zeroPad(self, h):
         d = np.copy(self.data)

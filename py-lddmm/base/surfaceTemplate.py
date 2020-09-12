@@ -10,8 +10,8 @@ from .affineBasis import AffineBasis
 from . import loggingUtils
 from .surfaces import Surface
 import glob
-import matplotlib
-matplotlib.use("TKAgg")
+# import matplotlib
+# matplotlib.use("TKAgg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -582,7 +582,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         # self.gradEps = max(0.1, np.sqrt(grd2) / 10000)
         meanObj = 0
         if self.sgd < self.Ntarg:
-            for k in range(self.maxIter):
+            for k in range(self.maxIter//self.sgd):
                 self.select = np.zeros(self.Ntarg, dtype=bool)
                 sel = np.random.permutation(self.Ntarg)
                 #sel[0] = 8
@@ -603,7 +603,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 
             #sgd = (10, 0.00001)
         else:
-            cg.cg(self, verb=self.verb, maxIter=self.maxIter, TestGradient=True, epsInit=0.01)
+            cg.cg(self, verb=self.verb, maxIter=self.maxIter, TestGradient=self.testGradient, epsInit=0.01)
         return self
 
 
