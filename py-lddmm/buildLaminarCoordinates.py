@@ -107,7 +107,7 @@ def BuildLaminar(target, outputDir, pancakeThickness=None, runRegistration=True)
 
     f = SMN(Template=fv1, Target=fv2, outputDir=outputDir, param=sm, regWeight=1.,
             saveTrajectories=True, symmetric=False, pplot=True,
-            affine='none', testGradient=False, internalWeight=internalWeight, affineWeight=1e3, maxIter_cg=100,
+            affine='none', testGradient=True, internalWeight=internalWeight, affineWeight=1e3, maxIter_cg=100,
             maxIter_al=5, mu=1e-5)
     f.optimizeMatching()
 
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     #fv = examples.ellipsoid(a=0.5, b=0.5, c=0.25, d=100)
 
     BuildLaminar(fv, outputDir = '/Users/younes/Development/results/testERC2Streamlines',
-                 pancakeThickness = None, runRegistration=True)
+                 pancakeThickness = None, runRegistration=False)
 
     plt.ioff()
     plt.show()

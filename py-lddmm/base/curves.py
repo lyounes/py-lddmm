@@ -3,7 +3,8 @@ import scipy as sp
 import os
 import glob
 try:
-    from vtk import *
+    from vtk import vtkContourFilter, vtkVersion, vtkPolyDataConnectivityFilter, vtkPolyDataReader, \
+        vtkImageData, VTK_FLOAT, vtkDoubleArray
     gotVTK = True
 except ImportError:
     print('could not import VTK functions')
@@ -890,17 +891,17 @@ def currentNormGradient(fvDef, fv1, KparDist=None, weight=None):
 
 
     z1 = KparDist.applyK(c1, cr1) - KparDist.applyK(c2, cr2, firstVar=c1)
-    dz1 = .5*(KparDist.applyDiffKT(c1, cr1[np.newaxis,...], cr1[np.newaxis,...]) -
-            KparDist.applyDiffKT(c2, cr1[np.newaxis,...], cr2[np.newaxis,...], firstVar=c1))
+    dz1 = .5*(KparDist.applyDiffKT(c1, cr1, cr1) -
+            KparDist.applyDiffKT(c2, cr1, cr2, firstVar=c1))
 
-    if weight:
+    if weight is not None:
         a1 = np.sqrt((cr1 ** 2).sum(axis=1) + 1e-10)
         a2 = np.sqrt((cr2 ** 2).sum(axis=1) + 1e-10)
         cr1n = cr1 / a1[:, np.newaxis]
         z01 = (KparDist.applyK(c1, a1[:, np.newaxis]) - KparDist.applyK(c2, a2[:, np.newaxis], firstVar=c1))
         z1 += weight * (z01*cr1n)
-        dz1 += (weight/2.) * (KparDist.applyDiffKT(c1, a1[np.newaxis,:,np.newaxis], a1[np.newaxis,:,np.newaxis]) -
-                      KparDist.applyDiffKT(c2, a1[np.newaxis,:,np.newaxis], a2[np.newaxis,:,np.newaxis], firstVar=c1))
+        dz1 += (weight/2.) * (KparDist.applyDiffKT(c1, a1[:,np.newaxis], a1[:,np.newaxis]) -
+                      KparDist.applyDiffKT(c2, a1[:,np.newaxis], a2[:,np.newaxis], firstVar=c1))
 
 
 
@@ -966,8 +967,8 @@ def measureNormGradient(fvDef, fv1, KparDist=None):
     z1 = KparDist.applyK(c1, a1[:, np.newaxis]) - KparDist.applyK(c2, a2[:, np.newaxis], firstVar=c1)
     z1 = np.multiply(z1, cr1)
 
-    dz1 = (1./2.) * (KparDist.applyDiffKT(c1, a1[np.newaxis,:,np.newaxis], a1[np.newaxis,:,np.newaxis]) -
-                      KparDist.applyDiffKT(c2, a1[np.newaxis,:,np.newaxis], a2[np.newaxis,:,np.newaxis], firstVar=c1))
+    dz1 = (1./2.) * (KparDist.applyDiffKT(c1, a1[:,np.newaxis], a1[:,np.newaxis]) -
+                      KparDist.applyDiffKT(c2, a1[:,np.newaxis], a2[:,np.newaxis], firstVar=c1))
     # dz1 = (np.multiply(dg11.sum(axis=1).reshape((-1,1)), c1) - np.dot(dg11,c1) - np.multiply(dg12.sum(axis=1).reshape((-1,1)), c1) + np.dot(dg12,c2))
 
     xDef1 = xDef[fvDef.faces[:, 0], :]
@@ -1076,14 +1077,17 @@ def _varifoldNormGradient(c1, c2, cr1, cr2, KparDist=None, weight=1.):
     beta1 = a1[:,np.newaxis]*a1[np.newaxis,:] * (1 + d*cr1cr1**2) 
     beta2 = a1[:,np.newaxis]*a2[np.newaxis,:] * (1 + d*cr1cr2**2)
 
-    u1 = (2*d*cr1cr1[...,np.newaxis]*cr1[np.newaxis,...] - d*(cr1cr1**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
+    u1 = (2*d*cr1cr1[...,np.newaxis]*cr1[np.newaxis,...]
+          - d*(cr1cr1**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
           + cr1[:,np.newaxis,:])*a1[np.newaxis,:,np.newaxis]
-    u2 = (2*d*cr1cr2[...,np.newaxis]*cr2[np.newaxis,...] - d*(cr1cr2**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
+    u2 = (2*d*cr1cr2[...,np.newaxis]*cr2[np.newaxis,...]
+          - d*(cr1cr2**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
           + cr1[:,np.newaxis,:])*a2[np.newaxis,:,np.newaxis]
 
     z1 = KparDist.applyK(c1, u1,matrixWeights=True) - KparDist.applyK(c2, u2, firstVar=c1, matrixWeights=True)
     #print a1.shape, c1.shape
-    dz1 = (1./2.) * (KparDist.applyDiffKmat(c1, beta1) - KparDist.applyDiffKmat(c2, beta2, firstVar=c1))
+    dz1 = (1./2.) * (KparDist.applyDiffKmat(c1, beta1) -
+                     KparDist.applyDiffKmat(c2, beta2, firstVar=c1))
                         
     return z1,dz1
 

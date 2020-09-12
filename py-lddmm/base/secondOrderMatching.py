@@ -1,4 +1,5 @@
 import logging
+import os
 import glob
 import numpy.linalg as la
 #import scipy as sp
@@ -153,7 +154,7 @@ class SurfaceMatching:
         if self.param.errorType == 'L2Norm' and v0 < 0:
             #print 'flip'
             self.fv0.flipFaces()
-            v0 = -v0 ;
+            v0 = -v0
         for s in self.fv1:
             v1 = s.surfVolume()
             #print 'v1', v1

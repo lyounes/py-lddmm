@@ -3,7 +3,9 @@ import numpy as np
 from base.curves import Curve, remesh
 from base import loggingUtils
 from base.kernelFunctions import Kernel
-from curveMatching import CurveMatchingParam, CurveMatching
+from base.curveMatching import CurveMatchingParam, CurveMatching
+import matplotlib
+matplotlib.use("qt5agg")
 import matplotlib.pyplot as plt
 
 
@@ -294,9 +296,13 @@ def compute(model='default', dirOut='/cis/home/younes'):
     loggingUtils.setup_default_logging(dirOut + '/Development/Results/curveMatching', fileName='info.txt',
                                        stdOutput = True)   
     
-    sm = CurveMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError, errorType='varifold', internalCost='h1Invariant')
-    f = CurveMatching(Template=ftemp, Target=ftarg, outputDir=dirOut+'/Development/Results/curveMatching'+model+'HLDDMM_0p2_nocomp25',param=sm, testGradient=True,
-                      regWeight=1., internalWeight=internalWeight, maxIter=10000, affine='none', rotWeight=1, transWeight = 1, scaleWeight=100., affineWeight=100.)
+    sm = CurveMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
+                            errorType='varifold', internalCost='h1Invariant')
+    f = CurveMatching(Template=ftemp, Target=ftarg,
+                      outputDir=dirOut+'/Development/Results/curveMatching'+model+'HLDDMM_0p2_nocomp25',
+                      param=sm, testGradient=True,saveRate=50,
+                      regWeight=1., internalWeight=internalWeight, maxIter=10000, affine='none',
+                      rotWeight=1, transWeight = 1, scaleWeight=100., affineWeight=100.)
  
     f.optimizeMatching()
 

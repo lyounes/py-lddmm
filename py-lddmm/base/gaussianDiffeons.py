@@ -3,15 +3,15 @@ import numpy.linalg as LA
 import scipy.linalg as spLA
 
 try:
-    from vtk import *
+    from vtk import vtkQuadricClustering
     gotVTK = True
 except ImportError:
     print('could not import VTK functions')
     gotVTK = False
 
-from base import surfaces
-from base.pointSets import epsilonNet
-import base.conjugateGradient as cg, base.kernelFunctions as kfun
+from . import surfaces
+from .pointSets import epsilonNet
+from . import conjugateGradient as cg, kernelFunctions as kfun
 
 
 def generateDiffeonsFromSegmentation(fv, rate):

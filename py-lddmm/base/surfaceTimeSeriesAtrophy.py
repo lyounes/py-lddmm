@@ -163,8 +163,8 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
                 lv = vt * lmb[t,:,np.newaxis]
             #lnu = np.multiply(nu, np.mat(lmb[t, npt:npt1]).T)
             #print lnu.shape
-            dxcval[t] = self.param.KparDiff.applyDiffKT(x, a[np.newaxis,...], lnu[np.newaxis,...])
-            dxcval[t] += self.param.KparDiff.applyDiffKT(x, lnu[np.newaxis,...], a[np.newaxis,...])
+            dxcval[t] = self.param.KparDiff.applyDiffKT(x, a, lnu)
+            dxcval[t] += self.param.KparDiff.applyDiffKT(x, lnu, a)
             #dxcval[t] += np.dot(lnu, A)
             #if self.useKernelDotProduct:
             dacval[t] = np.copy(lnu)
@@ -317,7 +317,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
             #a1 = [px, a, -2*regweight*a]
             #a2 = [a, px, a]
             #print 'test', px.sum()
-            zpx += self.param.KparDiff.applyDiffKT(z, a1, a2)
+            zpx += self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
             # if not (affine == None):
             #     zpx += np.dot(px, A[M-t-1])
             # pxt[M-t-1, :, :] = px + timeStep * zpx

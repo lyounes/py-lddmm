@@ -373,6 +373,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         grd.diff = foo[0]/(coeff*self.Tsize)
         grd.aff = np.zeros(self.Afft.shape)
         if self.affineDim > 0:
+            dim2 = self.dim**2
             dA = foo[1]
             db = foo[2]
             grd.aff = 2 * self.Afft

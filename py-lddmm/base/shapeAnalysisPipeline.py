@@ -164,6 +164,9 @@ class Pipeline:
                 tmpl_left = surfaces.Surface(filename = pSurf_left)
                 tmpl_right = surfaces.Surface(filename = pSurf_right)
                 tmpl_v = [tmpl_left.vertices, tmpl_right.vertices]
+                (R0, T0) = rigidRegistration((tmpl_right.vertices,tmpl_left.vertices), rotationOnly=True,
+                                             verb=True, temperature=.1,
+                                             annealing=False, flipMidPoint=True, rotWeight=0.001)
 
             u = path.split(pSurf_left)
             [nm_left, ext] = path.splitext(u[1])
@@ -177,6 +180,7 @@ class Pipeline:
 
             sf_left.updateVertices(np.dot(sf_left.vertices, R.T) + T)
             sf_right.updateVertices(np.dot(sf_right.vertices, R.T) + T)
+            sf_right.updateVertices(np.dot(sf_right.vertices, R0.T) + T0)
             print(self.dirRigid + '/' + nm_left + '.vtk')
             self.data.at[index, 'path_left_rigid'] = self.dirRigid + '/' + nm_left + '.vtk'
             self.data.at[index, 'path_right_rigid'] = self.dirRigid + '/' + nm_right + '.vtk'

@@ -3,7 +3,7 @@ import numpy.linalg as la
 from . import surfaces
 from .pointSets import *
 from . import conjugateGradient as cg, pointEvolution as evol
-from ..affineBasis import *
+from .affineBasis import *
 from .surfaceMatching import SurfaceMatchingParam
 
 ## Parameter class for matching

@@ -220,9 +220,10 @@ class CurveMatching:
         self.param.errorType = errorType
         if errorType == 'current':
             print('Running Current Matching')
-            self.fun_obj0 = partial(curves.currentNorm0, KparDist=self.param.KparDist, weight=1.)
-            self.fun_obj = partial(curves.currentNormDef, KparDist=self.param.KparDist, weight=1.)
-            self.fun_objGrad = partial(curves.currentNormGradient, KparDist=self.param.KparDist, weight=1.)
+            weight = None
+            self.fun_obj0 = partial(curves.currentNorm0, KparDist=self.param.KparDist, weight=weight)
+            self.fun_obj = partial(curves.currentNormDef, KparDist=self.param.KparDist, weight=weight)
+            self.fun_objGrad = partial(curves.currentNormGradient, KparDist=self.param.KparDist, weight=weight)
             # self.fun_obj0 = curves.currentNorm0
             # self.fun_obj = curves.currentNormDef
             # self.fun_objGrad = curves.currentNormGradient
@@ -389,18 +390,19 @@ class CurveMatching:
                 grd = self.internalCostGrad(foo, v)
                 Lv =  grd[0]
                 DLv = self.internalWeight*grd[1]
-                a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...], 
-                                     -self.internalWeight*a[np.newaxis,...], Lv[np.newaxis,...]))
-                a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], 
-                                     Lv[np.newaxis,...], -self.internalWeight*a[np.newaxis,...]))
+                # a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...],
+                #                      -self.internalWeight*a[np.newaxis,...], Lv[np.newaxis,...]))
+                # a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...],
+                #                      Lv[np.newaxis,...], -self.internalWeight*a[np.newaxis,...]))
 #                a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...], 
 #                                     -2*self.internalWeight*a[np.newaxis,...]))
 #                a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], Lv[np.newaxis,...]))
-                zpx = self.param.KparDiff.applyDiffKT(z, a1, a2) - DLv
+                zpx = self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True,
+                                                      extra_term = -self.internalWeight*Lv) - DLv
             else:
-                a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...]))
-                a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
-                zpx = self.param.KparDiff.applyDiffKT(z, a1, a2)
+                # a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...]))
+                # a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
+                zpx = self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
                 
             if not (affine is None):
                 pxt[M-t-1, :, :] = np.dot(px, A[M-t-1]) + timeStep * zpx

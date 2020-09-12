@@ -5,6 +5,13 @@ import numpy as np
 import scipy as sp
 import scipy.linalg as LA
 from skimage import measure
+from vtk import vtkCellArray, vtkPoints, vtkPolyData, vtkVersion,\
+    vtkLinearSubdivisionFilter, vtkQuadricDecimation,\
+    vtkWindowedSincPolyDataFilter, vtkImageData, VTK_FLOAT,\
+    vtkDoubleArray, vtkContourFilter, vtkPolyDataConnectivityFilter,\
+    vtkCleanPolyData, vtkPolyDataReader, vtkOBJReader, vtkSTLReader,\
+    vtkDecimatePro, VTK_UNSIGNED_CHAR, vtkPolyDataToImageStencil,\
+    vtkImageStencil
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
@@ -21,6 +28,7 @@ try:
     import vtk.util.numpy_support as v2n
     gotVTK = True
 except ImportError:
+    v2n = None
     print('could not import VTK functions')
     gotVTK = False
 
@@ -80,13 +88,13 @@ class Surface:
         elif ext == '.obj':
             self.readOBJ(filename)
         else:
-            raise NameError('Unknown Surface Extension: '+filename) 
             self.vertices = np.empty(0)
             self.centers = np.empty(0)
             self.faces = np.empty(0)
             self.component = np.empty(0)
             self.surfel = np.empty(0)
-            
+            raise NameError('Unknown Surface Extension: '+filename)
+
     # face centers and area weighted normal
     def computeCentersAreas(self):
         xDef1 = self.vertices[self.faces[:, 0], :]
@@ -105,9 +113,15 @@ class Surface:
         self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
 
     def computeSparseMatrices(self):
-        self.v2f0 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]), (range(self.faces.shape[0]), self.faces[:,0]))).transpose(copy=False)
-        self.v2f1 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]), (range(self.faces.shape[0]), self.faces[:,1]))).transpose(copy=False)
-        self.v2f2 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]), (range(self.faces.shape[0]), self.faces[:,2]))).transpose(copy=False)
+        self.v2f0 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]),
+                                          (range(self.faces.shape[0]),
+                                           self.faces[:,0]))).transpose(copy=False)
+        self.v2f1 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]),
+                                          (range(self.faces.shape[0]),
+                                           self.faces[:,1]))).transpose(copy=False)
+        self.v2f2 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]),
+                                          (range(self.faces.shape[0]),
+                                           self.faces[:,2]))).transpose(copy=False)
 
     def computeVertexArea(self):
         # compute areas of faces and vertices
@@ -244,9 +258,13 @@ class Surface:
             if (d2[p[0],p[1], p[2]] > 0):
                 #print u[p[0],p[1], p[2]]
                 #print d2[bmin[0]:bmax[0], bmin[1]:bmax[1], bmin[2]:bmax[2]].sum()
-                res[p[0],p[1], p[2]] = min(cube[np.nonzero(d2[bmin[0]:bmax[0], bmin[1]:bmax[1], bmin[2]:bmax[2]] < 0)])-.25
+                res[p[0],p[1], p[2]] = \
+                    min(cube[np.nonzero(d2[bmin[0]:bmax[0], bmin[1]:bmax[1],
+                                        bmin[2]:bmax[2]] < 0)])-.25
             else:
-                res[p[0],p[1], p[2]] =- min(cube[np.nonzero(d2[bmin[0]:bmax[0], bmin[1]:bmax[1], bmin[2]:bmax[2]] > 0)])-.25
+                res[p[0],p[1], p[2]] =- \
+                    min(cube[np.nonzero(d2[bmin[0]:bmax[0], bmin[1]:bmax[1],
+                                        bmin[2]:bmax[2]] > 0)])-.25
                 
         return res
 
@@ -312,7 +330,7 @@ class Surface:
             polydata = self.toPolyData()
             red = 1 - min(np.float(target) / polydata.GetNumberOfPoints(), 1)
             if deciPro:
-                dc = vtk.vtkDecimatePro()
+                dc = vtkDecimatePro()
                 if vtkVersion.GetVTKMajorVersion() >= 6:
                     dc.SetInputData(polydata)
                 else:
@@ -372,7 +390,8 @@ class Surface:
 
 
     # Computes isosurfaces using vtk               
-    def Isosurface(self, data, value=0.5, target=1000.0, scales = (1., 1., 1.), smooth = 0.1, fill_holes = 1., orientation=1):
+    def Isosurface(self, data, value=0.5, target=1000.0, scales = (1., 1., 1.),
+                   smooth = 0.1, fill_holes = 1., orientation=1):
         if gotVTK:
             #data = self.LocalSignedDistance(data0, value)
             if isinstance(data, vtkImageData):
@@ -925,17 +944,17 @@ class Surface:
     def compute3DVolumeImage(self, xmin = 0, xmax = 100, spacing = 1., origin = None):
         ln = xmax - xmin + 1
         vpoints = self.toPolyData()
-        whiteImage = vtk.vtkImageData()
+        whiteImage = vtkImageData()
         whiteImage.SetSpacing(spacing ,spacing ,spacing)
         whiteImage.SetDimensions(ln ,ln ,ln)
         whiteImage.SetExtent(xmin , xmax , xmin ,xmax ,xmin,xmax)
         bounds = vpoints.GetBounds()
         if origin is None:
             origin = np.zeros(3)
-            for i in range(3):
-                origin[i] = bounds[2*i] + spacing / 2
+            # for i in range(3):
+            #     origin[i] = bounds[2*i] + spacing / 2
         whiteImage.SetOrigin(origin[0] ,origin[1] ,origin[2])
-        whiteImage.AllocateScalars(vtk.VTK_UNSIGNED_CHAR ,1)
+        whiteImage.AllocateScalars(VTK_UNSIGNED_CHAR ,1)
         count = whiteImage.GetNumberOfPoints()
         inval = 255
         outval = 0
@@ -943,15 +962,18 @@ class Surface:
             whiteImage.GetPointData().GetScalars().SetTuple1(i ,inval)
 
         orig2 = self.vertices.mean(axis=0)
+        orig2 = np.zeros(3)
+        for i in range(3):
+             orig2[i] = bounds[2*i]
 
-        pol2stenc = vtk.vtkPolyDataToImageStencil()
+        pol2stenc = vtkPolyDataToImageStencil()
         pol2stenc.SetInputData(vpoints)
         pol2stenc.SetOutputOrigin((orig2[0], orig2[1], orig2[2]))
         pol2stenc.SetOutputSpacing(spacing, spacing, spacing)
         pol2stenc.SetOutputWholeExtent(whiteImage.GetExtent())
         pol2stenc.Update()
 
-        img2stenc = vtk.vtkImageStencil()
+        img2stenc = vtkImageStencil()
         img2stenc.SetInputData(whiteImage)
         img2stenc.SetStencilConnection(pol2stenc.GetOutputPort())
         img2stenc.ReverseStencilOff()
@@ -961,6 +983,10 @@ class Surface:
         result = img2stenc.GetOutput()
 
         img = v2n.vtk_to_numpy(result.GetPointData().GetScalars())
+        # dims = result.GetDimensions()
+        #
+        # img = img.reshape(dims[2], dims[1], dims[0])
+        # img = img.transpose(2, 1, 0)
         img = np.reshape(img, (ln,ln,ln)).astype(float)
         # img = np.zeros((ln,ln,ln))
         # ii = 0
@@ -970,7 +996,7 @@ class Surface:
         #             img[j,i,k] = result.GetPointData().GetScalars().GetTuple1(ii)
         #             ii += 1
 
-        return img
+        return img, origin, orig2
 
     def addToPlot(self, ax, ec = 'b', fc = 'r', al=.5, lw=1):
         x = self.vertices[self.faces[:,0],:]
@@ -1779,8 +1805,8 @@ def currentNormGradient(fvDef, fv1, KparDist, weight=1.):
     dim = c1.shape[1]
 
     z1 = (KparDist.applyK(c1, cr1) - KparDist.applyK(c2, cr2, firstVar=c1))/2
-    dz1 = (1./3.) * (KparDist.applyDiffKT(c1, cr1[np.newaxis,...], cr1[np.newaxis,...]) -
-                     KparDist.applyDiffKT(c2, cr1[np.newaxis,...], cr2[np.newaxis,...], firstVar=c1))
+    dz1 = (1./3.) * (KparDist.applyDiffKT(c1, cr1, cr1) -
+                     KparDist.applyDiffKT(c2, cr1, cr2, firstVar=c1))
 
     xDef1 = xDef[fvDef.faces[:, 0], :]
     xDef2 = xDef[fvDef.faces[:, 1], :]
@@ -1840,8 +1866,8 @@ def measureNormGradient(fvDef, fv1, KparDist):
     z1 = KparDist.applyK(c1, a1[:, np.newaxis]) - KparDist.applyK(c2, a2[:, np.newaxis], firstVar=c1)
     z1 = np.multiply(z1, cr1)
     #print a1.shape, c1.shape
-    dz1 = (1./3.) * (KparDist.applyDiffKT(c1, a1[np.newaxis,:,np.newaxis], a1[np.newaxis,:,np.newaxis]) -
-                      KparDist.applyDiffKT(c2, a1[np.newaxis,:,np.newaxis], a2[np.newaxis,:,np.newaxis], firstVar=c1))
+    dz1 = (1./3.) * (KparDist.applyDiffKT(c1, a1[:,np.newaxis], a1[:,np.newaxis]) -
+                      KparDist.applyDiffKT(c2, a1[:,np.newaxis], a2[:,np.newaxis], firstVar=c1))
                         
 
     xDef1 = xDef[fvDef.faces[:, 0], :]
@@ -1921,9 +1947,11 @@ def varifoldNormGradient(fvDef, fv1, KparDist, weight=1.):
     beta1 = a1[:,np.newaxis]*a1[np.newaxis,:] * (1 + d*cr1cr1**2) 
     beta2 = a1[:,np.newaxis]*a2[np.newaxis,:] * (1 + d*cr1cr2**2)
 
-    u1 = (2*d*cr1cr1[...,np.newaxis]*cr1[np.newaxis,...] - d*(cr1cr1**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
+    u1 = (2*d*cr1cr1[...,np.newaxis]*cr1[np.newaxis,...]
+          - d*(cr1cr1**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
           + cr1[:,np.newaxis,:])*a1[np.newaxis,:,np.newaxis]
-    u2 = (2*d*cr1cr2[...,np.newaxis]*cr2[np.newaxis,...] - d*(cr1cr2**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
+    u2 = (2*d*cr1cr2[...,np.newaxis]*cr2[np.newaxis,...]
+          - d*(cr1cr2**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
           + cr1[:,np.newaxis,:])*a2[np.newaxis,:,np.newaxis]
 
     z1 = KparDist.applyK(c1, u1,matrixWeights=True) - KparDist.applyK(c2, u2, firstVar=c1, matrixWeights=True)

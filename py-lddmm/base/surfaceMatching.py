@@ -39,6 +39,7 @@ class SurfaceMatchingParam:
         else:
             self.KparDiff = KparDiff
         if KparDist is None:
+            #self.KparDist = kfun.Kernel(name = 'laplacian', order=1, sigma = self.sigmaDist)
             self.KparDist = kfun.Kernel(name = 'gauss', sigma = self.sigmaDist)
         else:
             self.KparDist = KparDist
@@ -474,16 +475,19 @@ class SurfaceMatching(object):
                 DLv = self.internalWeight*regWeight*grd[1]
 #                Lv = -2*foo.laplacian(v) 
 #                DLv = self.internalWeight*foo.diffNormGrad(v)
-                a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*regWeight*a[np.newaxis,...], 
-                                     -self.internalWeight*regWeight*a[np.newaxis,...], Lv[np.newaxis,...]))
-                a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], Lv[np.newaxis,...],
-                                     -self.internalWeight*regWeight*a[np.newaxis,...]))
-                zpx = KparDiff.applyDiffKT(z, a1, a2) - DLv
+#                 a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*regWeight*a[np.newaxis,...],
+#                                      -self.internalWeight*regWeight*a[np.newaxis,...], Lv[np.newaxis,...]))
+#                 a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], Lv[np.newaxis,...],
+#                                      -self.internalWeight*regWeight*a[np.newaxis,...]))
+                zpx = self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True,
+                                                      extra_term = -self.internalWeight*Lv) - DLv
+                #zpx = KparDiff.applyDiffKT(z, a1, a2) - DLv
             else:
-                a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*regWeight*a[np.newaxis,...]))
-                a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
-                zpx = KparDiff.applyDiffKT(z, a1, a2)
-                
+                # a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*regWeight*a[np.newaxis,...]))
+                # a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
+                # zpx = KparDiff.applyDiffKT(z, a1, a2)
+                zpx = self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
+
             if not (affine is None):
                 pxt[M-t-1, :, :] = np.dot(px, A[M-t-1]) + timeStep * zpx
             else:
@@ -756,11 +760,11 @@ class SurfaceMatching(object):
                 AV = (AV[0]/AV0[0])
                 vf = surfaces.vtkFields()
                 vf.scalars.append('Jacobian')
-                vf.scalars.append(np.exp(Jt[kk, :]))
+                vf.scalars.append(np.exp(Jt[kk, :,0]))
                 vf.scalars.append('Jacobian_T')
                 vf.scalars.append(AV)
                 vf.scalars.append('Jacobian_N')
-                vf.scalars.append(np.exp(Jt[kk, :])/AV)
+                vf.scalars.append(np.exp(Jt[kk, :, 0])/AV)
                 vf.scalars.append('displacement')
                 vf.scalars.append(displ)
                 if kk < self.Tsize:
