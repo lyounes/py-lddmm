@@ -63,7 +63,8 @@ def _flipMidPoint(Y,X):
 
 
 
-def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotationOnly=False, translationOnly=False, flipMidPoint=False,
+def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotationOnly=False,
+                      translationOnly=False, flipMidPoint=False,
                       annealing = True, verb=False, landmarks = None, normals = None):
 #  [R, T] = rigidRegistrationSurface(X0, Y0, t)
 # compute rigid registration using soft-assign maps
