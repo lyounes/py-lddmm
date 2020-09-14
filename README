@@ -4,10 +4,7 @@ You are welcome to use it, but note that it is provided without guarantee or mai
 As you can guess, the younes-work branch is my working repository, and as such is completely unreliable. 
 Please only use the master branch, even though it may only be slightly more manageable.
 
-py-lddmm: python code for surface and curve matching running python2.7 and using PIL (pillow) and vtk6 (or vtk7) python libraries (more details to come)
+py-lddmm: python code for surface and curve matching running python 3 and using PIL (pillow) and vtk6 (or vtk7) python libraries (more details to come)
 py-metamorphosis: python code for metamorphosis (python2.7, PIL, vtk, fortran libraries). Co-written by Casey Richardson
 diffeoReg: Old C++ code for image matching (LDDMM and metamorphosis)
 
-To compile f90 programs in py-lddmm
-f2py3 --f90flags='-fopenmp' -lgomp -c kernelFunctions.f90 -m kernelFunctions_fort
-f2py3 --f90flags='-fopenmp' -lgomp -c pointEvolution.f90 -m pointEvolution_fort
