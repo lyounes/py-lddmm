@@ -24,29 +24,26 @@ from .affineBasis import *
 #        maxIter_al: max interation for augmented lagrangian
 
 class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
-    def __init__(self, Template=None, Target=None, Isometries = None, centerRadius = None, fileTempl=None,
-                 fileTarg=None, param = None,
-                 verb = True, regWeight=1.0, at = None,
-                 affineWeight = 1.0, testGradient=False, mu = 0.1, outputDir='.', saveFile = 'evolution',
-                 internalWeight=1.0, pplot=True,
-                 affine='none', rotWeight = None, scaleWeight = None, transWeight = None,  maxIter_cg=1000, maxIter_al=100):
+    def __init__(self,
+                 Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000,
+                 regWeight=1.0, affineWeight=1.0, internalWeight=1.0, verb=True,
+                 subsampleTargetSize=-1, affineOnly=False,
+                 rotWeight=None, scaleWeight=None, transWeight=None, symmetric=False,
+                 testGradient=True, saveFile='evolution',
+                 saveTrajectories=False, affine='none', outputDir='.', pplot=True,
+                 mu = 0.1, at = None,
+                 Isometries = None, centerRadius = None, maxIter_cg=1000, maxIter_al=100):
+        super(SurfaceWithIsometries, self).__init__(
+                        Template=Template, Target=Target, fileTempl=fileTempl, fileTarg=fileTarg,
+                        param=param, maxIter=maxIter,
+                        regWeight=regWeight, affineWeight=affineWeight, internalWeight=internalWeight,
+                        verb=verb, subsampleTargetSize=subsampleTargetSize, affineOnly=affineOnly,
+                        rotWeight=rotWeight, scaleWeight=scaleWeight, transWeight=transWeight,
+                        symmetric=symmetric,
+                        testGradient=testGradient, saveFile=saveFile,
+                        saveTrajectories=saveTrajectories, affine=affine, outputDir=outputDir,
+                        pplot=pplot)
         print('Initializing class')
-        if Template==None:
-            if fileTempl==None:
-                print('Please provide a template surface')
-                return
-            else:
-                self.fv0 = surfaces.Surface(filename=fileTempl)
-        else:
-            self.fv0 = surfaces.Surface(surf=Template)
-        if Target==None:
-            if fileTarg==None:
-                print('Please provide a target surface')
-                return
-            else:
-                self.fv1 = surfaces.Surface(filename=fileTarg)
-        else:
-            self.fv1 = surfaces.Surface(surf=Target)
 
         if hasattr(self.fv0, 'edges') == False:
             self.fv0.getEdges()
@@ -90,56 +87,22 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
 
         self.npt = self.fv0.vertices.shape[0]
         self.dim = self.fv0.vertices.shape[1]
-        self.outputDir = outputDir  
-        if not os.access(outputDir, os.W_OK):
-            if os.access(outputDir, os.F_OK):
-                print('Cannot save in ' + outputDir)
-                return
-            else:
-                os.mkdir(outputDir)
 
-        self.fvDef = surfaces.Surface(self.fv0)
         self.maxIter_cg = maxIter_cg
         self.maxIter_al = maxIter_al
-        self.verb = verb
-        self.testGradient = testGradient
-        self.regweight = regWeight
-        if param==None:
-            self.param = surfaceMatching.SurfaceMatchingParam()
-        else:
-            self.param = param
-        self.affine = affine
-        affB = AffineBasis(self.dim, affine)
-        self.affineDim = affB.affineDim
-        self.affineBasis = affB.basis
-        self.affineWeight = affineWeight * np.ones([1, self.affineDim])
-        #print self.affineDim, affB.rotComp, rotWeight, self.affineWeight
-        if (len(affB.rotComp) > 0) & (rotWeight != None):
-            self.affineWeight[0,affB.rotComp] = rotWeight
-        if (len(affB.simComp) > 0) & (scaleWeight != None):
-            self.affineWeight[0,affB.simComp] = scaleWeight
-        if (len(affB.transComp) > 0) & (transWeight != None):
-            self.affineWeight[0,affB.transComp] = transWeight
 
-        self.x0 = self.fv0.vertices
+        #self.x0 = self.fv0.vertices
         self.Tsize = int(round(1.0/self.param.timeStep))
-        if at == None:
-            self.at = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
-        else:
+        if at is not None:
             self.at = np.copy(at)
-        self.atTry = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
-        self.Afft = np.zeros([self.Tsize, self.affineDim])
-        self.AfftTry = np.zeros([self.Tsize, self.affineDim])
-        self.xt = np.tile(self.fv0.vertices, [self.Tsize+1, 1, 1])
+
         self.cval = np.zeros([self.Tsize+1, self.c.shape[0]])
         if self.nconstr > 0:
             self.ntau0 = np.sqrt(np.power(self.x0[self.c[:,0], :] - self.x0[self.c[:,1], :],2).sum(axis=1))
         #self.lmb = 10*np.multiply(np.random.randn(self.Tsize, 1), np.ones([self.Tsize, self.c.shape[0]]))
         self.lmb = np.ones([self.Tsize+1, self.c.shape[0]])
         self.mu = mu
-        self.obj = None
-        self.objTry = None
-        self.saveFile = saveFile
+
         self.gradCoeff = self.fv0.vertices.shape[0]
         self.color=np.ones(self.fv0.vertices.shape[0])
         u = np.fabs(self.I0).sum(axis=1)
@@ -149,15 +112,7 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
         self.fv0.saveVTK(self.outputDir+'/Template.vtk',
         scalars=self.color, scal_name='constraints')
         self.fv1.saveVTK(self.outputDir+'/Target.vtk')
-        self.symmetric = False
-        self.pplot = pplot
-        self.internalWeight = internalWeight
-        if self.param.internalCost == 'h1':
-            self.internalCost = surfaces.normGrad
-            self.internalCostGrad = surfaces.diffNormGrad
-        else:
-            self.internalCost = None
-        self.it=0
+
 
     def constraintTerm(self, xt):
         obj = 0
@@ -245,10 +200,10 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
 
     def objectiveFun(self):
         if self.obj == None:
-            self.obj0 = self.param.fun_obj0(self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
+            self.obj0 = self.fun_obj0(self.fv1) / (self.param.sigmaError**2)
             (self.obj, self.xt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             self.fvDef.updateVertices(np.squeeze(self.xt[self.Tsize, :, :]))
-            self.obj += self.obj0 + self.param.fun_obj(self.fvDef, self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
+            self.obj += self.obj0 + self.fun_obj(self.fvDef, self.fv1) / (self.param.sigmaError**2)
 
         return self.obj
 
@@ -264,7 +219,7 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
         
         ff = surfaces.Surface(surf=self.fvDef)
         ff.updateVertices(np.squeeze(foo[1][-1, :, :]))
-        objTry +=  self.param.fun_obj(ff, self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
+        objTry +=  self.fun_obj(ff, self.fv1) / (self.param.sigmaError**2)
         #self.fvDef.vertices = ff
 
         if (objRef is None) | (objTry < objRef):
@@ -281,20 +236,20 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
         self.Afft = np.copy(self.AfftTry)
         #print self.at
 
-    def covectorEvolution(self, at, Afft, px1):
+    def covectorEvolution(self, at, px1, affine = None):
         N = self.npt
         dim = self.dim
         M = self.Tsize
         timeStep = 1.0/M
         dim2 = self.dim**2
 
-        A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-        if self.affineDim > 0:
-            for t in range(self.Tsize):
-                AB = np.dot(self.affineBasis, Afft[t]) 
-                A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-                A[1][t] = AB[dim2:dim2+self.dim]
-        xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
+        # A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+        # if self.affineDim > 0:
+        #     for t in range(self.Tsize):
+        #         AB = np.dot(self.affineBasis, Afft[t])
+        #         A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
+        #         A[1][t] = AB[dim2:dim2+self.dim]
+        xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=affine)
 
         #### Restart here
         pxt = np.zeros([M, N, dim])
@@ -337,25 +292,28 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
                 # a2 = np.concatenate((a[np.newaxis, ...], px[np.newaxis, ...], a[np.newaxis, ...]))
                 zpx += self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
             #zpx += self.param.KparDiff.applyDiffKT(z, a1, a2)
-            if self.affineDim > 0:
-                zpx += np.dot(px, A[0][M-t-1])
+            if affine is not None:
+                zpx += np.dot(px, affine[0][M-t-1])
             pxt[M-t-2, :, :] = np.squeeze(pxt[M-t-1, :, :]) + timeStep * zpx
 
         return pxt, xt
 
 
-    def HamiltonianGradient(self, at, Afft, px1, getCovector = False):
-        (pxt, xt) = self.covectorEvolution(at, Afft, px1)
+    def HamiltonianGradient(self, px1, affine=None, at=None, getCovector = False):
+        if at is None:
+            at = self.at
+        (pxt, xt) = self.covectorEvolution(at, px1, affine=affine)
         dat = np.zeros(at.shape)
-        A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-        dim2 = self.dim**2
-        if self.affineDim > 0:
-            for t in range(self.Tsize):
-                AB = np.dot(self.affineBasis, Afft[t]) 
-                A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-                A[1][t] = AB[dim2:dim2+self.dim]
-        dA = np.zeros(A[0].shape)
-        db = np.zeros(A[1].shape)
+        # A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+        # dim2 = self.dim**2
+        # if self.affineDim > 0:
+        #     for t in range(self.Tsize):
+        #         AB = np.dot(self.affineBasis, Afft[t])
+        #         A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
+        #         A[1][t] = AB[dim2:dim2+self.dim]
+        if affine is not None:
+            dA = np.zeros(affine[0].shape)
+            db = np.zeros(affine[1].shape)
         foo = surfaces.Surface(surf=self.fv0)
         for t in range(self.Tsize):
             z = np.squeeze(xt[t,...])
@@ -370,19 +328,37 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
             else:
                 dat[t, :, :] = 2*self.regweight*a-px
             #dat[t, :, :] = (2*self.regweight*a-px)
-            if not (self.affine == None):
+            if affine is not None:
                 dA[t] = np.dot(pxt[t].T, xt[t])
                 db[t] = pxt[t].sum(axis=0)
 
-        if getCovector == False:
-            return dat, dA, db, xt
+        if affine is not None:
+            if getCovector == False:
+                return dat, dA, db, xt
+            else:
+                return dat, dA, db, xt, pxt
         else:
-            return dat, dA, db, xt, pxt
-        
+            if getCovector == False:
+                return dat, xt
+            else:
+                return dat, xt, pxt
 
-    def getGradient(self, coeff=1.0):
+
+    def getGradient(self, coeff=1.0, update=None):
+        if update is None:
+            at = self.at
+            endPoint = self.fvDef
+            A = self.affB.getTransforms(self.Afft)
+        else:
+            A = self.affB.getTransforms(self.Afft - update[1]*update[0].aff)
+            at = self.at - update[1] *update[0].diff
+            xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
+            endPoint = surfaces.Surface(surf=self.fv0)
+            endPoint.updateVertices(xt[-1, :, :])
+
+
         px1 = -self.endPointGradient()
-        foo = self.HamiltonianGradient(self.at, self.Afft, px1)
+        foo = self.HamiltonianGradient(px1, at=at, affine=A)
         grd = surfaceMatching.Direction()
         grd.diff = foo[0]/(coeff*self.Tsize)
         grd.aff = np.zeros(self.Afft.shape)
@@ -401,11 +377,13 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
         
 
     def endOfIteration(self):
-        self.it += 1
-        (obj1, self.xt, Jt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True, withJacobian=True)
+        self.iter += 1
+        (obj1, self.xt, Jt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True,
+                                                              withJacobian=True)
         #self.testConstraintTerm(self.xt)
         if self.nconstr > 0:
-            print('mean constraint', np.sqrt((self.cval**2).sum()/self.cval.size), np.fabs(self.cval).sum() / self.cval.size)
+            print('mean constraint', np.sqrt((self.cval**2).sum()/self.cval.size),
+                  np.fabs(self.cval).sum() / self.cval.size)
         a0, foo = self.fv0.computeVertexArea()
         for kk in range(self.Tsize+1):
             #print self.xt[kk, :, :]
@@ -413,8 +391,9 @@ class SurfaceWithIsometries(surfaceMatching.SurfaceMatching):
             ak, foo = self.fvDef.computeVertexArea()
             JJ = np.log(np.maximum(1e-10, np.divide(ak,a0+1e-10)))
             #print ak.shape, a0.shape, JJ.shape
-            self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = JJ.flatten(), scal_name='Jacobian')
-        if self.it%10 == 0:
+            self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = JJ.flatten(),
+                               scal_name='Jacobian')
+        if self.iter%10 == 0:
             if self.pplot:
                 fig=plt.figure(4)
                 #fig.clf()

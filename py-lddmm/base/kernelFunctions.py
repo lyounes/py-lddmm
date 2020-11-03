@@ -303,7 +303,7 @@ def applyDiffKT_(y, x, a1a2, name, scale, order):
     elif 'lap' in name:
         for s in scale:
             u = np.sqrt(((y-x)**2).sum())/s
-            res += (y-x) * (-lapPolDiff_(u, order) * np.exp(- u) * (a1a2).sum()/(s**2))
+            res += (y-x) * (-lapPolDiff(u, order) * np.exp(- u) * (a1a2).sum()/(s**2))
     return res /len(scale)
 
 
@@ -322,7 +322,7 @@ def applyDiv_(y, x, a, name, scale, order):
     elif 'lap' in name:
         for s in scale:
             u = np.sqrt(((y-x)**2).sum())/s
-            res += ((y-x)*a).sum() * (-lapPolDiff_(u, order) * np.exp(- u) /(s**2))
+            res += ((y-x)*a).sum() * (-lapPolDiff(u, order) * np.exp(- u) /(s**2))
     return res /len(scale)
 
 

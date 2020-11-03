@@ -1,4 +1,5 @@
 import logging
+import os
 import numpy.linalg as la
 from . import surfaces
 from .pointSets import *
@@ -50,7 +51,7 @@ class SurfaceMatching(object):
                 logging.error('Please provide a template surface')
                 return
             else:
-                self.fv0 = surfaces.Surface(filename=fileTempl)
+                self.fv0 = surfaces.Surface(surf=fileTempl)
         else:
             self.fv0 = surfaces.Surface(surf=Template)
         if Targets is None:
@@ -66,7 +67,7 @@ class SurfaceMatching(object):
                         self.fv1.append(fv1)
                 else:
                     for f in fileTarg:
-                        self.fv1.append(surfaces.Surface(filename=f))
+                        self.fv1.append(surfaces.Surface(surf=f))
         else:
             self.fv1 = []
             if self.param.errorType == 'L2Norm':

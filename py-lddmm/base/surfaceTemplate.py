@@ -64,7 +64,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                 print('Please provide A hyper-template surface')
                 return
             else:
-                self.fv0 = surfaces.Surface(filename=fileHTempl)
+                self.fv0 = surfaces.Surface(surf=fileHTempl)
         else:
             self.fv0 = surfaces.Surface(surf=HyperTmpl)
         if Targets is None:
@@ -73,7 +73,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                 return
             else:
                 for ff in fileTarg:
-                    self.fv1.append(surfaces.Surface(filename=ff))
+                    self.fv1.append(surfaces.Surface(surf=ff))
         else:
             self.fv1 = []
             for ff in Targets:

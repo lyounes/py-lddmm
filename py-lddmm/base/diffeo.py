@@ -125,7 +125,7 @@ class gridScalars:
             v = u.GetOutput()
             dim = np.zeros(3)
             dim = v.GetDimensions()
-            self.origin = v.GetOrigin() ;
+            self.origin = v.GetOrigin()
             self.resol = v.GetSpacing()
             self.data = np.ndarray(shape=dim, order='F', buffer = v.GetPointData().GetScalars())
             self.dim = 3

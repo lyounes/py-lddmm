@@ -15,47 +15,44 @@ except ImportError:
 
 # General curve class
 class Curve:
-    def __init__(self, curve=None, filename=None, FV = None, pointSet=None, isOpen=False):
-        if curve is None:
-            if FV == None:
-                if filename is None:
-                    if pointSet is None:
-                        self.vertices = np.empty(0)
-                        self.centers = np.empty(0)
-                        self.faces = np.empty(0)
-                        self.linel = np.empty(0)
-                        self.component = np.empty(0)
-                    else:
-                        self.vertices = np.copy(pointSet)
-                        self.faces = np.zeros([pointSet.shape[0], 2], dtype=int)
-                        self.component = np.zeros(pointSet.shape[0], dtype=int)
-                        for k in range(pointSet.shape[0]-1):
-                            self.faces[k,:] = (k, k+1)
-                        if isOpen == False:
-                            self.faces[pointSet.shape[0]-1, :] = (pointSet.shape[0]-1, 0)
-                        self.computeCentersLengths()
-                else:
-                    if type(filename) is list:
-                        fvl = []
-                        for name in filename:
-                            fvl.append(Curve(filename=name))
-                        self.concatenate(fvl)
-                    else:
-                        self.read(filename)
+    def __init__(self, curve=None, isOpen=False, c=0.0001):
+        if type(curve) in (list, tuple):
+            if type(curve[0]) is Curve:
+                self.concatenate(curve, c=c)
+            elif type(curve[0]) is str:
+                fvl = []
+                for name in curve:
+                    fvl.append(Curve(curve=name))
+                self.concatenate(fvl, c=c)
             else:
-                self.vertices = np.copy(FV[1])
-                self.faces = np.int_(np.copy(FV[0]))
+                self.vertices = np.copy(curve[1])
+                self.faces = np.int_(np.copy(curve[0]))
                 self.component = np.zeros(self.faces.shape[0], dtype=int)
                 self.computeCentersLengths()
+        elif type(curve) is np.ndarray:
+            self.vertices = np.copy(curve)
+            self.faces = np.zeros([curve.shape[0], 2], dtype=int)
+            self.component = np.zeros(curve.shape[0], dtype=int)
+            for k in range(curve.shape[0] - 1):
+                self.faces[k, :] = (k, k + 1)
+            if isOpen == False:
+                self.faces[curve.shape[0] - 1, :] = (curve.shape[0] - 1, 0)
+            self.computeCentersLengths()
+        elif type(curve) is str:
+            self.read(curve)
+            self.component = np.zeros(self.faces.shape[0], dtype=int)
+        elif type(curve) is Curve:
+            self.vertices = np.copy(curve.vertices)
+            self.linel = np.copy(curve.linel)
+            self.faces = np.copy(curve.faces)
+            self.centers = np.copy(curve.centers)
+            self.component = np.copy(curve.component)
         else:
-            if type(curve) is list:
-                self.concatenate(curve)
-            else:
-                self.vertices = np.copy(curve.vertices)
-                self.linel = np.copy(curve.linel)
-                self.faces = np.copy(curve.faces)
-                self.centers = np.copy(curve.centers)
-                self.component = np.copy(curve.component)
+            self.vertices = np.empty(0)
+            self.centers = np.empty(0)
+            self.faces = np.empty(0)
+            self.linel = np.empty(0)
+            self.component = np.empty(0)
 
     def read(self, filename):
         (mainPart, ext) = os.path.splitext(filename)
@@ -74,9 +71,10 @@ class Curve:
             self.linel = np.empty(0)
 
 
-    def concatenate(self, fvl):
+    def concatenate(self, fvl, c=0.0001):
         nv = 0
         nf = 0
+        dim = 0
         for fv in fvl:
             dim = fv.vertices.shape[1]
             nv += fv.vertices.shape[0]
@@ -87,18 +85,18 @@ class Curve:
 
         nv0 = 0
         nf0 = 0
-        c = 0
+        cc = 0
         for fv in fvl:
             nv = nv0 + fv.vertices.shape[0]
             nf = nf0 + fv.faces.shape[0]
             self.vertices[nv0:nv, :] = fv.vertices
             self.faces[nf0:nf, :] = fv.faces + nv0
-            self.component[nf0:nf] = c
+            self.component[nf0:nf] = cc
             nv0 = nv
             nf0 = nf
-            c += 1
+            cc += 1
         self.computeCentersLengths()
-        self.removeDuplicates()
+        self.removeDuplicates(c=c)
 
 
     # face centers and area weighted normal
@@ -496,8 +494,8 @@ class Curve:
 
     # Saves in .vtk format 
     def saveVTK(self, fileName, scalars = None, normals = None, scal_name='scalars'):
-        F = self.faces ;
-        V = np.copy(self.vertices) ;
+        F = self.faces
+        V = np.copy(self.vertices)
         if V.shape[1] == 2: 
             #print V.shape, np.zeros([V.shape[0], 1]).shape
             V = np.concatenate((V, np.zeros([V.shape[0], 1])), axis=1)
@@ -574,7 +572,7 @@ class Curve:
             print('Unable to remesh the curve')
         else:
             x = remesh(v, N=N, closed= (k1==k0), rhoTol=rhoTol)
-            self.__init__(pointSet=x)
+            self.__init__(curve=x)
 
     def resample(self, ds):
         ll = np.sqrt((self.linel**2).sum(axis=1))

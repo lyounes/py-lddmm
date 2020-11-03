@@ -109,8 +109,7 @@ class Pipeline:
                     flip = True
 
                 if tmpl is None:
-                    tmpl = surfaces.Surface(filename = pSurf)
-                    tmplNorm = tmpl.computeVertexNormals()
+                    tmpl = surfaces.Surface(surf = pSurf)
                     if pLmk != 'none':
                         tmplLmk, foo = pointSets.loadlmk(pLmk)
                         R0, T0 = rigidRegistration(surfaces = (tmplLmk, tmpl.vertices),
@@ -119,9 +118,10 @@ class Pipeline:
                         tmplLmk = tmplLmk + T0
                         cLmk = float(tmpl.vertices.shape[0]) / tmplLmk.shape[0]
 
+                tmplNorm = tmpl.computeVertexNormals()
                 u = path.split(pSurf)
                 [nm, ext] = path.splitext(u[1])
-                sf = surfaces.Surface(filename = pSurf)
+                sf = surfaces.Surface(surf = pSurf)
                 sfNorm = sf.computeVertexNormals()
                 if tmplLmk is not None and pLmk != 'none':
                     y, foo = pointSets.loadlmk(pLmk)
@@ -161,8 +161,8 @@ class Pipeline:
             pSurf_right = record['path_right_surf']
 
             if tmpl_left is None:
-                tmpl_left = surfaces.Surface(filename = pSurf_left)
-                tmpl_right = surfaces.Surface(filename = pSurf_right)
+                tmpl_left = surfaces.Surface(surf = pSurf_left)
+                tmpl_right = surfaces.Surface(surf = pSurf_right)
                 tmpl_v = [tmpl_left.vertices, tmpl_right.vertices]
                 (R0, T0) = rigidRegistration((tmpl_right.vertices,tmpl_left.vertices), rotationOnly=True,
                                              verb=True, temperature=.1,
@@ -172,8 +172,8 @@ class Pipeline:
             [nm_left, ext] = path.splitext(u[1])
             u = path.split(pSurf_right)
             [nm_right, ext] = path.splitext(u[1])
-            sf_left = surfaces.Surface(filename = pSurf_left)
-            sf_right = surfaces.Surface(filename = pSurf_right)
+            sf_left = surfaces.Surface(surf = pSurf_left)
+            sf_right = surfaces.Surface(surf = pSurf_right)
             sf_v = [sf_left.vertices, sf_right.vertices]
             (R, T) = rigidRegistration_multi((sf_v, tmpl_v), rotationOnly=True,
                                        verb=True, temperature=.1, annealing=False, rotWeight=.001)
@@ -195,7 +195,7 @@ class Pipeline:
         for index, record in self.data.iterrows():
             for side in ('left', 'right'):
                 pSurf = record['path_'+side+'_rigid']
-                sf = surfaces.Surface(filename=pSurf)
+                sf = surfaces.Surface(surf=pSurf)
                 fv.append((sf))
 
         J = np.zeros((3,3))
@@ -259,7 +259,7 @@ class Pipeline:
         f.fvTmpl.saveVTK(self.dirTemplate+'/template.vtk')
 
     def Step4_Registration(self):
-        fv0 = surfaces.Surface(filename=self.dirTemplate+'/template.vtk')
+        fv0 = surfaces.Surface(surf=self.dirTemplate+'/template.vtk')
         K1 = kfun.Kernel(name='laplacian' ,sigma=5.)
 
         sm = smatch.SurfaceMatchingParam(timeStep=0.1, algorithm='cg', KparDiff=K1, sigmaDist=5., sigmaError=1., errorType='varifold', internalCost = 'h1')
@@ -267,7 +267,7 @@ class Pipeline:
             for side in ('left', 'right'):
                 pSurf = record['path_'+side+'_rigid']
                 print(pSurf)
-                fv = surfaces.Surface(filename=pSurf)
+                fv = surfaces.Surface(surf=pSurf)
                 f = smatch.SurfaceMatching(Template=fv0, Target=fv, outputDir=self.dirOutput, param = sm,
                                            testGradient=False, symmetric=False, saveTrajectories = False,
                                            internalWeight = 100, maxIter=500, affine='none', pplot=False)

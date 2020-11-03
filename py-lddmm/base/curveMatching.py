@@ -62,7 +62,7 @@ class CurveMatching:
                 print('Please provide a template curve')
                 return
             else:
-                self.fv0 = curves.Curve(filename=fileTempl)
+                self.fv0 = curves.Curve(curve=fileTempl)
         else:
             self.fv0 = curves.Curve(curve=Template)
         if Target==None:
@@ -70,7 +70,7 @@ class CurveMatching:
                 print('Please provide a target curve')
                 return
             else:
-                self.fv1 = curves.Curve(filename=fileTarg)
+                self.fv1 = curves.Curve(curve=fileTarg)
         else:
             self.fv1 = curves.Curve(curve=Target)
 
@@ -137,11 +137,11 @@ class CurveMatching:
         elif self.param.internalCost == 'h1Alpha':
             self.internalCost = curves.h1AlphaNorm
             self.internalCostGrad = curves.diffH1Alpha
-            self.internalWeight *= self.fv0.length()/(self.fv0.component.max()+1)
+            #self.internalWeight *= self.fv0.length()/(self.fv0.component.max()+1)
         elif self.param.internalCost == 'h1AlphaInvariant':
             self.internalCost = curves.h1AlphaNormInvariant
             self.internalCostGrad = curves.diffH1AlphaInvariant
-            self.internalWeight *= self.fv0.length()/(self.fv0.component.max()+1)
+            #self.internalWeight *= self.fv0.length()/(self.fv0.component.max()+1)
         elif self.param.internalCost == 'h1Invariant':
             if self.fv0.vertices.shape[1] == 2:
                 self.internalCost = curves.normGradInvariant
@@ -250,7 +250,7 @@ class CurveMatching:
                 x1 = np.zeros(self.fvDef.vertices.shape)
                 x1[:,0] = np.interp(sdef, s1, self.fv1.vertices[:,0])
                 x1[:,1] = np.interp(sdef, s1, self.fv1.vertices[:,1])
-                self.fv1 = curves.Curve(FV=(self.fvDef.faces,x1))
+                self.fv1 = curves.Curve(curve=(self.fvDef.faces,x1))
             bestk = 0
             minL2 = curves.L2Norm(self.fvDef, self.fv1)
             fvTry = curves.Curve(curve=self.fv1)
@@ -268,7 +268,6 @@ class CurveMatching:
 
     def dataTerm(self, _fvDef):
         obj = self.fun_obj(_fvDef, self.fv1) / (self.param.sigmaError**2)
-        obj2 = (obj+self.obj0)* self.param.sigmaError**2
         return obj
 
     def  objectiveFunDef(self, at, Afft, withTrajectory = False, withJacobian=False, x0 = None):
@@ -607,7 +606,8 @@ class CurveMatching:
                     plt.axis('equal')
                     plt.axis(self.axis)
                     plt.savefig(self.outputDir +'/'+ self.saveFile+str(kk)+'.png')
-                    plt.pause(0.01)
+                    fig.canvas.flush_events()
+                    # plt.pause(0.01)
                 #self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = Jt[kk, :], scal_name='Jacobian')
                 self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk')
                 if self.dim == 2:
@@ -645,7 +645,8 @@ class CurveMatching:
                     ax.plot(self.fvDef.vertices[self.fvDef.faces[kf,:],0], self.fvDef.vertices[self.fvDef.faces[kf,:],1], 
                                self.fvDef.vertices[self.fv1.faces[kf,:],2], color=[1,0,0], marker='*')
             plt.axis('equal')
-            plt.pause(0.1)
+            fig.canvas.flush_events()
+            #plt.pause(0.1)
                 
 
     def endOptim(self):
@@ -661,6 +662,7 @@ class CurveMatching:
 
 
     def optimizeMatching(self):
+        print('obj0', self.fun_obj0(self.fv1))
         grd = self.getGradient(self.gradCoeff)
         [grd2] = self.dotProduct(grd, [grd])
 

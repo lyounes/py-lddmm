@@ -93,7 +93,7 @@ class CurveMatchingRigid:
                 #print 'Please provide a template curve'
                 return
             else:
-                self.fv0 = curves.Curve(filename=fileTempl)
+                self.fv0 = curves.Curve(curve=fileTempl)
         else:
             self.fv0 = curves.Curve(curve=Template)
         if Target is None:
@@ -101,7 +101,7 @@ class CurveMatchingRigid:
                 print('Please provide a target curve')
                 return
             else:
-                self.fv1 = curves.Curve(filename=fileTarg)
+                self.fv1 = curves.Curve(curve=fileTarg)
         else:
             self.fv1 = curves.Curve(curve=Target)
 

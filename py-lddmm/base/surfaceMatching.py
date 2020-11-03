@@ -10,7 +10,7 @@ from . import pointSets
 from .affineBasis import AffineBasis, getExponential, gradExponential
 from functools import partial
 import matplotlib
-matplotlib.use("QT5Agg")
+#matplotlib.use("QT5Agg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -24,7 +24,8 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class SurfaceMatchingParam:
-    def __init__(self, timeStep = .1, algorithm='cg', Wolfe=True, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist = 2.5,
+    def __init__(self, timeStep = .1, algorithm='cg', Wolfe=True, KparDiff = None, KparDist = None, sigmaKernel = 6.5,
+                 sigmaDist = 2.5,
                  sigmaError = 1.0, errorType = 'measure',  typeKernel='gauss', internalCost = None):
         self.timeStep = timeStep
         self.sigmaKernel = sigmaKernel
@@ -68,8 +69,7 @@ class Direction:
 #        affine: 'affine', 'similitude', 'euclidean', 'translation' or 'none'
 #        maxIter: max iterations in conjugate gradient
 class SurfaceMatching(object):
-
-    def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000,
+    def __init__(self, Template=None, Target=None, param=None, maxIter=1000,
                  regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
                  subsampleTargetSize=-1, affineOnly = False,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
@@ -85,46 +85,36 @@ class SurfaceMatching(object):
         else:
             self.euclideanGradient = True
 
+        self.setOutputDir(outputDir)
         self.set_fun(self.param.errorType)
 
+        self.set_template_and_target(Template, Target, subsampleTargetSize)
 
-        if Template==None:
-            if fileTempl==None:
-                logging.error('Please provide a template surface')
-                return
-            else:
-                self.fv0 = surfaces.Surface(filename=fileTempl)
-        else:
-            self.fv0 = surfaces.Surface(surf=Template)
 
-        if self.param.errorType != 'currentMagnitude':
-            if Target==None:
-                if fileTarg==None:
-                    logging.error('Please provide a target surface')
-                    return
-                else:
-                    if self.param.errorType == 'L2Norm':
-                        self.fv1 = surfaces.Surface()
-                        self.fv1.readFromImage(fileTarg)
-                    else:
-                        self.fv1 = surfaces.Surface(filename=fileTarg)
-            else:
-                if self.param.errorType == 'L2Norm':
-                    self.fv1 = surfaces.Surface()
-                    self.fv1.initFromImage(fileTarg)
-                else:
-                    self.fv1 = surfaces.Surface(surf=Target)
-        else:
-            self.fv1 = None
 
-            #print np.fabs(self.fv1.surfel-self.fv0.surfel).max()
+        self.set_parameters(maxIter=maxIter, regWeight = regWeight, affineWeight = affineWeight,
+                            internalWeight=internalWeight, verb=verb, affineOnly = affineOnly,
+                            rotWeight = rotWeight, scaleWeight = scaleWeight, transWeight = transWeight,
+                            symmetric = symmetric, testGradient=testGradient, saveFile = saveFile,
+                            saveTrajectories = saveTrajectories, affine = affine)
+        self.initialize_variables()
+        self.gradCoeff = self.x0.shape[0]
 
+        self.pplot = pplot
+        if self.pplot:
+            self.initial_plot()
+
+
+    def set_parameters(self, maxIter=1000,
+                 regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
+                 affineOnly = False,
+                 rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
+                 testGradient=True, saveFile = 'evolution',
+                 saveTrajectories = False, affine = 'none'):
         self.saveRate = 10
         self.gradEps = -1
         self.randomInit = False
         self.iter = 0
-        self.setOutputDir(outputDir)
-        self.dim = self.fv0.vertices.shape[1]
         self.maxIter = maxIter
         self.verb = verb
         self.saveTrajectories = saveTrajectories
@@ -132,6 +122,7 @@ class SurfaceMatching(object):
         self.testGradient = testGradient
         self.internalWeight = internalWeight
         self.regweight = regWeight
+
         self.affineOnly = affineOnly
         self.affine = affine
         self.affB = AffineBasis(self.dim, affine)
@@ -145,23 +136,55 @@ class SurfaceMatching(object):
         if (len(self.affB.transComp) > 0) & (transWeight != None):
             self.affineWeight[self.affB.transComp] = transWeight
 
-
-                    
-
         if self.param.internalCost == 'h1':
             self.internalCost = surfaces.normGrad
             self.internalCostGrad = surfaces.diffNormGrad
-#        elif self.param.internalCost == 'h1Invariant':
-#            if self.fv0.vertices.shape[1] == 2:
-#                self.internalCost = curves.normGradInvariant 
-#                self.internalCostGrad = curves.diffNormGradInvariant
-#            else:
-#                self.internalCost = curves.normGradInvariant3D
-#                self.internalCostGrad = curves.diffNormGradInvariant3D
         else:
             self.internalCost = None
 
+
+
+        self.obj = None
+        self.objTry = None
+        self.saveFile = saveFile
+        self.coeffAff1 = 1.
+        self.coeffAff2 = 100.
+        self.coeffAff = self.coeffAff1
+        self.coeffInitx = .1
+        self.affBurnIn = 25
+
+
+    def set_template_and_target(self, Template, Target, subsampleTargetSize=-1):
+        if Template==None:
+            logging.error('Please provide a template surface')
+            return
+        else:
+            self.fv0 = surfaces.Surface(surf=Template)
+
+        if self.param.errorType != 'currentMagnitude':
+            if Target==None:
+                logging.error('Please provide a target surface')
+                return
+            else:
+                if self.param.errorType == 'L2Norm':
+                    self.fv1 = surfaces.Surface()
+                    self.fv1.readFromImage(Target)
+                else:
+                    self.fv1 = surfaces.Surface(surf=Target)
+        else:
+            self.fv1 = None
         self.fvInit = surfaces.Surface(surf=self.fv0)
+        self.fix_orientation()
+        if (subsampleTargetSize > 0):
+            self.fvInit.Simplify(subsampleTargetSize)
+            logging.info('simplified template %d' %(self.fv0.vertices.shape[0]))
+        self.fv0.saveVTK(self.outputDir+'/Template.vtk')
+        if self.fv1:
+            self.fv1.saveVTK(self.outputDir+'/Target.vtk')
+        self.dim = self.fv0.vertices.shape[1]
+
+
+    def fix_orientation(self):
         if self.fv1:
             self.fv0.getEdges()
             self.fv1.getEdges()
@@ -193,19 +216,17 @@ class SurfaceMatching(object):
             self.fv0ori = 1
             self.fv1ori = 1
         #self.fv0Fine = surfaces.Surface(surf=self.fv0)
-        if (subsampleTargetSize > 0):
-            self.fvInit.Simplify(subsampleTargetSize)
-            logging.info('simplified template %d' %(self.fv0.vertices.shape[0]))
+        logging.info('orientation: {0:d}'.format(self.fv0ori))
 
+
+    def initialize_variables(self):
+        self.Tsize = int(round(1.0/self.param.timeStep))
         self.x0 = np.copy(self.fvInit.vertices)
         self.x0try = np.copy(self.fvInit.vertices)
         self.fvDef = surfaces.Surface(surf=self.fvInit)
         self.npt = self.fvInit.vertices.shape[0]
 
 
-        logging.info('orientation: {0:d}'.format(self.fv0ori))
-
-        self.Tsize = int(round(1.0/self.param.timeStep))
         self.at = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
         if self.randomInit:
             self.at = np.random.normal(0, 1, self.at.shape)
@@ -214,37 +235,20 @@ class SurfaceMatching(object):
         self.AfftTry = np.zeros([self.Tsize, self.affineDim])
         self.xt = np.tile(self.x0, [self.Tsize+1, 1, 1])
         self.v = np.zeros([self.Tsize+1, self.npt, self.dim])
-        self.obj = None
-        self.objTry = None
-        self.gradCoeff = self.x0.shape[0]
-        self.saveFile = saveFile
-        self.fv0.saveVTK(self.outputDir+'/Template.vtk')
-        if self.fv1:
-            self.fv1.saveVTK(self.outputDir+'/Target.vtk')
-        self.coeffAff1 = 1.
-        self.coeffAff2 = 100.
-        self.coeffAff = self.coeffAff1
-        self.coeffInitx = .1
-        self.affBurnIn = 25
-        self.pplot = pplot
-        if self.pplot:
-            fig=plt.figure(3)
-            #fig.clf()
-            ax = Axes3D(fig)
-            lim1 = self.addSurfaceToPlot(self.fvDef, ax, ec='k', fc='r')
-            if self.fv1:
-                lim0 = self.addSurfaceToPlot(self.fv1, ax, ec='k', fc='b')
-            else:
-                lim0 = lim1
-    #            ax.plot_trisurf(self.fv1.vertices[self.fv1.faces[:,0],:], self.fv1.vertices[self.fv1.faces[:,1],:],
-#                           self.fv1.vertices[self.fv1.faces[:,2],:])# color=[0,0,1])
-            #plt.axis('equal')
-            ax.set_xlim(min(lim0[0][0],lim1[0][0]), max(lim0[0][1],lim1[0][1]))
-            ax.set_ylim(min(lim0[1][0],lim1[1][0]), max(lim0[1][1],lim1[1][1]))
-            ax.set_zlim(min(lim0[2][0],lim1[2][0]), max(lim0[2][1],lim1[2][1]))
-            fig.canvas.flush_events()
-            #plt.pause(0.1)
 
+
+    def initial_plot(self):
+        fig = plt.figure(3)
+        ax = Axes3D(fig)
+        lim1 = self.addSurfaceToPlot(self.fv0, ax, ec='k', fc='r')
+        if self.fv1:
+            lim0 = self.addSurfaceToPlot(self.fv1, ax, ec='k', fc='b')
+        else:
+            lim0 = lim1
+        ax.set_xlim(min(lim0[0][0], lim1[0][0]), max(lim0[0][1], lim1[0][1]))
+        ax.set_ylim(min(lim0[1][0], lim1[1][0]), max(lim0[1][1], lim1[1][1]))
+        ax.set_zlim(min(lim0[2][0], lim1[2][0]), max(lim0[2][1], lim1[2][1]))
+        fig.canvas.flush_events()
 
     def set_fun(self, errorType):
         self.param.errorType = errorType
@@ -305,23 +309,28 @@ class SurfaceMatching(object):
         #print 'dataterm = ', obj + self.obj0
         return obj
 
-    def  objectiveFunDef(self, at, Afft, kernel = None, withTrajectory = False, withJacobian=False, x0 = None, regWeight = None):
-        if x0 is None:
-            x0 = self.x0
+    def  objectiveFunDef(self, at, Afft=None, kernel = None, withTrajectory = False, withJacobian=False,
+                         fv0 = None, regWeight = None):
+        if fv0 is None:
+            fv0 = self.fv0
+        x0 = fv0.vertices
         if kernel is None:
             kernel = self.param.KparDiff
         #print 'x0 fun def', x0.sum()
         if regWeight is None:
             regWeight = self.regweight
         timeStep = 1.0/self.Tsize
-        dim2 = self.dim**2
-        A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-        foo = surfaces.Surface(surf=self.fv0)
-        if self.affineDim > 0:
-            for t in range(self.Tsize):
-                AB = np.dot(self.affineBasis, Afft[t])
-                A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-                A[1][t] = AB[dim2:dim2+self.dim]
+        if Afft is not None:
+            dim2 = self.dim**2
+            A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+            foo = surfaces.Surface(surf=self.fv0)
+            if self.affineDim > 0:
+                for t in range(self.Tsize):
+                    AB = np.dot(self.affineBasis, Afft[t])
+                    A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
+                    A[1][t] = AB[dim2:dim2+self.dim]
+        else:
+            A = None
         if withJacobian:
             (xt,Jt)  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A, withJacobian=True)
         else:
@@ -329,7 +338,8 @@ class SurfaceMatching(object):
         #print xt[-1, :, :]
         #print obj
         obj=0
-        obj1 = 0 
+        obj1 = 0
+        foo = surfaces.Surface(surf=fv0)
         for t in range(self.Tsize):
             z = np.squeeze(xt[t, :, :])
             a = np.squeeze(at[t, :, :])
@@ -340,7 +350,7 @@ class SurfaceMatching(object):
             obj = obj + regWeight*timeStep*np.multiply(a, (ra)).sum()
             if self.internalCost:
                 foo.updateVertices(z)
-                obj += self.internalWeight*regWeight*self.internalCost(foo, ra)*timeStep
+                obj += self.internalWeight*self.internalCost(foo, ra)*timeStep
 
             if self.affineDim > 0:
                 obj1 +=  timeStep * np.multiply(self.affineWeight.reshape(Afft[t].shape), Afft[t]**2).sum()
@@ -392,7 +402,9 @@ class SurfaceMatching(object):
         else:
             x0Try = self.x0
 
-        foo = self.objectiveFunDef(atTry, AfftTry, x0 = x0Try, withTrajectory=True)
+        fv0 = surfaces.Surface(surf=self.fv0)
+        fv0.updateVertices(x0Try)
+        foo = self.objectiveFunDef(atTry, AfftTry, fv0 = fv0, withTrajectory=True)
         objTry += foo[0]
 
         ff = surfaces.Surface(surf=self.fvDef)
@@ -407,7 +419,7 @@ class SurfaceMatching(object):
             logging.info('Warning: nan in updateTry')
             return 1e500
 
-        if (objRef == None) | (objTry < objRef):
+        if (objRef == None) or (objTry < objRef):
             self.atTry = atTry
             self.objTry = objTry
             self.AfftTry = AfftTry
@@ -444,7 +456,10 @@ class SurfaceMatching(object):
         return px / self.param.sigmaError**2
     
     
-    def hamiltonianCovector(self, x0, at, px1, KparDiff, regWeight, affine = None):
+    def hamiltonianCovector(self, at, px1, KparDiff, regWeight, affine = None, fv0 = None):
+        if fv0 is None:
+            fv0 = self.fvInit
+        x0 = fv0.vertices
         N = x0.shape[0]
         dim = x0.shape[1]
         M = at.shape[0]
@@ -462,7 +477,7 @@ class SurfaceMatching(object):
                 
         pxt = np.zeros([M+1, N, dim])
         pxt[M, :, :] = px1
-        foo = surfaces.Surface(surf=self.fv0)
+        foo = surfaces.Surface(surf=fv0)
         for t in range(M):
             px = np.squeeze(pxt[M-t, :, :])
             z = np.squeeze(xt[M-t-1, :, :])
@@ -472,20 +487,10 @@ class SurfaceMatching(object):
             if self.internalCost:
                 grd = self.internalCostGrad(foo, v)
                 Lv =  grd[0]
-                DLv = self.internalWeight*regWeight*grd[1]
-#                Lv = -2*foo.laplacian(v) 
-#                DLv = self.internalWeight*foo.diffNormGrad(v)
-#                 a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*regWeight*a[np.newaxis,...],
-#                                      -self.internalWeight*regWeight*a[np.newaxis,...], Lv[np.newaxis,...]))
-#                 a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], Lv[np.newaxis,...],
-#                                      -self.internalWeight*regWeight*a[np.newaxis,...]))
+                DLv = self.internalWeight*grd[1]
                 zpx = self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True,
                                                       extra_term = -self.internalWeight*Lv) - DLv
-                #zpx = KparDiff.applyDiffKT(z, a1, a2) - DLv
             else:
-                # a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*regWeight*a[np.newaxis,...]))
-                # a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
-                # zpx = KparDiff.applyDiffKT(z, a1, a2)
                 zpx = self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
 
             if not (affine is None):
@@ -494,11 +499,12 @@ class SurfaceMatching(object):
                 pxt[M-t-1, :, :] = px + timeStep * zpx
         return pxt, xt
     
-    def hamiltonianGradient(self, px1, kernel = None, affine=None, regWeight=None, x0=None, at=None):
+    def hamiltonianGradient(self, px1, kernel = None, affine=None, regWeight=None, fv0=None, at=None):
         if regWeight is None:
             regWeight = self.regweight
-        if x0 is None:
-            x0 = self.x0
+        if fv0 is None:
+            fv0 = self.fvInit
+        x0 = fv0.vertices
         if at is None:
             at = self.at
         if kernel is None:
@@ -507,8 +513,9 @@ class SurfaceMatching(object):
             return evol.landmarkHamiltonianGradient(x0, at, px1, kernel, regWeight, affine=affine, 
                                                     getCovector=True)
                                                     
-        foo = surfaces.Surface(surf=self.fv0)
-        (pxt, xt) = self.hamiltonianCovector(x0, at, px1, kernel, regWeight, affine=affine)
+        foo = surfaces.Surface(surf=fv0)
+        foo .updateVertices(x0)
+        (pxt, xt) = self.hamiltonianCovector(at, px1, kernel, regWeight, fv0=foo, affine=affine)
         #at = self.at        
         dat = np.zeros(at.shape)
         timeStep = 1.0/at.shape[0]
@@ -527,7 +534,7 @@ class SurfaceMatching(object):
                 if self.internalCost:
                     Lv = self.internalCostGrad(foo, v, variables='phi')
                     #Lv = -foo.laplacian(v)
-                    dat[k, :, :] = 2*regWeight*a-px + self.internalWeight * regWeight * Lv
+                    dat[k, :, :] = 2*regWeight*a-px + self.internalWeight * Lv
                 else:
                     dat[k, :, :] = 2*regWeight*a-px
 
@@ -598,21 +605,24 @@ class SurfaceMatching(object):
     def addProd(self, dir1, dir2, beta):
         dir = Direction()
         dir.diff = dir1.diff + beta * dir2.diff
-        dir.aff = dir1.aff + beta * dir2.aff
+        if self.affineDim > 0:
+            dir.aff = dir1.aff + beta * dir2.aff
         dir.initx = dir1.initx + beta * dir2.initx
         return dir
 
     def prod(self, dir1, beta):
         dir = Direction()
         dir.diff = beta * dir1.diff
-        dir.aff = beta * dir1.aff
+        if self.affineDim > 0:
+            dir.aff = beta * dir1.aff
         dir.initx = beta * dir1.initx
         return dir
 
     def copyDir(self, dir0):
         dir = Direction()
         dir.diff = np.copy(dir0.diff)
-        dir.aff = np.copy(dir0.aff)
+        if self.affineDim > 0:
+            dir.aff = np.copy(dir0.aff)
         dir.initx = np.copy(dir0.initx)
         return dir
 
@@ -638,12 +648,9 @@ class SurfaceMatching(object):
             ll = 0
             for gr in g2:
                 ggOld = np.squeeze(gr.diff[t, :, :])
-                res[ll]  = res[ll] + np.multiply(ggOld,u).sum()
+                res[ll]  = res[ll] + (ggOld*u).sum()
                 if self.affineDim > 0:
-                    #print np.multiply(np.multiply(g1[1][t], gr[1][t]), self.affineWeight).shape
-                    #res[ll] += np.multiply(uu, gr.aff[t]).sum() * self.coeffAff
-                    res[ll] += np.multiply(uu, gr.aff[t]).sum() * self.coeffAff
-                    #                    +np.multiply(g1[1][t, dim2:dim2+self.dim], gr[1][t, dim2:dim2+self.dim]).sum())
+                    res[ll] += (uu*gr.aff[t]).sum() * self.coeffAff
                 ll = ll + 1
 
         if self.symmetric:
@@ -677,123 +684,134 @@ class SurfaceMatching(object):
         self.x0 = np.copy(self.x0Try)
         #print self.at
 
+    def saveCorrectedEvolution(self, fv0, xt, at, Afft, fileName='evolution', Jacobian=None):
+        f = surfaces.Surface(surf=fv0)
+        X = self.affB.integrateFlow(Afft)
+        displ = np.zeros((xt.shape[1], xt.shape[2]))
+        dt = 1.0 / self.Tsize
+        for t in range(self.Tsize + 1):
+            U = la.inv(X[0][t])
+            yyt = np.dot(self.xt[t, ...] - X[1][t, ...], U.T)
+            zt = np.dot(xt[t, ...] - X[1][t, ...], U.T)
+            if t < self.Tsize:
+                atCorr = np.dot(at[t, ...], U.T)
+                vt = self.param.KparDiff.applyK(yyt, atCorr, firstVar=zt)
+            f.updateVertices(yyt)
+            vf = surfaces.vtkFields()
+            if Jacobian is not None:
+                vf.scalars.append('Jacobian')
+                vf.scalars.append(np.exp(Jacobian[t, :]))
+            vf.scalars.append('displacement')
+            vf.scalars.append(displ)
+            vf.vectors.append('velocity')
+            vf.vectors.append(vt)
+            nu = self.fv0ori * f.computeVertexNormals()
+            f.saveVTK2(self.outputDir + '/' + fileName + 'Corrected' + str(t) + '.vtk', vf)
+            displ += dt * (vt * nu).sum(axis=1)
+        f = surfaces.Surface(surf=self.fv1)
+        yyt = np.dot(f.vertices - X[1][-1, ...], U.T)
+        f.updateVertices(yyt)
+        f.saveVTK(self.outputDir + '/TargetCorrected.vtk')
+
+    def saveEvolution(self, fv0, xt, Jacobian=None, fileName='evolution', velocity = None, orientation= None,
+                      with_area_displacement=False):
+        if velocity is None:
+            velocity = self.v
+        if orientation is None:
+            orientation = self.fv0ori
+        fvDef = surfaces.Surface(surf=fv0)
+        AV0 = fvDef.computeVertexArea()
+        nu = orientation * fv0.computeVertexNormals()
+        v = velocity[0, ...]
+        npt = fv0.vertices.shape[0]
+        displ = np.zeros(npt)
+        area_displ = np.zeros((self.Tsize + 1, npt))
+        dt = 1.0 / self.Tsize
+        for kk in range(self.Tsize + 1):
+            fvDef.updateVertices(np.squeeze(xt[kk, :, :]))
+            AV = fvDef.computeVertexArea()
+            AV = (AV[0] / AV0[0])
+            vf = surfaces.vtkFields()
+            if Jacobian is not None:
+                vf.scalars.append('Jacobian')
+                vf.scalars.append(np.exp(Jacobian[kk, :, 0]))
+                vf.scalars.append('Jacobian_T')
+                vf.scalars.append(AV)
+                vf.scalars.append('Jacobian_N')
+                vf.scalars.append(np.exp(Jacobian[kk, :, 0]) / AV)
+                vf.scalars.append('displacement')
+            vf.scalars.append(displ)
+            if kk < self.Tsize:
+                nu = orientation * fvDef.computeVertexNormals()
+                v = velocity[kk, ...]
+                kkm = kk
+            else:
+                kkm = kk - 1
+            vf.vectors.append('velocity')
+            vf.vectors.append(velocity[kkm, :])
+            if with_area_displacement and kk > 0:
+                area_displ[kk, :] = area_displ[kk - 1, :] + dt * ((AV + 1) * (v * nu).sum(axis=1))[np.newaxis, :]
+            fvDef.saveVTK2(self.outputDir + '/' + fileName + str(kk) + '.vtk', vf)
+            displ += dt * (v * nu).sum(axis=1)
+            # self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = self.idx, scal_name='Labels')
+
+    def saveEPDiff(self, fv0, at, fileName='evolution'):
+        xtEPDiff, atEPdiff = evol.landmarkEPDiff(at.shape[0], fv0.vertices,
+                                                 np.squeeze(at[0, :, :]), self.param.KparDiff)
+        fvDef = surfaces.Surface(surf=fv0)
+        fvDef.updateVertices(np.squeeze(xtEPDiff[-1, :, :]))
+        fvDef.saveVTK(self.outputDir + '/' + fileName + 'EPDiff.vtk')
+        return xtEPDiff, atEPdiff
+
+
     def endOfIteration(self):
         self.iter += 1
         if self.testGradient:
             self.testEndpointGradient()
-        if self.internalCost and self.testGradient:
-            Phi = np.random.normal(size=self.x0.shape)
-            dPhi1 = np.random.normal(size=self.x0.shape)
-            dPhi2 = np.random.normal(size=self.x0.shape)
-            eps = 1e-6
-            fv22 = surfaces.Surface(surf=self.fvDef)
-            fv22.updateVertices(self.fvDef.vertices+eps*dPhi2)
-            e0 = self.internalCost(self.fvDef, Phi)
-            e1 = self.internalCost(self.fvDef, Phi+eps*dPhi1)
-            e2 = self.internalCost(fv22, Phi)
-            grad = self.internalCostGrad(self.fvDef, Phi)
-            print('Laplacian:', (e1-e0)/eps, (grad[0]*dPhi1).sum())
-            print('Gradient:', (e2-e0)/eps, (grad[1]*dPhi2).sum())
-            
         if self.iter >= self.affBurnIn:
             self.coeffAff = self.coeffAff2
-        if (self.iter % self.saveRate == 0) :
+
+        if (self.iter % self.saveRate == 0):
             logging.info('Saving surfaces...')
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
-            if not self.internalCost and self.affineDim <=0:
-                xtEPDiff, atEPdiff = evol.landmarkEPDiff(self.at.shape[0], self.x0,
-                                                         np.squeeze(self.at[0, :, :]), self.param.KparDiff)
-                self.fvDef.updateVertices(np.squeeze(xtEPDiff[-1, :, :]))
-                self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+'EPDiff.vtk')
-                logging.info('EPDiff difference %f' %(np.fabs(self.xt[-1,:,:] - xtEPDiff[-1,:,:]).sum()) )
+            if not self.internalCost and self.affineDim <= 0:
+                xtEPDiff, atEPdiff = self.saveEPDiff(self.fvInit, self.at, fileName=self.saveFile)
+                logging.info('EPDiff difference %f' % (np.fabs(self.xt[-1, :, :] - xtEPDiff[-1, :, :]).sum()))
 
             if self.saveTrajectories:
                 pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curves.vtk', self.xt)
 
             self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
             self.fvInit.updateVertices(self.x0)
-            dim2 = self.dim**2
+            dim2 = self.dim ** 2
             A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
             if self.affineDim > 0:
                 for t in range(self.Tsize):
                     AB = np.dot(self.affineBasis, self.Afft[t])
                     A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-                    A[1][t] = AB[dim2:dim2+self.dim]
-            (xt, Jt)  = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
-                                                              withJacobian=True)
-            if self.affine=='euclidean' or self.affine=='translation':
-                f = surfaces.Surface(surf=self.fvInit)
-                X = self.affB.integrateFlow(self.Afft)
-                displ = np.zeros(self.x0.shape[0])
-                dt = 1.0 /self.Tsize
-                for t in range(self.Tsize+1):
-                    U = la.inv(X[0][t])
-                    yyt = np.dot(self.xt[t,...] - X[1][t, ...], U.T)
-                    zt = np.dot(xt[t,...] - X[1][t, ...], U.T)
-                    if t < self.Tsize:
-                        at = np.dot(self.at[t,...], U.T)
-                        vt = self.param.KparDiff.applyK(yyt, at, firstVar=zt)
-                    f.updateVertices(yyt)
-                    vf = surfaces.vtkFields()
-                    vf.scalars.append('Jacobian')
-                    vf.scalars.append(np.exp(Jt[t, :]))
-                    vf.scalars.append('displacement')
-                    vf.scalars.append(displ)
-                    vf.vectors.append('velocity')
-                    vf.vectors.append(vt)
-                    nu = self.fv0ori*f.computeVertexNormals()
-                    f.saveVTK2(self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.vtk', vf)
-                    displ += dt * (vt*nu).sum(axis=1)
-                f = surfaces.Surface(surf=self.fv1)
-                yyt = np.dot(f.vertices - X[1][-1, ...], U.T)
-                f.updateVertices(yyt)
-                f.saveVTK(self.outputDir +'/TargetCorrected.vtk')
-            fvDef = surfaces.Surface(surf=self.fvInit)
-            AV0 = fvDef.computeVertexArea()
-            nu = self.fv0ori*self.fvInit.computeVertexNormals()
-            v = self.v[0,...]
-            displ = np.zeros(self.npt)
-            dt = 1.0 /self.Tsize
-            for kk in range(self.Tsize+1):
-                fvDef.updateVertices(np.squeeze(xt[kk, :, :]))
-                AV = fvDef.computeVertexArea()
-                AV = (AV[0]/AV0[0])
-                vf = surfaces.vtkFields()
-                vf.scalars.append('Jacobian')
-                vf.scalars.append(np.exp(Jt[kk, :,0]))
-                vf.scalars.append('Jacobian_T')
-                vf.scalars.append(AV)
-                vf.scalars.append('Jacobian_N')
-                vf.scalars.append(np.exp(Jt[kk, :, 0])/AV)
-                vf.scalars.append('displacement')
-                vf.scalars.append(displ)
-                if kk < self.Tsize:
-                    nu = self.fv0ori*self.fvDef.computeVertexNormals()
-                    v = self.v[kk,...]
-                    kkm = kk
-                else:
-                    kkm = kk-1
-                vf.vectors.append('velocity')
-                vf.vectors.append(self.v[kkm,:])
-                fvDef.saveVTK2(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', vf)
-                displ += dt * (v*nu).sum(axis=1)
-                #self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = self.idx, scal_name='Labels')
+                    A[1][t] = AB[dim2:dim2 + self.dim]
+            (xt, Jt) = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
+                                                         withJacobian=True)
+            if self.affine == 'euclidean' or self.affine == 'translation':
+                self.saveCorrectedEvolution(self.fvInit, xt, self.Afft, self.at, fileName=self.saveFile,
+                                            Jacobian=Jt)
+            self.saveEvolution(self.fvInit, xt, Jacobian=Jt, fileName=self.saveFile)
         else:
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
             self.fvInit.updateVertices(self.x0)
+
         if self.pplot:
-            fig=plt.figure(4)
-            #fig.clf()
+            fig = plt.figure(4)
+            # fig.clf()
             ax = Axes3D(fig)
-            lim0 = self.addSurfaceToPlot(self.fv1, ax, ec = 'k', fc = 'b')
+            lim0 = self.addSurfaceToPlot(self.fv1, ax, ec='k', fc='b')
             lim1 = self.addSurfaceToPlot(self.fvDef, ax, ec='k', fc='r')
-            ax.set_xlim(min(lim0[0][0],lim1[0][0]), max(lim0[0][1],lim1[0][1]))
-            ax.set_ylim(min(lim0[1][0],lim1[1][0]), max(lim0[1][1],lim1[1][1]))
-            ax.set_zlim(min(lim0[2][0],lim1[2][0]), max(lim0[2][1],lim1[2][1]))
+            ax.set_xlim(min(lim0[0][0], lim1[0][0]), max(lim0[0][1], lim1[0][1]))
+            ax.set_ylim(min(lim0[1][0], lim1[1][0]), max(lim0[1][1], lim1[1][1]))
+            ax.set_zlim(min(lim0[2][0], lim1[2][0]), max(lim0[2][1], lim1[2][1]))
             fig.canvas.flush_events()
-            #plt.axis('equal')
-            #plt.pause(0.1)
+
 
 
     def saveHD5(self, fileName):
