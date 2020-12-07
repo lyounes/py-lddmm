@@ -10,7 +10,6 @@ from . import pointSets
 from .affineBasis import AffineBasis, getExponential, gradExponential
 from functools import partial
 import matplotlib
-#matplotlib.use("QT5Agg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection

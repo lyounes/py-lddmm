@@ -14,6 +14,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
     sigma = 0.5
     sigmaDist = 0.5 
     sigmaError = 0.1
+    regweight = 1
     internalWeight = 1000        
     if model == 'smile':
         s = 0.025
@@ -93,7 +94,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v = np.zeros([t.shape[0],2])
             v[:,0] = x0 + np.cos(theta[k])*t
             v[:,1] = y0 + np.sin(theta[k])*t
-            ftemp.append(Curve(FV=(f,v)))
+            ftemp.append(Curve(curve=(f,v)))
             
         f = np.zeros([nrays,2], dtype=int)
         f[0:nrays-1,0] = range(0, nrays-1)
@@ -104,7 +105,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
         for k in range(nrays):
             v[k,0] = x0 + np.cos(theta[k])*t[0]
             v[k,1] = y0 + np.sin(theta[k])*t[0]
-        ftemp.append(Curve(FV=(f,v)))
+        ftemp.append(Curve(curve=(f,v)))
             
         ftarg = []
         x0 = 8
@@ -117,7 +118,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v = np.zeros([t.shape[0],2])
             v[:,0] = x0 + np.cos(theta[k])*t
             v[:,1] = y0 + np.sin(theta[k])*t
-            ftarg.append(Curve(FV=(f,v)))
+            ftarg.append(Curve(curve=(f,v)))
         sigma = 0.2
         sigmaDist = 2.5 
         sigmaError = 0.1
@@ -138,7 +139,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v[:,0] = x0 + np.cos(theta[k])*t
             v[:,1] = y0 + np.sin(theta[k])*t
             v[:,2] = z0 + 0.5*theta[k]*t
-            ftemp.append(Curve(FV=(f,v)))
+            ftemp.append(Curve(curve=(f,v)))
             
         ftarg = []
         x0 = 8
@@ -154,7 +155,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v[:,0] = x0 + np.cos(theta[k])*t
             v[:,1] = y0 + np.sin(theta[k])*t
             v[:,2] = z0 + 0.4*theta[k]*t
-            ftarg.append(Curve(FV=(f,v)))      
+            ftarg.append(Curve(curve=(f,v)))
         sigma = 2.5
         sigmaDist = 2.5 
         sigmaError = 0.1
@@ -180,7 +181,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v[:,0] = x0 + r*(t)*np.cos(st+theta[k])
             v[:,1] = y0 + r*(t)*np.sin(st+theta[k])
             v[:,2] = z0 + a*st
-            ftemp.append(Curve(FV=(f,v)))
+            ftemp.append(Curve(curve=(f,v)))
             
         ftarg = []
         x0 = 5
@@ -199,7 +200,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v[:,0] = x0 + r*(t)*np.cos(st+theta[k])
             v[:,1] = y0 + r*(t)*np.sin(st+theta[k])
             v[:,2] = z0 + a*st
-            ftarg.append(Curve(FV=(f,v)))
+            ftarg.append(Curve(curve=(f,v)))
         sigma = 0.1
         sigmaDist = 0.5 
         sigmaError = 0.1
@@ -267,7 +268,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
         f[0:N-1,0] = range(0, N-1)
         f[0:N-1,1] = range(1, N)
         f[N-1,:] = [N-1,0]
-        ftemp = Curve(FV=(f,v))
+        ftemp = Curve(curve=(f,v))
 
         a = 5
         b = 3
@@ -282,11 +283,19 @@ def compute(model='default', dirOut='/cis/home/younes'):
         f = np.zeros([v.shape[0]-1,2], dtype=int)
         f[:,0] = range(0, v.shape[0]-1)
         f[:,1] = range(1, v.shape[0])
-        ftarg = Curve(FV=(f,v))
+        ftarg = Curve(curve=(f,v))
         sigma = 0.5
         sigmaDist = 2.0 
         sigmaError = 0.1
         internalWeight = 250
+    elif model=='letters':
+        ftemp = Curve(curve='/Users/younes/Development/Data/letter1tmpl.vtk', c=.1)
+        ftarg = Curve(curve='/Users/younes/Development/Data/letter1targ.vtk', c=.1)
+        sigma = 0.5
+        sigmaDist = 2.0
+        sigmaError = 0.5
+        internalWeight = 100.
+        regweight = 0.1
     else:
         return
 
@@ -297,11 +306,11 @@ def compute(model='default', dirOut='/cis/home/younes'):
                                        stdOutput = True)   
     
     sm = CurveMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
-                            errorType='varifold', internalCost='h1Invariant')
+                            algorithm='cg', errorType='varifold', internalCost='h1AlphaInvariant')
     f = CurveMatching(Template=ftemp, Target=ftarg,
                       outputDir=dirOut+'/Development/Results/curveMatching'+model+'HLDDMM_0p2_nocomp25',
                       param=sm, testGradient=True,saveRate=50,
-                      regWeight=1., internalWeight=internalWeight, maxIter=10000, affine='none',
+                      regWeight=regweight, internalWeight=internalWeight, maxIter=10000, affine='none',
                       rotWeight=1, transWeight = 1, scaleWeight=100., affineWeight=100.)
  
     f.optimizeMatching()
@@ -311,7 +320,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
     
 if __name__=="__main__":
     plt.ion()
-    compute(model='rays', dirOut='/Users/younes')
+    compute(model='letters', dirOut='/Users/younes')
     plt.ioff()
     plt.show()
 

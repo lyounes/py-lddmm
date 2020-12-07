@@ -94,6 +94,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
     noUpdate = 0
     it = 0
     while it < maxIter:
+
         if it % restartRate == 0:
             skipCG = 1
 
@@ -107,6 +108,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
         if noUpdate==0:
             grd = opt.getGradient(gradCoeff)
 
+
         if TestGradient:
             if hasattr(opt, 'randomDir'):
                 dirfoo = opt.randomDir()
@@ -118,7 +120,9 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
                 [grdfoo] = opt.dotProduct(grd, [dirfoo])
             else:
                 grdfoo = np.multiply(grd, dirfoo).sum()
-            logging.info('Test Gradient: %.4f %.4f' %((objfoo - obj)/epsfoo, -grdfoo * gradCoeff ))
+            g1 = (objfoo - obj)/epsfoo
+            g2 = -grdfoo * gradCoeff
+            logging.info(f'Test Gradient: Diff: {g1:.4f} Grad: {g2:.4f} Ratio: {g2/g1:.4f}')
         if sgd:
             eps = epsInit / (1 + sgdRate*max(0, it - sgdBurnIn))
             objTry = opt.updateTry(grd, eps, obj+1e10)
@@ -183,12 +187,16 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
             objTry = opt.updateTry(dir0, eps, obj)
 
             noUpdate = 0
-            epsBig = epsMax / (grdTry)
+            if hasattr(opt, 'epsBig'):
+                epsBig = opt.epsBig
+            else:
+                epsBig = epsMax / (grdTry)
+
             if eps > epsBig:
                 eps = epsBig
             if objTry > obj:
                 #fprintf(1, 'iteration %d: obj = %.5f, eps = %.5f\n', it, objTry, eps) ;
-                epsSmall = np.maximum(1e-6/(grdTry), epsMin)
+                epsSmall = np.minimum(1e-6/(grdTry), epsMin)
                 #print 'Testing small variation, eps = {0: .10f}'.format(epsSmall)
                 objTry0 = opt.updateTry(dir0, epsSmall, obj)
                 if objTry0 > obj:

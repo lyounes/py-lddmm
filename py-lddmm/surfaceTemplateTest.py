@@ -34,7 +34,7 @@ def main():
 
     fv = []
     for k in range(1,11):
-        fv.append(Surface(filename ='/Users/younes/Development/Data/sculptris/Dataset/surface'+str(k)+'.vtk'))
+        fv.append(Surface(surf ='/Users/younes/Development/Data/sculptris/Dataset/surface'+str(k)+'.vtk'))
 
     loggingUtils.setup_default_logging('/Users/younes/Results/surfaceTemplate2', fileName='info.txt', stdOutput = True)
     K1 = Kernel(name='laplacian', sigma = 6.5)
