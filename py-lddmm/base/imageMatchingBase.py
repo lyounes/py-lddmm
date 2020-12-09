@@ -133,6 +133,55 @@ class ImageMatchingBase(Diffeomorphism):
         self.objTry = None
         self.saveFile = saveFile
 
+    def AffineRegister(self, affineAlign = None, tolerance = None):
+        if tolerance is None:
+            tolerance = self.param.padWidth
+        Afb = AffineBasis(dim=self.dim, affine=affineAlign)
+        #padWidth = max(np.max(self.im0.data.shape), np.max(self.im1.data.shape))//2
+        # start = (padWidth,) * self.dim
+        # end = tuple(np.array(start, dtype=int) + np.array(self.im1.data.shape, dtype=int))
+        # slices = tuple(map(slice, start, end))
+
+        #im0 = np.pad(self.im0.data, padWidth, mode='constant', constant_values=1e10)
+        im1 = self.im1.data
+        # im1 = np.pad(self.im1.data, padWidth, mode='constant', constant_values=1e10)
+        bounds = [[0], [self.im0.data.shape[0]-1]]
+        for i in range(1, self.dim):
+            newbounds = []
+            for b in bounds:
+                newbounds += [b + [0]]
+                newbounds += [b + [self.im0.data.shape[i]-1]]
+            bounds = newbounds
+        bounds = np.array(bounds).T
+
+        def enerAff(gamma):
+            U = np.zeros((self.dim + 1, self.dim + 1))
+            AB = Afb.basis.dot(gamma)
+            U[:self.dim, :self.dim] = AB[:self.dim ** 2].reshape((self.dim, self.dim))
+            U[:self.dim, self.dim] = AB[self.dim ** 2:]
+            U = expm(U)
+            A = U[:self.dim, :self.dim]
+            b = U[:self.dim, self.dim]
+            newbounds = np.dot(A, bounds) + b[:, None] - bounds
+            if np.sqrt(np.sum(newbounds**2, axis=1).max()) > tolerance:
+                return 1e50
+
+            AI1 = affine_transform(im1, A, b, mode='nearest', order=1)
+            res = ((self.im0.data - AI1) ** 2).sum()
+            return res
+
+        gamma = np.zeros(Afb.affineDim)
+        opt = minimize(enerAff, gamma, method='Powell')
+        gamma = opt.x
+        U = np.zeros((self.dim + 1, self.dim + 1))
+        AB = Afb.basis.dot(gamma)
+        U[:self.dim, :self.dim] = AB[:self.dim ** 2].reshape((self.dim, self.dim))
+        U[:self.dim, self.dim] = AB[self.dim ** 2:]
+        U = expm(U)
+        A = U[:self.dim, :self.dim]
+        b = U[:self.dim, self.dim]
+        self.im1.data =  affine_transform(im1, A, b, order=1, mode='nearest')
+        # self.im1.data = im1[slices]
 
     def set_template_and_target(self, Template, Target, subsampleTargetSize=-1, affineAlign=None):
         if Template==None:
@@ -154,30 +203,7 @@ class ImageMatchingBase(Diffeomorphism):
                 self.im1.data = np.pad(self.im1.data, self.param.padWidth, mode='edge')
             self.im1.data = imresize(self.im1.data, self.im0.data.shape)
             if affineAlign:
-                Afb = AffineBasis(dim=self.dim, affine=affineAlign)
-                def enerAff(gamma):
-                    U = np.zeros((self.dim+1, self.dim+1))
-                    AB = Afb.basis.dot(gamma)
-                    U[:self.dim, :self.dim] = AB[:self.dim**2].reshape((self.dim, self.dim))
-                    U[:self.dim, self.dim] = AB[self.dim**2:]
-                    U = expm(U)
-                    A = U[:self.dim, :self.dim]
-                    b = U[:self.dim, self.dim]
-                    AI1 = affine_transform(self.im1.data, A, b, mode='nearest', order= 1)
-                    res = ((self.im0.data - AI1)**2).sum()
-                    return res
-
-                gamma = np.zeros(Afb.affineDim)
-                opt = minimize(enerAff, gamma, method='Powell')
-                gamma = opt.x
-                U = np.zeros((self.dim + 1, self.dim + 1))
-                AB = Afb.basis.dot(gamma)
-                U[:self.dim, :self.dim] = AB[:self.dim ** 2].reshape((self.dim, self.dim))
-                U[:self.dim, self.dim] = AB[self.dim ** 2:]
-                U = expm(U)
-                A = U[:self.dim, :self.dim]
-                b = U[:self.dim, self.dim]
-                self.im1.data = affine_transform(self.im1.data, A, b, order=1,  mode='nearest')
+                self.AffineRegister(affineAlign=affineAlign)
 
                 # tform3 = AffineTransform()
                 # hog0 = hogFeature(self.im0.data)
