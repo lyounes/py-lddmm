@@ -32,94 +32,38 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 class Direction:
     def __init__(self):
         self.diff = []
-        self.Z = []
 
 
-class Metamorphosis(ImageMatchingBase):
+class ImageMatching(ImageMatchingBase):
     def __init__(self, param,
                  Template=None, Target=None, maxIter=1000,
                  regWeight = 1.0, verb=True,
                  testGradient=True, saveFile = 'evolution',
                  outputDir = '.',pplot=True):
 
-        super(Metamorphosis, self).__init__(param, Template=Template, Target=Target, maxIter=maxIter, regWeight=regWeight,
+        super(ImageMatching, self).__init__(param, Template=Template, Target=Target, maxIter=maxIter, regWeight=regWeight,
                                             verb=verb, testGradient=testGradient, saveFile=saveFile, outputDir=outputDir,
                                             pplot=pplot)
         self.initialize_variables()
-        self.gradCoeff = 1.#np.array(self.shape).prod()
-        self.imgCoeff = .00001#1e-2
+        self.gradCoeff = np.array(self.shape).prod()
 
         self.pplot = pplot
         if self.pplot:
             self.initial_plot()
-        self.direction = param.metaDirection
-
 
 
     def initialize_variables(self):
         self.Tsize = int(round(1.0/self.param.timeStep))
-        self.timeImageShape = (self.Tsize+1,) + self.imShape
-        self.timeVfShape = (self.Tsize,) + tuple(self.vfShape)
-        self.ZShape = (self.Tsize,) + self.imShape
-        self.imDef = np.zeros(self.timeImageShape)
-        self.imDef[0,...] = self.im0.data
-        self.imDef[-1,...] = self.im1.data
+        self.imDef = GridScalars(grid=self.im0)
 
-        self.v = np.zeros(self.timeVfShape)
-        self.Lv = np.zeros(self.timeVfShape)
-        self.LvTry = np.zeros(self.timeVfShape)
-        self.Z = np.zeros(self.ZShape)
-        self.Z[:,...] = ((self.im1.data - self.im0.data))[None,...]
-        self.ZTry = np.zeros(self.ZShape)
+        vfShape = [self.Tsize, self.dim] + list(self.im0.data.shape)
+        self.v = np.zeros(vfShape)
+        self.Lv = np.zeros(vfShape)
+        self.LvTry = np.zeros(vfShape)
+        self.Lv0 = np.zeros(vfShape[1:])
         # if self.randomInit:
         #     self.at = np.random.normal(0, 1, self.at.shape)
 
-    def flowImage(self, Lv, Z):
-        if self.direction == 'FWD':
-            return self.flowImage_fwd(Lv, Z)
-        elif self.direction == 'BWD':
-            return self.flowImage_bwd(Lv, Z)
-        else:
-            logging.error('Unknown direction in flow')
-            return
-
-    def flowImage_fwd(self, Lv, Z):
-        id = idMesh(self.imShape)
-        v = np.zeros(Lv.shape)
-        dt = 1/self.Tsize
-        imDef = np.zeros(self.timeImageShape)
-        imDef[0,...] = self.im0.data
-        imDef[-1,...] = self.im1.data
-
-        for t in range(self.Tsize - 1):
-            v[t, ...] = self.kernel(Lv[t, ...])
-            foo = id + dt * v[t, ...]
-            imDef[t + 1, ...] = multilinInterp(imDef[t, ...], foo) + Z[t, ...] * dt
-        t = self.Tsize - 1
-        v[t, ...] = self.kernel(Lv[t, ...])
-        foo = id + dt * v[t, ...]
-        ener = ((imDef[self.Tsize, ...] - multilinInterp(imDef[t, ...], foo)) ** 2).sum() \
-               / (2 * dt * self.param.sigmaError ** 2)
-        ener += ((Lv * v).sum() + (Z[:self.Tsize - 1, ...] ** 2).sum() / self.param.sigmaError ** 2) * dt / 2
-        return ener, imDef
-
-    def flowImage_bwd(self, Lv, Z):
-        id = idMesh(self.imShape)
-        v = np.zeros(Lv.shape)
-        dt = 1/self.Tsize
-        imDef = np.zeros(self.timeImageShape)
-
-        for t in range(self.Tsize, 1, -1):
-            v[t, ...] = self.kernel(Lv[t, ...])
-            foo = id - dt * v[t - 1, ...]
-            imDef[t - 1, ...] = multilinInterp(imDef[t, ...], foo) - Z[t - 1, ...] * dt
-        t = 1
-        v[0, ...] = self.kernel(Lv[0, ...])
-        foo = id - dt * v[0, ...]
-        ener = ((imDef[0, ...] - multilinInterp(imDef[t, ...], foo)) ** 2).sum() \
-               / (2 * dt * self.param.sigmaError ** 2)
-        ener += ((Lv * v).sum() + (Z[1:, ...] ** 2).sum() / self.param.sigmaError ** 2) * dt / 2
-        return ener, imDef
 
     def initial_plot(self):
         pass
@@ -139,98 +83,117 @@ class Metamorphosis(ImageMatchingBase):
         saveImage(self.im0.data, self.outputDir + '/Template')
         saveImage(self.im1.data, self.outputDir + '/Target')
         saveImage(self.KparDiff.K, self.outputDir + '/Kernel', normalize=True)
-        if self.param.smoothKernel:
-            saveImage(self.param.smoothKernel.K, self.outputDir + '/smoothKernel', normalize=True)
+        saveImage(self.param.smoothKernel.K, self.outputDir + '/smoothKernel', normalize=True)
         saveImage(self.mask.min(axis=0), self.outputDir + '/Mask', normalize=True)
 
 
-    def objectiveFun(self, Lv = None, Z = None):
+
+    def dataTerm(self, psi, I0, I1):
+        I = multilinInterp(I0, psi)
+        return ((I-I1)**2).sum()/2
+
+    def objectiveFun(self, Lv = None):
         if Lv is None:
             Lv = self.Lv
-        if Z is None:
-            Z = self.Z
-        ener = self.flowImage(Lv, Z)[0]
+        dt = 1.0 / self.Tsize
+        self.initFlow()
+        ener = 0
+        for t in range(Lv.shape[0]):
+            ener += self.updateFlow(Lv[t,...], dt) * dt/2
+        ener += self.dataTerm(self._psi, self.im0.data, self.im1.data) / self.param.sigmaError**2
         return ener
 
-    def gradient_bwd(self, Lv, Z):
-        dt = 1/self.Tsize
-        id = idMesh(self.imShape)
-        ener, imDef = self.flowImage_bwd(Lv, Z)
-        v = np.zeros(Lv.shape)
-        p = np.zeros(Lv.shape)
+    def LDDMMTimegradient(self, phi, psi, I0, I1, resol):
+        I = multilinInterp(I0, phi)
+        DI = multilinInterp(I1, psi) - I
+        jj = jacobianDeterminant(phi, self.resol)
+        b =  imageGradient(I, resol) * DI
+        return b
 
-        v[0, ...] = self.kernel(Lv[0, ...])
-        p[0,...] = (multilinInterp(imDef[1, ...], id - dt * v[0, ...]) - imDef[0, ...] )/self.param.sigmaError ** 2
-        for t in range(1, self.Tsize):
-            p[t,...] = multilinInterpDual(p[t-1,...], id - dt * v[t-1, ...])
-            v[t, ...] = self.kernel(Lv[t, ...])
-        grad = Direction()
-        grad.diff = np.zeros(Lv.shape)
-        for t in range(self.Tsize):
-            grad.diff[t,...] = Lv[t,...] - multilinInterpGradient(imDef[t+1,...], id - dt*v[t,...])*p[t, None, ...]
-        grad.Z = np.zeros(Z.shape)
-        for t in range(1,self.Tsize):
-            grad.Z[t,...] = Z[t,...]/self.param.sigmaError ** 2 - p[t,...]
-        return grad
+    def LDDMMgradientInPsi(self, psi, I0, I1):
+        DI = multilinInterp(I0, psi) - I1
+        #g = imageGradient(I0)
+        b = multilinInterpGradient(I0, psi) * DI[None,...]
+        #b = multilinInterpVectorField(g, psi) * DI
+        return b
 
-    def gradient_fwd(self, Lv, Z):
-        dt = 1/self.Tsize
-        id = idMesh(self.imShape)
-        ener, imDef = self.flowImage_fwd(Lv, Z)
-        v = np.zeros(Lv.shape)
-        p = np.zeros(Z.shape)
-
-        v[self.Tsize-1, ...] = self.kernel(Lv[self.Tsize-1, ...])
-        p[self.Tsize-1,...] = (imDef[self.Tsize, ...] - multilinInterp(imDef[self.Tsize-1, ...], id + dt *v[self.Tsize-1,...]) )\
-                              /(dt*self.param.sigmaError ** 2)
-        for t in range(self.Tsize-1, 0, -1):
-            p[t-1,...] = multilinInterpDual(p[t,...], id + dt * v[t, ...])
-            v[t - 1, ...] = self.kernel(Lv[t - 1, ...])
-        grad = Direction()
-        grad.diff = np.zeros(Lv.shape)
-        for t in range(self.Tsize):
-            grad.diff[t,...] = Lv[t,...] - multilinInterpGradient(imDef[t,...], id + dt*v[t,...])*p[t, None, ...]
-        grad.Z = np.zeros(Z.shape)
-        for t in range(self.Tsize-1):
-            grad.Z[t,...] = Z[t,...]/self.param.sigmaError ** 2 - p[t,...]
-        return grad
+    def testDataTermGradient(self, psi, I0, I1):
+        g = self.LDDMMgradientInPsi(psi, I0, I1)
+        eps = 1e-6
+        en0 = self.dataTerm(psi, I0, I1)
+        dpsi = np.random.normal(size=psi.shape)
+        dpsi[0,...] = 0
+        newpsi = np.maximum(psi + eps*dpsi , 0)
+        for k in range(psi.shape[0]):
+            newpsi[k,...] = np.minimum(newpsi[k,...], I0.shape[k]-1)
+        dpsi = (newpsi-psi)/eps
+        #dpsi = np.random.normal(size=psi.shape)
+        en1 = self.dataTerm(psi+eps*dpsi, I0, I1)
+        print(f'Test data gradient {(en1-en0)/eps:0.4f}, {(g*dpsi).sum():.4f}')
 
 
     def getGradient(self, coeff=1.0, update=None):
         if update is None:
-            Lv = self.Lv
-            Z = self.Z
+            Lvt = self.Lv
         else:
-            Lv = self.Lv - update[1]*update[0].diff
-            Z = self.Z - update[1]*update[0].Z
+            Lvt = self.Lv - update[1]*update[0].diff
+        dt = 1.0 / self.Tsize
 
-        if self.direction == 'FWD':
-            grad = self.gradient_fwd(Lv, Z)
-        elif self.direction == 'BWD':
-            grad =  self.gradient_bwd(Lv, Z)
-        else:
-            logging.error('Unknown direction in getGradient')
-            return
+        grad = np.zeros([self.Tsize] + self.vfShape)
+        psi = np.zeros([self.Tsize+1] + self.vfShape)
+        self.initFlow()
+        psi[0,...] = self._psi.copy()
+        for t in range(self.Tsize):
+            self.updateFlow(Lvt[t,...], dt)
+            psi[t+1,...] = self._psi.copy()
 
-        grad.diff /= coeff
-        grad.Z /= coeff * self.imgCoeff
-        return grad
+        pp = -self.LDDMMgradientInPsi(self._psi, self.im0.data, self.im1.data) / (self.param.sigmaError **2)
+        # self.testDataTermGradient(self._psi, self.im0.data, self.im1.data)
+        id = idMesh(self.imShape)
+        ng2 = 0
+        self._epsBound = self.param.epsMax
+        for t in range(self.Tsize-1, -1, -1):
+            vt = self.kernel(Lvt[t, ...])
+            c0 = np.sqrt((vt**2).sum(axis=0)).max()
+            foo = id - dt*vt
+            Dpsi = multilinInterpGradientVectorField(psi[t,...], foo)
+            foo2 = (Dpsi * pp[:, None, ...]).sum(axis=0)
+            grad[t, ...] = Lvt[t,...] + foo2
+            for i in range(pp.shape[0]):
+                # ppTest = pp[i].copy()
+                # pp2 = self.im1.data.copy()
+                pp[i] = multilinInterpDual(pp[i], foo)
+                # test1 = (pp2*pp[i]).sum()
+                # pp2 = multilinInterp(pp2, foo)
+                # test2 = (ppTest*pp2).sum()
+                # print(f'test dual: {test1: .4f}, {test2:.4f}')
+
+            foo = self.kernel(grad[t,...])
+            ng2 += (grad[t, ...] * foo).sum()
+            c1 = np.sqrt((foo ** 2).sum(axis=0)).max()
+            epsTmp = (1+c0) / (1+c1)
+            if epsTmp < self._epsBound:
+                self._epsBound = epsTmp
+        #self.epsBig = 10*self._epsBound
+        res = Direction()
+        res.diff = grad/coeff
+        return res
+
 
 
     def getVariable(self):
-        return [self.Lv, self.Z]
+        return self.Lv
+
 
     def updateTry(self, dir, eps, objRef=None):
         LvTry = self.Lv - eps * dir.diff
-        ZTry = self.Z - eps * dir.Z
-        objTry = self.objectiveFun(LvTry, ZTry)
+        objTry = self.objectiveFun(LvTry)
         if np.isnan(objTry):
             logging.info('Warning: nan in updateTry')
             return 1e500
 
         if (objRef is None) or (objTry < objRef):
             self.LvTry = LvTry
-            self.ZTry = ZTry
             self.objTry = objTry
             #print 'objTry=',objTry, dir.diff.sum()
 
@@ -240,30 +203,22 @@ class Metamorphosis(ImageMatchingBase):
     def addProd(self, dir1, dir2, beta):
         dir = Direction()
         dir.diff = dir1.diff + beta * dir2.diff
-        dir.Z = dir1.Z + beta * dir2.Z
         return dir
 
     def prod(self, dir1, beta):
         dir = Direction()
         dir.diff = beta * dir1.diff
-        dir.Z = beta * dir1.Z
         return dir
 
     def copyDir(self, dir0):
         dir = Direction()
         dir.diff = np.copy(dir0.diff)
-        dir.Z = np.copy(dir0.Z)
         return dir
 
 
     def randomDir(self):
         dirfoo = Direction()
         dirfoo.diff = np.random.normal(size=self.Lv.shape)
-        dirfoo.Z = np.random.normal(size=self.Z.shape)
-        if self.direction == 'FWD':
-            dirfoo.Z[self.Tsize-1,...] = 0
-        elif self.direction == 'BWD':
-            dirfoo.Z[0,...] = 0
         return dirfoo
 
     def dotProduct(self, g1, g2):
@@ -274,7 +229,7 @@ class Metamorphosis(ImageMatchingBase):
         ll = 0
         for gr in g2:
             ggOld = gr.diff
-            res[ll]  = ((ggOld*u).sum() + self.imgCoeff*(g1.Z*gr.Z).sum())/u.shape[0]
+            res[ll]  = (ggOld*u).sum()/u.shape[0]
             ll = ll + 1
         return res
 
@@ -284,14 +239,13 @@ class Metamorphosis(ImageMatchingBase):
         ll = 0
         for gr in g2:
             ggOld = gr.diff
-            res[ll]  = ((ggOld*u).sum() + self.imgCoeff*(g1.Z*gr.Z).sum())/u.shape[0]
+            res[ll]  = (ggOld*u).sum()/u.shape[0]
             ll = ll + 1
         return res
 
     def acceptVarTry(self):
         self.obj = self.objTry
         self.Lv = np.copy(self.LvTry)
-        self.Z = np.copy(self.ZTry)
         #print self.at
 
 
@@ -299,26 +253,27 @@ class Metamorphosis(ImageMatchingBase):
     def endOfIteration(self):
         self.nbIter += 1
         if self.nbIter % 10 == 0:
-            print('Saving')
-            ener, imDef = self.flowImage(self.Lv, self.Z)
+            _psi = np.copy(self.psi)
             self.initFlow()
-            for t in range(self.Tsize+1):
-                if t < self.Tsize:
-                    self.updateFlow(self.Lv[t,...], 1.0/self.Tsize)
-                GridScalars(grid=imDef[t,...], dim=self.dim).saveImg(self.outputDir + f'/movie{t+1:03d}.png', normalize=True)
+            for t in range(self.Tsize):
+                self.updateFlow(self.Lv[t,...], 1.0/self.Tsize)
+                if (self.param.saveMovie):
+                    I1 = multilinInterp(self.im0, self._psi)
+                    I1.save(self.outputDir + f'/movie{t+1:03d}')
 
             I1 = multilinInterp(self.im0.data, self._psi)
             saveImage(I1, self.outputDir + f'/deformedTemplate')
+            I2 = multilinInterp(I1, self._phi)
             I1 = multilinInterp(self.im1.data, self._phi)
             saveImage(I1, self.outputDir + f'/deformedTarget')
-            saveImage(np.squeeze(self.Z[0,...]), self.outputDir + f'/initialMomentum', normalize=True)
+            saveImage(np.squeeze(self.Lv[0,...]), self.outputDir + f'/initialMomentum', normalize=True)
             dphi = np.log(jacobianDeterminant(self._phi, self.resol))
             saveImage(dphi, self.outputDir + f'/logJacobian', normalize=True)
 
-            # self.GeodesicDiffeoEvolution(self.Lv[0,...])
-            # I1 = multilinInterp(self.im0.data, self._psi)
-            # saveImage(I1, self.outputDir + f'/EPDiffTemplate')
-            # self.psi = np.copy(self._psi)
+            self.GeodesicDiffeoEvolution(self.Lv[0,...])
+            I1 = multilinInterp(self.im0.data, self._psi)
+            saveImage(I1, self.outputDir + f'/EPDiffTemplate')
+            self.psi = np.copy(self._psi)
       #
       # sprintf(file, "%s/template2targetMap", path) ;
       # //if (param.verb)
