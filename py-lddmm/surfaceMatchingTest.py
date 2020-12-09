@@ -14,6 +14,7 @@ def compute(model):
     sigmaDist = 5.
     sigmaError = 1.
     internalWeight = 200.
+    regweight = 0.1
     internalCost = 'h1'
     if model=='Balls':
         M=100
@@ -87,10 +88,10 @@ def compute(model):
         #sub1 = '0186193_1_6'
         #sub2 = '1449400_1_L'
         sub2 = 'LU027_R_sumNCBC20100628'
-        fv1 = surfaces.Surface(filename =path + '5_population_template_qc/newTemplate.byu')
+        fv1 = surfaces.Surface(surf =path + '5_population_template_qc/newTemplate.byu')
         v1 = fv1.surfVolume()
-        #f0.append(surfaces.Surface(filename = path+'amygdala/biocardAmyg 2/'+sub1+'_amyg_L.byu'))
-        fv2 = surfaces.Surface(filename =path + '2_qc_flipped_registered/' + sub2 + '_registered.byu')
+        #f0.append(surfaces.Surface(surf = path+'amygdala/biocardAmyg 2/'+sub1+'_amyg_L.byu'))
+        fv2 = surfaces.Surface(surf =path + '2_qc_flipped_registered/' + sub2 + '_registered.byu')
         v2 = fv2.surfVolume()
         if (v2*v1 < 0):
             fv2.faces = fv2.faces[:, [0,2,1]]
@@ -102,10 +103,10 @@ def compute(model):
         #sub1 = '0186193_1_6'
         #sub2 = '1449400_1_L'
         sub2 = 'LU027_R_sumNCBC20100628'
-        fv1 = surfaces.Surface(filename =path + '5_population_template_qc/newTemplate.byu')
+        fv1 = surfaces.Surface(surf =path + '5_population_template_qc/newTemplate.byu')
         v1 = fv1.surfVolume()
-        #f0.append(surfaces.Surface(filename = path+'amygdala/biocardAmyg 2/'+sub1+'_amyg_L.byu'))
-        fv2 = surfaces.Surface(filename =path + '2_qc_flipped_registered/' + sub2 + '_registered.byu')
+        #f0.append(surfaces.Surface(surf = path+'amygdala/biocardAmyg 2/'+sub1+'_amyg_L.byu'))
+        fv2 = surfaces.Surface(surf =path + '2_qc_flipped_registered/' + sub2 + '_registered.byu')
         v2 = fv2.surfVolume()
         if (v2*v1 < 0):
             fv2.faces = fv2.faces[:, [0,2,1]]
@@ -120,17 +121,17 @@ def compute(model):
         #sub2 = '1449400_1_L'
         sub2 = '1229175_2_4'
         ftemp = []
-        ftemp.append(surfaces.Surface(filename =path + 'Atlas_hippo_L_separate.byu'))
-        ftemp.append(surfaces.Surface(filename =path + 'Atlas_amyg_L_separate.byu'))
-        ftemp.append(surfaces.Surface(filename =path + 'Atlas_ent_L_up_separate.byu'))
+        ftemp.append(surfaces.Surface(surf =path + 'Atlas_hippo_L_separate.byu'))
+        ftemp.append(surfaces.Surface(surf =path + 'Atlas_amyg_L_separate.byu'))
+        ftemp.append(surfaces.Surface(surf =path + 'Atlas_ent_L_up_separate.byu'))
         ftarg = []
-        ftarg.append(surfaces.Surface(filename =path + 'danielData/0186193_1_6_hippo_L_qc_pass1_daniel2_reg.vtk'))
-        ftarg.append(surfaces.Surface(filename =path + 'danielData/0186193_1_6_amyg_L_qc_pass1_daniel2_reg.vtk'))
-        ftarg.append(surfaces.Surface(filename =path + 'danielData/0186193_1_6_ec_L_qc_pass1_daniel2_reg.vtk'))
+        ftarg.append(surfaces.Surface(surf =path + 'danielData/0186193_1_6_hippo_L_qc_pass1_daniel2_reg.vtk'))
+        ftarg.append(surfaces.Surface(surf =path + 'danielData/0186193_1_6_amyg_L_qc_pass1_daniel2_reg.vtk'))
+        ftarg.append(surfaces.Surface(surf =path + 'danielData/0186193_1_6_ec_L_qc_pass1_daniel2_reg.vtk'))
     elif model=='KCrane':
-        ftemp = surfaces.Surface(filename='/Users/younes/Development/Data/KCrane/blub/blub_triangulated_reduced.obj')
+        ftemp = surfaces.Surface(surf='/Users/younes/Development/Data/KCrane/blub/blub_triangulated_reduced.obj')
         #ftemp.Simplify(1000, deciPro=True)
-        ftarg = surfaces.Surface(filename='/Users/younes/Development/Data/KCrane/spot/spot_triangulated_reduced.obj')
+        ftarg = surfaces.Surface(surf='/Users/younes/Development/Data/KCrane/spot/spot_triangulated_reduced.obj')
         #ftarg.Simplify(1000, deciPro=True)
         R0, T0 = rigidRegistration(surfaces = (ftarg.vertices, ftemp.vertices),  rotWeight=0., verb=False, temperature=10., annealing=True)
         ftarg.updateVertices(np.dot(ftarg.vertices, R0.T) + T0)
@@ -164,7 +165,7 @@ def compute(model):
         f2[:,1] = r*np.sin(2*np.pi*c*t)
         f2[:,2] = -h*t
         ax.plot(f2[:,0], f2[:,1], f2[:,2])
-        ax.axis('equal')
+#        ax.axis('equal')
         plt.pause((0.1))
 
         dst = (x[..., np.newaxis] - f1[:,0])**2 + (y[..., np.newaxis] - f1[:,1])**2 + (z[..., np.newaxis] - f1[:,2])**2
@@ -189,9 +190,10 @@ def compute(model):
     sm = SurfaceMatchingParam(timeStep=0.1, algorithm='cg', KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
                               errorType='varifold', internalCost=internalCost)
     f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='/Users/younes/Development/Results/'+model+'LDDMM5p0H5000',param=sm,
-                        testGradient=True,
+                        testGradient=True, regWeight = regweight,
                         #subsampleTargetSize = 500,
-                         internalWeight=internalWeight, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01, scaleWeight=10., affineWeight=100.)
+                        internalWeight=internalWeight, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01,
+                        scaleWeight=10., affineWeight=100.)
 
     f.optimizeMatching()
     plt.ioff()
@@ -201,4 +203,4 @@ def compute(model):
 
 
 if __name__=="__main__":
-    compute('Hippo1')
+    compute('snake')

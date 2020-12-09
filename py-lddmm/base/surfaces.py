@@ -15,10 +15,7 @@ from vtk import vtkCellArray, vtkPoints, vtkPolyData, vtkVersion,\
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-try:
-    import diffeo
-except ImportError:
-    from . import diffeo
+from . import diffeo
 import scipy.linalg as spLA
 from scipy.sparse import coo_matrix
 import glob
@@ -42,38 +39,72 @@ class vtkFields:
         
 # General surface class
 class Surface:
-    def __init__(self, surf=None, filename=None, FV = None):
-        if surf == None:
-            if FV == None:
-                if filename == None:
-                    self.vertices = np.empty(0)
-                    self.centers = np.empty(0)
-                    self.faces = np.empty(0)
-                    self.surfel = np.empty(0)
-                    self.component = np.empty(0)
-                else:
-                    if type(filename) is list:
-                        fvl = []
-                        for name in filename:
-                            fvl.append(Surface(filename=name))
-                        self.concatenate(fvl)
-                    else:
-                        self.read(filename)
+    def __init__(self, surf=None):
+        if type(surf) in (list, tuple):
+            if type(surf[0]) is Surface:
+                self.concatenate(surf)
+            elif type(surf[0]) is str:
+                fvl = []
+                for name in surf:
+                    fvl.append(Surface(surf=name))
+                self.concatenate(fvl)
             else:
-                self.vertices = np.copy(FV[1])
-                self.faces = np.int_(FV[0])
+                self.vertices = np.copy(surf[1])
+                self.faces = np.int_(np.copy(surf[0]))
                 self.component = np.zeros(self.faces.shape[0], dtype=int)
                 self.computeCentersAreas()
+        elif type(surf) is np.ndarray:
+            self.vertices = np.copy(surf)
+            self.faces = np.zeros([surf.shape[0], 2], dtype=int)
+            self.component = np.zeros(surf.shape[0], dtype=int)
+            for k in range(surf.shape[0] - 1):
+                self.faces[k, :] = (k, k + 1)
+            self.computeCentersAreas()
+        elif type(surf) is str:
+            self.read(surf)
+        elif issubclass(type(surf), Surface):
+            self.vertices = np.copy(surf.vertices)
+            self.surfel = np.copy(surf.surfel)
+            self.faces = np.copy(surf.faces)
+            self.centers = np.copy(surf.centers)
+            self.component = np.copy(surf.component)
         else:
-            if type(surf) is list:
-                self.concatenate(surf)
-            else:
-                self.vertices = np.copy(surf.vertices)
-                self.faces = np.copy(surf.faces)
-                #self.surfel = np.copy(surf.surfel)
-                #self.centers = np.copy(surf.centers)
-                self.component = np.copy(surf.component)
-                self.computeCentersAreas()
+            self.vertices = np.empty(0)
+            self.centers = np.empty(0)
+            self.faces = np.empty(0)
+            self.surfel = np.empty(0)
+            self.component = np.empty(0)
+        # if surf == None:
+        #     if FV == None:
+        #         if filename == None:
+        #             self.vertices = np.empty(0)
+        #             self.centers = np.empty(0)
+        #             self.faces = np.empty(0)
+        #             self.surfel = np.empty(0)
+        #             self.component = np.empty(0)
+        #         else:
+        #             if type(filename) is list:
+        #                 fvl = []
+        #                 for name in filename:
+        #                     fvl.append(Surface(filename=name))
+        #                 self.concatenate(fvl)
+        #             else:
+        #                 self.read(filename)
+        #     else:
+        #         self.vertices = np.copy(FV[1])
+        #         self.faces = np.int_(FV[0])
+        #         self.component = np.zeros(self.faces.shape[0], dtype=int)
+        #         self.computeCentersAreas()
+        # else:
+        #     if type(surf) is list:
+        #         self.concatenate(surf)
+        #     else:
+        #         self.vertices = np.copy(surf.vertices)
+        #         self.faces = np.copy(surf.faces)
+        #         #self.surfel = np.copy(surf.surfel)
+        #         #self.centers = np.copy(surf.centers)
+        #         self.component = np.copy(surf.component)
+        #         self.computeCentersAreas()
 
     def read(self, filename):
         (mainPart, ext) = os.path.splitext(filename)
@@ -1708,7 +1739,43 @@ class Surface:
             res[f[1],:] += r2[k,:]
             res[f[2],:] += r3[k,:]
         return res
-    
+
+
+
+
+class Sphere(Surface):
+    def __init__(self, center, radius, resolution = 100, targetSize = 1000):
+        super().__init__()
+        self.center = center
+        self.radius = radius
+        M = resolution
+        [x, y, z] = np.mgrid[0:2 * M+1, 0:2 * M+1, 0:2 * M+1] / M
+        x = x - 1
+        y = y - 1
+        z = z - 1
+        s2 = np.sqrt(2)
+        I1 = .5 - (x**2 + y**2 + z**2)
+        self.Isosurface(I1, value = 0, target = targetSize, scales=[1, 1, 1], smooth=0.01)
+        v = self.center + (self.vertices -M) * self.radius * s2/M
+        self.updateVertices(v)
+
+class Torus(Surface):
+    def __init__(self, center, radius1, radius2, resolution = 100, targetSize = 1000):
+        super().__init__()
+        self.center = center
+        self.radius1 = radius1
+        self.radius2 = radius2
+        M = resolution
+        [x, y, z] = np.mgrid[0:2 * M, 0:2 * M, 0:2 * M] / M - 1
+        s2 = np.sqrt(2)
+        r = radius2/(radius1*s2)
+        I1 = r**2 - 0.5 - (x**2 + y**2 + z**2) + s2 * np.sqrt(x**2+y**2)
+        self.Isosurface(I1, value = 0, target = targetSize, scales=[1, 1, 1], smooth=0.01)
+        v = self.center + (self.vertices -M) * self.radius1 * s2/M
+        self.updateVertices(v)
+
+
+
 # Reads several .byu files
 def readMultipleByu(regexp, Nmax = 0):
     files = glob.glob(regexp)

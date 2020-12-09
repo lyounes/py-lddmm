@@ -11,8 +11,6 @@ class AffineBasis:
         skew_sym = False
         scale = False
         diagonal = False
-        # affCode = 0
-        # rotCode = 0
         self.dim = dim
         if dim > 25:
             self.sparse = True
@@ -20,13 +18,10 @@ class AffineBasis:
             self.sparse = False
         self.rotComp = []
         self.simComp = []
-        #self.affComp = []
         self.transComp = []
         self.diagComp = []
         self.symComp = []
         if affine == 'affine':
-            # affCode = 1
-            # rotCode = 1
             translation = True
             skew_sym = True
             sym = True
@@ -37,29 +32,17 @@ class AffineBasis:
             translation = True
             skew_sym = True
             scale = True
-            # affCode = 2
-            # rotCode = 1
-            #self.affineDim = dimSym + 1 + dim
         elif affine == 'euclidean':
             translation = True
             skew_sym = True
-            #affCode = 3
-            rotCode = 1
-            #self.affineDim = dimSym + dim
         elif affine == 'translation':
             translation = True
-            #affCode = 4
-            #self.affineDim = dim
         elif affine == 'diagonal':
             translation = True
             scale = True
             diagonal = True
-            #affCode = 2
-            #self.affineDim = dim + 1
         else:
-            #affCode = 5
             self.basis = []
-            #self.affineDim = 0
 
         self.affineDim = dim * translation + dim * diagonal + scale + skew_sym * dimSkew + sym * dimSkew
 
@@ -69,7 +52,6 @@ class AffineBasis:
             J = np.zeros(maxDim, dtype=int)
             V = np.zeros(maxDim)
 
-            #self.affCode = affCode
             kk = 0
             k = 0
             if translation:
@@ -133,67 +115,10 @@ class AffineBasis:
                         kk += 1
                         k+=1
                 self.symComp = range(k0, k)
-
-
-            # if affCode <= 1:
-            #     for i in range(dimSym):
-            #         for j in range(i+1, dim):
-            #             I[kk] = i*dim+j
-            #             J[kk] = k
-            #             V[kk] = u
-            #             kk += 1
-            #             k+=1
-            #     for i in range(dim-1):
-            #         uu = np.sqrt((1 - 1.0/(i+2)))/(i+1.)
-            #         I[kk] = (i+1)*dim + (i+1)
-            #         J[kk] = k
-            #         V[kk] = np.sqrt(1 - 1.0/(i+2))
-            #         kk += 1
-            #         for j in range(i+1):
-            #             I[kk] = j*dim+j
-            #             J[kk] = k
-            #             V[kk] = -uu
-            #             kk += 1
-            #         k += 1
-            #     self.affComp = range(k)
-            # if affCode <= 2:
-            #     k0=k
-            #     for i in range(dim):
-            #         I[kk] = i*dim+i
-            #         J[kk] = k
-            #         V[kk] = 1./np.sqrt(dim)
-            #         kk += 1
-            #     k += 1
-            #     self.simComp = range(k0, k)
-            # if rotCode == 1:
-            #     k0 = k
-            #     for i in range(dim):
-            #         for j in range(i+1, dim):
-            #             I[kk] = i*dim+j
-            #             J[kk] = k
-            #             V[kk] = u
-            #             kk += 1
-            #             I[kk] = j*dim+i
-            #             J[kk] = k
-            #             V[kk] = -u
-            #             kk += 1
-            #             k+=1
-            #     self.rotComp = range(k0,k)
-            # if affCode <= 4:
-            #     k0 = k
-            #     for i in range(dim):
-            #         I[kk] = i + dim**2
-            #         J[kk] = k
-            #         V[kk] = 1
-            #         kk += 1
-            #         k += 1
-            #     self.transComp = range(k0, k)
             self.basis = coo_matrix((V[:kk], (I[:kk], J[:kk])), shape=(2 * (dimSkew + dim), self.affineDim))
         else:
-            #if affCode <= 4:
             self.basis = np.zeros([2 * (dimSkew + dim), self.affineDim])
 
-            #self.affCode = affCode
             k = 0
             if translation:
                 k0 = k
@@ -234,39 +159,6 @@ class AffineBasis:
                 self.symComp = range(k0, k)
 
 
-            # if affCode <= 1:
-            #     for i in range(dimSym):
-            #         for j in range(i + 1, dim):
-            #             self.basis[i * dim + j, k] = u
-            #             self.basis[j * dim + i, k] = u
-            #             k += 1
-            #     for i in range(dim - 1):
-            #         uu = np.sqrt((1 - 1.0 / (i + 2))) / (i + 1.)
-            #         self.basis[(i + 1) * dim + (i + 1), k] = np.sqrt(1 - 1.0 / (i + 2))
-            #         for j in range(i + 1):
-            #             self.basis[j * dim + j, k] = -uu
-            #         k += 1
-            #     self.affComp = range(k)
-            # if affCode <= 2:
-            #     k0 = k
-            #     for i in range(dim):
-            #         self.basis[i * dim + i, k] = 1. / np.sqrt(dim)
-            #     k += 1
-            #     self.simComp = range(k0, k)
-            # if rotCode == 1:
-            #     k0 = k
-            #     for i in range(dim):
-            #         for j in range(i + 1, dim):
-            #             self.basis[i * dim + j, k] = u
-            #             self.basis[j * dim + i, k] = -u
-            #             k += 1
-            #     self.rotComp = range(k0, k)
-            # if affCode <= 4:
-            #     k0 = k
-            #     for i in range(dim):
-            #         self.basis[i + dim ** 2, k] = 1
-            #         k += 1
-            #     self.transComp = range(k0, k)
 
     def getTransforms(self, Afft):
         Tsize = Afft.shape[0]
@@ -276,58 +168,53 @@ class AffineBasis:
             AB = np.zeros((Tsize, self.basis.shape[0]))
             for t in range(Tsize):
                 AB[t, :] = self.basis.dot(Afft[t,:])
-            #AB = (self.basis[np.newaxis,:,:]*Afft[:,np.newaxis,:]).sum(axis=2)
             A[0] = AB[:,0:dim2].reshape([Tsize, self.dim,self.dim])
             A[1] = AB[:,dim2:dim2+self.dim]
-            # for t in range(Tsize):
-            #     AB = np.dot(self.basis, Afft[t])
-            #     A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-            #     A[1][t] = AB[dim2:dim2+self.dim]
         return A
 
-    def getExponential(self, A):
-        if self.dim==3 and self.affCode==3:
-            #t = np.sqrt(A[0,1]**2+A[0,2]**2 + A[1,2]**2)
-            t = np.sqrt((A**2).sum()/2)
-            R = np.eye(3)
-            if t > 1e-10:
-                R += ((1-np.cos(t))/(t**2)) * (np.dot(A,A)) + (np.sin(t)/t)*A
-        else:
-            R = np.eye(self.dim) + A
-        return R
-
-    def gradExponential(self, A, p, x):
-        dR = np.dot(p.T, x)
-        if self.dim==3 and self.affCode==3:
-            t = np.sqrt(A[0,1]**2+A[0,2]**2 + A[1,2]**2)
-            #s2 = np.sqrt(2.)
-            if t > 1e-10:
-                st = np.sin(t)
-                ct = np.cos(t)
-                a1 = st/t
-                a2 = (1-ct)/(t**2)
-                da1 = (t*ct-st)/(2*t**3)
-                da2 = (t*st -2*(1-ct))/(2*t**4)
-#                dR = (a1*dR + (da1 * (p*np.dot(x,A)).sum() + da2 * (p*np.dot(x,np.dot(A,A))).sum())*A
-#                      - a2 * (np.dot(np.dot(p,A.T).T,x) + np.dot(p.T,np.dot(x,A))))
-                dR = (a1*dR + (da1 * (p*np.dot(x,A.T)).sum() + da2 * (p*np.dot(x,np.dot(A,A).T)).sum())*A
-                  + a2 * (np.dot(np.dot(p,A).T,x) + np.dot(p.T,np.dot(x,A.T))))
-#            dA = np.random.normal(size=A.shape)
-#            dR2 = np.zeros([self.dim, self.dim])
-#            u0 = (p*np.dot(x,self.getExponential(A).T)).sum()
-#            ep = 1e-8
-#            for k in range(self.dim):
-#                for l in range(self.dim):
-#                    Atry = np.copy(A)
-#                    Atry[k,l] = Atry[k,l] + ep
-#                    dR2[k,l] = ((p*np.dot(x,self.getExponential(Atry).T)).sum() - u0)/ep
-#            #print t, A, dA
-#            print 'dR:', dR 
-#            print 'dR2:', dR2
-#            u1 = (p*np.dot(x,self.getExponential(A+ep*dA).T)).sum()
-#            print (u1-u0)/ep, (dR*dA).sum()
-#                  TEST OK
-        return dR
+#     def getExponential(self, A):
+#         if self.dim==3 and self.affCode==3:
+#             #t = np.sqrt(A[0,1]**2+A[0,2]**2 + A[1,2]**2)
+#             t = np.sqrt((A**2).sum()/2)
+#             R = np.eye(3)
+#             if t > 1e-10:
+#                 R += ((1-np.cos(t))/(t**2)) * (np.dot(A,A)) + (np.sin(t)/t)*A
+#         else:
+#             R = np.eye(self.dim) + A
+#         return R
+#
+#     def gradExponential(self, A, p, x):
+#         dR = np.dot(p.T, x)
+#         if self.dim==3 and self.affCode==3:
+#             t = np.sqrt(A[0,1]**2+A[0,2]**2 + A[1,2]**2)
+#             #s2 = np.sqrt(2.)
+#             if t > 1e-10:
+#                 st = np.sin(t)
+#                 ct = np.cos(t)
+#                 a1 = st/t
+#                 a2 = (1-ct)/(t**2)
+#                 da1 = (t*ct-st)/(2*t**3)
+#                 da2 = (t*st -2*(1-ct))/(2*t**4)
+# #                dR = (a1*dR + (da1 * (p*np.dot(x,A)).sum() + da2 * (p*np.dot(x,np.dot(A,A))).sum())*A
+# #                      - a2 * (np.dot(np.dot(p,A.T).T,x) + np.dot(p.T,np.dot(x,A))))
+#                 dR = (a1*dR + (da1 * (p*np.dot(x,A.T)).sum() + da2 * (p*np.dot(x,np.dot(A,A).T)).sum())*A
+#                   + a2 * (np.dot(np.dot(p,A).T,x) + np.dot(p.T,np.dot(x,A.T))))
+# #            dA = np.random.normal(size=A.shape)
+# #            dR2 = np.zeros([self.dim, self.dim])
+# #            u0 = (p*np.dot(x,self.getExponential(A).T)).sum()
+# #            ep = 1e-8
+# #            for k in range(self.dim):
+# #                for l in range(self.dim):
+# #                    Atry = np.copy(A)
+# #                    Atry[k,l] = Atry[k,l] + ep
+# #                    dR2[k,l] = ((p*np.dot(x,self.getExponential(Atry).T)).sum() - u0)/ep
+# #            #print t, A, dA
+# #            print 'dR:', dR
+# #            print 'dR2:', dR2
+# #            u1 = (p*np.dot(x,self.getExponential(A+ep*dA).T)).sum()
+# #            print (u1-u0)/ep, (dR*dA).sum()
+# #                  TEST OK
+#         return dR
 
                 
 
@@ -342,7 +229,7 @@ class AffineBasis:
         eye = np.eye(self.dim)
         X[0][0,...] = eye
         for t in range(Tsize):
-            B = self.getExponential(dt*A[0][t,...])
+            B = getExponential(dt*A[0][t,...])
             X[0][t+1,...] = np.dot(B,X[0][t,...])
             X[1][t+1,...] = np.dot(B,X[1][t,...] + dt * A[1][t,...])
             #X[1][t+1] = X[1][t,...] + dt * A[1][t]
@@ -384,7 +271,5 @@ def gradExponential(A, p, x):
             da2 = .5*(t*st -2*(1-ct))/(t**4)
             dR = (a1*dR + (da1 * (p*np.dot(x,A.T)).sum() + da2 * (p*np.dot(x,np.dot(A,A).T)).sum())*A
                   + a2 * (np.dot(np.dot(p,A).T,x) + np.dot(p.T,np.dot(x,A.T))))
-#            dR = (a1*dR + (da1 * (p*np.dot(x,A.T)).sum() + da2 * (p*np.dot(x,np.dot(A,A).T)).sum())*A
-#                  + a2 * (np.dot(np.dot(p,A).T,x) + np.dot(p.T,np.dot(x,A.T))))
     return dR
 
