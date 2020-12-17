@@ -74,6 +74,10 @@ class Surface:
             self.faces = np.empty(0)
             self.surfel = np.empty(0)
             self.component = np.empty(0)
+
+        self.edges = None
+        self.edgeFaces = None
+        self.faceEdges = None
         # if surf == None:
         #     if FV == None:
         #         if filename == None:
@@ -240,6 +244,7 @@ class Surface:
                 if (u not in self.edges) & (u.reverse() not in self.edges):
                     self.edges.append(u)
         self.edgeFaces = []
+        self.faceEdges = np.zeros(self.faces.shape, dtype=int)
         for u in self.edges:
             self.edgeFaces.append([])
         for k in range(self.faces.shape[0]):
@@ -251,6 +256,7 @@ class Surface:
                     u.reverse()
                     kk = self.edges.index(u)
                 self.edgeFaces[kk].append(k)
+                self.faceEdges[k, kj] = kk
         self.edges = np.int_(np.array(self.edges))
         self.bdry = np.int_(np.zeros(self.edges.shape[0]))
         for k in range(self.edges.shape[0]):
@@ -1739,41 +1745,6 @@ class Surface:
             res[f[1],:] += r2[k,:]
             res[f[2],:] += r3[k,:]
         return res
-
-
-
-
-class Sphere(Surface):
-    def __init__(self, center, radius, resolution = 100, targetSize = 1000):
-        super().__init__()
-        self.center = center
-        self.radius = radius
-        M = resolution
-        [x, y, z] = np.mgrid[0:2 * M+1, 0:2 * M+1, 0:2 * M+1] / M
-        x = x - 1
-        y = y - 1
-        z = z - 1
-        s2 = np.sqrt(2)
-        I1 = .5 - (x**2 + y**2 + z**2)
-        self.Isosurface(I1, value = 0, target = targetSize, scales=[1, 1, 1], smooth=0.01)
-        v = self.center + (self.vertices -M) * self.radius * s2/M
-        self.updateVertices(v)
-
-class Torus(Surface):
-    def __init__(self, center, radius1, radius2, resolution = 100, targetSize = 1000):
-        super().__init__()
-        self.center = center
-        self.radius1 = radius1
-        self.radius2 = radius2
-        M = resolution
-        [x, y, z] = np.mgrid[0:2 * M, 0:2 * M, 0:2 * M] / M - 1
-        s2 = np.sqrt(2)
-        r = radius2/(radius1*s2)
-        I1 = r**2 - 0.5 - (x**2 + y**2 + z**2) + s2 * np.sqrt(x**2+y**2)
-        self.Isosurface(I1, value = 0, target = targetSize, scales=[1, 1, 1], smooth=0.01)
-        v = self.center + (self.vertices -M) * self.radius1 * s2/M
-        self.updateVertices(v)
-
 
 
 # Reads several .byu files
