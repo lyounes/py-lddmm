@@ -1,5 +1,5 @@
 import numpy as np
-from base import surfaces
+from base import surfaces, surfaceExamples
 from base import loggingUtils
 from base.surfaces import Surface
 from base.kernelFunctions import Kernel
@@ -54,7 +54,7 @@ def compute(model):
         I1 = np.minimum(c1**2 - (ax**2 + 0.5*ay**2 + az**2), np.minimum((ax**2 + 0.5*ay**2 + az**2)-c2**2, 1+c3-y)) 
         fv1 = Surface()
         fv1.Isosurface(I1, value = 0, target=1000, scales=[1, 1, 1], smooth=0.01)
-
+        # fv1 = surfaceExamples.Heart()
 
         #return fv1
 
@@ -63,7 +63,8 @@ def compute(model):
         s1 = 1.1
         s2 = 1.2
         p = 1.75
-        I1 = np.minimum(c1**p/s1 - ((ax**p + 0.5*ay**p + az**p)), np.minimum((s2*ax**p + s2*0.5*ay**p + s2*az**p)-c2**p/s1, 1+c3/s1-y))  
+        I1 = np.minimum(c1**p/s1 - ((ax**p + 0.5*ay**p + az**p)),
+                        np.minimum((s2*ax**p + s2*0.5*ay**p + s2*az**p)-c2**p/s1, 1+c3/s1-y))
         fv2 = Surface()
         fv2.Isosurface(I1, value = 0, target=1000, scales=[1, 1, 1], smooth=0.01)
         
@@ -203,4 +204,4 @@ def compute(model):
 
 
 if __name__=="__main__":
-    compute('snake')
+    compute('Hearts')

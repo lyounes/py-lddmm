@@ -2,6 +2,8 @@ import numpy as np
 import scipy as sp
 import os
 import glob
+from matplotlib.collections import LineCollection
+from mpl_toolkits.mplot3d.art3d import Line3DCollection
 try:
     from vtk import vtkContourFilter, vtkVersion, vtkPolyDataConnectivityFilter, vtkPolyDataReader, \
         vtkImageData, VTK_FLOAT, vtkDoubleArray
@@ -339,8 +341,6 @@ class Curve:
                 
         
 
-            
-
     def checkEdges(self):
         is0 = np.zeros(self.vertices.shape[0])
         is1 = np.zeros(self.vertices.shape[0])
@@ -647,6 +647,29 @@ class Curve:
             res[f[1],:] -= r1[k,:]
         return res
 
+    def addToPlot(self, ax, ec = 'b', fc = 'r', al=1., lw=1):
+        dim = self.vertices.shape[1]
+        x = self.vertices[self.faces[:,0],:]
+        y = self.vertices[self.faces[:,1],:]
+        a = np.concatenate([x,y], axis=1)
+        poly = [ [a[i,j*dim:j*dim+dim] for j in range(2)] for i in range(a.shape[0])]
+        if dim == 3:
+            tri = Line3DCollection(poly, alpha=al, linewidths=lw)
+        else:
+            tri = LineCollection(poly, alpha=al, linewidths=lw)
+        tri.set_edgecolor(ec)
+        tri.set_facecolor(fc)
+        if dim == 3:
+            ax.add_collection3d(tri)
+            xlim = [self.vertices[:,0].min(),self.vertices[:,0].max()]
+            ylim = [self.vertices[:,1].min(),self.vertices[:,1].max()]
+            zlim = [self.vertices[:,2].min(),self.vertices[:,2].max()]
+            return [xlim, ylim, zlim]
+        else:
+            ax.add_collection(tri)
+            xlim = [self.vertices[:,0].min(),self.vertices[:,0].max()]
+            ylim = [self.vertices[:,1].min(),self.vertices[:,1].max()]
+            return [xlim, ylim]
 
 
 def remesh(x, N=100, closed=True, rhoTol=0.9):
@@ -985,52 +1008,55 @@ def measureNormGradient(fvDef, fv1, KparDist=None):
 
     return 2*px
 
+
 def _varifoldNorm0(c2, cr2, KparDist=None, weight=1.):
-    d=weight
-    a2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)
-    cr2 = cr2/a2[:,np.newaxis]
-    cr2cr2 = (cr2[:,np.newaxis,:]*cr2[np.newaxis,:,:]).sum(axis=2)
-    a2a2 = a2[:,np.newaxis]*a2[np.newaxis,:]
-    beta2 = (1 + d*cr2cr2**2)*a2a2
-    return KparDist.applyK(c2, beta2[...,np.newaxis], matrixWeights=True).sum()
-        
+    d = weight
+    a2 = np.sqrt((cr2 ** 2).sum(axis=1) + 1e-10)
+    cr2 = cr2 / a2[:, np.newaxis]
+    cr2cr2 = (cr2[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
+    a2a2 = a2[:, np.newaxis] * a2[np.newaxis, :]
+    beta2 = (1 + d * cr2cr2 ** 2) * a2a2
+    return KparDist.applyK(c2, beta2[..., np.newaxis], matrixWeights=True).sum()
+
 
 def varifoldNorm0(fv1, KparDist=None, weight=1.):
     c2 = fv1.centers
     cr2 = fv1.linel
     return _varifoldNorm0(c2, cr2, KparDist=KparDist, weight=weight)
 
+
 def varifoldNormComponent0(fv1, KparDist=None, weight=1.):
     c2 = fv1.centers
     cr2 = fv1.linel
     cp = fv1.component
-    ncp = cp.max()+1
+    ncp = cp.max() + 1
     obj = 0
     for k in range(ncp):
-        I = np.nonzero(cp==k)[0]
+        I = np.nonzero(cp == k)[0]
         obj += _varifoldNorm0(c2[I], cr2[I], KparDist=KparDist, weight=weight)
     return obj
 
 
-# Computes |fvDef|^2 - 2 fvDef * fv1 with current dot product 
+# Computes |fvDef|^2 - 2 fvDef * fv1 with current dot product
 def _varifoldNormDef(c1, c2, cr1, cr2, KparDist=None, weight=1.):
-    d=weight
-    a1 = np.sqrt((cr1**2).sum(axis=1)+1e-10)
-    a2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)
-    cr1 = cr1/a1[:,np.newaxis]
-    cr2 = cr2/a2[:,np.newaxis]
+    d = weight
+    a1 = np.sqrt((cr1 ** 2).sum(axis=1) + 1e-10)
+    a2 = np.sqrt((cr2 ** 2).sum(axis=1) + 1e-10)
+    cr1 = cr1 / a1[:, np.newaxis]
+    cr2 = cr2 / a2[:, np.newaxis]
 
-    cr1cr1 = (cr1[:,np.newaxis,:]*cr1[np.newaxis,:,:]).sum(axis=2)
-    a1a1 = a1[:,np.newaxis]*a1[np.newaxis,:]
-    cr1cr2 = (cr1[:,np.newaxis,:]*cr2[np.newaxis,:,:]).sum(axis=2)
-    a1a2 = a1[:,np.newaxis]*a2[np.newaxis,:]
+    cr1cr1 = (cr1[:, np.newaxis, :] * cr1[np.newaxis, :, :]).sum(axis=2)
+    a1a1 = a1[:, np.newaxis] * a1[np.newaxis, :]
+    cr1cr2 = (cr1[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
+    a1a2 = a1[:, np.newaxis] * a2[np.newaxis, :]
 
-    beta1 = (1 + d*cr1cr1**2)*a1a1
-    beta2 = (1 + d*cr1cr2**2)*a1a2
+    beta1 = (1 + d * cr1cr1 ** 2) * a1a1
+    beta2 = (1 + d * cr1cr2 ** 2) * a1a2
 
-    obj = (KparDist.applyK(c1, beta1[...,np.newaxis], matrixWeights=True).sum()
-        - 2*KparDist.applyK(c2, beta2[...,np.newaxis], firstVar=c1, matrixWeights=True).sum())
+    obj = (KparDist.applyK(c1, beta1[..., np.newaxis], matrixWeights=True).sum()
+           - 2 * KparDist.applyK(c2, beta2[..., np.newaxis], firstVar=c1, matrixWeights=True).sum())
     return obj
+
 
 def varifoldNormDef(fvDef, fv1, KparDist=None, weight=1.):
     c1 = fvDef.centers
@@ -1039,6 +1065,7 @@ def varifoldNormDef(fvDef, fv1, KparDist=None, weight=1.):
     cr2 = fv1.linel
     return _varifoldNormDef(c1, c2, cr1, cr2, KparDist=KparDist, weight=weight)
 
+
 def varifoldNormComponentDef(fvDef, fv1, KparDist=None, weight=1.):
     c1 = fvDef.centers
     cr1 = fvDef.linel
@@ -1046,48 +1073,55 @@ def varifoldNormComponentDef(fvDef, fv1, KparDist=None, weight=1.):
     cr2 = fv1.linel
     cp1 = fvDef.component
     cp2 = fv1.component
-    ncp = cp1.max()+1
+    ncp = cp1.max() + 1
     obj = 0
     for k in range(ncp):
-        I1 = np.nonzero(cp1==k)[0]
-        I2 = np.nonzero(cp2==k)[0]
+        I1 = np.nonzero(cp1 == k)[0]
+        I2 = np.nonzero(cp2 == k)[0]
         obj += _varifoldNormDef(c1[I1], c2[I2], cr1[I1], cr2[I2], KparDist=KparDist, weight=weight)
     return obj
 
+
 # Returns |fvDef - fv1|^2 for current norm
 def varifoldNorm(fvDef, fv1, KparDist=None, weight=1.):
-    return varifoldNormDef(fvDef, fv1, KparDist=KparDist, weight=weight) + varifoldNorm0(fv1, KparDist=KparDist, weight=weight)
+    return varifoldNormDef(fvDef, fv1, KparDist=KparDist, weight=weight) + varifoldNorm0(fv1, KparDist=KparDist,
+                                                                                         weight=weight)
+
 
 def varifoldNormComponent(fvDef, fv1, KparDist=None, weight=1.):
-    return varifoldNormComponentDef(fvDef, fv1, KparDist=KparDist, weight=weight) + varifoldNormComponent0(fv1, KparDist=KparDist, weight=weight)
+    return varifoldNormComponentDef(fvDef, fv1, KparDist=KparDist, weight=weight) + varifoldNormComponent0(fv1,
+                                                                                                           KparDist=KparDist,
+                                                                                                           weight=weight)
+
 
 # Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (current norm)
 def _varifoldNormGradient(c1, c2, cr1, cr2, KparDist=None, weight=1.):
-    d=weight
+    d = weight
 
-    a1 = np.sqrt((cr1**2).sum(axis=1)+1e-10)
-    a2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)
+    a1 = np.sqrt((cr1 ** 2).sum(axis=1) + 1e-10)
+    a2 = np.sqrt((cr2 ** 2).sum(axis=1) + 1e-10)
     cr1 = cr1 / a1[:, np.newaxis]
     cr2 = cr2 / a2[:, np.newaxis]
-    cr1cr1 =  (cr1[:, np.newaxis, :] * cr1[np.newaxis, :, :]).sum(axis=2)
-    cr1cr2 =  (cr1[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
+    cr1cr1 = (cr1[:, np.newaxis, :] * cr1[np.newaxis, :, :]).sum(axis=2)
+    cr1cr2 = (cr1[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
 
-    beta1 = a1[:,np.newaxis]*a1[np.newaxis,:] * (1 + d*cr1cr1**2) 
-    beta2 = a1[:,np.newaxis]*a2[np.newaxis,:] * (1 + d*cr1cr2**2)
+    beta1 = a1[:, np.newaxis] * a1[np.newaxis, :] * (1 + d * cr1cr1 ** 2)
+    beta2 = a1[:, np.newaxis] * a2[np.newaxis, :] * (1 + d * cr1cr2 ** 2)
 
-    u1 = (2*d*cr1cr1[...,np.newaxis]*cr1[np.newaxis,...]
-          - d*(cr1cr1**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
-          + cr1[:,np.newaxis,:])*a1[np.newaxis,:,np.newaxis]
-    u2 = (2*d*cr1cr2[...,np.newaxis]*cr2[np.newaxis,...]
-          - d*(cr1cr2**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
-          + cr1[:,np.newaxis,:])*a2[np.newaxis,:,np.newaxis]
+    u1 = (2 * d * cr1cr1[..., np.newaxis] * cr1[np.newaxis, ...]
+          - d * (cr1cr1 ** 2)[..., np.newaxis] * cr1[:, np.newaxis, :]
+          + cr1[:, np.newaxis, :]) * a1[np.newaxis, :, np.newaxis]
+    u2 = (2 * d * cr1cr2[..., np.newaxis] * cr2[np.newaxis, ...]
+          - d * (cr1cr2 ** 2)[..., np.newaxis] * cr1[:, np.newaxis, :]
+          + cr1[:, np.newaxis, :]) * a2[np.newaxis, :, np.newaxis]
 
-    z1 = KparDist.applyK(c1, u1,matrixWeights=True) - KparDist.applyK(c2, u2, firstVar=c1, matrixWeights=True)
-    #print a1.shape, c1.shape
-    dz1 = (1./2.) * (KparDist.applyDiffKmat(c1, beta1) -
-                     KparDist.applyDiffKmat(c2, beta2, firstVar=c1))
-                        
-    return z1,dz1
+    z1 = KparDist.applyK(c1, u1, matrixWeights=True) - KparDist.applyK(c2, u2, firstVar=c1, matrixWeights=True)
+    # print a1.shape, c1.shape
+    dz1 = (1. / 2.) * (KparDist.applyDiffKmat(c1, beta1) -
+                       KparDist.applyDiffKmat(c2, beta2, firstVar=c1))
+
+    return z1, dz1
+
 
 def varifoldNormGradient(fvDef, fv1, KparDist=None, weight=1.):
     c1 = fvDef.centers
@@ -1100,13 +1134,14 @@ def varifoldNormGradient(fvDef, fv1, KparDist=None, weight=1.):
     dim = c1.shape[1]
 
     px = np.zeros([fvDef.vertices.shape[0], dim])
-    #I = fvDef.faces[:,0]
-    #crs = np.cross(xDef3 - xDef2, z1)
+    # I = fvDef.faces[:,0]
+    # crs = np.cross(xDef3 - xDef2, z1)
     for k in range(fvDef.faces.shape[0]):
-        px[fvDef.faces[k,0], :] += dz1[k, :] - z1[k,:]
-        px[fvDef.faces[k,1], :] += dz1[k, :] + z1[k,:]
+        px[fvDef.faces[k, 0], :] += dz1[k, :] - z1[k, :]
+        px[fvDef.faces[k, 1], :] += dz1[k, :] + z1[k, :]
 
-    return 2*px
+    return 2 * px
+
 
 def varifoldNormComponentGradient(fvDef, fv1, KparDist=None, weight=1.):
     c1 = fvDef.centers
@@ -1115,24 +1150,176 @@ def varifoldNormComponentGradient(fvDef, fv1, KparDist=None, weight=1.):
     cr2 = fv1.linel
     cp1 = fvDef.component
     cp2 = fv1.component
-    ncp = cp1.max()+1
+    ncp = cp1.max() + 1
     dim = c1.shape[1]
 
     z1 = np.zeros(c1.shape)
     dz1 = np.zeros(c1.shape)
     for k in range(ncp):
-        I1 = np.nonzero(cp1==k)[0]
-        I2 = np.nonzero(cp2==k)[0]
+        I1 = np.nonzero(cp1 == k)[0]
+        I2 = np.nonzero(cp2 == k)[0]
         foo = _varifoldNormGradient(c1[I1], c2[I2], cr1[I1], cr2[I2], KparDist=KparDist, weight=weight)
-        z1[I1,:] = foo[0]
-        dz1[I1,:] = foo[1]
+        z1[I1, :] = foo[0]
+        dz1[I1, :] = foo[1]
 
     px = np.zeros([fvDef.vertices.shape[0], dim])
     for k in range(fvDef.faces.shape[0]):
-        px[fvDef.faces[k,0], :] += dz1[k, :] - z1[k,:]
-        px[fvDef.faces[k,1], :] += dz1[k, :] + z1[k,:]
+        px[fvDef.faces[k, 0], :] += dz1[k, :] - z1[k, :]
+        px[fvDef.faces[k, 1], :] += dz1[k, :] + z1[k, :]
 
-    return 2*px
+    return 2 * px
+#
+#
+#
+#
+# def _varifoldNorm0(c2, cr2, KparDist=None, weight=1.):
+#     d=weight
+#     a2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)
+#     cr2 = cr2/a2[:,np.newaxis]
+#     cr2cr2 = (cr2[:,np.newaxis,:]*cr2[np.newaxis,:,:]).sum(axis=2)
+#     a2a2 = a2[:,np.newaxis]*a2[np.newaxis,:]
+#     beta2 = (1 + d*cr2cr2**2)*a2a2
+#     return KparDist.applyK(c2, beta2[...,np.newaxis], matrixWeights=True).sum()
+#
+#
+# def varifoldNorm0(fv1, KparDist=None, weight=1.):
+#     c2 = fv1.centers
+#     cr2 = fv1.linel
+#     return _varifoldNorm0(c2, cr2, KparDist=KparDist, weight=weight)
+#
+# def varifoldNormComponent0(fv1, KparDist=None, weight=1.):
+#     c2 = fv1.centers
+#     cr2 = fv1.linel
+#     cp = fv1.component
+#     ncp = cp.max()+1
+#     obj = 0
+#     for k in range(ncp):
+#         I = np.nonzero(cp==k)[0]
+#         obj += _varifoldNorm0(c2[I], cr2[I], KparDist=KparDist, weight=weight)
+#     return obj
+#
+#
+# # Computes |fvDef|^2 - 2 fvDef * fv1 with current dot product
+# def _varifoldNormDef(c1, c2, cr1, cr2, KparDist=None, weight=1.):
+#     d=weight
+#     a1 = np.sqrt((cr1**2).sum(axis=1)+1e-10)
+#     a2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)
+#     cr1 = cr1/a1[:,np.newaxis]
+#     cr2 = cr2/a2[:,np.newaxis]
+#
+#     cr1cr1 = (cr1[:,np.newaxis,:]*cr1[np.newaxis,:,:]).sum(axis=2)
+#     a1a1 = a1[:,np.newaxis]*a1[np.newaxis,:]
+#     cr1cr2 = (cr1[:,np.newaxis,:]*cr2[np.newaxis,:,:]).sum(axis=2)
+#     a1a2 = a1[:,np.newaxis]*a2[np.newaxis,:]
+#
+#     beta1 = (1 + d*cr1cr1**2)*a1a1
+#     beta2 = (1 + d*cr1cr2**2)*a1a2
+#
+#     obj = (KparDist.applyK(c1, beta1[...,np.newaxis], matrixWeights=True).sum()
+#         - 2*KparDist.applyK(c2, beta2[...,np.newaxis], firstVar=c1, matrixWeights=True).sum())
+#     return obj
+#
+# def varifoldNormDef(fvDef, fv1, KparDist=None, weight=1.):
+#     c1 = fvDef.centers
+#     cr1 = fvDef.linel
+#     c2 = fv1.centers
+#     cr2 = fv1.linel
+#     return _varifoldNormDef(c1, c2, cr1, cr2, KparDist=KparDist, weight=weight)
+#
+# def varifoldNormComponentDef(fvDef, fv1, KparDist=None, weight=1.):
+#     c1 = fvDef.centers
+#     cr1 = fvDef.linel
+#     c2 = fv1.centers
+#     cr2 = fv1.linel
+#     cp1 = fvDef.component
+#     cp2 = fv1.component
+#     ncp = cp1.max()+1
+#     obj = 0
+#     for k in range(ncp):
+#         I1 = np.nonzero(cp1==k)[0]
+#         I2 = np.nonzero(cp2==k)[0]
+#         obj += _varifoldNormDef(c1[I1], c2[I2], cr1[I1], cr2[I2], KparDist=KparDist, weight=weight)
+#     return obj
+#
+# # Returns |fvDef - fv1|^2 for current norm
+# def varifoldNorm(fvDef, fv1, KparDist=None, weight=1.):
+#     return varifoldNormDef(fvDef, fv1, KparDist=KparDist, weight=weight) + varifoldNorm0(fv1, KparDist=KparDist, weight=weight)
+#
+# def varifoldNormComponent(fvDef, fv1, KparDist=None, weight=1.):
+#     return varifoldNormComponentDef(fvDef, fv1, KparDist=KparDist, weight=weight) + varifoldNormComponent0(fv1, KparDist=KparDist, weight=weight)
+#
+# # Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (current norm)
+# def _varifoldNormGradient(c1, c2, cr1, cr2, KparDist=None, weight=1.):
+#     d=weight
+#
+#     a1 = np.sqrt((cr1**2).sum(axis=1)+1e-10)
+#     a2 = np.sqrt((cr2**2).sum(axis=1)+1e-10)
+#     cr1 = cr1 / a1[:, np.newaxis]
+#     cr2 = cr2 / a2[:, np.newaxis]
+#     cr1cr1 =  (cr1[:, np.newaxis, :] * cr1[np.newaxis, :, :]).sum(axis=2)
+#     cr1cr2 =  (cr1[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
+#
+#     beta1 = a1[:,np.newaxis]*a1[np.newaxis,:] * (1 + d*cr1cr1**2)
+#     beta2 = a1[:,np.newaxis]*a2[np.newaxis,:] * (1 + d*cr1cr2**2)
+#
+#     u1 = (2*d*cr1cr1[...,np.newaxis]*cr1[np.newaxis,...]
+#           - d*(cr1cr1**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
+#           + cr1[:,np.newaxis,:])*a1[np.newaxis,:,np.newaxis]
+#     u2 = (2*d*cr1cr2[...,np.newaxis]*cr2[np.newaxis,...]
+#           - d*(cr1cr2**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
+#           + cr1[:,np.newaxis,:])*a2[np.newaxis,:,np.newaxis]
+#
+#     z1 = KparDist.applyK(c1, u1,matrixWeights=True) - KparDist.applyK(c2, u2, firstVar=c1, matrixWeights=True)
+#     #print a1.shape, c1.shape
+#     dz1 = (1./2.) * (KparDist.applyDiffKmat(c1, beta1) -
+#                      KparDist.applyDiffKmat(c2, beta2, firstVar=c1))
+#
+#     return z1,dz1
+#
+# def varifoldNormGradient(fvDef, fv1, KparDist=None, weight=1.):
+#     c1 = fvDef.centers
+#     cr1 = fvDef.linel
+#     c2 = fv1.centers
+#     cr2 = fv1.linel
+#     foo = _varifoldNormGradient(c1, c2, cr1, cr2, KparDist=KparDist, weight=weight)
+#     z1 = foo[0]
+#     dz1 = foo[1]
+#     dim = c1.shape[1]
+#
+#     px = np.zeros([fvDef.vertices.shape[0], dim])
+#     #I = fvDef.faces[:,0]
+#     #crs = np.cross(xDef3 - xDef2, z1)
+#     for k in range(fvDef.faces.shape[0]):
+#         px[fvDef.faces[k,0], :] += dz1[k, :] - z1[k,:]
+#         px[fvDef.faces[k,1], :] += dz1[k, :] + z1[k,:]
+#
+#     return 2*px
+#
+# def varifoldNormComponentGradient(fvDef, fv1, KparDist=None, weight=1.):
+#     c1 = fvDef.centers
+#     cr1 = fvDef.linel
+#     c2 = fv1.centers
+#     cr2 = fv1.linel
+#     cp1 = fvDef.component
+#     cp2 = fv1.component
+#     ncp = cp1.max()+1
+#     dim = c1.shape[1]
+#
+#     z1 = np.zeros(c1.shape)
+#     dz1 = np.zeros(c1.shape)
+#     for k in range(ncp):
+#         I1 = np.nonzero(cp1==k)[0]
+#         I2 = np.nonzero(cp2==k)[0]
+#         foo = _varifoldNormGradient(c1[I1], c2[I2], cr1[I1], cr2[I2], KparDist=KparDist, weight=weight)
+#         z1[I1,:] = foo[0]
+#         dz1[I1,:] = foo[1]
+#
+#     px = np.zeros([fvDef.vertices.shape[0], dim])
+#     for k in range(fvDef.faces.shape[0]):
+#         px[fvDef.faces[k,0], :] += dz1[k, :] - z1[k,:]
+#         px[fvDef.faces[k,1], :] += dz1[k, :] + z1[k,:]
+#
+#     return 2*px
 
 def normGrad___(fv, phi):
     phi1 = phi[fv.faces[:,0],:]

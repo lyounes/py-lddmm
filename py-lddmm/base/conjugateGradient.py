@@ -29,7 +29,7 @@ import logging
 # TestGradient evaluate accracy of first order approximation (debugging)
 # epsInit: initial gradient step
 
-def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPar=None):
+def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPar=None, forceLineSearch = False):
 
     if (hasattr(opt, 'getVariable')==False | hasattr(opt, 'objectiveFun')==False | hasattr(opt, 'updateTry')==False | hasattr(opt, 'acceptVarTry')==False | hasattr(opt, 'getGradient')==False):
         logging.error('Error: required functions are not provided')
@@ -74,6 +74,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
         restartRate = 1
         TestGradient = False
 
+
     eps = epsInit
     epsMin = 1e-10
     opt.converged = False
@@ -114,6 +115,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
                 dirfoo = opt.randomDir()
             else:
                 dirfoo = np.random.normal(size=grd.shape)
+            dirfoo = grd
             epsfoo = 1e-8
             objfoo = opt.updateTry(dirfoo, epsfoo, obj-1e10)
             if hasattr(opt, 'dotProduct'):
@@ -196,10 +198,13 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
                 eps = epsBig
             if objTry > obj:
                 #fprintf(1, 'iteration %d: obj = %.5f, eps = %.5f\n', it, objTry, eps) ;
-                epsSmall = np.minimum(1e-6/(grdTry), epsMin)
-                #print 'Testing small variation, eps = {0: .10f}'.format(epsSmall)
-                objTry0 = opt.updateTry(dir0, epsSmall, obj)
-                if objTry0 > obj:
+                if not forceLineSearch:
+                    epsSmall = np.minimum(1e-6/(grdTry), epsMin)
+                    #print 'Testing small variation, eps = {0: .10f}'.format(epsSmall)
+                    objTry0 = opt.updateTry(dir0, epsSmall, obj)
+                else:
+                    objTry0 = 0
+                if not forceLineSearch and objTry0 > obj :
                     if (skipCG == 1) | (beta < 1e-10):
                         logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, beta = {3:.5f}, gradient: {4:.5f}'.format(it+1, obj, eps, beta, np.sqrt(grd2)))
                         logging.info('Stopping Gradient Descent: bad direction')
@@ -213,6 +218,18 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
                     while (objTry > obj) and (eps > epsMin):
                         eps = eps / 2
                         objTry = opt.updateTry(dir0, eps, obj)
+                    if eps < epsMin:
+                        if (skipCG == 1) | (beta < 1e-10):
+                            logging.info(
+                                'iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, beta = {3:.5f}, gradient: {4:.5f}'.format(
+                                    it + 1, obj, eps, beta, np.sqrt(grd2)))
+                            logging.info('Stopping Gradient Descent: bad direction after line search')
+                            break
+                        else:
+                            if verb:
+                                logging.info('Disabling CG: bad direction after line search')
+                                skipCG = 1
+                                noUpdate = 1
                         #opt.acceptVarTry()
 
                         #print 'improve'

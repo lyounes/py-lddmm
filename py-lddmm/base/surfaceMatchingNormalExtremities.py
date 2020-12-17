@@ -58,9 +58,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
     def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, verb=True,
                  internalWeight=0.0, regWeight=1.0, affineWeight=1.0,
                  testGradient=False, mu=0.1, outputDir='.', saveFile='evolution', affine='none', saveTrajectories=False,
-                 rotWeight=None, scaleWeight=None, transWeight=None, symmetric=False, pplot = True, maxIter_cg=1000, maxIter_al=100):
-        super(SurfaceMatching, self).__init__(Template=Template, Target=Target, fileTempl=fileTempl,
-                                              fileTarg=fileTarg, param=param, maxIter=maxIter_cg, regWeight=regWeight,
+                 rotWeight=None, scaleWeight=None, transWeight=None, symmetric=False, pplot = True, maxIter_cg=1000,
+                 maxIter_al=100):
+        super(SurfaceMatching, self).__init__(Template=Template, Target=Target, param=param, maxIter=maxIter_cg,
+                                              regWeight=regWeight,
                                               internalWeight=internalWeight, affineWeight=affineWeight,
                                               verb=verb, subsampleTargetSize=-1, rotWeight=rotWeight,
                                               scaleWeight=scaleWeight, transWeight=transWeight,
