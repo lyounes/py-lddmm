@@ -126,8 +126,36 @@ class Curve:
         a = np.divide(a,n)
         return a
         
+    def flipFaces(self):
+        self.faces = self.faces[:, [1, 0]]
+        self.computeCentersLengths()
+
     def computeUnitFaceNormals(self):
         a = np.sqrt((self.linel**2).sum(axis=1))
+        normals = np.zeros(self.faces.shape)
+        normals[:,0] = - self.linel[:,1]/a
+        normals[:,1] = self.linel[:,0]/a
+        return normals
+
+    def computeUnitVertexNormals(self):
+        a = np.sqrt((self.linel**2).sum(axis=1))
+        tau = self.linel / np.maximum(a[:, None], 1e-10)
+        normals = np.zeros(self.vertices.shape)
+        counts = np.zeros(self.vertices.shape[0], dtype=int)
+        for i in range(self.faces.shape[0]):
+            normals[self.faces[i,0], :] += tau[i,:]
+            normals[self.faces[i,1], :] -= tau[i,:]
+            counts[self.faces[i,0]] += 1
+            counts[self.faces[i,1]] += 1
+        a = np.sqrt((normals**2).sum(axis=1))
+        normals /= np.maximum(a[:, None], 1e-10)
+        normals[counts<2, :] = 0
+        return normals
+
+
+        xDef1 = self.vertices[self.faces[:, 0], :]
+        xDef2 = self.vertices[self.faces[:, 1], :]
+
         normals = np.zeros(self.faces.shape)
         normals[:,0] = - self.linel[:,1]/a
         normals[:,1] = self.linel[:,0]/a
@@ -299,7 +327,7 @@ class Curve:
             #print j, self.faces.shape[0]
         self.faces = np.int_(F[0:j, :])
         
-    def removeDuplicates(self, c=0.0001):
+    def removeDuplicates(self, c=0.0001, verb=False):
         c2 = c**2
         N0 = self.vertices.shape[0]
         w = np.zeros(N0, dtype=int)
@@ -314,7 +342,8 @@ class Curve:
             J = J[0]
             #print kj, ' ', J, len(J)
             if (len(J)>0):
-                print("duplicate:", kj, J[0])
+                if verb:
+                    print("duplicate:", kj, J[0])
                 w[kj] = J[0]
             else:
                 w[kj] = N
@@ -331,7 +360,8 @@ class Curve:
         nj = 0
         for kj in range(Nf):
             if np.fabs(self.faces[kj,0] - self.faces[kj,1]) == 0:
-                print('Empty face: ', kj, nj)
+                if verb:
+                    print('Empty face: ', kj, nj)
             else:
                 newf[nj,:] = self.faces[kj,:]
                 newc[nj] = self.component[kj]
@@ -363,7 +393,7 @@ class Curve:
         v = self.vertices
         z = 0
         for c in f:
-            z += np.linalg.det(v[c[:], :])/2
+            z += np.sqrt((np.cross(v[c[0],:], v[c[1], :])**2).sum())/2
         return z
 
     def length(self):
@@ -493,7 +523,7 @@ class Curve:
                     j=0
 
     # Saves in .vtk format 
-    def saveVTK(self, fileName, scalars = None, normals = None, scal_name='scalars'):
+    def saveVTK(self, fileName, scalars = None, normals = None, cell_normals=None, scal_name='scalars'):
         F = self.faces
         V = np.copy(self.vertices)
         if V.shape[1] == 2: 
@@ -519,6 +549,16 @@ class Curve:
                 fvtkout.write('\nNORMALS normals float')
                 for ll in range(V.shape[0]):
                     fvtkout.write('\n {0: .5f} {1: .5f} {2: .5f}'.format(normals[ll, 0], normals[ll, 1], 0))
+            if cell_normals is not None:
+                fvtkout.write(('\nCELL_DATA {0: d}').format(F.shape[0]))
+                fvtkout.write('\nNORMALS normals float')
+                if cell_normals.shape[1] == 2:
+                    for ll in range(F.shape[0]):
+                        fvtkout.write('\n {0: .5f} {1: .5f} {2: .5f}'.format(cell_normals[ll, 0], cell_normals[ll, 1], 0))
+                else:
+                    for ll in range(F.shape[0]):
+                        fvtkout.write('\n {0: .5f} {1: .5f} {2: .5f}'.format(cell_normals[ll, 0], cell_normals[ll, 1],
+                                                                             cell_normals[ll, 2]))
             fvtkout.write('\n')
 
 

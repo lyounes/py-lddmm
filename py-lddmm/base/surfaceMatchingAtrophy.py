@@ -15,9 +15,13 @@ from .affineBasis import *
 #      sigmaError: normlization for error term
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
-class SurfaceMatchingParam(surfaceMatching.SurfaceMatchingParam):
-    def __init__(self, timeStep = .1, KparDiff = None, KparDist = None, KparDiffOut = None, sigmaKernel = 6.5, sigmaKernelOut=6.5, sigmaDist=2.5, sigmaError=1.0, typeKernel='gauss', errorType='varifold'):
-        surfaceMatching.SurfaceMatchingParam.__init__(self, timeStep = timeStep, KparDiff = KparDiff, KparDist=KparDist, sigmaKernel =  sigmaKernel, sigmaDist = sigmaDist, sigmaError = sigmaError, typeKernel = typeKernel, errorType=errorType)
+class SurfaceMatchingParamAtrophy(surfaceMatching.SurfaceMatchingParam):
+    def __init__(self, timeStep = .1, KparDiff = None, KparDist = None, KparDiffOut = None, sigmaKernel = 6.5,
+                 sigmaKernelOut=6.5, sigmaDist=2.5, sigmaError=1.0, typeKernel='gauss', errorType='varifold'):
+        surfaceMatching.SurfaceMatchingParam.__init__(self, timeStep = timeStep, KparDiff = KparDiff, KparDist=KparDist,
+                                                      sigmaKernel =  sigmaKernel, sigmaDist = sigmaDist,
+                                                      sigmaError = sigmaError,
+                                                      typeKernel = typeKernel, errorType=errorType)
         self.sigmaKernelOut = sigmaKernelOut
         if KparDiffOut == None:
             self.KparDiffOut = kfun.Kernel(name = self.typeKernel, sigma = self.sigmaKernelOut)
@@ -41,11 +45,12 @@ class SurfaceMatchingParam(surfaceMatching.SurfaceMatchingParam):
 #        maxIter_cg: max iterations in conjugate gradient
 #        maxIter_al: max interation for augmented lagrangian
 
-class SurfaceMatching(surfaceMatching.SurfaceMatching):
-    def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, verb=True, regWeight=1.0, affineWeight = 1.0,
+class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
+    def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, verb=True, regWeight=1.0,
+                 affineWeight = 1.0,
                   testGradient=False, mu = 0.1, outputDir='.', saveFile = 'evolution', affine='none', volumeOnly=False,
                   rotWeight = None, scaleWeight = None, transWeight = None, symmetric=False, maxIter_cg=1000, maxIter_al=100):
-        super(SurfaceMatching, self).__init__(Template, Target, fileTempl, fileTarg, param, maxIter_cg, regWeight, affineWeight,
+        super(SurfaceMatchingAtrophy, self).__init__(Template, Target, fileTempl, fileTarg, param, maxIter_cg, regWeight, affineWeight,
                                                               verb, -1, rotWeight, scaleWeight, transWeight, symmetric, testGradient,
                                                               saveFile, False, affine, outputDir)
 
@@ -222,7 +227,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         #     logging.info('var affine: %f %f' %(self.Tsize*(uA[0]-u0[0])/(eps), -vA ))
 
     def  objectiveFunDef(self, at, Afft, withTrajectory = False, withJacobian = False, x0 = None):
-        f = super(SurfaceMatching, self).objectiveFunDef(at, Afft, withTrajectory=True, withJacobian=withJacobian,x0=x0)
+        f = super(SurfaceMatchingAtrophy, self).objectiveFunDef(at, Afft, withTrajectory=True, withJacobian=withJacobian,x0=x0)
         cstr = self.constraintTerm(f[1], at, Afft)
         obj = f[0]+cstr[0]
 
@@ -531,10 +536,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             self.fvInit.updateVertices(self.x0)
 
     def optimizeMatching(self):
-	self.coeffZ = 10.
+        self.coeffZ = 10.
         self.coeffAff = self.coeffAff2
-	grd = self.getGradient(self.gradCoeff)
-	[grd2] = self.dotProduct(grd, [grd])
+        grd = self.getGradient(self.gradCoeff)
+        [grd2] = self.dotProduct(grd, [grd])
 
         self.gradEps = np.sqrt(grd2) / 100
         self.coeffAff = self.coeffAff1

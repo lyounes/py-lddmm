@@ -395,7 +395,7 @@ class Surface:
     def flipFaces(self):
         self.faces = self.faces[:, [0,2,1]]
         self.computeCentersAreas()
-          
+
 
 
     def smooth(self, n=30, smooth=0.1):
@@ -630,7 +630,7 @@ class Surface:
         self.faces = np.int_(Q[self.faces])
 
 
-    def removeDuplicates(self, c=0.0001):
+    def removeDuplicates(self, c=0.0001, verb = False):
         c2 = c ** 2
         N0 = self.vertices.shape[0]
         w = np.zeros(N0, dtype=int)
@@ -646,7 +646,8 @@ class Surface:
             J = J[0]
             # print kj, ' ', J, len(J)
             if (len(J) > 0):
-                logging.info("duplicate: {0:d} {1:d}".format(kj, J[0]))
+                if verb:
+                    logging.info("duplicate: {0:d} {1:d}".format(kj, J[0]))
                 removed[kj] = True
                 w[kj] = J[0]
             else:
@@ -663,7 +664,8 @@ class Surface:
         nj = 0
         for kj in range(Nf):
             if len(set(self.faces[kj,:]))< 3:
-                logging.info('Empty face: {0:d} {1:d}'.format(kj, nj))
+                if verb:
+                    logging.info('Empty face: {0:d} {1:d}'.format(kj, nj))
             else:
                 newf[nj, :] = self.faces[kj, :]
                 #newc[nj] = self.component[kj]
@@ -1372,12 +1374,12 @@ class Surface:
             k=-1
             while k < npoints-1:
                 ln = fbyu.readline().split()
-                k=k+1 ;
+                k=k+1
                 self.vertices[k, 0] = float(ln[0]) 
                 self.vertices[k, 1] = float(ln[1]) 
                 self.vertices[k, 2] = float(ln[2])
                 if len(ln) > 3:
-                    k=k+1 ;
+                    k=k+1
                     self.vertices[k, 0] = float(ln[3])
                     self.vertices[k, 1] = float(ln[4]) 
                     self.vertices[k, 2] = float(ln[5])
@@ -1391,7 +1393,7 @@ class Surface:
                     break
                 #print nfaces, kf, ln
                 for s in ln:
-                    self.faces[kf,j] = int(sp.fabs(int(s)))
+                    self.faces[kf,j] = int(np.fabs(int(s)))
                     j = j+1
                     if j == 3:
                         kf=kf+1

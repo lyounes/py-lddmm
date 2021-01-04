@@ -1,4 +1,5 @@
 import numpy as np
+from scipy import linalg as LA
 from .curves import Curve
 from .surfaces import Surface
 from numba import jit, int64
@@ -107,8 +108,15 @@ class SurfaceSection:
         self.hyperplane = Hyperplane(hyperplane)
         if surf is None:
             self.curve = Curve(curve)
+            self.ComputeHyperplane(curve)
         else:
             self.ComputeIntersection(surf, hyperplane, plot=plot)
+        #self.normals = self.curve.computeUnitVertexNormals()
+        self.normals = np.cross(self.hyperplane.u, self.curve.linel)
+        self.normals /= np.maximum(np.sqrt((self.normals**2).sum(axis=1)), 1e-10)[:, None]
+        self.area = -1
+        self.outer = False
+        self.hypLabel = -1
 
     def ComputeIntersection(self, surf, hyperplane, plot = None):
         if surf.edges is None:
@@ -131,6 +139,13 @@ class SurfaceSection:
         self.hyperplane.u = hyperplane.u
         self.hyperplane.offset = hyperplane.offset
 
+    def ComputeHyperplane(self, c):
+        m = c.vertices.mean(axis=0)
+        vm = c.vertices-m[None, :]
+        S = np.dot(vm.T, vm)
+        l,v = LA.eigh(S, subset_by_index = [0,0])
+        self.hyperplane = Hyperplane(u=v[:,0], offset=(m[:,None]*v).sum())
+
 
 def Surf2SecDist(surf, s, curveDist, curveDist0 = None, plot = None):
     s0 = SurfaceSection(surf=surf, hyperplane=s.hyperplane, plot = plot)
@@ -141,6 +156,80 @@ def Surf2SecDist(surf, s, curveDist, curveDist0 = None, plot = None):
 
 def Surf2SecGrad(surf, s, curveDistGrad):
     s0 = SurfaceSection(surf=surf, hyperplane=s.hyperplane)
-    cgrad = curveDistGrad(s0.curve, s.curve)
-    grad = CurveGrad2Surf(cgrad, surf.vertices, surf.edges, s.hyperplane.u, s.hyperplane.offset)
+    if s0.curve.vertices.size > 0:
+        cgrad = curveDistGrad(s0.curve, s.curve)
+        grad = CurveGrad2Surf(cgrad, surf.vertices, surf.edges, s.hyperplane.u, s.hyperplane.offset)
+    else:
+        grad = np.zeros(surf.vertices.shape)
     return grad
+
+
+def readTargetFromTXT(filename):
+    fv1 = ()
+    with open(filename, 'r') as f:
+        s = f.readline()
+        nc = int(s)
+        for i in range(nc):
+            s = f.readline()
+            npt = int(s)
+            pts = np.zeros((npt,3))
+            for j in range(npt):
+                s = f.readline()
+                pts[j,:] = s.split()
+            c = Curve(pts)
+            fv1 += (SurfaceSection(curve=c),)
+    uo = np.zeros((nc, 4))
+    nh = 0
+    tol = 1e-5
+    hk = np.zeros(4)
+    for k,f in enumerate(fv1):
+        f.area = f.curve.enclosedArea()
+        found = False
+        hk[:3] = f.hyperplane.u
+        hk[3] = f.hyperplane.offset
+        if k > 0:
+            dst = np.sqrt(((hk - uo[:nh, :])**2).sum(axis=1))
+            dst2 = np.sqrt(((hk + uo[:nh, :])**2).sum(axis=1))
+            if dst.min() < tol:
+                i = np.argmin(dst)
+                f.hypLabel = i
+                found = True
+            elif dst2.min() < tol:
+                i = np.argmin(dst)
+                f.hypLabel = i
+                found = True
+        if not found:
+            uo[nh, :] = hk
+            f.hypLabel = nh
+            nh += 1
+    hyperplanes = uo[:nh, :]
+    J = -np.ones(nh, dtype=int)
+    maxArea = np.zeros(nh)
+    for k,f in enumerate(fv1):
+        f.hyperplane.u = uo[f.hypLabel, :3]
+        f.hyperplane.offset = uo[f.hypLabel, 3]
+        f.outer = False
+        if f.area > maxArea[f.hypLabel]:
+            maxArea[f.hypLabel] = f.area
+            J[f.hypLabel] = k
+
+
+
+    for k in range(nh):
+        fv1[J[k]].outer = True
+
+    eps = 1e-4
+    for k,f in enumerate(fv1):
+        c = Curve(curve=f.curve)
+        n = np.zeros(c.vertices.shape)
+        for i in range(c.faces.shape[0]):
+            n[c.faces[i, 0], :] += f.normals[i]/2
+            n[c.faces[i, 1], :] += f.normals[i] / 2
+        c.updateVertices(c.vertices + eps*n)
+        a = np.fabs(c.enclosedArea())
+        if (a > f.area and not f.outer) or \
+                (a < f.area and f.outer):
+            f.curve.flipFaces()
+            f.normals *= -1
+
+    return fv1, hyperplanes

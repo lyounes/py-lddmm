@@ -889,8 +889,89 @@ def applykdiff11and12(x, a1, a2, p, name, scale, order):
 
     return f
 
+# @jit(nopython=True, parallel=True)
+# def applykmat(y, x, beta, name, scale, order):
+#     num_nodes = x.shape[0]
+#     num_nodes_y = y.shape[0]
+#     dimb = beta.shape[2]
+#     f = np.zeros((num_nodes_y, dimb))
+#
+#     wsig = 0
+#     for s in scale:
+#         wsig += s ** KP
+#
+#     if 'gauss' in name:
+#         for k in prange(num_nodes_y):
+#             for l in range(num_nodes):
+#                 ut0 = ((y[k,:] - x[l,:])**2).sum()
+#                 Kh = 0
+#                 for s in scale:
+#                     ut = ut0/s**2
+#                     if ut < 1e-8:
+#                         Kh += s**KP
+#                     else:
+#                         Kh += np.exp(-0.5*ut) * s**KP
+#                 Kh /= wsig
+#                 f[k,:] += Kh * beta[k, l, :]
+#     elif 'lap' in name:
+#         for k in prange(num_nodes_y):
+#             for l in range(num_nodes):
+#                 ut0 = np.sqrt(((y[k, :] - x[l, :]) ** 2).sum())
+#                 Kh = 0
+#                 for s in scale:
+#                     ut = ut0 / s
+#                     if ut < 1e-8:
+#                         Kh = Kh + s**KP
+#                     else:
+#                         Kh += Kh + lapPol(ut, order) * np.exp(-ut) * s**KP
+#                 Kh /= wsig
+#                 f[k,:] += Kh * beta[k,l,:]
+#     return f
+#
+#
+# @jit(nopython=True, parallel=True)
+# def applykdiffmat(y, x, beta, name, scale, order):
+#     num_nodes = x.shape[0]
+#     num_nodes_y = y.shape[0]
+#     dim = x.shape[1]
+#     f = np.zeros((num_nodes_y, dim))
+#
+#     wsig = 0
+#     for s in scale:
+#         wsig += s ** KP
+#
+#     if 'gauss' in name:
+#         for k in prange(num_nodes_y):
+#             for l in range(num_nodes):
+#                 ut0 = ((y[k,:] - x[l,:])**2).sum()
+#                 Kh_diff = 0
+#                 for s in scale:
+#                     ut = ut0/s**2
+#                     if ut < 1e-8:
+#                         Kh_diff -= s**(KP-2)
+#                     else:
+#                         Kh_diff -= np.exp(-0.5*ut)*s**(KP-2)
+#                 Kh_diff /= wsig
+#                 f[k,:] += Kh_diff * (y[k, :] - x[l, :]) * beta[k, l]
+#     elif 'lap' in name:
+#         for k in prange(num_nodes_y):
+#             for l in range(num_nodes):
+#                 ut0 = np.sqrt(((y[k, :] - x[l, :]) ** 2).sum())
+#                 Kh_diff = 0
+#                 for s in scale:
+#                     ut = ut0 / s
+#                     if ut < 1e-8:
+#                         Kh_diff -= lapPolDiff(0, order) * s ** (KP - 2)
+#                     else:
+#                         Kh_diff -= lapPolDiff(ut, order) * np.exp(-ut) * s ** (KP - 2)
+#                 Kh_diff /= wsig
+#                 f[k,:] += Kh_diff * (y[k,:] - x[l,:])*beta[k,l]
+#     return f
+#
+
 @jit(nopython=True, parallel=True)
 def applykmat(y, x, beta, name, scale, order):
+    dim = x.shape[1]
     num_nodes = x.shape[0]
     num_nodes_y = y.shape[0]
     dimb = beta.shape[2]
@@ -902,6 +983,7 @@ def applykmat(y, x, beta, name, scale, order):
 
     if 'gauss' in name:
         for k in prange(num_nodes_y):
+            fk = np.zeros(dimb)
             for l in range(num_nodes):
                 ut0 = ((y[k,:] - x[l,:])**2).sum()
                 Kh = 0
@@ -912,9 +994,11 @@ def applykmat(y, x, beta, name, scale, order):
                     else:
                         Kh += np.exp(-0.5*ut) * s**KP
                 Kh /= wsig
-                f[k,:] += Kh * beta[k, l, :]
+                fk += Kh * beta[k, l, :]
+            f[k,:] = fk
     elif 'lap' in name:
         for k in prange(num_nodes_y):
+            fk = np.zeros(dimb)
             for l in range(num_nodes):
                 ut0 = np.sqrt(((y[k, :] - x[l, :]) ** 2).sum())
                 Kh = 0
@@ -925,7 +1009,8 @@ def applykmat(y, x, beta, name, scale, order):
                     else:
                         Kh += Kh + lapPol(ut, order) * np.exp(-ut) * s**KP
                 Kh /= wsig
-                f[k,:] += Kh * beta[k,l,:]
+                fk += Kh * beta[k,l,:]
+            f[k, :] = fk
     return f
 
 
@@ -942,6 +1027,7 @@ def applykdiffmat(y, x, beta, name, scale, order):
 
     if 'gauss' in name:
         for k in prange(num_nodes_y):
+            fk = np.zeros(dim)
             for l in range(num_nodes):
                 ut0 = ((y[k,:] - x[l,:])**2).sum()
                 Kh_diff = 0
@@ -952,9 +1038,11 @@ def applykdiffmat(y, x, beta, name, scale, order):
                     else:
                         Kh_diff -= np.exp(-0.5*ut)*s**(KP-2)
                 Kh_diff /= wsig
-                f[k,:] += Kh_diff * (y[k, :] - x[l, :]) * beta[k, l]
+                fk += Kh_diff * (y[k, :] - x[l, :]) * beta[k,l]
+            f[k,:] = fk
     elif 'lap' in name:
         for k in prange(num_nodes_y):
+            fk = np.zeros(dim)
             for l in range(num_nodes):
                 ut0 = np.sqrt(((y[k, :] - x[l, :]) ** 2).sum())
                 Kh_diff = 0
@@ -965,6 +1053,7 @@ def applykdiffmat(y, x, beta, name, scale, order):
                     else:
                         Kh_diff -= lapPolDiff(ut, order) * np.exp(-ut) * s ** (KP - 2)
                 Kh_diff /= wsig
-                f[k,:] += Kh_diff * (y[k,:] - x[l,:])*beta[k,l]
+                fk += Kh_diff * (y[k,:] - x[l,:])*beta[k,l]
+            f[k, :] = fk
     return f
 
