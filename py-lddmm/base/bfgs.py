@@ -273,9 +273,9 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
             if it > burnIn:
                 logging.info('Stopping Gradient Descent: small variation')
                 opt.converged = True
+                if hasattr(opt, 'endOfProcedure'):
+                    opt.endOfProcedure()
                 break
-            if hasattr(opt, 'endOfIteration'):
-                opt.endOfIteration()
 
         diffVar = prod(dir0, -eps)
         opt.acceptVarTry()
