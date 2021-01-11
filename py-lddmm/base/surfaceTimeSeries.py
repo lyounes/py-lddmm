@@ -31,7 +31,7 @@ class SurfaceTimeMatching(SurfaceMatching):
                   rescaleTemplate=False, subsampleTargetSize=-1, testGradient=True,  saveFile = 'evolution', outputDir = '.'):
 
         self.rescaleTemplate = rescaleTemplate
-        self.times = times
+        self.times = np.array(times)
         self.nTarg = len(Target)
         super().__init__(Template=Template, Target=Target, param=param, maxIter=maxIter,
                  regWeight = regWeight, affineWeight = affineWeight, internalWeight=internalWeight, verb=verb,
