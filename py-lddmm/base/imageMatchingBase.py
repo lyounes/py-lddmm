@@ -1,17 +1,10 @@
 import os
 import numpy as np
-import numpy.linalg as la
 import logging
-import h5py
 import glob
-from . import conjugateGradient as cg
-from . import bfgs
 from .gridscalars import GridScalars, saveImage
 from .diffeo import DiffeoParam, Diffeomorphism, Kernel
-from .diffeo import multilinInterp, multilinInterpGradient, multilinInterpGradientVectorField, jacobianDeterminant, \
-    multilinInterpDual, imageGradient, idMesh, multilinInterpVectorField
 from skimage.transform import resize as imresize, AffineTransform, EuclideanTransform, warp
-from skimage.feature import corner_harris, corner_peaks, hog as hogFeature
 from .affineBasis import AffineBasis
 from scipy.ndimage.interpolation import affine_transform
 from scipy.optimize import minimize

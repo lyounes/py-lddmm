@@ -190,6 +190,9 @@ def compute(model):
 
     sm = SurfaceMatchingParam(timeStep=0.1, algorithm='cg', KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
                               errorType='varifold', internalCost=internalCost)
+    # weights = np.fabs(ftemp.vertices[:, 2])
+    # weights /= weights.max()
+    # ftemp.updateWeights(weights)
     f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='/Users/younes/Development/Results/'+model+'LDDMM5p0H5000',param=sm,
                         testGradient=True, regWeight = regweight,
                         #subsampleTargetSize = 500,

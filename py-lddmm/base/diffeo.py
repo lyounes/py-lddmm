@@ -1,10 +1,7 @@
 import numpy as np
-from scipy.signal import convolve
 import logging
 import pyfftw
 from numba import prange, jit, int64
-from .gridscalars import GridScalars
-import matplotlib.pyplot as plt
 from multiprocessing import cpu_count
 
 c_ = np.array([[1,0,0,0,0],

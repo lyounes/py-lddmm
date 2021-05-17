@@ -1,13 +1,11 @@
 from . import regularGrid
 from . import semiLagrangian
-from . import diffeomorphisms
 from . import conjugateGradient
 import numpy
 import optparse
 import os
 import shutil
 import logging
-import pdb
 
 class ImageTimeSeries(object):
 

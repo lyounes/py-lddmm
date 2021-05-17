@@ -1,7 +1,6 @@
 from numba import jit, prange
 import numpy as np
 from math import pi, exp, sqrt
-#from .kernelFunctions_fort import kernelfunctions as kff
 from . import kernelFunctions_util as ku
 from scipy.spatial import distance as dfun
 
@@ -336,7 +335,7 @@ def applyDiv_(y, x, a, name, scale, order):
 # w1: weight for linear part; w2: weight for translation part; center: origin
 # dim: dimension
 class KernelSpec:
-    def __init__(self, name='gauss', affine = 'none', sigma = (1.,), order = 10, w1 = 1.0,
+    def __init__(self, name='gauss', affine = 'none', sigma = (1.,), order = 3, w1 = 1.0,
                  w2 = 1.0, dim = 3, center = None, weight = 1.0, localMaps=None):
         self.name = name
         if np.isscalar(sigma):
@@ -512,11 +511,15 @@ class Kernel(KernelSpec):
         return z
 
     # Computes array A(i) = sum_k sum_(j) nabla_1[a1(k,i). K(x(i), x(j))a2(k,j)]
-    def applyDiffKT(self, x, p, a, firstVar=None, regweight=1., lddmm=False, extra_term = None):
+    def applyDiffKT(self, x, p0, a, firstVar=None, regweight=1., lddmm=False, extra_term = None):
         if firstVar is None:
             y = np.copy(x)
         else:
             y = firstVar
+        if lddmm and (extra_term is not None):
+            p = p0 + extra_term
+        else:
+            p = p0
         if self.localMaps:
             if self.localMaps[2] == 'naive':
                 zpx = ku.applylocalk_naivedifft(y ,x , p ,a , self.name, self.sigma ,self.order,
@@ -527,7 +530,7 @@ class Kernel(KernelSpec):
                                            self.localMaps[1], regweight=regweight, lddmm=lddmm)
         else:
             zpx = ku.applyDiffKT(y ,x , p ,a , self.name, self.sigma ,self.order,
-                                 regweight=regweight, lddmm=lddmm, extra_term=extra_term)
+                                 regweight=regweight, lddmm=lddmm)
         if self.affine == 'affine':
             xx = x-self.center
 

@@ -5,8 +5,9 @@ import logging
 import h5py
 import glob
 from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, bfgs
-from . import surfaces
+from . import surfaces, surface_distances as sd
 from . import pointSets
+from . import matchingParam
 from .affineBasis import AffineBasis, getExponential, gradExponential
 from functools import partial
 import matplotlib.pyplot as plt
@@ -20,27 +21,13 @@ from mpl_toolkits.mplot3d import Axes3D
 #      sigmaError: normlization for error term
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
-class SurfaceMatchingParam:
-    def __init__(self, timeStep = .1, algorithm='cg', Wolfe=True, KparDiff = None, KparDist = None, sigmaKernel = 6.5,
-                 sigmaDist = 2.5,
-                 sigmaError = 1.0, errorType = 'measure',  typeKernel='gauss', internalCost = None):
-        self.timeStep = timeStep
-        self.sigmaKernel = sigmaKernel
-        self.sigmaDist = sigmaDist
+class SurfaceMatchingParam(matchingParam.MatchingParam):
+    def __init__(self, timeStep = .1, algorithm='cg', Wolfe=True, KparDiff = None, KparDist = None,
+                 sigmaError = 1.0, errorType = 'measure', internalCost = None):
+        super().__init__(timeStep=timeStep, algorithm = algorithm, Wolfe=Wolfe,
+                         KparDiff = KparDiff, KparDist = KparDist, sigmaError=sigmaError,
+                         errorType = errorType)
         self.sigmaError = sigmaError
-        self.typeKernel = typeKernel
-        self.errorType = errorType
-        self.algorithm = algorithm
-        self.wolfe = Wolfe
-        if KparDiff is None:
-            self.KparDiff = kfun.Kernel(name = self.typeKernel, sigma = self.sigmaKernel)
-        else:
-            self.KparDiff = KparDiff
-        if KparDist is None:
-            #self.KparDist = kfun.Kernel(name = 'laplacian', order=1, sigma = self.sigmaDist)
-            self.KparDist = kfun.Kernel(name = 'gauss', sigma = self.sigmaDist)
-        else:
-            self.KparDist = KparDist
         self.internalCost = internalCost
 
 class Direction:
@@ -146,8 +133,8 @@ class SurfaceMatching(object):
             self.affineWeight[self.affB.transComp] = transWeight
 
         if self.param.internalCost == 'h1':
-            self.internalCost = surfaces.normGrad
-            self.internalCostGrad = surfaces.diffNormGrad
+            self.internalCost = sd.normGrad
+            self.internalCostGrad = sd.diffNormGrad
         else:
             self.internalCost = None
 
@@ -198,19 +185,21 @@ class SurfaceMatching(object):
         self.dim = self.fv0.vertices.shape[1]
 
 
-    def fix_orientation(self):
-        if self.fv1:
+    def fix_orientation(self, fv1=None):
+        if fv1 is None:
+            fv1 = self.fv1
+        if fv1:
             self.fv0.getEdges()
-            self.fv1.getEdges()
-            self.closed = self.fv0.bdry.max() == 0 and self.fv1.bdry.max() == 0
+            fv1.getEdges()
+            self.closed = self.fv0.bdry.max() == 0 and fv1.bdry.max() == 0
             if self.closed:
                 v0 = self.fv0.surfVolume()
                 if self.param.errorType == 'L2Norm' and v0 < 0:
                     self.fv0.flipFaces()
                     v0 = -v0
-                v1 = self.fv1.surfVolume()
+                v1 = fv1.surfVolume()
                 if v0*v1 < 0:
-                    self.fv1.flipFaces()
+                    fv1.flipFaces()
             if self.closed:
                 z= self.fvInit.surfVolume()
                 if z < 0:
@@ -218,7 +207,7 @@ class SurfaceMatching(object):
                 else:
                     self.fv0ori = 1
 
-                z= self.fv1.surfVolume()
+                z= fv1.surfVolume()
                 if z < 0:
                     self.fv1ori = -1
                 else:
@@ -274,26 +263,26 @@ class SurfaceMatching(object):
         self.param.errorType = errorType
         if errorType == 'current':
             #print('Running Current Matching')
-            self.fun_obj0 = partial(surfaces.currentNorm0, KparDist=self.param.KparDist, weight=1.)
-            self.fun_obj = partial(surfaces.currentNormDef, KparDist=self.param.KparDist, weight=1.)
-            self.fun_objGrad = partial(surfaces.currentNormGradient, KparDist=self.param.KparDist, weight=1.)
+            self.fun_obj0 = partial(sd.currentNorm0, KparDist=self.param.KparDist, weight=1.)
+            self.fun_obj = partial(sd.currentNormDef, KparDist=self.param.KparDist, weight=1.)
+            self.fun_objGrad = partial(sd.currentNormGradient, KparDist=self.param.KparDist, weight=1.)
         elif errorType == 'currentMagnitude':
             #print('Running Current Matching')
             self.fun_obj0 = lambda fv1 : 0
-            self.fun_obj = partial(surfaces.currentMagnitude, KparDist=self.param.KparDist)
-            self.fun_objGrad = partial(surfaces.currentMagnitudeGradient, KparDist=self.param.KparDist)
+            self.fun_obj = partial(sd.currentMagnitude, KparDist=self.param.KparDist)
+            self.fun_objGrad = partial(sd.currentMagnitudeGradient, KparDist=self.param.KparDist)
             # self.fun_obj0 = curves.currentNorm0
             # self.fun_obj = curves.currentNormDef
             # self.fun_objGrad = curves.currentNormGradient
         elif errorType=='measure':
             #print('Running Measure Matching')
-            self.fun_obj0 = partial(surfaces.measureNorm0, KparDist=self.param.KparDist)
-            self.fun_obj = partial(surfaces.measureNormDef,KparDist=self.param.KparDist)
-            self.fun_objGrad = partial(surfaces.measureNormGradient,KparDist=self.param.KparDist)
+            self.fun_obj0 = partial(sd.measureNorm0, KparDist=self.param.KparDist)
+            self.fun_obj = partial(sd.measureNormDef,KparDist=self.param.KparDist)
+            self.fun_objGrad = partial(sd.measureNormGradient,KparDist=self.param.KparDist)
         elif errorType=='varifold':
-            self.fun_obj0 = partial(surfaces.varifoldNorm0, KparDist=self.param.KparDist, weight=1.)
-            self.fun_obj = partial(surfaces.varifoldNormDef, KparDist=self.param.KparDist, weight=1.)
-            self.fun_objGrad = partial(surfaces.varifoldNormGradient, KparDist=self.param.KparDist, weight=1.)
+            self.fun_obj0 = partial(sd.varifoldNorm0, KparDist=self.param.KparDist, weight=1.)
+            self.fun_obj = partial(sd.varifoldNormDef, KparDist=self.param.KparDist, weight=1.)
+            self.fun_objGrad = partial(sd.varifoldNormGradient, KparDist=self.param.KparDist, weight=1.)
         elif errorType == 'L2Norm':
             self.fun_obj0 = None
             self.fun_obj = None
@@ -323,7 +312,7 @@ class SurfaceMatching(object):
         if fv1 is None:
             fv1 = self.fv1
         if self.param.errorType == 'L2Norm':
-            obj = surfaces.L2Norm(_fvDef, fv1.vfld) / (self.param.sigmaError ** 2)
+            obj = sd.L2Norm(_fvDef, fv1.vfld) / (self.param.sigmaError ** 2)
         else:
             obj = self.fun_obj(_fvDef, fv1) / (self.param.sigmaError**2)
             if _fvInit is not None:
@@ -473,7 +462,7 @@ class SurfaceMatching(object):
         if endPoint is None:
             endPoint = self.fvDef
         if self.param.errorType == 'L2Norm':
-            px = surfaces.L2NormGradient(endPoint, self.fv1.vfld)
+            px = sd.L2NormGradient(endPoint, self.fv1.vfld)
         else:
             if self.fv1:
                 px = self.fun_objGrad(endPoint, self.fv1)

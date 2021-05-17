@@ -205,7 +205,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         #     vA = np.multiply(dA, AfftTry-Afft).sum()/eps
         #     logging.info('var affine: %f %f' %(self.Tsize*(uA[0]-u0[0])/(eps), -vA ))
 
-    def objectiveFunDef(self, at, Afft, kernel=None, withTrajectory=False, withJacobian=False, fv0=None, regWeight=None):
+    def  objectiveFunDef(self, at, Afft=None, kernel = None, withTrajectory = False, withJacobian=False,
+                         fv0 = None, regWeight = None):
         f = super(SurfaceMatching, self).objectiveFunDef(at, Afft, withTrajectory=True, withJacobian=withJacobian,
                                                          fv0=fv0)
         cstr = self.constraintTerm(f[1], at, Afft)

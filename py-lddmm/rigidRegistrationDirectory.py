@@ -1,4 +1,3 @@
-#!/opt/local/bin/python2.7
 from os import path
 import glob
 import argparse
