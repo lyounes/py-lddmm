@@ -178,6 +178,13 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
 
             grdOld = copyDir(grd)
 
+            if it == 0 or it == burnIn:
+                if gradEps is None:
+                    gradEps = max(0.001 * np.sqrt(grd2), 0.0001)
+                else:
+                    gradEps = max(min(gradEps, 0.001 * np.sqrt(grd2)), 0.0001)
+                logging.info(f'Gradient threshold: {gradEps:.6f}')
+
             if Wolfe:
                 eps *= 2.
                 if eps > 1.:

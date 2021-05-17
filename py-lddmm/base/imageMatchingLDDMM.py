@@ -1,24 +1,11 @@
-import os
 import numpy as np
-import numpy.linalg as la
 import logging
-import h5py
-import glob
 from . import conjugateGradient as cg
 from . import bfgs
 from .gridscalars import GridScalars, saveImage
-from .diffeo import DiffeoParam, Diffeomorphism, Kernel
 from .diffeo import multilinInterp, multilinInterpGradient, multilinInterpGradientVectorField, jacobianDeterminant, \
     multilinInterpDual, imageGradient, idMesh, multilinInterpVectorField
-from skimage.transform import resize as imresize
 from .imageMatchingBase import ImageMatchingParam, ImageMatchingBase
-
-from functools import partial
-import matplotlib
-#matplotlib.use("QT5Agg")
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 
 ## Parameter class for matching

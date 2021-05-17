@@ -1,11 +1,11 @@
 import logging
 import os
 import numpy.linalg as la
-from . import surfaces
+from . import surfaces, surface_distances as sd
 from .pointSets import *
 from . import conjugateGradient as cg, pointEvolution as evol
 from .affineBasis import *
-from .surfaceMatching import SurfaceMatching, SurfaceMatchingParam, Direction
+from .surfaceMatching import SurfaceMatching, Direction
 
 
 
@@ -31,7 +31,10 @@ class SurfaceTimeMatching(SurfaceMatching):
                   rescaleTemplate=False, subsampleTargetSize=-1, testGradient=True,  saveFile = 'evolution', outputDir = '.'):
 
         self.rescaleTemplate = rescaleTemplate
-        self.times = np.array(times)
+        if times is None:
+            self.times = None
+        else:
+            self.times = np.array(times)
         self.nTarg = len(Target)
         super().__init__(Template=Template, Target=Target, param=param, maxIter=maxIter,
                  regWeight = regWeight, affineWeight = affineWeight, internalWeight=internalWeight, verb=verb,
@@ -72,7 +75,7 @@ class SurfaceTimeMatching(SurfaceMatching):
         self.x0try = np.copy(self.fvInit.vertices)
         self.npt = self.fvInit.vertices.shape[0]
         if self.times is None:
-            self.times = 1+np.array(range(self.nTarg))
+            self.times = 1+np.arange(self.nTarg)
         self.Tsize = int(round(self.times[-1]/self.param.timeStep))
         self.jumpIndex = np.round(self.times/self.param.timeStep).astype(int)
         self.isjump = np.zeros(self.Tsize+1, dtype=bool)
@@ -202,7 +205,7 @@ class SurfaceTimeMatching(SurfaceMatching):
             self.obj0 = 0
             for k in range(self.nTarg):
                 if self.param.errorType == 'L2Norm':
-                    self.obj0 += surfaces.L2Norm0(self.fv1[k]) / (self.param.sigmaError ** 2)
+                    self.obj0 += sd.L2Norm0(self.fv1[k]) / (self.param.sigmaError ** 2)
                 else:
                     self.obj0 += self.fun_obj0(self.fv1[k]) / (self.param.sigmaError**2)
                 #foo = surfaces.Surface(surf=self.fvDef[k])
@@ -276,7 +279,7 @@ class SurfaceTimeMatching(SurfaceMatching):
         px = []
         for k in range(self.nTarg):
             if self.param.errorType == 'L2Norm':
-                targGradient = -surfaces.L2NormGradient(endPoint[k], self.fv1[k].vfld)/(self.param.sigmaError**2)
+                targGradient = -sd.L2NormGradient(endPoint[k], self.fv1[k].vfld)/(self.param.sigmaError**2)
             else:
                 if self.fv1:
                     targGradient = -self.fun_objGrad(endPoint[k], self.fv1[k])/(self.param.sigmaError**2)

@@ -119,28 +119,32 @@ def applyK(y, x, a, name, scale, order):
         if name == 'min':
             for k in prange(y.shape[0]):
                 for l in range(x.shape[0]):
-                    u = np.minimum(ys[k,:],xs[l,:])
+                    u = np.minimum(ys[k, :], xs[l, :])
                     #res[k,:] += logcoshK(u)*a[l,:]
                     res[k,:] += ReLUK(u)*a[l,:] *sKP[s]
         elif 'gauss' in name:
             for k in prange(y.shape[0]):
+                resk = np.zeros(a.shape[1])
                 for l in range(x.shape[0]):
                     u = ((ys[k, :] - xs[l, :]) ** 2).sum() / 2
-                    res[k,:] += np.exp(- u) * a[l,:] * sKP[s]
+                    resk += np.exp(- u) * a[l,:] * sKP[s]
+                res[k,:] += resk
         elif 'lap' in name:
             for k in prange(y.shape[0]):
+                resk = np.zeros(a.shape[1])
                 for l in range(x.shape[0]):
                     u = np.sqrt(((ys[k,:] - xs[l,:]) ** 2).sum())
                     u1 = lapPol(u, order)
                     u1 *= np.exp(-u)
                     u1 *= sKP[s]
-                    res[k, :] += u1 *a[l,:]
+                    resk += u1 *a[l,:]
+                res[k,:] += resk
                     #print('a', a[l,:])
     res /= wsig
     return res
 
 @jit(nopython=True, parallel=True)
-def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., lddmm=False, extra_term=None):
+def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., lddmm=False):
     res = np.zeros(y.shape)
     ns = len(scale)
     sKP1 = scale**(KP-1)
@@ -156,8 +160,6 @@ def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., lddmm=False, extra
                         akl = p[k, :] * a[l, :] + a[k, :] * p[l, :] - 2 * regweight * a[k, :] * a[l, :]
                     else:
                         akl = p[k, :] * a[l, :]
-                    if extra_term is not None:
-                        akl += extra_term[k,:] * a[l,:] + extra_term[l,:] * a[k,:]
                     u = np.minimum(ys[k,:],xs[l,:])
                     #res[k, :] += (heaviside(x[k,:]-y[l,:])*a1[k,:]*a2[l,:])*logcoshKDiff(u)/s
                     res[k, :] += (heaviside(xs[l,:]-ys[k,:])*akl)*ReLUKDiff(u)*sKP1[s]
@@ -168,8 +170,6 @@ def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., lddmm=False, extra
                         akl = p[k, :] * a[l, :] + a[k, :] * p[l, :] - 2 * regweight * a[k, :] * a[l, :]
                     else:
                         akl = p[k, :] * a[l, :]
-                    if extra_term is not None:
-                        akl += extra_term[k,:] * a[l,:] + extra_term[l,:] * a[k,:]
                     u = ((ys[k,:]-xs[l,:])**2).sum()/2
                     res[k, :] += (ys[k,:]-xs[l,:]) * (-np.exp(- u) * akl.sum())*sKP1[s]
         elif 'lap' in name:
@@ -179,8 +179,6 @@ def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., lddmm=False, extra
                         akl = p[k, :] * a[l, :] + a[k, :] * p[l, :] - 2 * regweight * a[k, :] * a[l, :]
                     else:
                         akl = p[k, :] * a[l, :]
-                    if extra_term is not None:
-                        akl += extra_term[k,:] * a[l,:] + extra_term[l,:] * a[k,:]
                     u = np.sqrt(((ys[k,:] - xs[l,:]) ** 2).sum())
                     res[k, :] += (ys[k,:]-xs[l,:]) * (-lapPolDiff(u, order) * np.exp(- u) *
                                                     akl.sum())*sKP1[s]
@@ -969,7 +967,7 @@ def applykdiff11and12(x, a1, a2, p, name, scale, order):
 #     return f
 #
 
-@jit(nopython=True, parallel=True)
+@jit(nopython=True, parallel=False)
 def applykmat(y, x, beta, name, scale, order):
     dim = x.shape[1]
     num_nodes = x.shape[0]
@@ -977,40 +975,29 @@ def applykmat(y, x, beta, name, scale, order):
     dimb = beta.shape[2]
     f = np.zeros((num_nodes_y, dimb))
 
-    wsig = 0
-    for s in scale:
-        wsig += s ** KP
+    sKP = scale**KP
+    wsig = sKP.sum()
+    ns = len(scale)
 
-    if 'gauss' in name:
-        for k in prange(num_nodes_y):
-            fk = np.zeros(dimb)
-            for l in range(num_nodes):
-                ut0 = ((y[k,:] - x[l,:])**2).sum()
-                Kh = 0
-                for s in scale:
-                    ut = ut0/s**2
-                    if ut < 1e-8:
-                        Kh += s**KP
-                    else:
-                        Kh += np.exp(-0.5*ut) * s**KP
-                Kh /= wsig
-                fk += Kh * beta[k, l, :]
-            f[k,:] = fk
-    elif 'lap' in name:
-        for k in prange(num_nodes_y):
-            fk = np.zeros(dimb)
-            for l in range(num_nodes):
-                ut0 = np.sqrt(((y[k, :] - x[l, :]) ** 2).sum())
-                Kh = 0
-                for s in scale:
-                    ut = ut0 / s
-                    if ut < 1e-8:
-                        Kh = Kh + s**KP
-                    else:
-                        Kh += Kh + lapPol(ut, order) * np.exp(-ut) * s**KP
-                Kh /= wsig
-                fk += Kh * beta[k,l,:]
-            f[k, :] = fk
+    for s in range(ns):
+        ys = y/scale[s]
+        xs = x/scale[s]
+        if 'gauss' in name:
+            for k in prange(num_nodes_y):
+                fk = np.zeros(dimb)
+                for l in range(num_nodes):
+                    u = ((ys[k,:] - xs[l,:])**2).sum()/2
+                    fk += np.exp(-u)*beta[k,l,:]*sKP[s]
+                f[k,:] += fk
+        elif 'lap' in name:
+            for k in prange(num_nodes_y):
+                fk = np.zeros(dimb)
+                for l in range(num_nodes):
+                    u = np.sqrt(((ys[k, :] - xs[l, :]) ** 2).sum())
+                    u1 = lapPol(u, order) * np.exp(-u) * sKP[s]
+                    fk += u1*beta[k,l,:]
+                f[k, :] += fk
+    f /= wsig
     return f
 
 
@@ -1021,39 +1008,29 @@ def applykdiffmat(y, x, beta, name, scale, order):
     dim = x.shape[1]
     f = np.zeros((num_nodes_y, dim))
 
-    wsig = 0
-    for s in scale:
-        wsig += s ** KP
+    sKP = scale**KP
+    sKP1 = scale**(KP-1)
+    wsig = sKP.sum()
+    ns = len(scale)
 
-    if 'gauss' in name:
-        for k in prange(num_nodes_y):
-            fk = np.zeros(dim)
-            for l in range(num_nodes):
-                ut0 = ((y[k,:] - x[l,:])**2).sum()
-                Kh_diff = 0
-                for s in scale:
-                    ut = ut0/s**2
-                    if ut < 1e-8:
-                        Kh_diff -= s**(KP-2)
-                    else:
-                        Kh_diff -= np.exp(-0.5*ut)*s**(KP-2)
-                Kh_diff /= wsig
-                fk += Kh_diff * (y[k, :] - x[l, :]) * beta[k,l]
-            f[k,:] = fk
-    elif 'lap' in name:
-        for k in prange(num_nodes_y):
-            fk = np.zeros(dim)
-            for l in range(num_nodes):
-                ut0 = np.sqrt(((y[k, :] - x[l, :]) ** 2).sum())
-                Kh_diff = 0
-                for s in scale:
-                    ut = ut0 / s
-                    if ut < 1e-8:
-                        Kh_diff -= lapPolDiff(0, order) * s ** (KP - 2)
-                    else:
-                        Kh_diff -= lapPolDiff(ut, order) * np.exp(-ut) * s ** (KP - 2)
-                Kh_diff /= wsig
-                fk += Kh_diff * (y[k,:] - x[l,:])*beta[k,l]
-            f[k, :] = fk
+    for s in range(ns):
+        ys = y/scale[s]
+        xs = x/scale[s]
+        if 'gauss' in name:
+            for k in prange(num_nodes_y):
+                fk = np.zeros(dim)
+                for l in range(num_nodes):
+                    u = ((ys[k,:] - xs[l,:])**2).sum()/2
+                    fk -= sKP1[s] * np.exp(-u) * (ys[k, :] - xs[l, :]) * beta[k,l]
+                f[k,:] += fk
+        elif 'lap' in name:
+            for k in prange(num_nodes_y):
+                fk = np.zeros(dim)
+                for l in range(num_nodes):
+                    u = np.sqrt(((ys[k, :] - xs[l, :]) ** 2).sum())
+                    u1 = lapPolDiff(u, order) * np.exp(-u) * sKP1[s]
+                    fk -= u1 * (ys[k, :] - xs[l, :]) * beta[k,l]
+                f[k, :] += fk
+    f/=wsig
     return f
 
