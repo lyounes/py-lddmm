@@ -4,9 +4,9 @@ import logging
 from . import pointEvolution as evol
 from .surfaces import Surface
 from .curves import Curve
-from .curves import measureNorm0, measureNormDef, measureNormGradient
-from .curves import currentNorm0, currentNormDef, currentNormGradient
-from .curves import varifoldNorm0, varifoldNormDef, varifoldNormGradient
+from .curve_distances import measureNorm0, measureNormDef, measureNormGradient
+from .curve_distances import currentNorm0, currentNormDef, currentNormGradient
+from .curve_distances import varifoldNorm0, varifoldNormDef, varifoldNormGradient
 from . import pointSets
 from functools import partial
 import matplotlib.pyplot as plt
@@ -92,14 +92,40 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         else:
             self.fv0 = Surface(surf=Template)
 
+        fv1 = None
 
         if type(Target) in (list, tuple):
-            self.fv1 = Target
+            if type(Target[0]) == str:
+                fv1, self.hyperplanes = readTargetFromTXT(Target)
+            else:
+                self.fv1 = Target
         elif type(Target) == str:
-            self.fv1, self.hyperplanes = readTargetFromTXT(Target)
+            fv1, self.hyperplanes = readTargetFromTXT(Target)
         else:
             logging.error('Target must be a list or tuple of SurfaceSection')
             return
+
+        if fv1 is not None:
+            c = []
+            found_h = np.zeros(len(fv1), dtype=bool)
+            for k in range(self.hyperplanes.shape[0]):
+                c.append([])
+                for i in range(len(fv1)):
+                    if not found_h[i]:
+                        u = min(np.fabs(self.hyperplanes[k, :3] - fv1[i].hyperplane.u).sum()
+                                + np.fabs(self.hyperplanes[k, 3] - fv1[i].hyperplane.offset),
+                                np.fabs(self.hyperplanes[k, :3] + fv1[i].hyperplane.u).sum()
+                                + np.fabs(self.hyperplanes[k, 3] + fv1[i].hyperplane.offset))
+                        if u<1e-2:
+                            c[k].append(fv1[i].curve)
+                            found_h[i] = True
+
+            self.fv1 = []
+            for i in range(len(c)):
+                cv = Curve(curve=c[i])
+                h = Hyperplane(u=self.hyperplanes[i,:3], offset=self.hyperplanes[3])
+                self.fv1.append(SurfaceSection(curve=cv, hyperplane=h, hypLabel=i))
+
         if select_planes is not None:
             self.selectPlanes((select_planes))
         self.fvInit = Surface(surf=self.fv0)

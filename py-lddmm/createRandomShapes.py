@@ -4,7 +4,6 @@ import numpy as np
 import scipy.linalg as la
 import vtk
 from base import diffeo
-from vtk.util import numpy_support
 
 def compute():
     fv0 = Surface(filename='/Users/younes/Development/Data/sculptris/shape1.obj')

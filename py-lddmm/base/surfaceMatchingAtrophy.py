@@ -226,8 +226,10 @@ class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
         #     vA = np.multiply(dA, AfftTry-Afft).sum()/eps
         #     logging.info('var affine: %f %f' %(self.Tsize*(uA[0]-u0[0])/(eps), -vA ))
 
-    def  objectiveFunDef(self, at, Afft, withTrajectory = False, withJacobian = False, x0 = None):
-        f = super(SurfaceMatchingAtrophy, self).objectiveFunDef(at, Afft, withTrajectory=True, withJacobian=withJacobian,x0=x0)
+    def  objectiveFunDef(self, at, Afft=None, withTrajectory = False, withJacobian = False, fv0 = None, kernel=None,
+                         regWeight=None):
+        f = super(SurfaceMatchingAtrophy, self).objectiveFunDef(at, Afft=Afft, withTrajectory=True,
+                                                                withJacobian=withJacobian, fv0=fv0)
         cstr = self.constraintTerm(f[1], at, Afft)
         obj = f[0]+cstr[0]
 
@@ -266,11 +268,14 @@ class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
             AfftTry = self.Afft - eps * dir.aff
         else:
             AfftTry = []
+
+        fv0 = surfaces.Surface(surf=self.fv0)
         if self.symmetric:
-            x0Try = self.x0 - eps * dir.initx
+            x0Try = self.x0 - eps * dr.initx
+            fv0.updateVertices(x0Try)
         else:
-            x0Try = self.x0
-        foo = self.objectiveFunDef(atTry, AfftTry, x0 = x0Try, withTrajectory=True)
+            x0Try = None
+        foo = self.objectiveFunDef(atTry, AfftTry, fv0 = fv0, withTrajectory=True)
         objTry = 0
 
         ff = surfaces.Surface(surf=self.fvDef)

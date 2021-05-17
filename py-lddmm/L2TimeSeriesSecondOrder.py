@@ -30,7 +30,8 @@ def compute(tmpl, targetDir, outputDir, display=True, geodesic=False, rescale=Fa
     #print fv
     ## Object kernel
     K1 = Kernel(name='laplacian', sigma = 2.5, order=4)
-    sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=2.5, sigmaError=.1, errorType='L2Norm')
+    sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, KparDist=('gauss', 2.5),
+                                              sigmaError=.1, errorType='L2Norm')
     if geodesic:
         logging.info('Running Geodesic Regression')
         f = match.SurfaceMatching(Template=fv0, fileTarg=fv, outputDir=outputDir, param=sm, regWeight=.1, typeRegression='geodesic',

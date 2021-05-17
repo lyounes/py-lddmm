@@ -1,7 +1,5 @@
-#from numpy import (sin, cos, sqrt, nonzero, pi)
 import matplotlib
 matplotlib.use("TKAgg")
-import numpy as np
 from base.surfaces import Surface
 from base.kernelFunctions import *
 from base.surfaceWithIsometries import *

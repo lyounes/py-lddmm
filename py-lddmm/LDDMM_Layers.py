@@ -1,9 +1,5 @@
-import numpy as np
-import numpy.linalg as la
 import logging
 from base import surfaces
-from base import pointSets
-# import pointEvolution_fort as evol_omp
 from base import conjugateGradient as cg ,kernelFunctions as kfun ,pointEvolution as evol ,loggingUtils ,bfgs
 from base.surfaceMatchingNormalExtremities import SurfaceMatching
 from base.surfaceMatching import SurfaceMatchingParam

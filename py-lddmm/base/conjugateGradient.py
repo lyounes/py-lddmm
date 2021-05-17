@@ -199,7 +199,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
             if objTry > obj:
                 #fprintf(1, 'iteration %d: obj = %.5f, eps = %.5f\n', it, objTry, eps) ;
                 if not forceLineSearch:
-                    epsSmall = np.minimum(1e-6/(grdTry), epsMin)
+                    epsSmall = np.maximum(1e-6/(grdTry), epsMin)
                     #print 'Testing small variation, eps = {0: .10f}'.format(epsSmall)
                     objTry0 = opt.updateTry(dir0, epsSmall, obj)
                 else:

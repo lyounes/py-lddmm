@@ -1,7 +1,6 @@
 import numpy as np
 from . import gaussianDiffeons as gd
 import numpy.linalg as LA
-#from . import pointEvolution_fort as pfor
 from . import affineBasis
 
 
@@ -1114,6 +1113,8 @@ def secondOrderEvolution(x0, a0, rhot, KparDiff, timeStep, withJacobian=False, w
         b = affine[1]
     else:
         aff_=False
+        A = None
+        b = None
     if not (withPointSet is None):
         simpleOutput = False
         K = withPointSet.shape[0]
@@ -1132,7 +1133,7 @@ def secondOrderEvolution(x0, a0, rhot, KparDiff, timeStep, withJacobian=False, w
         #print 'evolution v:', np.sqrt((v**2).sum(axis=1)).sum()/v.shape[0]
         rho = np.squeeze(rhot[k,:,:])
         zx = KparDiff.applyK(x, a)
-        za = -KparDiff.applyDiffKT(x, a[np.newaxis,...], a[np.newaxis,...]) + rho
+        za = -KparDiff.applyDiffKT(x, a, a) + rho
         if aff_:
             #U = np.eye(dim) + timeStep * A[k]
             U = affineBasis.getExponential(timeStep * A[k])
@@ -1150,11 +1151,11 @@ def secondOrderEvolution(x0, a0, rhot, KparDiff, timeStep, withJacobian=False, w
             else:
                 zt[k+1, :, :] = z + timeStep * zx  
             if withJacobian:
-                Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(x, a, firstVar=z)
+                Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(x, a, firstVar=z).ravel()
                 if aff_:
                     Jt[k+1, :] += timeStep * (np.trace(A[k]))
         elif withJacobian:
-            Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(z, a)
+            Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(z, a).ravel()
             if aff_:
                 Jt[k+1, :] += timeStep * (np.trace(A[k]))
     if simpleOutput:

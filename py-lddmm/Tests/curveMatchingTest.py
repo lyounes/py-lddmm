@@ -1,3 +1,6 @@
+from sys import path as sys_path
+sys_path.append('..')
+sys_path.append('../base')
 import numpy as np
 #import curves
 from base.curves import Curve, remesh
@@ -8,14 +11,16 @@ import matplotlib
 matplotlib.use("qt5agg")
 import matplotlib.pyplot as plt
 
-
-def compute(model='default', dirOut='/cis/home/younes'):
+model = 'cardioid'
+def compute(model='default', dirOut='../Output/curveMatchingTest/'):
 
     sigma = 0.5
     sigmaDist = 0.5 
     sigmaError = 0.1
     regweight = 1
-    internalWeight = 1000        
+    affine = None
+    internalWeight = 1000
+    internalCost = 'h1AlphaInvariant'
     if model == 'smile':
         s = 0.025
         t = np.arange(0, 10+1e-3, s)        
@@ -119,10 +124,24 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v[:,0] = x0 + np.cos(theta[k])*t
             v[:,1] = y0 + np.sin(theta[k])*t
             ftarg.append(Curve(curve=(f,v)))
-        sigma = 0.2
-        sigmaDist = 2.5 
-        sigmaError = 0.1
-        internalWeight = 250        
+
+        f = np.zeros([nrays,2], dtype=int)
+        f[0:nrays-1,0] = range(0, nrays-1)
+        f[0:nrays-1,1] = range(1, nrays)
+        f[nrays-1,0] = nrays-1
+        f[nrays-1,1] = 0
+        v = np.zeros([nrays,2])
+        for k in range(nrays):
+            v[k,0] = x0 + np.cos(theta[k])*t[0]
+            v[k,1] = y0 + np.sin(theta[k])*t[0]
+        ftarg.append(Curve(curve=(f,v)))
+
+
+        sigma = 1.0
+        sigmaDist = 1.5
+        sigmaError = .1
+        internalWeight = 500
+        internalCost = 'h1'
     elif model == '3Drays':
         nrays = 10
         t = np.arange(2, 5, 0.25)
@@ -201,19 +220,10 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v[:,1] = y0 + r*(t)*np.sin(st+theta[k])
             v[:,2] = z0 + a*st
             ftarg.append(Curve(curve=(f,v)))
-        sigma = 0.1
+        sigma = 0.5
         sigmaDist = 0.5 
         sigmaError = 0.1
-        internalWeight = 500        
-    elif model == 'atlasSections':
-        fv01 = Curve(curve='/cis/home/younes/MorphingData/Mostofskycurves/atlas04_curve01.txt')
-        fv02 = Curve(curve='/cis/home/younes/MorphingData/Mostofskycurves/atlas04_curve02.txt')
-        fv03 = Curve(curve='/cis/home/younes/MorphingData/Mostofskycurves/atlas04_curve03.txt')
-        fv11 = Curve(curve='/cis/home/younes/MorphingData/Mostofskycurves/atlas09_curve01.txt')
-        fv12 = Curve(curve='/cis/home/younes/MorphingData/Mostofskycurves/atlas09_curve02.txt')
-        fv13 = Curve(curve='/cis/home/younes/MorphingData/Mostofskycurves/atlas09_curve03.txt')
-        ftemp = [fv01, fv02, fv03]
-        ftarg = [fv11, fv12, fv13]
+        internalWeight = 500
     elif model == 'ellipses':
         N = 100
         [x,y] = np.mgrid[0:2*N, 0:2*N]/float(N)
@@ -288,33 +298,19 @@ def compute(model='default', dirOut='/cis/home/younes'):
         sigmaDist = 2.0
         sigmaError = 0.1
         internalWeight = 250
-    elif model=='letters':
-        ftemp = Curve(curve='/Users/younes/Development/Data/letter1tmpl2.vtk', c=.1)
-        ftarg = Curve(curve='/Users/younes/Development/Data/letter1targ2.vtk', c=.1)
-        # ftemp.saveVTK('/Users/younes/Development/Data/letter1tmpl2.vtk')
-        # ftarg.saveVTK('/Users/younes/Development/Data/letter1targ2.vtk')
-        sigma = 0.5
-        sigmaDist = 2.0
-        sigmaError = 0.5
-        internalWeight = 100.
-        regweight = 0.1
     else:
         return
 
-    ## Object kernel
-    # weights = np.fabs(ftemp.vertices[:, 1])
-    # weights /= weights.max()
-    # ftemp.updateWeights(weights)
     K1 = Kernel(name='laplacian', sigma = sigma)
-    loggingUtils.setup_default_logging(dirOut + '/Development/Results/curveMatching', fileName='info.txt',
+    loggingUtils.setup_default_logging(dirOut + '../Output', fileName='info.txt',
                                        stdOutput = True)   
-    sm = CurveMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
-                            algorithm='cg', errorType='varifold', internalCost='h1AlphaInvariant')
+    sm = CurveMatchingParam(timeStep=0.1, KparDiff=K1, KparDist=('laplacian', sigmaDist), sigmaError=sigmaError,
+                            algorithm='cg', errorType='varifold', internalCost=internalCost)
     f = CurveMatching(Template=ftemp, Target=ftarg,
-                      outputDir=dirOut+'/Development/Results/curveMatching'+model+'HLDDMM_0p2_nocomp25',
-                      param=sm, testGradient=True,saveRate=50,
-                      regWeight=regweight, internalWeight=internalWeight, maxIter=10000, affine='none',
-                      rotWeight=1, transWeight = 1, scaleWeight=100., affineWeight=100.)
+                      outputDir=dirOut+'/'+model,
+                      param=sm, testGradient=False,saveRate=50,
+                      regWeight=regweight, internalWeight=internalWeight, maxIter=10000, affine=affine,
+                      rotWeight=10, transWeight = 10, scaleWeight=100., affineWeight=100.)
  
     f.optimizeMatching()
 
@@ -323,7 +319,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
     
 if __name__=="__main__":
     plt.ion()
-    compute(model='letters', dirOut='/Users/younes')
+    compute(model=model, dirOut='../Output')
     plt.ioff()
     plt.show()
 

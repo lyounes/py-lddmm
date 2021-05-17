@@ -1,3 +1,6 @@
+from sys import path as sys_path
+sys_path.append('..')
+sys_path.append('../base')
 from base.surfaceExamples import Sphere, Heart
 import os
 from base.surfaces import Surface
@@ -49,15 +52,23 @@ plane = ['HorAll']
 #fv0 = Surface(surf='/Users/younes/Development/Data/Cardiac/Data_tagplane_taglines/tagplaneDataHor1/tagplaneHor1.vtk')
 
 fv0 = []
+p_lax = 'SA50_43R_20180102_PRE-2018-01-05_JW_Tagplane_LAX_ALL'
+p_sax = 'SA50_43R_20180102_PRE-2018-01-05_JW_Tagplane_SAX_ALL'
+fv0_ = Surface(surf=folder + p_lax + '/TagplaneLong.vtk')
+fv0_ = fv0_.connected_components(split=True)
+fv0 += fv0_
+fv0_ = Surface(surf=folder + p_sax + '/TagplaneShort.vtk')
+fv0_ = fv0_.connected_components(split=True)
+fv0 += fv0_
 
-for p in plane:
-    fv0_ =Surface(surf=folder + 'tagplaneData'+p + '/tagplane' + p + '.vtk')
-    # weights = np.fabs(fv0_.vertices[:, 2])
-    # weights /= weights.max()
-    # fv0_.updateWeights(weights)
-    # fv0_.weights = np.ones(fv0_.weights.shape)
-    fv0_ = fv0_.connected_components(split = True)
-    fv0 += fv0_
+# for p in plane:
+#     fv0_ =Surface(surf=folder + 'tagplaneData'+p + '/tagplane' + p + '.vtk')
+#     # weights = np.fabs(fv0_.vertices[:, 2])
+#     # weights /= weights.max()
+#     # fv0_.updateWeights(weights)
+#     # fv0_.weights = np.ones(fv0_.weights.shape)
+#     fv0_ = fv0_.connected_components(split = True)
+#     fv0 += fv0_
 #fv0.flipFaces()
 ntarg = 15
 outputDir = '/Users/younes/Development/Results/Sections/MouseTime_temp_all'
@@ -69,8 +80,10 @@ if not os.access(outputDir, os.W_OK):
 
 for ti in range(1, 15):
     target = ()
-    for p in plane:
-        target += (folder + 'tagplaneData' + p +  f'/curves_phase{ti:02d}.txt',)
+    target += (folder + p_lax + f'/curves_phase{ti:02d}.txt',)
+    target += (folder + p_sax + f'/curves_phase{ti:02d}.txt',)
+    # for p in plane:
+    #     target += (folder + 'tagplaneData' + p +  f'/curves_phase{ti:02d}.txt',)
     # target = '/Users/younes/Development/Data/Cardiac/Sample_SAX_LAX_murine/' +\
     #          f'SA51_D00_Corrected_Orientation_20201220T18/SA51_extracted_SAX_LAX_time{ti+1:02d}Rigid_flipped.txt'
     #
@@ -92,7 +105,7 @@ for ti in range(1, 15):
 
     K1 = Kernel(name='laplacian', sigma=sigmaKernel)
 
-    sm = SurfaceMatchingParam(timeStep=0.1, algorithm='cg', KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
+    sm = SurfaceMatchingParam(timeStep=0.1, algorithm='cg', KparDiff=K1, KparDist=('gauss', sigmaDist), sigmaError=sigmaError,
                               errorType=errorType, internalCost=internalCost)
     f = SurfaceToSectionsMatching(Template=fv0, Target= target,
                         outputDir=f'/Users/younes/Development/Results/Sections/MouseTime{ti:02d}_temp', param=sm,
