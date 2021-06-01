@@ -12,7 +12,7 @@ from functools import partial
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from .surfaceMatching import SurfaceMatchingParam, SurfaceMatching
-from .surfaceSection import SurfaceSection, Surf2SecDist, Surf2SecGrad, Hyperplane, readTargetFromTXT
+from .surfaceSection import SurfaceSection, Surf2SecDist, Surf2SecGrad, Hyperplane, readFromTXT
 
 
 
@@ -37,7 +37,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
                  regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
                  subsampleTargetSize=-1, affineOnly = False,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
-                 testGradient=True, saveFile = 'evolution', select_planes = None,
+                 testGradient=True, saveFile = 'evolution', select_planes = None, forceClosed = False,
                  saveTrajectories = False, affine = 'none', outputDir = '.',pplot=True):
         if param is None:
             self.param = SurfaceMatchingParam()
@@ -62,6 +62,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         self.obj = 0
         self.xt = None
         self.hyperplanes = None
+        self.forceClosed = forceClosed
 
         self.set_fun(self.param.errorType)
         self.set_template_and_target(Template, Target, subsampleTargetSize, select_planes)
@@ -96,35 +97,35 @@ class SurfaceToSectionsMatching(SurfaceMatching):
 
         if type(Target) in (list, tuple):
             if type(Target[0]) == str:
-                fv1, self.hyperplanes = readTargetFromTXT(Target)
+                self.fv1, self.hyperplanes = readFromTXT(Target, forceClosed=self.forceClosed)
             else:
                 self.fv1 = Target
         elif type(Target) == str:
-            fv1, self.hyperplanes = readTargetFromTXT(Target)
+            self.fv1, self.hyperplanes = readFromTXT(Target, forceClosed=self.forceClosed)
         else:
             logging.error('Target must be a list or tuple of SurfaceSection')
             return
 
-        if fv1 is not None:
-            c = []
-            found_h = np.zeros(len(fv1), dtype=bool)
-            for k in range(self.hyperplanes.shape[0]):
-                c.append([])
-                for i in range(len(fv1)):
-                    if not found_h[i]:
-                        u = min(np.fabs(self.hyperplanes[k, :3] - fv1[i].hyperplane.u).sum()
-                                + np.fabs(self.hyperplanes[k, 3] - fv1[i].hyperplane.offset),
-                                np.fabs(self.hyperplanes[k, :3] + fv1[i].hyperplane.u).sum()
-                                + np.fabs(self.hyperplanes[k, 3] + fv1[i].hyperplane.offset))
-                        if u<1e-2:
-                            c[k].append(fv1[i].curve)
-                            found_h[i] = True
-
-            self.fv1 = []
-            for i in range(len(c)):
-                cv = Curve(curve=c[i])
-                h = Hyperplane(u=self.hyperplanes[i,:3], offset=self.hyperplanes[3])
-                self.fv1.append(SurfaceSection(curve=cv, hyperplane=h, hypLabel=i))
+        # if fv1 is not None:
+        #     c = []
+        #     found_h = np.zeros(len(fv1), dtype=bool)
+        #     for k in range(self.hyperplanes.shape[0]):
+        #         c.append([])
+        #         for i in range(len(fv1)):
+        #             if not found_h[i]:
+        #                 u = min(np.fabs(self.hyperplanes[k, :3] - fv1[i].hyperplane.u).sum()
+        #                         + np.fabs(self.hyperplanes[k, 3] - fv1[i].hyperplane.offset),
+        #                         np.fabs(self.hyperplanes[k, :3] + fv1[i].hyperplane.u).sum()
+        #                         + np.fabs(self.hyperplanes[k, 3] + fv1[i].hyperplane.offset))
+        #                 if u<1e-2:
+        #                     c[k].append(fv1[i].curve)
+        #                     found_h[i] = True
+        #
+        #     self.fv1 = []
+        #     for i in range(len(c)):
+        #         cv = Curve(curve=c[i])
+        #         h = Hyperplane(u=self.hyperplanes[i,:3], offset=self.hyperplanes[3])
+        #         self.fv1.append(SurfaceSection(curve=cv, hyperplane=h, hypLabel=i))
 
         if select_planes is not None:
             self.selectPlanes((select_planes))
@@ -134,11 +135,19 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         if self.fv1:
             outCurve = ()
             normals = np.zeros((0,3))
+            npt = 0
             for k,f in enumerate(self.fv1):
+                npt += f.curve.vertices.shape[0]
                 outCurve += (f.curve,)
                 normals = np.concatenate((normals, f.normals), axis=0)
+            labels = np.zeros(npt, dtype=int)
+            npt = 0
+            for k,f in enumerate(self.fv1):
+                npt2 = npt + f.curve.vertices.shape[0]
+                labels[npt:npt2] = k+1
+                npt = npt2
             c = Curve(outCurve)
-            c.saveVTK(self.outputDir+f'/TargetCurves.vtk', cell_normals=normals)
+            c.saveVTK(self.outputDir+f'/TargetCurves.vtk', cell_normals=normals, scalars=labels, scal_name='labels')
         self.dim = self.fv0.vertices.shape[1]
 
     def selectPlanes(self, hs):
@@ -321,13 +330,21 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         if self.iter % self.saveRate == 0:
             outCurve = ()
             normals = np.zeros((0,3))
+            npt = 0
             for k in range(self.hyperplanes.shape[0]):
                 h = Hyperplane(u=self.hyperplanes[k,:3], offset=self.hyperplanes[k,3])
                 f2 = SurfaceSection(hyperplane=h, surf=self.fvDef)
+                npt += f2.curve.vertices.shape[0]
                 outCurve += (f2.curve,)
                 normals = np.concatenate((normals, f2.normals), axis=0)
+            labels = np.zeros(npt, dtype=int)
+            npt = 0
+            for k,f in enumerate(self.fv1):
+                npt2 = npt + f.curve.vertices.shape[0]
+                labels[npt:npt2] = k+1
+                npt = npt2
             c = Curve(outCurve)
-            c.saveVTK(self.outputDir+f'/DeformedCurves.vtk', cell_normals=normals)
+            c.saveVTK(self.outputDir+f'/DeformedCurves.vtk', cell_normals=normals, scalars=labels, scal_name='labels')
 
 
 

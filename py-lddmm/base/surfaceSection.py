@@ -140,7 +140,7 @@ class SurfaceSection:
             ax.set_zlim(lim1[2][0], lim1[2][1])
             fig.canvas.flush_events()
 
-        # self.curve.removeDuplicates()
+        #self.curve.removeDuplicates()
         # self.curve.orientEdges()
         self.hyperplane.u = hyperplane.u
         self.hyperplane.offset = hyperplane.offset
@@ -170,16 +170,18 @@ def Surf2SecGrad(surf, s, curveDistGrad):
     return grad
 
 
-def readTargetFromTXT(filename0, check_orientation = True, find_outer=True):
+def readFromTXT(filename0, check_orientation = True, find_outer=True, merge_planes=True, forceClosed = False):
     if type(filename0) == str:
         filename0 = (filename0,)
     fv1_ = ()
     hyperplane_ = np.zeros((0,4))
+    nc_ = 0
+    fv1 = ()
     for filename in filename0:
-        fv1 = ()
         with open(filename, 'r') as f:
             s = f.readline()
             nc = int(s)
+            nc_ += nc
             for i in range(nc):
                 s = f.readline()
                 npt = int(s)
@@ -189,65 +191,86 @@ def readTargetFromTXT(filename0, check_orientation = True, find_outer=True):
                     pts[j,:] = s.split()
                 ds = np.sqrt(((pts[1:, :] - pts[:-1,:])**2).sum(axis=1))
                 u = np.sqrt(((pts[0, :] - pts[-1,:])**2).sum())
-                isOpen = u > 2 * ds.max()
+                isOpen = u > 2 * ds.max() and not forceClosed
                 c = Curve(pts, isOpen=isOpen)
                 fv1 += (SurfaceSection(curve=c),)
-        uo = np.zeros((nc, 4))
-        nh = 0
-        tol = 1e-3
-        hk = np.zeros(4)
+    uo = np.zeros((nc_, 4))
+    nh = 0
+    tol = 1e-3
+    hk = np.zeros(4)
+    for k,f in enumerate(fv1):
+        f.area = f.curve.enclosedArea()
+        found = False
+        hk[:3] = f.hyperplane.u
+        hk[3] = f.hyperplane.offset
+        if k > 0:
+            dst = np.sqrt(((hk - uo[:nh, :])**2).sum(axis=1))
+            dst2 = np.sqrt(((hk + uo[:nh, :])**2).sum(axis=1))
+            if dst.min() < tol:
+                i = np.argmin(dst)
+                f.hypLabel = i
+                found = True
+            elif dst2.min() < tol:
+                i = np.argmin(dst2)
+                f.hypLabel = i
+                found = True
+        if not found:
+            uo[nh, :] = hk
+            f.hypLabel = nh
+            nh += 1
+    hyperplanes = uo[:nh, :]
+    if find_outer:
+        J = -np.ones(nh, dtype=int)
+        maxArea = np.zeros(nh)
         for k,f in enumerate(fv1):
-            f.area = f.curve.enclosedArea()
-            found = False
-            hk[:3] = f.hyperplane.u
-            hk[3] = f.hyperplane.offset
-            if k > 0:
-                dst = np.sqrt(((hk - uo[:nh, :])**2).sum(axis=1))
-                dst2 = np.sqrt(((hk + uo[:nh, :])**2).sum(axis=1))
-                if dst.min() < tol:
-                    i = np.argmin(dst)
-                    f.hypLabel = i
-                    found = True
-                elif dst2.min() < tol:
-                    i = np.argmin(dst)
-                    f.hypLabel = i
-                    found = True
-            if not found:
-                uo[nh, :] = hk
-                f.hypLabel = nh
-                nh += 1
-        hyperplanes = uo[:nh, :]
-        if find_outer:
-            J = -np.ones(nh, dtype=int)
-            maxArea = np.zeros(nh)
-            for k,f in enumerate(fv1):
-                f.hyperplane.u = uo[f.hypLabel, :3]
-                f.hyperplane.offset = uo[f.hypLabel, 3]
-                f.outer = False
-                if f.area > maxArea[f.hypLabel]:
-                    maxArea[f.hypLabel] = f.area
-                    J[f.hypLabel] = k
-            for k in range(nh):
-                fv1[J[k]].outer = True
-            if check_orientation:
-                eps = 1e-4
-                for k, f in enumerate(fv1):
-                    c = Curve(curve=f.curve)
-                    n = np.zeros(c.vertices.shape)
-                    for i in range(c.faces.shape[0]):
-                        n[c.faces[i, 0], :] += f.normals[i] / 2
-                        n[c.faces[i, 1], :] += f.normals[i] / 2
-                    c.updateVertices(c.vertices + eps * n)
-                    a = np.fabs(c.enclosedArea())
-                    if (a > f.area and not f.outer) or \
-                            (a < f.area and f.outer):
-                        f.curve.flipFaces()
-                        f.normals *= -1
-        else:
-            for f in fv1:
-                f.outer=False
+            f.hyperplane.u = uo[f.hypLabel, :3]
+            f.hyperplane.offset = uo[f.hypLabel, 3]
+            f.outer = False
+            if f.area > maxArea[f.hypLabel]:
+                maxArea[f.hypLabel] = f.area
+                J[f.hypLabel] = k
+        for k in range(nh):
+            fv1[J[k]].outer = True
+        if check_orientation:
+            eps = 1e-4
+            for k, f in enumerate(fv1):
+                c = Curve(curve=f.curve)
+                n = np.zeros(c.vertices.shape)
+                for i in range(c.faces.shape[0]):
+                    n[c.faces[i, 0], :] += f.normals[i] / 2
+                    n[c.faces[i, 1], :] += f.normals[i] / 2
+                c.updateVertices(c.vertices + eps * n)
+                a = np.fabs(c.enclosedArea())
+                if (a > f.area and not f.outer) or \
+                        (a < f.area and f.outer):
+                    f.curve.flipFaces()
+                    f.normals *= -1
+    else:
+        for f in fv1:
+            f.outer=False
 
-        fv1_ += fv1
-        hyperplane_ = np.concatenate((hyperplane_, hyperplanes), axis=0)
+    if merge_planes:
+        c = []
+        found_h = np.zeros(len(fv1), dtype=bool)
+        for k in range(hyperplanes.shape[0]):
+            c.append([])
+            for i in range(len(fv1)):
+                if not found_h[i]:
+                    u = min(np.fabs(hyperplanes[k, :3] - fv1[i].hyperplane.u).sum()
+                            + np.fabs(hyperplanes[k, 3] - fv1[i].hyperplane.offset),
+                            np.fabs(hyperplanes[k, :3] + fv1[i].hyperplane.u).sum()
+                            + np.fabs(hyperplanes[k, 3] + fv1[i].hyperplane.offset))
+                    if u<1e-2:
+                        c[k].append(fv1[i].curve)
+                        found_h[i] = True
 
-    return fv1_, hyperplane_
+        fv1 = []
+        for i in range(len(c)):
+            cv = Curve(curve=c[i])
+            h = Hyperplane(u=hyperplanes[i,:3], offset=hyperplanes[3])
+            fv1.append(SurfaceSection(curve=cv, hyperplane=h, hypLabel=i))
+
+    #fv1_ += fv1
+    #hyperplane_ = np.concatenate((hyperplane_, hyperplanes), axis=0)
+
+    return fv1, hyperplanes

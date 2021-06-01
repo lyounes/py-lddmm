@@ -51,7 +51,7 @@ class vtkFields:
 class Surface:
     def __init__(self, surf=None, weights=None):
         if type(surf) in (list, tuple):
-            if type(surf[0]) is Surface:
+            if isinstance(surf[0], Surface):
                 self.concatenate(surf)
             elif type(surf[0]) is str:
                 fvl = []
@@ -300,44 +300,44 @@ class Surface:
 
     # computes the signed distance function in a small neighborhood of a shape 
     def LocalSignedDistance(self, data, value):
-        d2 = 2*np.array(data >= value) - 1
+        d2 = 2 * np.array(data >= value) - 1
         c2 = np.cumsum(d2, axis=0)
         for j in range(2):
-            c2 = np.cumsum(c2, axis=j+1)
+            c2 = np.cumsum(c2, axis=j + 1)
         (n0, n1, n2) = c2.shape
 
         rad = 3
-        diam = 2*rad+1
-        (x,y,z) = np.mgrid[-rad:rad+1, -rad:rad+1, -rad:rad+1]
-        cube = (x**2+y**2+z**2)
-        maxval = (diam)**3
-        s = 3.0*rad**2
-        res = d2*s
-        u = maxval*np.ones(c2.shape)
-        u[rad+1:n0-rad, rad+1:n1-rad, rad+1:n2-rad] = (c2[diam:n0, diam:n1, diam:n2]
-        - c2[0:n0-diam, diam:n1, diam:n2] - c2[diam:n0, 0:n1-diam, diam:n2] - c2[diam:n0, diam:n1, 0:n2-diam] 
-        + c2[0:n0-diam, 0:n1-diam, diam:n2] + c2[diam:n0, 0:n1-diam, 0:n2-diam] + c2[0:n0-diam, diam:n1, 0:n2-diam]
-        - c2[0:n0-diam, 0:n1-diam, 0:n2-diam])
+        diam = 2 * rad + 1
+        (x, y, z) = np.mgrid[-rad:rad + 1, -rad:rad + 1, -rad:rad + 1]
+        cube = (x ** 2 + y ** 2 + z ** 2)
+        maxval = (diam) ** 3
+        s = 3.0 * rad ** 2
+        res = d2 * s
+        u = maxval * np.ones(c2.shape)
+        u[rad + 1:n0 - rad, rad + 1:n1 - rad, rad + 1:n2 - rad] = (c2[diam:n0, diam:n1, diam:n2]
+                                                                   - c2[0:n0 - diam, diam:n1, diam:n2]
+                                                                   - c2[diam:n0, 0:n1 - diam, diam:n2]
+                                                                   - c2[diam:n0,diam:n1,0:n2 - diam]
+                                                                   + c2[0:n0 - diam, 0:n1 - diam, diam:n2]
+                                                                   + c2[diam:n0, 0:n1 - diam, 0:n2 - diam]
+                                                                   + c2[0:n0 - diam, diam:n1,0:n2 - diam]
+                                                                   - c2[0:n0 - diam, 0:n1 - diam, 0:n2 - diam])
 
         I = np.nonzero(np.fabs(u) < maxval)
-        #print len(I[0])
+        # print len(I[0])
 
         for k in range(len(I[0])):
             p = np.array((I[0][k], I[1][k], I[2][k]))
-            bmin = p-rad
-            bmax = p+rad + 1
-            #print p, bmin, bmax
-            if (d2[p[0],p[1], p[2]] > 0):
-                #print u[p[0],p[1], p[2]]
-                #print d2[bmin[0]:bmax[0], bmin[1]:bmax[1], bmin[2]:bmax[2]].sum()
-                res[p[0],p[1], p[2]] = \
-                    min(cube[np.nonzero(d2[bmin[0]:bmax[0], bmin[1]:bmax[1],
-                                        bmin[2]:bmax[2]] < 0)])-.25
+            bmin = p - rad
+            bmax = p + rad + 1
+            # print p, bmin, bmax
+            if (d2[p[0], p[1], p[2]] > 0):
+                # print u[p[0],p[1], p[2]]
+                # print d2[bmin[0]:bmax[0], bmin[1]:bmax[1], bmin[2]:bmax[2]].sum()
+                res[p[0], p[1], p[2]] = min(cube[np.nonzero(d2[bmin[0]:bmax[0], bmin[1]:bmax[1], bmin[2]:bmax[2]] < 0)]) - .25
             else:
-                res[p[0],p[1], p[2]] =- \
-                    min(cube[np.nonzero(d2[bmin[0]:bmax[0], bmin[1]:bmax[1],
-                                        bmin[2]:bmax[2]] > 0)])-.25
-                
+                res[p[0], p[1], p[2]] = - min(cube[np.nonzero(d2[bmin[0]:bmax[0], bmin[1]:bmax[1], bmin[2]:bmax[2]] > 0)]) - .25
+
         return res
 
     def toPolyData(self):
@@ -1032,6 +1032,56 @@ class Surface:
         #         labels[j] = 2
         return h, labels, np.sqrt(w0)
 
+    def rayTraces(self, points, ray):
+        nu = np.sqrt((ray**2).sum())
+        u = ray/nu
+        v = np.cross(np.array([1,0,0]), u)
+        nv = np.sqrt((v**2).sum())
+        if nv < 1e-4:
+            v = np.cross(np.array([0, 1, 0]), u)
+            nv = np.sqrt((v**2).sum())
+        v /= nv
+        w = np.cross(v,u)
+        x0 = self.vertices[self.faces[:,0], :]
+        x1 = self.vertices[self.faces[:,1], :]
+        x2 = self.vertices[self.faces[:,2], :]
+        nf = self.faces.shape[0]
+        npt = points.shape[0]
+        pu = np.dot(points, u)
+        pv = np.dot(points, v)
+        pw = np.dot(points, w)
+        c00 = np.dot(x0, u)[:, None] - pu[None, :]
+        c10 = np.dot(x0, v)[:, None] - pv[None, :]
+        c20 = np.dot(x0, w)[:, None] - pw[None, :]
+        c01 = np.dot(x1, u)[:, None] - pu[None, :]
+        c11 = np.dot(x1, v)[:, None] - pv[None, :]
+        c21 = np.dot(x1, w)[:, None] - pw[None, :]
+        c02 = np.dot(x2, u)[:, None] - pu[None, :]
+        c12 = np.dot(x2, v)[:, None] - pv[None, :]
+        c22 = np.dot(x2, w)[:, None] - pw[None, :]
+
+        det = c00*c11*c22 - c00*c12*c21 - c01*c10*c22 - c02*c11*c20 + c01*c12*c20 + c02*c10*c21
+        # com = np.zeros((3,3, nv, npt))
+        # com[0, 0, ...] = c11*c22 - c12*c21
+        # com[1, 1, ...] = c00*c22 - c02*c20
+        # com[2, 2, ...] = c11*c00 - c10*c01
+        # com[0, 1, ...] = -(c01*c22 - c21*c02)
+        # com[1, 0, ...] = -(c10*c22 -c12*c20)
+        # com[0, 2, ...] = c01*c12 - c02*c11
+        # com[2, 0, ...] = c10*c21 - c20*c11
+        # com[1, 2, ...] = -(c00*c12 - c02*c10)
+        # com[2, 1, ...] = -(c00*c21 - c20*c01)
+        abc = np.zeros((3, nf, npt))
+        abc[0, ...] = c11*c22 - c12*c21
+        abc[1, ...] = -(c10*c22 -c12*c20)
+        abc[2, ...] = c10*c21 - c20*c11
+        abc *= np.sign(det)
+        inter = np.logical_and(abc[0,...] > 0, abc[1,...] > 0)
+        inter2 = np.logical_and(abc[2,...]>0, np.fabs(det) > 1e-6)
+        inter = np.logical_and(inter, inter2)
+        n_inter = inter.sum(axis = 0)
+        return n_inter % 2==1
+
 
     def compute3DVolumeImage(self, xmin = 0, xmax = 100, spacing = 1., origin = None):
         ln = xmax - xmin + 1
@@ -1053,7 +1103,6 @@ class Surface:
         for i in range(count):
             whiteImage.GetPointData().GetScalars().SetTuple1(i ,inval)
 
-        orig2 = self.vertices.mean(axis=0)
         orig2 = np.zeros(3)
         for i in range(3):
              orig2[i] = bounds[2*i]
@@ -1296,7 +1345,7 @@ class Surface:
         N = y.shape[0]
         d = y.shape[1]
         I = np.argsort(y.sum(axis=1))
-        I0 =np.floor((N-1)*sp.linspace(0, 1, num=k)).astype(int)
+        I0 =np.floor((N-1)*np.linspace(0, 1, num=k)).astype(int)
         #print y.shape, L.shape, N, k, d
         C = y[I0, :].copy()
 
@@ -1308,7 +1357,7 @@ class Surface:
         j=0
         while j< 5000:
             u0 = u - u.min(axis=0).reshape([1, N])
-            w = np.exp(-u0/T) ;
+            w = np.exp(-u0/T)
             w = w / (eps + w.sum(axis=0).reshape([1,N]))
             #print w.min(), w.max()
             cost = (u*w).sum() + T*(w*np.log(w+eps)).sum()
@@ -1755,16 +1804,16 @@ class Surface:
         self.getEdges()
         A = csr_matrix((np.ones(self.edges.shape[0]), (self.edges[:,0], self.edges[:,1])))
         nc, labels = connected_components(A, directed=False)
-        self.component = labels
+        self.component = labels[self.faces[:,0]]
         logging.info(f'Found {nc} connected components')
         if split:
-            return self.split_components()
+            return self.split_components(labels)
 
-    def split_components(self):
-        nc = self.component.max() + 1
+    def split_components(self, labels):
+        nc = labels.max() + 1
         res = []
         for i in range(nc):
-            J = np.nonzero(self.component == i)[0]
+            J = np.nonzero(labels == i)[0]
             V = self.vertices[J,:]
             w = self.weights[J]
             newI = -np.ones(self.vertices.shape[0], dtype=int)
