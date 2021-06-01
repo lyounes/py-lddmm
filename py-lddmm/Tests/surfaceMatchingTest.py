@@ -9,7 +9,10 @@ from base.kernelFunctions import Kernel
 from base.affineRegistration import rigidRegistration
 from base.surfaceMatching import SurfaceMatching, SurfaceMatchingParam
 import matplotlib
-matplotlib.use("QT5Agg")
+if 'DISPLAY' in os.environ:
+    matplotlib.use('qt5Agg')
+else:
+    matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 plt.ion()
 
