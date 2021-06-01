@@ -267,22 +267,23 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
     sKP1 = scale**(KP-1)
     sKP = scale**(KP)
     wsig = sKP.sum()
+    D = x.shape[1]
+    Da = a.shape[1]
     for s in range(ns):
         ys = y/scale[s]
         xs = x/scale[s]
         if name == 'min':
             dtype = "float64"
-            D = xs.shape[1]
             sKP1s = np.array([sKP1[s]])
             if lddmm:
                 h = np.array([2. * regweight])
                 formula2_min = "(Step(xs-ys) * Sum(p_i * a_j + a_i * p_j - h * a_i * a_j)) * Step(Min(Concat(ys,xs))) * sKP1s"
                 variables2_min = ["ys = Vi(" + str(D) + ")",  # First arg:  i-variable of size D
                                   "xs = Vj(" + str(D) + ")",  # Second arg: j-variable of size D
-                                  "a_j = Vj(" + str(D) + ")",  # Third arg:  j-variable of size D
-                                  "a_i = Vi(" + str(D) + ")",  # Fourth arg:  i-variable of size D
-                                  "p_j = Vj(" + str(D) + ")",  # Fifth arg: j-variable of size D
-                                  "p_i = Vi(" + str(D) + ")",  # Sixth arg: i-variable of size D
+                                  "a_j = Vj(" + str(Da) + ")",  # Third arg:  j-variable of size D
+                                  "a_i = Vi(" + str(Da) + ")",  # Fourth arg:  i-variable of size D
+                                  "p_j = Vj(" + str(Da) + ")",  # Fifth arg: j-variable of size D
+                                  "p_i = Vi(" + str(Da) + ")",  # Sixth arg: i-variable of size D
                                   "h = Pm(1)",
                                   "sKP1s = Pm(1)",
                                   ]  # Seventh and eighth args: scalar parameters
@@ -293,15 +294,14 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
                 formula2_min = "(Step(xs-ys) * Sum(p_i * a_j)) * Step(Min(Concat(ys,xs))) * sKP1s"
                 variables2_min = ["ys = Vi(" + str(D) + ")",  # First arg:  i-variable of size D
                                   "xs = Vj(" + str(D) + ")",  # Second arg: j-variable of size D
-                                  "a_j = Vj(" + str(D) + ")",  # Third arg:  j-variable of size D
-                                  "p_i = Vi(" + str(D) + ")",  # Fourth arg: i-variable of size D
+                                  "a_j = Vj(" + str(Da) + ")",  # Third arg:  j-variable of size D
+                                  "p_i = Vi(" + str(Da) + ")",  # Fourth arg: i-variable of size D
                                   "sKP1s = Pm(1)",
                                   ]  # Fifth arg: scalar parameter
                 my_routine2_min = Genred(formula2_min, variables2_min, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
                 res = my_routine2_min(ys.astype(dtype), xs.astype(dtype), a.astype(dtype), p.astype(dtype), sKP1s.astype(dtype))
         elif 'gauss' in name:
             dtype = "float64"
-            D = xs.shape[1]
             g = np.array([0.5])   # Parameter of the Gaussian RBF kernel
             sKP1s = np.array([sKP1[s]])
             if lddmm:
@@ -310,10 +310,10 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
                 # formula2_gauss = "(ys-xs) * (-Exp(-g * SqDist(ys,xs)) * ((p_i | a_j)+(a_i | p_j) - h * (a_i | a_j))) * sKP1s"
                 variables2_gauss = ["ys = Vi(" + str(D) + ")",  # First arg:  i-variable of size D
                                     "xs = Vj(" + str(D) + ")",  # Second arg: j-variable of size D
-                                    "a_j = Vj(" + str(D) + ")",  # Third arg:  j-variable of size D
-                                    "a_i = Vi(" + str(D) + ")",  # Fourth arg:  i-variable of size D
-                                    "p_j = Vj(" + str(D) + ")",  # Fifth arg: j-variable of size D
-                                    "p_i = Vi(" + str(D) + ")",  # Sixth arg: i-variable of size D
+                                    "a_j = Vj(" + str(Da) + ")",  # Third arg:  j-variable of size D
+                                    "a_i = Vi(" + str(Da) + ")",  # Fourth arg:  i-variable of size D
+                                    "p_j = Vj(" + str(Da) + ")",  # Fifth arg: j-variable of size D
+                                    "p_i = Vi(" + str(Da) + ")",  # Sixth arg: i-variable of size D
                                     "g = Pm(1)",
                                     "h = Pm(1)",
                                     "sKP1s = Pm(1)",
@@ -326,8 +326,8 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
                 formula2_gauss = "(ys-xs) * (-Exp(-g * SqDist(ys,xs)) * Sum(p_i * a_j)) * sKP1s"
                 variables2_gauss = ["ys = Vi(" + str(D) + ")",  # First arg:  i-variable of size D
                                     "xs = Vj(" + str(D) + ")",  # Second arg: j-variable of size D
-                                    "a_j = Vj(" + str(D) + ")",  # Third arg:  j-variable of size D
-                                    "p_i = Vi(" + str(D) + ")",  # Fourth arg: i-variable of size D
+                                    "a_j = Vj(" + str(Da) + ")",  # Third arg:  j-variable of size D
+                                    "p_i = Vi(" + str(Da) + ")",  # Fourth arg: i-variable of size D
                                     "g = Pm(1)",
                                     "sKP1s = Pm(1)",
                                     ]  # Fifth and sixth args: scalar parameters
@@ -336,7 +336,6 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
                                         p.astype(dtype), g.astype(dtype), sKP1s.astype(dtype))
         elif 'lap' in name:
             dtype = "float64"
-            D = xs.shape[1]
             sKP1s = np.array([sKP1[s]])
             if lddmm:
                 h = np.array([2. * regweight])
@@ -347,10 +346,10 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
                                   "c_3 = Pm(1)",  # Fourth arg: scalar parameter
                                   "ys = Vi(" + str(D) + ")",  # Fifth arg:  i-variable of size D
                                   "xs = Vj(" + str(D) + ")",  # Sixth arg: j-variable of size D
-                                  "a_j = Vj(" + str(D) + ")",  # Seventh arg:  j-variable of size D
-                                  "a_i = Vi(" + str(D) + ")",  # Eighth arg:  i-variable of size D
-                                  "p_j = Vj(" + str(D) + ")",  # Ninth arg: j-variable of size D
-                                  "p_i = Vi(" + str(D) + ")",  # Tenth arg: i-variable of size D
+                                  "a_j = Vj(" + str(Da) + ")",  # Seventh arg:  j-variable of size D
+                                  "a_i = Vi(" + str(Da) + ")",  # Eighth arg:  i-variable of size D
+                                  "p_j = Vj(" + str(Da) + ")",  # Ninth arg: j-variable of size D
+                                  "p_i = Vi(" + str(Da) + ")",  # Tenth arg: i-variable of size D
                                   "h = Pm(1)",
                                   "sKP1s = Pm(1)",
                                   ]  # Eleventh and twelfth args: scalar parameters
@@ -367,8 +366,8 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
                                   "c_3 = Pm(1)",  # Fourth arg: scalar parameter
                                   "ys = Vi(" + str(D) + ")",  # Fifth arg:  i-variable of size D
                                   "xs = Vj(" + str(D) + ")",  # Sixth arg: j-variable of size D
-                                  "a_j = Vj(" + str(D) + ")",  # Seventh arg:  j-variable of size D
-                                  "p_i = Vi(" + str(D) + ")",  # Eighth arg: i-variable of size D
+                                  "a_j = Vj(" + str(Da) + ")",  # Seventh arg:  j-variable of size D
+                                  "p_i = Vi(" + str(Da) + ")",  # Eighth arg: i-variable of size D
                                   "sKP1s = Pm(1)",
                                   ]  # Ninth arg: scalar parameter
                 my_routine2_lap = Genred(formula2_lap, variables2_lap, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
