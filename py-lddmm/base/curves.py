@@ -1,5 +1,7 @@
 import numpy as np
 import scipy as sp
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import connected_components
 import os
 import glob
 from matplotlib.collections import LineCollection
@@ -172,13 +174,13 @@ class Curve:
         return normals
 
 
-        xDef1 = self.vertices[self.faces[:, 0], :]
-        xDef2 = self.vertices[self.faces[:, 1], :]
-
-        normals = np.zeros(self.faces.shape)
-        normals[:,0] = - self.linel[:,1]/a
-        normals[:,1] = self.linel[:,0]/a
-        return normals
+        # xDef1 = self.vertices[self.faces[:, 0], :]
+        # xDef2 = self.vertices[self.faces[:, 1], :]
+        #
+        # normals = np.zeros(self.faces.shape)
+        # normals[:,0] = - self.linel[:,1]/a
+        # normals[:,1] = self.linel[:,0]/a
+        # return normals
 
     def computeCurvature(self):
         e = self.vertices[self.faces[:,1] ,:] - self.vertices[self.faces[:,0] ,:]
@@ -394,7 +396,17 @@ class Curve:
         self.faces = newf[0:nj, :]
         self.component = newc[0:nj]
                 
-        
+
+    def getComponent(self, k=0):
+        J = np.nonzero(self.component==k)[0]
+        faces = self.faces[J, :]
+        selected = np.zeros(self.vertices.shape[0], dtype=bool)
+        for i in range(self.faces.shape[1]):
+            selected[faces[:,i]] = True
+        newIndex = np.cumsum(selected)-1
+        faces = newIndex[faces]
+        vertices = self.vertices[selected, :]
+        return Curve(curve=(faces, vertices))
 
     def checkEdges(self):
         is0 = np.zeros(self.vertices.shape[0])
@@ -730,6 +742,30 @@ class Curve:
             res[f[0],:] += r1[k,:]
             res[f[1],:] -= r1[k,:]
         return res
+
+    def connected_components(self, split=False):
+        A = csr_matrix((np.ones(self.faces.shape[0]), (self.faces[:,0], self.faces[:,1])))
+        nc, labels = connected_components(A, directed=False)
+        self.component = labels
+        if split:
+            return self.split_components()
+
+    def split_components(self):
+        nc = self.component.max() + 1
+        res = []
+        for i in range(nc):
+            J = np.nonzero(self.component == i)[0]
+            V = self.vertices[J,:]
+            # w = self.weights[J]
+            newI = -np.ones(self.vertices.shape[0], dtype=int)
+            newI[J] = np.arange(0, J.shape[0])
+            F = newI[self.faces]
+            I = np.amax(F, axis=1) >= 0
+            F = F[I, :]
+            res.append(Curve(curve=(F,V)))
+        return res
+
+
 
     def addToPlot(self, ax, ec = 'b', fc = 'r', al=1., lw=1):
         dim = self.vertices.shape[1]
