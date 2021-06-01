@@ -1,6 +1,14 @@
 from sys import path as sys_path
 sys_path.append('..')
 sys_path.append('../base')
+import os
+import matplotlib
+if 'DISPLAY' in os.environ:
+    matplotlib.use('qt5Agg')
+else:
+    matplotlib.use("Agg")
+    print(os.environ)
+import matplotlib.pyplot as plt
 import numpy as np
 from base import surfaces, surfaceExamples
 from base import loggingUtils
@@ -8,9 +16,8 @@ from base.surfaces import Surface
 from base.kernelFunctions import Kernel
 from base.affineRegistration import rigidRegistration
 from base.surfaceMatching import SurfaceMatching, SurfaceMatchingParam
-import matplotlib
-matplotlib.use("QT5Agg")
-import matplotlib.pyplot as plt
+import pykeops
+pykeops.clean_pykeops()
 plt.ion()
 
 model = 'snake'
@@ -127,7 +134,7 @@ def compute(model):
     K1 = Kernel(name='gauss', sigma = sigmaKernel)
 
     sm = SurfaceMatchingParam(timeStep=0.1, algorithm='cg', KparDiff=K1, KparDist=('gauss', sigmaDist),
-                              sigmaError=sigmaError, errorType='varifold', internalCost=internalCost)
+                              sigmaError=sigmaError, errorType='measure', internalCost=internalCost)
     f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTest/'+model,param=sm,
                         testGradient=True, regWeight = regweight,
                         #subsampleTargetSize = 500,
