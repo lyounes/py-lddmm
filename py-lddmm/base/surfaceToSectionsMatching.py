@@ -66,6 +66,9 @@ class SurfaceToSectionsMatching(SurfaceMatching):
 
         self.set_fun(self.param.errorType)
         self.set_template_and_target(Template, Target, subsampleTargetSize, select_planes)
+        print(f'Template has {self.fv0.vertices.shape[0]} vertices')
+        print(f'There are {self.hyperplanes.shape[0]} planes')
+        print(f'There are {len(self.fv1)} target curves')
 
 
 
@@ -265,12 +268,14 @@ class SurfaceToSectionsMatching(SurfaceMatching):
 
 
     def dataTerm(self, _fvDef, fv1 = None, _fvInit = None):
+        print('starting dt')
         if fv1 is None:
             fv1 = self.fv1
         obj = 0
         for k,f in enumerate(fv1):
             obj += Surf2SecDist(_fvDef, f, self.fun_obj, curveDist0=self.fun_obj0)# plot=101+k)
         obj /= self.param.sigmaError**2
+        print('ending dt')
         return obj
 
 
@@ -286,11 +291,13 @@ class SurfaceToSectionsMatching(SurfaceMatching):
 
 
     def endPointGradient(self, endPoint=None):
+        print('starting epg')
         if endPoint is None:
             endPoint = self.fvDef
         px = np.zeros(endPoint.vertices.shape)
         for f in self.fv1:
             px += Surf2SecGrad(endPoint, f, self.fun_objGrad)
+        print('ending epg')
         return px / self.param.sigmaError**2
 
     def saveCorrectedTarget(self, X0, X1):

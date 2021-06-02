@@ -20,7 +20,7 @@ import pykeops
 pykeops.clean_pykeops()
 plt.ion()
 
-model = 'snake'
+model = 'Balls'
 
 def compute(model):
     loggingUtils.setup_default_logging('../Output', stdOutput = True)
@@ -39,7 +39,7 @@ def compute(model):
 
         I1 = .06 - ((x-.50)**2 + 0.5*y**4 + z**2)  
         fv1 = Surface()
-        fv1.Isosurface(I1, value = 0, target=2000, scales=[1, 1, 1], smooth=0.01)
+        fv1.Isosurface(I1, value = 0, target=5000, scales=[1, 1, 1], smooth=0.01)
 
         #return fv1
         
@@ -47,10 +47,11 @@ def compute(model):
         v = (z - y)/s2
         I1 = np.maximum(0.05 - (x-.7)**2 - 0.5*y**2 - z**2, 0.02 - (x-.50)**2 - 0.5*y**2 - z**2)  
         fv2 = Surface()
-        fv2.Isosurface(I1, value = 0, target=2000, scales=[1, 1, 1], smooth=0.01)
+        fv2.Isosurface(I1, value = 0, target=5000, scales=[1, 1, 1], smooth=0.01)
 
         ftemp = fv1
         ftarg = fv2
+        internalCost = None
     elif model=='Hearts':
         [x,y,z] = np.mgrid[0:200, 0:200, 0:200]/100.
         ay = np.fabs(y-1)
@@ -136,7 +137,7 @@ def compute(model):
     sm = SurfaceMatchingParam(timeStep=0.1, algorithm='cg', KparDiff=K1, KparDist=('gauss', sigmaDist),
                               sigmaError=sigmaError, errorType='measure', internalCost=internalCost)
     f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTest/'+model,param=sm,
-                        testGradient=True, regWeight = regweight,
+                        testGradient=False, regWeight = regweight,
                         #subsampleTargetSize = 500,
                         internalWeight=internalWeight, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01,
                         scaleWeight=10., affineWeight=100.)
