@@ -1,6 +1,7 @@
 import matplotlib
 import os
 import numpy as np
+from numba import jit, int64
 import scipy as sp
 import scipy.linalg as LA
 from scipy.sparse import csr_matrix
@@ -45,8 +46,62 @@ class vtkFields:
         self.vectors = []
         self.normals = []
         self.tensors = []
-        
+
+
+@jit(nopython=True)
+def get_edges_(faces):
+    nv = faces.max() + 1
+    nf = faces.shape[0]
+
+    edg0 = np.zeros((nv,nv), dtype = int64)
+    for k in range(faces.shape[0]):
+        i0 = faces[k,0]
+        i1 = faces[k,1]
+        i2 = faces[k,2]
+        edg0[min(i0, i1), max(i0, i1)] = 1
+        edg0[min(i1, i2), max(i1, i2)] = 1
+        edg0[min(i2, i0), max(i2, i1)] = 1
+
+    J = np.nonzero(edg0)
+    ne = J[0].shape[0]
+    edges = np.zeros((ne, 2), dtype = int64)
+    edges[:,0] = J[0]
+    edges[:,1] = J[1]
+
+    edgi = np.zeros((nv, nv), dtype = int64)
+    for k in range(ne):
+        edgi[edges[k,0], edges[k,1]] = k
+    
+    faceEdges = np.zeros(faces.shape, dtype=int64)
+    for k in range(faces.shape[0]):
+        i0 = faces[k,0]
+        i1 = faces[k,1]
+        i2 = faces[k,2]
+        faceEdges[k, 0] = edgi[min(i0, i1), max(i0,i1)]    
+        faceEdges[k, 1] = edgi[min(i1, i2), max(i1,i2)]    
+        faceEdges[k, 2] = edgi[min(i2, i0), max(i2,i0)]    
+
+
+    edgeFaces = - np.ones((ne,2), dtype=int64)
+    for k in range(faces.shape[0]):
+        i0 = faces[k,0]
+        i1 = faces[k,1]
+        i2 = faces[k,2]
+        for f in ([i0,i1], [i1,i2], [i2, i0]):
+            kk = edgi[min(f[0], f[1]), max(f[0], f[1])]
+            if edgeFaces[kk, 0] >= 0:
+                edgeFaces[kk,1] = k
+            else:
+                edgeFaces[kk,0] = k
+
+    
+    bdry = np.zeros(edges.shape[0], dtype=int64)
+    for k in range(edges.shape[0]):
+        if edgeFaces[k,1] < 0:
+            bdry[k] = 1
+    return edges, edgeFaces, faceEdges, bdry
 # General surface class
+
 class Surface:
     def __init__(self, surf=None, weights=None):
         if type(surf) in (list, tuple):
@@ -271,31 +326,32 @@ class Surface:
 
     # Computes edges from vertices/faces
     def getEdges(self):
-        self.edges = []
-        for k in range(self.faces.shape[0]):
-            for kj in (0,1,2):
-                u = [self.faces[k, kj], self.faces[k, (kj+1)%3]]
-                if (u not in self.edges) & (u.reverse() not in self.edges):
-                    self.edges.append(u)
-        self.edgeFaces = []
-        self.faceEdges = np.zeros(self.faces.shape, dtype=int)
-        for u in self.edges:
-            self.edgeFaces.append([])
-        for k in range(self.faces.shape[0]):
-            for kj in (0,1,2):
-                u = [self.faces[k, kj], self.faces[k, (kj+1)%3]]
-                if u in self.edges:
-                    kk = self.edges.index(u)
-                else:
-                    u.reverse()
-                    kk = self.edges.index(u)
-                self.edgeFaces[kk].append(k)
-                self.faceEdges[k, kj] = kk
-        self.edges = np.int_(np.array(self.edges))
-        self.bdry = np.int_(np.zeros(self.edges.shape[0]))
-        for k in range(self.edges.shape[0]):
-            if len(self.edgeFaces[k]) < 2:
-                self.bdry[k] = 1
+        self.edges, self.edgeFaces, self.faceEdges, self.bdry = get_edges_(self.faces)
+        # self.edges = []
+        # for k in range(self.faces.shape[0]):
+        #     for kj in (0,1,2):
+        #         u = [self.faces[k, kj], self.faces[k, (kj+1)%3]]
+        #         if (u not in self.edges) & (u.reverse() not in self.edges):
+        #             self.edges.append(u)
+        # self.edgeFaces = []
+        # self.faceEdges = np.zeros(self.faces.shape, dtype=int)
+        # for u in self.edges:
+        #     self.edgeFaces.append([])
+        # for k in range(self.faces.shape[0]):
+        #     for kj in (0,1,2):
+        #         u = [self.faces[k, kj], self.faces[k, (kj+1)%3]]
+        #         if u in self.edges:
+        #             kk = self.edges.index(u)
+        #         else:
+        #             u.reverse()
+        #             kk = self.edges.index(u)
+        #         self.edgeFaces[kk].append(k)
+        #         self.faceEdges[k, kj] = kk
+        # self.edges = np.int_(np.array(self.edges))
+        # self.bdry = np.int_(np.zeros(self.edges.shape[0]))
+        # for k in range(self.edges.shape[0]):
+        #     if len(self.edgeFaces[k]) < 2:
+        #         self.bdry[k] = 1
 
     # computes the signed distance function in a small neighborhood of a shape 
     def LocalSignedDistance(self, data, value):

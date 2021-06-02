@@ -7,8 +7,9 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 
-@jit(nopython=True)
+@jit(nopython=True, debug=True)
 def ComputeIntersection_(VS, SF, ES, FES, WS, u, offset):
+    print('starting intersection')
     h = np.dot(VS, u) - offset
     #h = (VS* u[None,:]).sum(axis=1) - offset
     tol = 0
@@ -45,6 +46,7 @@ def ComputeIntersection_(VS, SF, ES, FES, WS, u, offset):
                     edges[ie, :] = [i2, i1]
                 ie += 1
     edges = edges[:ie, :]
+    print('ending intersection')
     return edges, vertices, weights
 
 @jit(nopython=True)
@@ -115,7 +117,9 @@ class SurfaceSection:
             self.curve = Curve(curve, isOpen=isOpen)
             self.ComputeHyperplane(curve)
         else:
+            print('starting intersection')
             self.ComputeIntersection(surf, hyperplane, plot=plot)
+            print('ending intersection')
         #self.normals = self.curve.computeUnitVertexNormals()
         self.normals = np.cross(self.hyperplane.u, self.curve.linel)
         self.normals /= np.maximum(np.sqrt((self.normals**2).sum(axis=1)), 1e-10)[:, None]
@@ -125,7 +129,9 @@ class SurfaceSection:
 
     def ComputeIntersection(self, surf, hyperplane, plot = None):
         if surf.edges is None:
+            print('starting edges')
             surf.getEdges()
+            print('ending edges')
         F, V, W = ComputeIntersection_(surf.vertices, surf.surfel, surf.edges, surf.faceEdges, surf.weights,
                                     hyperplane.u, hyperplane.offset)
         self.curve = Curve([F,V])

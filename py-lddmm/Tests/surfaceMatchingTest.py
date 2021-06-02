@@ -51,6 +51,7 @@ def compute(model):
 
         ftemp = fv1
         ftarg = fv2
+        internalCost = None
     elif model=='Hearts':
         [x,y,z] = np.mgrid[0:200, 0:200, 0:200]/100.
         ay = np.fabs(y-1)
