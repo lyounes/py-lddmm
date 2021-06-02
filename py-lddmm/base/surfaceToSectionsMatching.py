@@ -273,7 +273,6 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         obj /= self.param.sigmaError**2
         return obj
 
-
     def objectiveFun(self):
         if self.obj is None:
             self.obj0 = 0
