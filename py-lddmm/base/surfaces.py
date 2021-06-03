@@ -60,7 +60,7 @@ def get_edges_(faces):
         i2 = faces[k,2]
         edg0[min(i0, i1), max(i0, i1)] = 1
         edg0[min(i1, i2), max(i1, i2)] = 1
-        edg0[min(i2, i0), max(i2, i1)] = 1
+        edg0[min(i2, i0), max(i2, i0)] = 1
 
     J = np.nonzero(edg0)
     ne = J[0].shape[0]

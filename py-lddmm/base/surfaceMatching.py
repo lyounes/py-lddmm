@@ -859,14 +859,14 @@ class SurfaceMatching(object):
         ax.set_zlim(min(lim0[2][0], lim1[2][0]), max(lim0[2][1], lim1[2][1]))
         fig.canvas.flush_events()
 
-    def endOfIteration(self):
+    def endOfIteration(self, forceSave=False):
         self.iter += 1
         if self.testGradient:
             self.testEndpointGradient()
         if self.iter >= self.affBurnIn:
             self.coeffAff = self.coeffAff2
 
-        if self.iter % self.saveRate == 0:
+        if forceSave or self.iter % self.saveRate == 0:
             logging.info('Saving surfaces...')
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             if self.saveEPDiffTrajectories and not self.internalCost and self.affineDim <= 0:
@@ -938,7 +938,7 @@ class SurfaceMatching(object):
 
 
     def endOfProcedure(self):
-        self.endOfIteration()
+        self.endOfIteration(forceSave=True)
 
     def optimizeMatching(self):
         #print 'dataterm', self.dataTerm(self.fvDef)

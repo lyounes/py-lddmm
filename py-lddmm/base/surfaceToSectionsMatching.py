@@ -84,7 +84,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         self.colors = ('b', 'm', 'g', 'r', 'y', 'k')
         if self.pplot:
             self.initial_plot()
-        self.saveRate = 10
+        self.saveRate = 25
         self.forceLineSearch = False
 
 
@@ -235,7 +235,8 @@ class SurfaceToSectionsMatching(SurfaceMatching):
 
     def initial_plot(self):
         fig = plt.figure(3)
-        ax = Axes3D(fig)
+        ax = Axes3D(fig, auto_add_to_figure=False)
+        fig.add_axes(ax)
         lim1 = self.addSurfaceToPlot(self.fv0, ax, ec='k', fc='r', al=0.2)
         for k,f in enumerate(self.fv1):
             lim0 = self.addCurveToPlot(f, ax, ec=self.colors[k%len(self.colors)], fc='b', lw=5)
@@ -256,9 +257,9 @@ class SurfaceToSectionsMatching(SurfaceMatching):
             self.fun_objGrad = partial(currentNormGradient, KparDist=self.param.KparDist, weight=1.)
         elif errorType=='measure':
             #print('Running Measure Matching')
-            self.fun_obj0 = partial(measureNorm0, KparDist=self.param.KparDist)
-            self.fun_obj = partial(measureNormDef,KparDist=self.param.KparDist)
-            self.fun_objGrad = partial(measureNormGradient,KparDist=self.param.KparDist)
+            self.fun_obj0 = partial(measureNorm0, KparDist=self.param.KparDist, cpu=False)
+            self.fun_obj = partial(measureNormDef,KparDist=self.param.KparDist, cpu=False)
+            self.fun_objGrad = partial(measureNormGradient,KparDist=self.param.KparDist, cpu=False)
         elif errorType=='varifold':
             self.fun_obj0 = partial(varifoldNorm0, KparDist=self.param.KparDist, weight=1.)
             self.fun_obj = partial(varifoldNormDef, KparDist=self.param.KparDist, weight=1.)
@@ -268,14 +269,14 @@ class SurfaceToSectionsMatching(SurfaceMatching):
 
 
     def dataTerm(self, _fvDef, fv1 = None, _fvInit = None):
-        print('starting dt')
+        #print('starting dt')
         if fv1 is None:
             fv1 = self.fv1
         obj = 0
         for k,f in enumerate(fv1):
-            obj += Surf2SecDist(_fvDef, f, self.fun_obj, curveDist0=self.fun_obj0)# plot=101+k)
+            obj += Surf2SecDist(_fvDef, f, self.fun_obj) # curveDist0=self.fun_obj0) plot=101+k)
         obj /= self.param.sigmaError**2
-        print('ending dt')
+        #print('ending dt')
         return obj
 
 
@@ -291,13 +292,13 @@ class SurfaceToSectionsMatching(SurfaceMatching):
 
 
     def endPointGradient(self, endPoint=None):
-        print('starting epg')
+        #print('starting epg')
         if endPoint is None:
             endPoint = self.fvDef
         px = np.zeros(endPoint.vertices.shape)
         for f in self.fv1:
             px += Surf2SecGrad(endPoint, f, self.fun_objGrad)
-        print('ending epg')
+        #print('ending epg')
         return px / self.param.sigmaError**2
 
     def saveCorrectedTarget(self, X0, X1):
@@ -319,7 +320,8 @@ class SurfaceToSectionsMatching(SurfaceMatching):
     def plotAtIteration(self):
         fig = plt.figure(4)
         fig.clf()
-        ax = Axes3D(fig)
+        ax = Axes3D(fig, auto_add_to_figure=False)
+        fig.add_axes(ax)
         lim1 = self.addSurfaceToPlot(self.fvDef, ax, ec='k', fc='r', al=0.2)
         for k, f in enumerate(self.fv1):
             lim0 = self.addCurveToPlot(f, ax, ec=self.colors[k % len(self.colors)], fc='b', lw=5)
@@ -332,9 +334,9 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         fig.canvas.flush_events()
 
 
-    def endOfIteration(self):
-        super().endOfIteration()
-        if self.iter % self.saveRate == 0:
+    def endOfIteration(self, forceSave=False):
+        super().endOfIteration(forceSave = forceSave)
+        if forceSave or self.iter % self.saveRate == 0:
             outCurve = ()
             normals = np.zeros((0,3))
             npt = 0
