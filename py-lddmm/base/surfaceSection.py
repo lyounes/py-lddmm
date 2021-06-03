@@ -9,7 +9,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 @jit(nopython=True, debug=True)
 def ComputeIntersection_(VS, SF, ES, FES, WS, u, offset):
-    print('starting intersection')
+    #print('starting intersection')
     h = np.dot(VS, u) - offset
     #h = (VS* u[None,:]).sum(axis=1) - offset
     tol = 0
@@ -46,7 +46,7 @@ def ComputeIntersection_(VS, SF, ES, FES, WS, u, offset):
                     edges[ie, :] = [i2, i1]
                 ie += 1
     edges = edges[:ie, :]
-    print('ending intersection')
+    #print('ending intersection')
     return edges, vertices, weights
 
 @jit(nopython=True)
@@ -117,9 +117,9 @@ class SurfaceSection:
             self.curve = Curve(curve, isOpen=isOpen)
             self.ComputeHyperplane(curve)
         else:
-            print('starting intersection')
+            #print('starting intersection')
             self.ComputeIntersection(surf, hyperplane, plot=plot)
-            print('ending intersection')
+            #print('ending intersection')
         #self.normals = self.curve.computeUnitVertexNormals()
         self.normals = np.cross(self.hyperplane.u, self.curve.linel)
         self.normals /= np.maximum(np.sqrt((self.normals**2).sum(axis=1)), 1e-10)[:, None]
@@ -129,9 +129,9 @@ class SurfaceSection:
 
     def ComputeIntersection(self, surf, hyperplane, plot = None):
         if surf.edges is None:
-            print('starting edges')
+            #print('starting edges')
             surf.getEdges()
-            print('ending edges')
+            #print('ending edges')
         F, V, W = ComputeIntersection_(surf.vertices, surf.surfel, surf.edges, surf.faceEdges, surf.weights,
                                     hyperplane.u, hyperplane.offset)
         self.curve = Curve([F,V])
@@ -161,14 +161,17 @@ class SurfaceSection:
 
 def Surf2SecDist(surf, s, curveDist, curveDist0 = None, plot = None):
     s0 = SurfaceSection(surf=surf, hyperplane=s.hyperplane, plot = plot)
-    obj = curveDist(s0.curve, s.curve)
+    if s0.curve.faces.shape[0]>0:
+        obj = curveDist(s0.curve, s.curve)
+    else:
+        obj = 0
     if curveDist0 is not None:
         obj2 = obj + curveDist0(s.curve)
     return obj
 
 def Surf2SecGrad(surf, s, curveDistGrad):
     s0 = SurfaceSection(surf=surf, hyperplane=s.hyperplane)
-    if s0.curve.vertices.size > 0:
+    if s0.curve.faces.shape[0] > 0:
         cgrad, cgradw = curveDistGrad(s0.curve, s.curve, with_weights=True)
         grad = CurveGrad2Surf(cgrad, cgradw, surf.vertices, surf.edges, surf.weights, s.hyperplane.u, s.hyperplane.offset)
     else:

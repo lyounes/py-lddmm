@@ -111,33 +111,33 @@ def currentNormGradient(fvDef, fv1, KparDist=None, weight=None, with_weights=Fal
 
 
 # Measure norm of fv1
-def measureNorm0(fv1, KparDist=None):
+def measureNorm0(fv1, KparDist=None, cpu=False):
     c2 = fv1.centers
     cr2 = fv1.linel
     cr2 = np.sqrt((cr2 ** 2).sum(axis=1))[:, np.newaxis] * fv1.line_weights[:, None]
-    return np.multiply(cr2, KparDist.applyK(c2, cr2)).sum()
+    return np.multiply(cr2, KparDist.applyK(c2, cr2, cpu=cpu)).sum()
 
 
 # Computes |fvDef|^2 - 2 fvDef * fv1 with measure dot produuct
-def measureNormDef(fvDef, fv1, KparDist=None):
+def measureNormDef(fvDef, fv1, KparDist=None, cpu=False):
     c1 = fvDef.centers
     cr1 = fvDef.linel
     cr1 = (fvDef.line_weights * np.sqrt((cr1 ** 2).sum(axis=1) + 1e-10))[:, np.newaxis]
     c2 = fv1.centers
     cr2 = fv1.linel
     cr2 = (fv1.line_weights * np.sqrt((cr2 ** 2).sum(axis=1) + 1e-10))[:, np.newaxis]
-    obj = (cr1 * KparDist.applyK(c1, cr1)).sum() \
-          - 2 * (cr1 * KparDist.applyK(c2, cr2, firstVar=c1)).sum()
+    obj = (cr1 * KparDist.applyK(c1, cr1, cpu=cpu)).sum() \
+          - 2 * (cr1 * KparDist.applyK(c2, cr2, firstVar=c1,cpu=cpu)).sum()
     return obj
 
 
 # Returns |fvDef - fv1|^2 for measure norm
-def measureNorm(fvDef, fv1, KparDist=None):
-    return measureNormDef(fvDef, fv1, KparDist) + measureNorm0(fv1, KparDist)
+def measureNorm(fvDef, fv1, KparDist=None, cpu=False):
+    return measureNormDef(fvDef, fv1, KparDist, cpu=cpu) + measureNorm0(fv1, KparDist, cpu=cpu)
 
 
 # Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (measure norm)
-def measureNormGradient(fvDef, fv1, KparDist=None, with_weights=False):
+def measureNormGradient(fvDef, fv1, KparDist=None, with_weights=False, cpu=False):
     xDef = fvDef.vertices
     c1 = fvDef.centers
     cr1 = fvDef.linel
@@ -153,11 +153,11 @@ def measureNormGradient(fvDef, fv1, KparDist=None, with_weights=False):
     a1w = w1 * a1
     a2w = w2 * a2
 
-    z1 = 2 * (KparDist.applyK(c1, a1w[:, np.newaxis]) - KparDist.applyK(c2, a2w[:, np.newaxis], firstVar=c1))
+    z1 = 2 * (KparDist.applyK(c1, a1w[:, np.newaxis], cpu=cpu) - KparDist.applyK(c2, a2w[:, np.newaxis], firstVar=c1, cpu=cpu))
     wz1 = z1 * cr1 * w1[:, None]
 
-    dz1 = (KparDist.applyDiffKT(c1, a1w[:, np.newaxis], a1w[:, np.newaxis]) -
-           KparDist.applyDiffKT(c2, a1w[:, np.newaxis], a2w[:, np.newaxis], firstVar=c1))
+    dz1 = (KparDist.applyDiffKT(c1, a1w[:, np.newaxis], a1w[:, np.newaxis], cpu=cpu) -
+           KparDist.applyDiffKT(c2, a1w[:, np.newaxis], a2w[:, np.newaxis], firstVar=c1, cpu=cpu))
     # dz1 = (np.multiply(dg11.sum(axis=1).reshape((-1,1)), c1) - np.dot(dg11,c1) - np.multiply(dg12.sum(axis=1).reshape((-1,1)), c1) + np.dot(dg12,c2))
 
     px = np.zeros([xDef.shape[0], dim])

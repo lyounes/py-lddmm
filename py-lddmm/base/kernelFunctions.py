@@ -431,7 +431,7 @@ class Kernel(KernelSpec):
 
         
     # Computes K(x,x)a or K(x,y)a
-    def applyK(self, x, a, firstVar = None, grid=None,matrixWeights=False):
+    def applyK(self, x, a, firstVar = None, grid=None,matrixWeights=False, cpu=False):
         if firstVar is None:
             y = np.copy(x)
             if matrixWeights:
@@ -443,7 +443,7 @@ class Kernel(KernelSpec):
                     z = ku.applylocalk(y ,x ,a ,self.name, self.sigma ,self.order, self.localMaps[0] ,
                                         self.localMaps[1])
             else:
-                z = ku.applyK(y ,x ,a ,self.name, self.sigma ,self.order)
+                z = ku.applyK(y ,x ,a ,self.name, self.sigma ,self.order, cpu=cpu)
         else:
             if matrixWeights:
                 z = ku.applykmat(firstVar, x, a, self.name, self.sigma, self.order)
@@ -454,7 +454,7 @@ class Kernel(KernelSpec):
                     z = ku.applylocalk(firstVar ,x ,a ,self.name, self.sigma ,self.order , self.localMaps[0] ,
                                         self.localMaps[1])
             else:
-                z = ku.applyK(firstVar ,x ,a , self.name, self.sigma ,self.order)
+                z = ku.applyK(firstVar ,x ,a , self.name, self.sigma ,self.order, cpu=cpu)
         if self.affine == 'affine':
             xx = x-self.center
             if firstVar is None:
@@ -511,7 +511,7 @@ class Kernel(KernelSpec):
         return z
 
     # Computes array A(i) = sum_k sum_(j) nabla_1[a1(k,i). K(x(i), x(j))a2(k,j)]
-    def applyDiffKT(self, x, p0, a, firstVar=None, regweight=1., lddmm=False, extra_term = None):
+    def applyDiffKT(self, x, p0, a, firstVar=None, regweight=1., lddmm=False, extra_term = None, cpu=False):
         if firstVar is None:
             y = np.copy(x)
         else:
@@ -530,7 +530,7 @@ class Kernel(KernelSpec):
                                            self.localMaps[1], regweight=regweight, lddmm=lddmm)
         else:
             zpx = ku.applyDiffKT(y ,x , p ,a , self.name, self.sigma ,self.order,
-                                 regweight=regweight, lddmm=lddmm)
+                                 regweight=regweight, lddmm=lddmm, cpu=cpu)
         if self.affine == 'affine':
             xx = x-self.center
 

@@ -110,8 +110,8 @@ def kernelmatrix(y, x, name, scale, ord):
                 f[k,l] = Kh
     return f
 
-def applyK(y, x, a, name, scale, order):
-    if pykeops.config.gpu_available:
+def applyK(y, x, a, name, scale, order, cpu=False):
+    if not cpu and pykeops.config.gpu_available:
         return applyK_pykeops(y, x, a, name, scale, order)
     else:
         return applyK_numba(y, x, a, name, scale, order)
@@ -213,8 +213,8 @@ def applyK_pykeops(y, x, a, name, scale, order):
     res /= wsig
     return res
 
-def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., lddmm=False):
-    if pykeops.config.gpu_available:
+def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., lddmm=False, cpu=False):
+    if not cpu and pykeops.config.gpu_available:
         return applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=regweight, lddmm=lddmm)
     else:
         return applyDiffKT_numba(y, x, p, a, name, scale, order, regweight=regweight, lddmm=lddmm)
