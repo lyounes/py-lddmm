@@ -5,6 +5,7 @@ from pykeops.numpy import Genred
 import pykeops
 
 KP = -1
+pkfloat = 'float64'
 
 c_ = np.array([[1,0,0,0,0],
                [1,1,0,0,0],
@@ -110,9 +111,9 @@ def kernelmatrix(y, x, name, scale, ord):
                 f[k,l] = Kh
     return f
 
-def applyK(y, x, a, name, scale, order, cpu=False):
+def applyK(y, x, a, name, scale, order, cpu=False, dtype='float64'):
     if not cpu and pykeops.config.gpu_available:
-        return applyK_pykeops(y, x, a, name, scale, order)
+        return applyK_pykeops(y, x, a, name, scale, order, dtype=dtype)
     else:
         return applyK_numba(y, x, a, name, scale, order)
 
@@ -153,7 +154,7 @@ def applyK_numba(y, x, a, name, scale, order):
     res /= wsig
     return res
 
-def applyK_pykeops(y, x, a, name, scale, order):
+def applyK_pykeops(y, x, a, name, scale, order, dtype='float64'):
     res = np.zeros(y.shape)
     ns = len(scale)
     sKP = scale**KP
@@ -162,7 +163,6 @@ def applyK_pykeops(y, x, a, name, scale, order):
         ys = y/scale[s]
         xs = x/scale[s]
         if name == 'min':
-            dtype = "float64"
             D = xs.shape[1]
             Dv = a.shape[1]
             sKPs = np.array([sKP[s]])
@@ -175,7 +175,6 @@ def applyK_pykeops(y, x, a, name, scale, order):
             my_routine_min = Genred(formula_min, variables_min, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
             res = my_routine_min(ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
         elif 'gauss' in name:
-            dtype = "float64"
             D = xs.shape[1]
             Dv = a.shape[1]
             g = np.array([0.5])  # Parameter of the Gaussian RBF kernel
@@ -190,7 +189,6 @@ def applyK_pykeops(y, x, a, name, scale, order):
             my_routine_gauss = Genred(formula_gauss, variables_gauss, reduction_op="Sum",dtype=dtype,dtype_acc=dtype,axis=1)
             res = my_routine_gauss(g.astype(dtype), ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
         elif 'lap' in name:
-            dtype = "float64"
             D = xs.shape[1]
             Dv = a.shape[1]
             sKPs = np.array([sKP[s]])
@@ -213,9 +211,9 @@ def applyK_pykeops(y, x, a, name, scale, order):
     res /= wsig
     return res
 
-def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., lddmm=False, cpu=False):
+def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., lddmm=False, cpu=False, dtype='float64'):
     if not cpu and pykeops.config.gpu_available:
-        return applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=regweight, lddmm=lddmm)
+        return applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=regweight, lddmm=lddmm, dtype=dtype)
     else:
         return applyDiffKT_numba(y, x, p, a, name, scale, order, regweight=regweight, lddmm=lddmm)
 
@@ -261,7 +259,7 @@ def applyDiffKT_numba(y, x, p, a, name, scale, order, regweight=1., lddmm=False)
     res /= wsig
     return res
 
-def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=False):
+def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=False, dtype='float64'):
     res = np.zeros(y.shape)
     ns = len(scale)
     sKP1 = scale**(KP-1)
@@ -273,7 +271,6 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
         ys = y/scale[s]
         xs = x/scale[s]
         if name == 'min':
-            dtype = "float64"
             sKP1s = np.array([sKP1[s]])
             if lddmm:
                 h = np.array([2. * regweight])
@@ -301,7 +298,6 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
                 my_routine2_min = Genred(formula2_min, variables2_min, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
                 res = my_routine2_min(ys.astype(dtype), xs.astype(dtype), a.astype(dtype), p.astype(dtype), sKP1s.astype(dtype))
         elif 'gauss' in name:
-            dtype = "float64"
             g = np.array([0.5])   # Parameter of the Gaussian RBF kernel
             sKP1s = np.array([sKP1[s]])
             if lddmm:
@@ -335,7 +331,6 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
                 res = my_routine2_gauss(ys.astype(dtype), xs.astype(dtype), a.astype(dtype),
                                         p.astype(dtype), g.astype(dtype), sKP1s.astype(dtype))
         elif 'lap' in name:
-            dtype = "float64"
             sKP1s = np.array([sKP1[s]])
             if lddmm:
                 h = np.array([2. * regweight])

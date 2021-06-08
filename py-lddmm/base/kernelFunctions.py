@@ -361,6 +361,7 @@ class KernelSpec:
         self.affine = affine
         self.localMaps = localMaps
         self.kff = False
+        self.pk_dtype = 'float64'
         if name == 'laplacian':
             self.kernelMatrix = kernelMatrixLaplacian
             if self.order > 4:
@@ -443,7 +444,7 @@ class Kernel(KernelSpec):
                     z = ku.applylocalk(y ,x ,a ,self.name, self.sigma ,self.order, self.localMaps[0] ,
                                         self.localMaps[1])
             else:
-                z = ku.applyK(y ,x ,a ,self.name, self.sigma ,self.order, cpu=cpu)
+                z = ku.applyK(y ,x ,a ,self.name, self.sigma ,self.order, cpu=cpu, dtype=self.pk_dtype)
         else:
             if matrixWeights:
                 z = ku.applykmat(firstVar, x, a, self.name, self.sigma, self.order)
@@ -454,7 +455,7 @@ class Kernel(KernelSpec):
                     z = ku.applylocalk(firstVar ,x ,a ,self.name, self.sigma ,self.order , self.localMaps[0] ,
                                         self.localMaps[1])
             else:
-                z = ku.applyK(firstVar ,x ,a , self.name, self.sigma ,self.order, cpu=cpu)
+                z = ku.applyK(firstVar ,x ,a , self.name, self.sigma ,self.order, cpu=cpu, dtype=self.pk_dtype)
         if self.affine == 'affine':
             xx = x-self.center
             if firstVar is None:
@@ -530,7 +531,7 @@ class Kernel(KernelSpec):
                                            self.localMaps[1], regweight=regweight, lddmm=lddmm)
         else:
             zpx = ku.applyDiffKT(y ,x , p ,a , self.name, self.sigma ,self.order,
-                                 regweight=regweight, lddmm=lddmm, cpu=cpu)
+                                 regweight=regweight, lddmm=lddmm, cpu=cpu, dtype=self.pk_dtype)
         if self.affine == 'affine':
             xx = x-self.center
 

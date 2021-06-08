@@ -1849,7 +1849,7 @@ class Surface:
             self.vertices[nv0:nv, :] = fv.vertices
             self.weights[nv0:nv] = fv.weights
             self.faces[nf0:nf, :] = fv.faces + nv0
-            self.component[nf0:nf] = c
+            self.component[nf0:nf] = fv.component + c
             nv0 = nv
             nf0 = nf
             c += 1
