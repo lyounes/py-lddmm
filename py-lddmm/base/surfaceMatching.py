@@ -153,6 +153,8 @@ class SurfaceMatching(object):
         self.affBurnIn = 25
         self.forceLineSearch = False
         self.saveEPDiffTrajectories = False
+        self.varCounter = 0
+        self.trajCounter = 0
 
 
     def set_template_and_target(self, Template, Target, subsampleTargetSize=-1):
@@ -240,6 +242,7 @@ class SurfaceMatching(object):
         self.Afft = np.zeros([self.Tsize, self.affineDim])
         self.AfftTry = np.zeros([self.Tsize, self.affineDim])
         self.xt = np.tile(self.x0, [self.Tsize+1, 1, 1])
+        self.xtTry = np.copy(self.xt)
         self.v = np.zeros([self.Tsize+1, self.npt, self.dim])
         self.saveFileList = []
         for kk in range(self.Tsize+1):
@@ -320,7 +323,7 @@ class SurfaceMatching(object):
         #print 'dataterm = ', obj + self.obj0
         return obj
 
-    def  objectiveFunDef(self, at, Afft=None, kernel = None, withTrajectory = False, withJacobian=False,
+    def  objectiveFunDef(self, at, Afft=None, kernel = None, withTrajectory = True, withJacobian=False,
                          fv0 = None, regWeight = None):
         if fv0 is None:
             fv0 = self.fv0
@@ -424,6 +427,7 @@ class SurfaceMatching(object):
 
         foo = self.objectiveFunDef(atTry, AfftTry, fv0 = fv0, withTrajectory=True)
         objTry += foo[0]
+        xtTry = foo[1]
 
         ff = surfaces.Surface(surf=self.fvDef)
         ff.updateVertices(np.squeeze(foo[1][-1, :, :]))
@@ -441,6 +445,7 @@ class SurfaceMatching(object):
             self.atTry = atTry
             self.objTry = objTry
             self.AfftTry = AfftTry
+            self.xtTry = xtTry
             if self.symmetric:
                 self.x0Try = x0Try
             #print 'objTry=',objTry, dir.diff.sum()
@@ -475,15 +480,32 @@ class SurfaceMatching(object):
         return px / self.param.sigmaError**2
     
     
-    def hamiltonianCovector(self, at, px1, KparDiff, regWeight, affine = None, fv0 = None):
+    def hamiltonianCovector(self, px1, KparDiff, regWeight, affine = None, fv0 = None, at = None):
         if fv0 is None:
             fv0 = self.fvInit
+        if at is None:
+            at = self.at
+            current_at = True
+            if self.varCounter == self.trajCounter:
+                computeTraj = False
+            else:
+                computeTraj = True
+        else:
+            current_at = False
+            computeTraj = True
         x0 = fv0.vertices
         N = x0.shape[0]
         dim = x0.shape[1]
         M = at.shape[0]
         timeStep = 1.0/M
-        xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+        if computeTraj:
+            xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+            if current_at:
+                self.trajCounter = self.varCounter
+                self.xt = xt
+        else:
+            xt = self.xt
+
         if not(affine is None):
             A0 = affine[0]
             A = np.zeros([M,dim,dim])
@@ -567,7 +589,7 @@ class SurfaceMatching(object):
         #
         foo = surfaces.Surface(surf=fv0)
         foo.updateVertices(x0)
-        (pxt, xt) = self.hamiltonianCovector(at, px1, kernel, regWeight, fv0=foo, affine=affine)
+        (pxt, xt) = self.hamiltonianCovector(px1, kernel, regWeight, fv0=foo, at = at, affine=affine)
         return self.gradientFromHamiltonian(at, xt, pxt, fv0, affine, kernel, regWeight)
 
         #at = self.at        
@@ -610,7 +632,7 @@ class SurfaceMatching(object):
 
     def getGradient(self, coeff=1.0, update=None):
         if update is None:
-            at = self.at
+            at = None
             endPoint = self.fvDef
             A = self.affB.getTransforms(self.Afft)
         else:
@@ -747,6 +769,9 @@ class SurfaceMatching(object):
         self.obj = self.objTry
         self.at = np.copy(self.atTry)
         self.Afft = np.copy(self.AfftTry)
+        self.xt = np.copy(self.xtTry)
+        self.varCounter += 1
+        self.trajCounter = self.varCounter
         if self.symmetric:
             self.x0 = np.copy(self.x0Try)
         #print self.at
@@ -868,7 +893,8 @@ class SurfaceMatching(object):
 
         if forceSave or self.iter % self.saveRate == 0:
             logging.info('Saving surfaces...')
-            (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
+            if self.varCounter != self.trajCounter:
+                (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             if self.saveEPDiffTrajectories and not self.internalCost and self.affineDim <= 0:
                 xtEPDiff, atEPdiff = self.saveEPDiff(self.fvInit, self.at, fileName=self.saveFile)
                 logging.info('EPDiff difference %f' % (np.fabs(self.xt[-1, :, :] - xtEPDiff[-1, :, :]).sum()))
@@ -892,7 +918,8 @@ class SurfaceMatching(object):
                                             Jacobian=Jt)
             self.saveEvolution(self.fvInit, xt, Jacobian=Jt, fileName=self.saveFileList)
         else:
-            (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
+            if self.varCounter != self.trajCounter:
+                (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             self.updateEndPoint(self.xt)
             self.fvInit.updateVertices(self.x0)
 

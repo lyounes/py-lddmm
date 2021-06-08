@@ -32,6 +32,7 @@ def compute(model):
     internalCost = 'h1'
     if model=='Balls':
         M=100
+        targSize = 1000
         [x,y,z] = np.mgrid[0:2*M, 0:2*M, 0:2*M]/float(M)
         y = y-1
         z = z-1
@@ -39,7 +40,7 @@ def compute(model):
 
         I1 = .06 - ((x-.50)**2 + 0.5*y**4 + z**2)  
         fv1 = Surface()
-        fv1.Isosurface(I1, value = 0, target=5000, scales=[1, 1, 1], smooth=0.01)
+        fv1.Isosurface(I1, value = 0, target=targSize, scales=[1, 1, 1], smooth=0.01)
 
         #return fv1
         
@@ -47,7 +48,7 @@ def compute(model):
         v = (z - y)/s2
         I1 = np.maximum(0.05 - (x-.7)**2 - 0.5*y**2 - z**2, 0.02 - (x-.50)**2 - 0.5*y**2 - z**2)  
         fv2 = Surface()
-        fv2.Isosurface(I1, value = 0, target=5000, scales=[1, 1, 1], smooth=0.01)
+        fv2.Isosurface(I1, value = 0, target=targSize, scales=[1, 1, 1], smooth=0.01)
 
         ftemp = fv1
         ftarg = fv2
@@ -139,7 +140,7 @@ def compute(model):
     sm.KparDiff.pk_dtype = 'float64'
     sm.KparDist.pk_dtype = 'float64'
     f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTest/'+model,param=sm,
-                        testGradient=False, regWeight = regweight,
+                        testGradient=True, regWeight = regweight,
                         #subsampleTargetSize = 500,
                         internalWeight=internalWeight, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01,
                         scaleWeight=10., affineWeight=100.)
