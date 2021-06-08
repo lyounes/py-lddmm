@@ -136,6 +136,8 @@ def compute(model):
 
     sm = SurfaceMatchingParam(timeStep=0.1, algorithm='cg', KparDiff=K1, KparDist=('gauss', sigmaDist),
                               sigmaError=sigmaError, errorType='measure', internalCost=internalCost)
+    sm.KparDiff.pk_dtype = 'float64'
+    sm.KparDist.pk_dtype = 'float64'
     f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTest/'+model,param=sm,
                         testGradient=False, regWeight = regweight,
                         #subsampleTargetSize = 500,

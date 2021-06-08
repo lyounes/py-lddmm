@@ -76,7 +76,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
 
 
     eps = epsInit
-    epsMin = 1e-10
+    epsMin = 1e-8
     opt.converged = False
 
     if hasattr(opt, 'reset') and opt.reset:
@@ -208,6 +208,8 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
                     if (skipCG == 1) | (beta < 1e-10):
                         logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, beta = {3:.5f}, gradient: {4:.5f}'.format(it+1, obj, eps, beta, np.sqrt(grd2)))
                         logging.info('Stopping Gradient Descent: bad direction')
+                        if hasattr(opt, 'endOfProcedure'):
+                            opt.endOfProcedure()
                         break
                     else:
                         if verb:
@@ -224,6 +226,8 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
                                 'iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, beta = {3:.5f}, gradient: {4:.5f}'.format(
                                     it + 1, obj, eps, beta, np.sqrt(grd2)))
                             logging.info('Stopping Gradient Descent: bad direction after line search')
+                            if hasattr(opt, 'endOfProcedure'):
+                                opt.endOfProcedure()
                             break
                         else:
                             if verb:
@@ -265,8 +269,8 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
                             logging.info('Stopping Gradient Descent: small variation')
                             opt.converged = True
                             break
-                        if hasattr(opt, 'endOfIteration'):
-                            opt.endOfIteration()
+                        if hasattr(opt, 'endOfProcedure'):
+                            opt.endOfProcedure()
                     else:
                         if verb:
                             logging.info('Disabling CG: small variation')
