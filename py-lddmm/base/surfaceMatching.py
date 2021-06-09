@@ -1,4 +1,5 @@
 import os
+from copy import deepcopy
 import numpy as np
 import numpy.linalg as la
 import logging
@@ -53,7 +54,7 @@ class Direction:
 #        affine: 'affine', 'similitude', 'euclidean', 'translation' or 'none'
 #        maxIter: max iterations in conjugate gradient
 class SurfaceMatching(object):
-    def __init__(self, Template=None, Target=None, param=None, maxIter=1000,
+    def __init__(self, Template=None, Target=None, param=None, maxIter=1000, passenger = None,
                  regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
                  subsampleTargetSize=-1, affineOnly = False,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
@@ -95,6 +96,14 @@ class SurfaceMatching(object):
                             saveTrajectories = saveTrajectories, affine = affine)
         self.initialize_variables()
         self.gradCoeff = self.x0.shape[0]
+        self.passenger = passenger
+        if isinstance(self.passenger, surfaces.Surface):
+            self.passenger_points = self.passenger.vertices
+        elif self.passenger is not None:
+            self.passenger_points = self.passenger
+        else:
+            self.passenger_points = None
+        self.passenger_def = deepcopy(self.passenger)
 
         self.pplot = pplot
         if self.pplot:
@@ -815,8 +824,8 @@ class SurfaceMatching(object):
             displ += dt * (vt * nu).sum(axis=1)
         self.saveCorrectedTarget(X[0], X[1])
 
-    def saveEvolution(self, fv0, xt, Jacobian=None, fileName='evolution', velocity = None, orientation= None,
-                      with_area_displacement=False):
+    def saveEvolution(self, fv0, xt, Jacobian=None, passenger = None, fileName='evolution', velocity = None,
+                      orientation= None, with_area_displacement=False):
         if velocity is None:
             velocity = self.v
         if orientation is None:
@@ -861,6 +870,13 @@ class SurfaceMatching(object):
                 area_displ[kk, :] = area_displ[kk - 1, :] + dt * ((AV + 1) * (v * nu).sum(axis=1))[np.newaxis, :]
             fvDef.saveVTK2(self.outputDir + '/' + fn[kk] + '.vtk', vf)
             displ += dt * (v * nu).sum(axis=1)
+            if passenger is not None:
+                if isinstance(passenger[0], surfaces.Surface):
+                    fvp = surfaces.Surface(surf=passenger[0])
+                    fvp.updateVertices(passenger[1][kk,...])
+                    fvp.saveVTK(self.outputDir+'/'+fn[kk]+'_passenger.vtk')
+                else:
+                    pointSets.savePoints(self.outputDir+'/'+fn[kk]+'_passenger.vtk', passenger[1][kk,...])
 
     def saveEPDiff(self, fv0, at, fileName='evolution'):
         xtEPDiff, atEPdiff = evol.landmarkEPDiff(at.shape[0], fv0.vertices,
@@ -902,6 +918,7 @@ class SurfaceMatching(object):
             if self.saveTrajectories:
                 pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curves.vtk', self.xt)
 
+
             self.updateEndPoint(self.xt)
             self.fvInit.updateVertices(self.x0)
             dim2 = self.dim ** 2
@@ -911,12 +928,17 @@ class SurfaceMatching(object):
                     AB = np.dot(self.affineBasis, self.Afft[t])
                     A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
                     A[1][t] = AB[dim2:dim2 + self.dim]
-            (xt, Jt) = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
-                                                         withJacobian=True)
+
+            if self.passenger_points is None:
+                (xt, Jt) = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
+                                                             withJacobian=True)
+            else:
+                (xt, yt, Jt) = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
+                                                             withPointSet=self.passenger_points, withJacobian=True)
             if self.affine == 'euclidean' or self.affine == 'translation':
                 self.saveCorrectedEvolution(self.fvInit, xt, self.at, self.Afft, fileName=self.saveFileList,
                                             Jacobian=Jt)
-            self.saveEvolution(self.fvInit, xt, Jacobian=Jt, fileName=self.saveFileList)
+            self.saveEvolution(self.fvInit, xt, Jacobian=Jt, fileName=self.saveFileList, passenger = (self.passenger, yt))
         else:
             if self.varCounter != self.trajCounter:
                 (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
