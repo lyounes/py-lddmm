@@ -96,6 +96,12 @@ class SurfaceMatching(object):
                             saveTrajectories = saveTrajectories, affine = affine)
         self.initialize_variables()
         self.gradCoeff = self.x0.shape[0]
+        self.set_passenger(passenger)
+        self.pplot = pplot
+        if self.pplot:
+            self.initial_plot()
+
+    def set_passenger(self, passenger):
         self.passenger = passenger
         if isinstance(self.passenger, surfaces.Surface):
             self.passenger_points = self.passenger.vertices
@@ -103,11 +109,8 @@ class SurfaceMatching(object):
             self.passenger_points = self.passenger
         else:
             self.passenger_points = None
-        self.passenger_def = deepcopy(self.passenger)
+        self.passengerDef = deepcopy(self.passenger)
 
-        self.pplot = pplot
-        if self.pplot:
-            self.initial_plot()
 
 
     def set_parameters(self, maxIter=1000,
@@ -359,7 +362,7 @@ class SurfaceMatching(object):
         else:
             A = None
         if withJacobian:
-            (xt,Jt)  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A, withJacobian=True)
+            xt,Jt  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A, withJacobian=True)
         else:
             xt  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A)
         #print xt[-1, :, :]
@@ -907,10 +910,27 @@ class SurfaceMatching(object):
         if self.iter >= self.affBurnIn:
             self.coeffAff = self.coeffAff2
 
+        dim2 = self.dim ** 2
+        A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+        if self.affineDim > 0:
+            for t in range(self.Tsize):
+                AB = np.dot(self.affineBasis, self.Afft[t])
+                A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
+                A[1][t] = AB[dim2:dim2 + self.dim]
         if forceSave or self.iter % self.saveRate == 0:
             logging.info('Saving surfaces...')
-            if self.varCounter != self.trajCounter:
-                (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
+            if self.passenger_points is None:
+                self.xt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
+                                                             withJacobian=True)
+            else:
+                self.xt, yt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
+                                                             withPointSet=self.passenger_points, withJacobian=True)
+                if isinstance(self.passenger, surfaces.Surface):
+                    self.passengerDef.updateVertices(yt[-1,...])
+                else:
+                    deepcopy(yt[-1,...], self.passengerDef)
+            self.trajCounter = self.varCounter
+
             if self.saveEPDiffTrajectories and not self.internalCost and self.affineDim <= 0:
                 xtEPDiff, atEPdiff = self.saveEPDiff(self.fvInit, self.at, fileName=self.saveFile)
                 logging.info('EPDiff difference %f' % (np.fabs(self.xt[-1, :, :] - xtEPDiff[-1, :, :]).sum()))
@@ -921,27 +941,15 @@ class SurfaceMatching(object):
 
             self.updateEndPoint(self.xt)
             self.fvInit.updateVertices(self.x0)
-            dim2 = self.dim ** 2
-            A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-            if self.affineDim > 0:
-                for t in range(self.Tsize):
-                    AB = np.dot(self.affineBasis, self.Afft[t])
-                    A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-                    A[1][t] = AB[dim2:dim2 + self.dim]
 
-            if self.passenger_points is None:
-                (xt, Jt) = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
-                                                             withJacobian=True)
-            else:
-                (xt, yt, Jt) = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
-                                                             withPointSet=self.passenger_points, withJacobian=True)
             if self.affine == 'euclidean' or self.affine == 'translation':
-                self.saveCorrectedEvolution(self.fvInit, xt, self.at, self.Afft, fileName=self.saveFileList,
+                self.saveCorrectedEvolution(self.fvInit, self.xt, self.at, self.Afft, fileName=self.saveFileList,
                                             Jacobian=Jt)
-            self.saveEvolution(self.fvInit, xt, Jacobian=Jt, fileName=self.saveFileList, passenger = (self.passenger, yt))
+            self.saveEvolution(self.fvInit, self.xt, Jacobian=Jt, fileName=self.saveFileList, passenger = (self.passenger, yt))
         else:
             if self.varCounter != self.trajCounter:
-                (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
+                self.xt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A)
+                self.trajCounter = self.varCounter
             self.updateEndPoint(self.xt)
             self.fvInit.updateVertices(self.x0)
 

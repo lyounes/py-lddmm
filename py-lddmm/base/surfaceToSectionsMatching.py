@@ -33,7 +33,7 @@ from .surfaceSection import SurfaceSection, Surf2SecDist, Surf2SecGrad, Hyperpla
 #        affine: 'affine', 'similitude', 'euclidean', 'translation' or 'none'
 #        maxIter: max iterations in conjugate gradient
 class SurfaceToSectionsMatching(SurfaceMatching):
-    def __init__(self, Template=None, Target=None, param=None, maxIter=1000,
+    def __init__(self, Template=None, Target=None, param=None, maxIter=1000, passenger = None,
                  regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
                  subsampleTargetSize=-1, affineOnly = False,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
@@ -79,6 +79,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
                             saveTrajectories = saveTrajectories, affine = affine)
         self.initialize_variables()
         self.gradCoeff = self.x0.shape[0]
+        self.set_passenger(passenger)
 
         self.pplot = pplot
         self.colors = ('b', 'm', 'g', 'r', 'y', 'k')

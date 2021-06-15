@@ -1853,7 +1853,7 @@ class Surface:
             self.component[nf0:nf] = fv.component + c
             nv0 = nv
             nf0 = nf
-            c += 1
+            c = self.component[:nf].max() + 1
         self.computeCentersAreas()
 
     def connected_components(self, split=False):
