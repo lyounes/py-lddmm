@@ -33,7 +33,7 @@ from .surfaceSection import SurfaceSection, Surf2SecDist, Surf2SecGrad, Hyperpla
 #        affine: 'affine', 'similitude', 'euclidean', 'translation' or 'none'
 #        maxIter: max iterations in conjugate gradient
 class SurfaceToSectionsMatching(SurfaceMatching):
-    def __init__(self, Template=None, Target=None, param=None, maxIter=1000, passenger = None,
+    def __init__(self, Template=None, Target=None, param=None, maxIter=1000, passenger = None, componentMap=None,
                  regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
                  subsampleTargetSize=-1, affineOnly = False,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
@@ -80,6 +80,13 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         self.initialize_variables()
         self.gradCoeff = self.x0.shape[0]
         self.set_passenger(passenger)
+        self.ncomp_template = self.fv0.component.max()+1
+        self.ncomp_target = len(self.fv1.component)
+        if componentMap is None or componentMap.shape[0] != self.ncomp_template \
+            or componentMap.shape[1] != self.ncomp_target:
+            self.componentMap = np.ones((self.ncomp_template, self.ncomp_target), dtype=bool)
+        else:
+            self.componentMap = componentMap
 
         self.pplot = pplot
         self.colors = ('b', 'm', 'g', 'r', 'y', 'k')
@@ -96,8 +103,6 @@ class SurfaceToSectionsMatching(SurfaceMatching):
             return
         else:
             self.fv0 = Surface(surf=Template)
-
-        fv1 = None
 
         if type(Target) in (list, tuple):
             if type(Target[0]) == str:
@@ -275,7 +280,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
             fv1 = self.fv1
         obj = 0
         for k,f in enumerate(fv1):
-            obj += Surf2SecDist(_fvDef, f, self.fun_obj) # curveDist0=self.fun_obj0) plot=101+k)
+            obj += Surf2SecDist(_fvDef, f, self.fun_obj, target_label=np.where(self.componentMap[:,k])) # curveDist0=self.fun_obj0) plot=101+k)
         obj /= self.param.sigmaError**2
         #print('ending dt')
         return obj
@@ -296,8 +301,8 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         if endPoint is None:
             endPoint = self.fvDef
         px = np.zeros(endPoint.vertices.shape)
-        for f in self.fv1:
-            px += Surf2SecGrad(endPoint, f, self.fun_objGrad)
+        for k,f in enumerate(self.fv1):
+            px += Surf2SecGrad(endPoint, f, self.fun_objGrad, target_label=np.where(self.componentMap[:,k]))
         #print('ending epg')
         return px / self.param.sigmaError**2
 

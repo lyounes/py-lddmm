@@ -159,8 +159,12 @@ class SurfaceSection:
         self.hyperplane = Hyperplane(u=v[:,0], offset=(m[:,None]*v).sum())
 
 
-def Surf2SecDist(surf, s, curveDist, curveDist0 = None, plot = None):
-    s0 = SurfaceSection(surf=surf, hyperplane=s.hyperplane, plot = plot)
+def Surf2SecDist(surf, s, curveDist, curveDist0 = None, plot = None, target_label=None):
+    if target_label is not None:
+        surf_ = surf.select_component(target_label)
+    else:
+        surf_ = surf
+    s0 = SurfaceSection(surf=surf_, hyperplane=s.hyperplane, plot = plot)
     if s0.curve.faces.shape[0]>0:
         obj = curveDist(s0.curve, s.curve)
     else:
@@ -169,8 +173,12 @@ def Surf2SecDist(surf, s, curveDist, curveDist0 = None, plot = None):
         obj2 = obj + curveDist0(s.curve)
     return obj
 
-def Surf2SecGrad(surf, s, curveDistGrad):
-    s0 = SurfaceSection(surf=surf, hyperplane=s.hyperplane)
+def Surf2SecGrad(surf, s, curveDistGrad, target_label = None):
+    if target_label is not None:
+        surf_ = surf.select_component(target_label)
+    else:
+        surf_ = surf
+    s0 = SurfaceSection(surf=surf_, hyperplane=s.hyperplane)
     if s0.curve.faces.shape[0] > 0:
         cgrad, cgradw = curveDistGrad(s0.curve, s.curve, with_weights=True)
         grad = CurveGrad2Surf(cgrad, cgradw, surf.vertices, surf.edges, surf.weights, s.hyperplane.u, s.hyperplane.offset)

@@ -328,31 +328,7 @@ class Surface:
     # Computes edges from vertices/faces
     def getEdges(self):
         self.edges, self.edgeFaces, self.faceEdges, self.bdry = get_edges_(self.faces)
-        # self.edges = []
-        # for k in range(self.faces.shape[0]):
-        #     for kj in (0,1,2):
-        #         u = [self.faces[k, kj], self.faces[k, (kj+1)%3]]
-        #         if (u not in self.edges) & (u.reverse() not in self.edges):
-        #             self.edges.append(u)
-        # self.edgeFaces = []
-        # self.faceEdges = np.zeros(self.faces.shape, dtype=int)
-        # for u in self.edges:
-        #     self.edgeFaces.append([])
-        # for k in range(self.faces.shape[0]):
-        #     for kj in (0,1,2):
-        #         u = [self.faces[k, kj], self.faces[k, (kj+1)%3]]
-        #         if u in self.edges:
-        #             kk = self.edges.index(u)
-        #         else:
-        #             u.reverse()
-        #             kk = self.edges.index(u)
-        #         self.edgeFaces[kk].append(k)
-        #         self.faceEdges[k, kj] = kk
-        # self.edges = np.int_(np.array(self.edges))
-        # self.bdry = np.int_(np.zeros(self.edges.shape[0]))
-        # for k in range(self.edges.shape[0]):
-        #     if len(self.edgeFaces[k]) < 2:
-        #         self.bdry[k] = 1
+
 
     # computes the signed distance function in a small neighborhood of a shape 
     def LocalSignedDistance(self, data, value):
@@ -1880,9 +1856,18 @@ class Surface:
             res.append(Surface(surf=(F,V), weights=w))
         return res
 
+    def extract_components(self, comp):
+        J = np.where(np.nonzero(self.component, comp))
+        V = self.vertices[J,:]
+        w = self.weights[J]
+        newI = -np.ones(self.vertices.shape[0], dtype=int)
+        newI[J] = np.arange(0, J.shape[0])
+        F = newI[self.faces]
+        I = np.amax(F, axis=1) >= 0
+        F = F[I, :]
+        res = Surface(surf=(F,V), weights=w)
+        return res
 
-
-    
     def normGrad(self, phi):
         v1 = self.vertices[self.faces[:,0],:]
         v2 = self.vertices[self.faces[:,1],:]
