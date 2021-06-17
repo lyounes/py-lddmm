@@ -48,7 +48,7 @@ class vtkFields:
         self.tensors = []
 
 
-#@jit(nopython=True, debug=True)
+@jit(nopython=True)
 def get_edges_(faces):
     int64 = "int"
     nv = faces.max() + 1
@@ -102,6 +102,115 @@ def get_edges_(faces):
             bdry[k] = 1
     return edges, edgeFaces, faceEdges, bdry
 # General surface class
+
+#@jit(nopython=True)
+def extract_components_(target_comp, vertices, faces, component, weights, edge_info = None):
+    #labels = np.zeros(self.vertices.shape[0], dtype = int)
+    #for j in range(self.faces.shape[1]):
+    #   labels[self.faces[:,i]] = self.component
+
+    int_type = int
+    Jf = np.zeros(component.shape[0], dtype = int_type)
+    for k in target_comp:
+        for i in range(component.shape[0]):
+            if component[i] == k:
+                Jf[i] = 1
+#        Jf = np.logical_or(Jf, component==k)
+#    for i in range(component.shape[0]):
+#        print(component[i])
+#        if component[i] in target_comp:
+#            Jf[i] = True
+    #Jf = np.isin(component, target_comp)
+    J = np.zeros(vertices.shape[0], dtype = int_type)
+    for i in range(faces.shape[1]):
+        J[faces[:,i]] = np.logical_or(J[faces[:,i]], Jf)
+    J = np.where(J)[0]
+    V = vertices[J,:]
+    w = weights[J]
+    newI = -np.ones(vertices.shape[0], dtype=int_type)
+    newI[J] = np.arange(0, J.shape[0])
+    F = np.zeros(faces.shape, dtype=int_type)
+    If = np.zeros(faces.shape[0], dtype=int_type)
+    ii = 0
+    for i in range(faces.shape[0]):
+        pos = True
+        for j in range(faces.shape[1]):
+            F[i,j] = newI[faces[i,j]]
+            if F[i,j]< 0:
+                pos = False
+        if pos:
+            If[ii] = i
+            ii += 1
+    If = If[:ii]
+    #If = np.max(F, axis=1) >= 0
+    F = F[If, :]
+    if edge_info is not None:
+        edges = edge_info[0]
+        faceEdges = edge_info[1]
+        edgeFaces = edge_info[2]
+        newIf = -np.ones(faces.shape[0], dtype = int_type)
+        newIf[If] = np.arange(If.shape[0])
+        E = np.zeros(edges.shape, dtype=int_type)
+        Ie = np.zeros(edges.shape[0], dtype=int_type)
+        ii = 0
+        for i in range(edges.shape[0]):
+            pos = True
+            for j in range(edges.shape[1]):
+                E[i,j] = newI[edges[i,j]]
+                if E[i,j]< 0:
+                    pos = False
+            if pos:
+                Ie[ii] = i
+                ii += 1
+        Ie = Ie[:ii]
+        E = E[Ie, :]
+        #E = newI[edges]
+        #Ie = np.amax(E, axis=1) >= 0
+        newIe = -np.ones(edges.shape[0], dtype = int_type)
+        newIe[Ie] = np.arange(Ie.shape[0])
+        #E = E[Ie, :]
+
+        FE = np.zeros(faceEdges.shape, dtype=int_type)
+        Ife = np.zeros(faceEdges.shape[0], dtype=int_type)
+        ii = 0
+        for i in range(faceEdges.shape[0]):
+            pos = True
+            for j in range(faceEdges.shape[1]):
+                FE[i,j] = newIe[faceEdges[i,j]]
+                if FE[i,j]< 0:
+                    pos = False
+            if pos:
+                Ife[ii] = i
+                ii += 1
+        Ife = Ife[:ii]
+        FE = FE[Ife, :]
+        #FE = newIe[faceEdges]
+        #I_ = np.amax(FE, axis=1) >= 0
+        #FE = FE[I_, :]
+        EF = np.zeros(edgeFaces.shape, dtype=int_type)
+        Ief = np.zeros(edgeFaces.shape[0], dtype=int_type)
+        ii = 0
+        for i in range(edgeFaces.shape[0]):
+            pos = True
+            for j in range(edgeFaces.shape[1]):
+                EF[i,j] = newIf[edgeFaces[i,j]]
+                if EF[i,j]< 0:
+                    pos = False
+            if pos:
+                Ief[ii] = i
+                ii += 1
+        Ief = Ief[:ii]
+        EF = EF[Ief, :]
+        #EF = newIf[edgeFaces]
+        #I_ = np.amax(EF, axis=1) >= 0
+        #EF = EF[I_, :]
+    else:
+        E = None
+        FE = None
+        EF = None
+
+    return F, V, w, J, E, FE, EF
+
 
 class Surface:
     def __init__(self, surf=None, weights=None):
@@ -1857,16 +1966,24 @@ class Surface:
         return res
 
     def extract_components(self, comp):
-        J = np.where(np.nonzero(self.component, comp))
-        V = self.vertices[J,:]
-        w = self.weights[J]
-        newI = -np.ones(self.vertices.shape[0], dtype=int)
-        newI[J] = np.arange(0, J.shape[0])
-        F = newI[self.faces]
-        I = np.amax(F, axis=1) >= 0
-        F = F[I, :]
+        #labels = np.zeros(self.vertices.shape[0], dtype = int)
+        #for j in range(self.faces.shape[1]):
+         #   labels[self.faces[:,i]] = self.component
+
+        #print('extracting components')
+        if self.edges is None:
+            F, V, w, J, E, FE, EF = extract_components_(comp, self.vertices, self.faces, self.component, self.weights, edge_info = None)
+        else:
+            F, V, w, J, E, FE, EF = extract_components_(comp, self.vertices, self.faces, self.component, self.weights, edge_info = (self.edges, self.faceEdges, self.edgeFaces))
+
         res = Surface(surf=(F,V), weights=w)
-        return res
+        if self.edges is not None:
+            res.edges = E
+            res.faceEdges = FE
+            res.edgeFaces = EF
+
+        #print(f'End of extraction: vertices: {res.vertices.shape[0]} faces: {res.faces.shape[0]}')
+        return res, J
 
     def normGrad(self, phi):
         v1 = self.vertices[self.faces[:,0],:]

@@ -161,7 +161,7 @@ class SurfaceSection:
 
 def Surf2SecDist(surf, s, curveDist, curveDist0 = None, plot = None, target_label=None):
     if target_label is not None:
-        surf_ = surf.select_component(target_label)
+        surf_, J = surf.extract_components(target_label)
     else:
         surf_ = surf
     s0 = SurfaceSection(surf=surf_, hyperplane=s.hyperplane, plot = plot)
@@ -175,15 +175,21 @@ def Surf2SecDist(surf, s, curveDist, curveDist0 = None, plot = None, target_labe
 
 def Surf2SecGrad(surf, s, curveDistGrad, target_label = None):
     if target_label is not None:
-        surf_ = surf.select_component(target_label)
+        surf_, J = surf.extract_components(target_label)
     else:
         surf_ = surf
+    if surf_.edges is None:
+        surf_.getEdges()
     s0 = SurfaceSection(surf=surf_, hyperplane=s.hyperplane)
     if s0.curve.faces.shape[0] > 0:
         cgrad, cgradw = curveDistGrad(s0.curve, s.curve, with_weights=True)
-        grad = CurveGrad2Surf(cgrad, cgradw, surf.vertices, surf.edges, surf.weights, s.hyperplane.u, s.hyperplane.offset)
+        grad_ = CurveGrad2Surf(cgrad, cgradw, surf_.vertices, surf_.edges, surf_.weights, s.hyperplane.u, s.hyperplane.offset)
     else:
+        grad_ = np.zeros(surf_.vertices.shape)
+
+    if target_label is not None:
         grad = np.zeros(surf.vertices.shape)
+        grad[J, :] = grad_
     return grad
 
 
@@ -284,7 +290,7 @@ def readFromTXT(filename0, check_orientation = True, find_outer=True, merge_plan
         fv1 = []
         for i in range(len(c)):
             cv = Curve(curve=c[i])
-            h = Hyperplane(u=hyperplanes[i,:3], offset=hyperplanes[3])
+            h = Hyperplane(u=hyperplanes[i,:3], offset=hyperplanes[i,3])
             fv1.append(SurfaceSection(curve=cv, hyperplane=h, hypLabel=i))
 
     #fv1_ += fv1

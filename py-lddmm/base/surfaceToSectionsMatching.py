@@ -81,13 +81,14 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         self.gradCoeff = self.x0.shape[0]
         self.set_passenger(passenger)
         self.ncomp_template = self.fv0.component.max()+1
-        self.ncomp_target = len(self.fv1.component)
+        self.ncomp_target = len(self.fv1)
         if componentMap is None or componentMap.shape[0] != self.ncomp_template \
             or componentMap.shape[1] != self.ncomp_target:
             self.componentMap = np.ones((self.ncomp_template, self.ncomp_target), dtype=bool)
         else:
             self.componentMap = componentMap
 
+        #print(self.componentMap)
         self.pplot = pplot
         self.colors = ('b', 'm', 'g', 'r', 'y', 'k')
         if self.pplot:
@@ -108,7 +109,8 @@ class SurfaceToSectionsMatching(SurfaceMatching):
             if type(Target[0]) == str:
                 self.fv1, self.hyperplanes = readFromTXT(Target, forceClosed=self.forceClosed)
             else:
-                self.fv1 = Target
+                self.fv1 = Target[0]
+                self.hyperplanes = Target[1]
         elif type(Target) == str:
             self.fv1, self.hyperplanes = readFromTXT(Target, forceClosed=self.forceClosed)
         else:
@@ -280,7 +282,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
             fv1 = self.fv1
         obj = 0
         for k,f in enumerate(fv1):
-            obj += Surf2SecDist(_fvDef, f, self.fun_obj, target_label=np.where(self.componentMap[:,k])) # curveDist0=self.fun_obj0) plot=101+k)
+            obj += Surf2SecDist(_fvDef, f, self.fun_obj, target_label=np.where(self.componentMap[:,k])[0]) # curveDist0=self.fun_obj0) plot=101+k)
         obj /= self.param.sigmaError**2
         #print('ending dt')
         return obj
@@ -302,7 +304,8 @@ class SurfaceToSectionsMatching(SurfaceMatching):
             endPoint = self.fvDef
         px = np.zeros(endPoint.vertices.shape)
         for k,f in enumerate(self.fv1):
-            px += Surf2SecGrad(endPoint, f, self.fun_objGrad, target_label=np.where(self.componentMap[:,k]))
+            #print(k, endPoint.vertices.shape)
+            px += Surf2SecGrad(endPoint, f, self.fun_objGrad, target_label=np.where(self.componentMap[:,k])[0])
         #print('ending epg')
         return px / self.param.sigmaError**2
 
