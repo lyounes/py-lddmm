@@ -86,7 +86,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         self.colors = ('b', 'm', 'g', 'r', 'y', 'k')
         if self.pplot:
             self.initial_plot()
-        self.saveRate = 1
+        self.saveRate = 25
         self.forceLineSearch = False
 
 
