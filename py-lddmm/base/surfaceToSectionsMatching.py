@@ -2,7 +2,7 @@ import numpy as np
 import numpy.linalg as la
 import logging
 from . import pointEvolution as evol
-from .surfaces import Surface
+from .surfaces import Surface, extract_components_
 from .curves import Curve
 from .curve_distances import measureNorm0, measureNormDef, measureNormGradient
 from .curve_distances import currentNorm0, currentNormDef, currentNormGradient
@@ -65,7 +65,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         self.forceClosed = forceClosed
 
         self.set_fun(self.param.errorType)
-        self.set_template_and_target(Template, Target, subsampleTargetSize, select_planes)
+        self.set_template_and_target(Template, Target, subsampleTargetSize, select_planes, componentMap)
         print(f'Template has {self.fv0.vertices.shape[0]} vertices')
         print(f'There are {self.hyperplanes.shape[0]} planes')
         print(f'There are {len(self.fv1)} target curves')
@@ -80,13 +80,6 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         self.initialize_variables()
         self.gradCoeff = self.x0.shape[0]
         self.set_passenger(passenger)
-        self.ncomp_template = self.fv0.component.max()+1
-        self.ncomp_target = len(self.fv1)
-        if componentMap is None or componentMap.shape[0] != self.ncomp_template \
-            or componentMap.shape[1] != self.ncomp_target:
-            self.componentMap = np.ones((self.ncomp_template, self.ncomp_target), dtype=bool)
-        else:
-            self.componentMap = componentMap
 
         #print(self.componentMap)
         self.pplot = pplot
@@ -98,7 +91,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
 
 
 
-    def set_template_and_target(self, Template, Target, subsampleTargetSize=-1, select_planes=None):
+    def set_template_and_target(self, Template, Target, subsampleTargetSize=-1, select_planes=None, componentMap=None):
         if Template is None:
             logging.error('Please provide a template surface')
             return
@@ -160,6 +153,22 @@ class SurfaceToSectionsMatching(SurfaceMatching):
             c = Curve(outCurve)
             c.saveVTK(self.outputDir+f'/TargetCurves.vtk', cell_normals=normals, scalars=labels, scal_name='labels')
         self.dim = self.fv0.vertices.shape[1]
+
+        self.ncomp_template = self.fv0.component.max()+1
+        self.ncomp_target = len(self.fv1)
+        if componentMap is None or componentMap.shape[0] != self.ncomp_template \
+            or componentMap.shape[1] != self.ncomp_target:
+            self.componentMap = np.ones((self.ncomp_template, self.ncomp_target), dtype=bool)
+        else:
+            self.componentMap = componentMap
+        self.fv0.getEdges()
+        self.component_structure = []
+        for k,f in enumerate(self.fv1):
+            target_label = np.where(self.componentMap[:, k])[0]
+            self.component_structure.append(extract_components_(target_label, self.fv0.vertices.shape[0], self.fv0.faces,
+                                                                self.fv0.component,
+                                                                edge_info = (self.fv0.edges, self.fv0.faceEdges, self.fv0.edgeFaces)))
+
 
     def selectPlanes(self, hs):
         fv1 = ()
@@ -282,7 +291,8 @@ class SurfaceToSectionsMatching(SurfaceMatching):
             fv1 = self.fv1
         obj = 0
         for k,f in enumerate(fv1):
-            obj += Surf2SecDist(_fvDef, f, self.fun_obj, target_label=np.where(self.componentMap[:,k])[0]) # curveDist0=self.fun_obj0) plot=101+k)
+            obj += Surf2SecDist(_fvDef, f, self.fun_obj, target_comp_info=self.component_structure[k])
+                                #target_label=np.where(self.componentMap[:,k])[0]) # curveDist0=self.fun_obj0) plot=101+k)
         obj /= self.param.sigmaError**2
         #print('ending dt')
         return obj
@@ -305,7 +315,8 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         px = np.zeros(endPoint.vertices.shape)
         for k,f in enumerate(self.fv1):
             #print(k, endPoint.vertices.shape)
-            px += Surf2SecGrad(endPoint, f, self.fun_objGrad, target_label=np.where(self.componentMap[:,k])[0])
+            px += Surf2SecGrad(endPoint, f, self.fun_objGrad, target_comp_info=self.component_structure[k])
+                               #target_label=np.where(self.componentMap[:,k])[0])
         #print('ending epg')
         return px / self.param.sigmaError**2
 

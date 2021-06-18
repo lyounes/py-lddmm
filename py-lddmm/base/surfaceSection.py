@@ -165,9 +165,11 @@ class SurfaceSection:
         self.hyperplane = Hyperplane(u=v[:,0], offset=(m*v[:,0]).sum())
 
 
-def Surf2SecDist(surf, s, curveDist, curveDist0 = None, plot = None, target_label=None):
-    if target_label is not None:
-        surf_, J = surf.extract_components(target_label)
+def Surf2SecDist(surf, s, curveDist, curveDist0 = None, plot = None, target_label=None, target_comp_info=None):
+    if target_comp_info is not None:
+        surf_, J = surf.extract_components(comp_info=target_comp_info)
+    elif target_label is not None:
+        surf_, J = surf.extract_components(comp=target_label)
     else:
         surf_ = surf
     s0 = SurfaceSection(surf=surf_, hyperplane=s.hyperplane, plot = plot)
@@ -179,11 +181,14 @@ def Surf2SecDist(surf, s, curveDist, curveDist0 = None, plot = None, target_labe
         obj2 = obj + curveDist0(s.curve)
     return obj
 
-def Surf2SecGrad(surf, s, curveDistGrad, target_label = None):
-    if target_label is not None:
-        surf_, J = surf.extract_components(target_label)
+def Surf2SecGrad(surf, s, curveDistGrad, target_label = None, target_comp_info=None):
+    if target_comp_info is not None:
+        surf_, J = surf.extract_components(comp_info=target_comp_info)
+    elif target_label is not None:
+        surf_, J = surf.extract_components(comp=target_label)
     else:
         surf_ = surf
+        J = None
     if surf_.edges is None:
         surf_.getEdges()
     s0 = SurfaceSection(surf=surf_, hyperplane=s.hyperplane)
@@ -193,9 +198,11 @@ def Surf2SecGrad(surf, s, curveDistGrad, target_label = None):
     else:
         grad_ = np.zeros(surf_.vertices.shape)
 
-    if target_label is not None:
+    if target_comp_info is not None or target_label is not None:
         grad = np.zeros(surf.vertices.shape)
         grad[J, :] = grad_
+    else:
+        grad = grad_
     return grad
 
 

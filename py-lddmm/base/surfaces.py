@@ -104,7 +104,7 @@ def get_edges_(faces):
 # General surface class
 
 #@jit(nopython=True)
-def extract_components_(target_comp, vertices, faces, component, weights, edge_info = None):
+def extract_components_(target_comp, nbvert, faces, component, edge_info = None):
     #labels = np.zeros(self.vertices.shape[0], dtype = int)
     #for j in range(self.faces.shape[1]):
     #   labels[self.faces[:,i]] = self.component
@@ -121,13 +121,14 @@ def extract_components_(target_comp, vertices, faces, component, weights, edge_i
 #        if component[i] in target_comp:
 #            Jf[i] = True
     #Jf = np.isin(component, target_comp)
-    J = np.zeros(vertices.shape[0], dtype = int_type)
+    print(nbvert)
+    J = np.zeros(nbvert, dtype = int_type)
     for i in range(faces.shape[1]):
         J[faces[:,i]] = np.logical_or(J[faces[:,i]], Jf)
     J = np.where(J)[0]
-    V = vertices[J,:]
-    w = weights[J]
-    newI = -np.ones(vertices.shape[0], dtype=int_type)
+    #V = vertices[J,:]
+    #w = weights[J]
+    newI = -np.ones(nbvert, dtype=int_type)
     newI[J] = np.arange(0, J.shape[0])
     F = np.zeros(faces.shape, dtype=int_type)
     If = np.zeros(faces.shape[0], dtype=int_type)
@@ -209,7 +210,7 @@ def extract_components_(target_comp, vertices, faces, component, weights, edge_i
         FE = None
         EF = None
 
-    return F, V, w, J, E, FE, EF
+    return F, J, E, FE, EF
 
 
 class Surface:
@@ -1965,17 +1966,28 @@ class Surface:
             res.append(Surface(surf=(F,V), weights=w))
         return res
 
-    def extract_components(self, comp):
+    def extract_components(self, comp=None, comp_info=None):
         #labels = np.zeros(self.vertices.shape[0], dtype = int)
         #for j in range(self.faces.shape[1]):
          #   labels[self.faces[:,i]] = self.component
 
         #print('extracting components')
-        if self.edges is None:
-            F, V, w, J, E, FE, EF = extract_components_(comp, self.vertices, self.faces, self.component, self.weights, edge_info = None)
+        if comp_info is not None:
+            F, J, E, FE, EF = comp_info
+        elif comp is not None:
+            if self.edges is None:
+                F, J, E, FE, EF = extract_components_(comp, self.vertices.shape[0], self.faces, self.component,
+                                                            edge_info = None)
+            else:
+                F, J, E, FE, EF = extract_components_(comp, self.vertices.shape[0], self.faces, self.component,
+                                                            edge_info = (self.edges, self.faceEdges, self.edgeFaces))
         else:
-            F, V, w, J, E, FE, EF = extract_components_(comp, self.vertices, self.faces, self.component, self.weights, edge_info = (self.edges, self.faceEdges, self.edgeFaces))
+            res = Surface
+            J = np.zeros(self.vertices.shape[0], dtype=bool)
+            return res, J
 
+        V = self.vertices[J,:]
+        w = self.weights[J]
         res = Surface(surf=(F,V), weights=w)
         if self.edges is not None:
             res.edges = E
