@@ -10,7 +10,7 @@ from .curve_distances import varifoldNorm0, varifoldNormDef, varifoldNormGradien
 from . import pointSets
 from functools import partial
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d.axes3d import Axes3D
 from .surfaceMatching import SurfaceMatchingParam, SurfaceMatching
 from .surfaceSection import SurfaceSection, Surf2SecDist, Surf2SecGrad, Hyperplane, readFromTXT
 
@@ -93,7 +93,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         self.colors = ('b', 'm', 'g', 'r', 'y', 'k')
         if self.pplot:
             self.initial_plot()
-        self.saveRate = 25
+        self.saveRate = 1
         self.forceLineSearch = False
 
 
@@ -349,15 +349,17 @@ class SurfaceToSectionsMatching(SurfaceMatching):
             normals = np.zeros((0,3))
             npt = 0
             for k in range(self.hyperplanes.shape[0]):
+                target_label = np.where(self.componentMap[:, k])[0]
                 h = Hyperplane(u=self.hyperplanes[k,:3], offset=self.hyperplanes[k,3])
-                f2 = SurfaceSection(hyperplane=h, surf=self.fvDef)
+                surf_, J = self.fvDef.extract_components(target_label)
+                f2 = SurfaceSection(hyperplane=h, surf=surf_)
                 npt += f2.curve.vertices.shape[0]
                 outCurve += (f2.curve,)
                 normals = np.concatenate((normals, f2.normals), axis=0)
             labels = np.zeros(npt, dtype=int)
             npt = 0
-            for k,f in enumerate(self.fv1):
-                npt2 = npt + f.curve.vertices.shape[0]
+            for k,f in enumerate(outCurve):
+                npt2 = npt + f.vertices.shape[0]
                 labels[npt:npt2] = k+1
                 npt = npt2
             c = Curve(outCurve)

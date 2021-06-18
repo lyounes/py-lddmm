@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 from scipy import linalg as LA
 from .curves import Curve
@@ -155,8 +157,12 @@ class SurfaceSection:
         m = c.vertices.mean(axis=0)
         vm = c.vertices-m[None, :]
         S = np.dot(vm.T, vm)
-        l,v = LA.eigh(S, subset_by_index = [0,0])
-        self.hyperplane = Hyperplane(u=v[:,0], offset=(m[:,None]*v).sum())
+        l,v = LA.eigh(S, subset_by_index = [0,1])
+        if l[0] > 1e-6:
+            logging.info('warning: curve not planar')
+        if l[1] < 1e-6:
+            logging.info('warning: curve linear')
+        self.hyperplane = Hyperplane(u=v[:,0], offset=(m*v[:,0]).sum())
 
 
 def Surf2SecDist(surf, s, curveDist, curveDist0 = None, plot = None, target_label=None):
@@ -287,13 +293,13 @@ def readFromTXT(filename0, check_orientation = True, find_outer=True, merge_plan
                         c[k].append(fv1[i].curve)
                         found_h[i] = True
 
-        fv1 = []
+        fv1_ = []
         for i in range(len(c)):
             cv = Curve(curve=c[i])
             h = Hyperplane(u=hyperplanes[i,:3], offset=hyperplanes[i,3])
-            fv1.append(SurfaceSection(curve=cv, hyperplane=h, hypLabel=i))
+            fv1_.append(SurfaceSection(curve=cv, hyperplane=h, hypLabel=i))
 
     #fv1_ += fv1
     #hyperplane_ = np.concatenate((hyperplane_, hyperplanes), axis=0)
 
-    return fv1, hyperplanes
+    return fv1_, hyperplanes
