@@ -103,13 +103,13 @@ def get_edges_(faces):
     return edges, edgeFaces, faceEdges, bdry
 # General surface class
 
-#@jit(nopython=True)
+@jit(nopython=True)
 def extract_components_(target_comp, vertices, faces, component, weights, edge_info = None):
     #labels = np.zeros(self.vertices.shape[0], dtype = int)
     #for j in range(self.faces.shape[1]):
     #   labels[self.faces[:,i]] = self.component
 
-    int_type = int
+    int_type = int64
     Jf = np.zeros(component.shape[0], dtype = int_type)
     for k in target_comp:
         for i in range(component.shape[0]):
