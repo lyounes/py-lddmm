@@ -24,14 +24,24 @@ from mpl_toolkits.mplot3d import Axes3D
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class SurfaceMatchingParam(surfaceMatching.SurfaceMatchingParam):
-    def __init__(self, timeStep=.1, algorithm='bfgs', Wolfe=True, KparDiff=None, KparDist=None, KparDiffOut=None, sigmaKernel=6.5, sigmaKernelOut=6.5,
-                 sigmaDist=2.5, sigmaError=1.0, typeKernel='gauss', errorType='varifold', internalCost=None):
+    def __init__(self, timeStep=.1, algorithm='bfgs', Wolfe=True, KparDiff=None, KparDist=None, KparDiffOut=None,
+                 sigmaError = 1., errorType='varifold', internalCost=None):
         surfaceMatching.SurfaceMatchingParam.__init__(self, timeStep=timeStep, KparDiff=KparDiff,
-                                                      KparDist=KparDist, sigmaKernel=sigmaKernel,
-                                                      sigmaDist=sigmaDist, algorithm = algorithm, Wolfe=Wolfe,
-                                                      sigmaError=sigmaError, typeKernel=typeKernel,
+                                                      KparDist=KparDist, algorithm = algorithm, Wolfe=Wolfe,
+                                                      sigmaError=sigmaError,
                                                       errorType=errorType, internalCost=internalCost)
-        self.sigmaKernelOut = sigmaKernelOut
+        if KparDiffOut is None:
+            self.KparDiffOut = self.KparDiff
+            self.sigmaKernelOut = self.sigmaKernel
+        elif type(KparDiffOut) in (list,tuple):
+            self.typeKernelOut = KparDiffOut[0]
+            self.sigmaKernelOut = KparDiffOut[1]
+            if self.typeKernelOut == 'laplacian' and len(KparDiff) > 2:
+                self.orderKernelOut = KparDist[2]
+            self.KparDist = kfun.Kernel(name = self.typeKernelOut, sigma = self.sigmaKernelOut, order=self.orderKernelOut)
+        else:
+            self.KparDiffOut = KparDiffOut
+
         if KparDiffOut == None:
             self.KparDiffOut = kfun.Kernel(name=self.typeKernel, sigma=self.sigmaKernelOut)
         else:
@@ -94,10 +104,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         cval = np.zeros(self.cval.shape)
         for t in range(self.Tsize + 1):
             x = xt[t]
-            if t < self.Tsize:
-                a = at[t]
-                r = self.param.KparDiff.applyK(x, a)
-                self.v[t, ...] = r
+            #if t < self.Tsize:
 
             nu = np.zeros(x.shape)
             fk = self.fv0.faces
@@ -116,6 +123,9 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             self.nu[t, ...] = nu
 
             if t < self.Tsize:
+                a = at[t]
+                r = self.param.KparDiff.applyK(x, a)
+                self.v[t, ...] = r
                 # cval[t,...] = ((r*r).sum(axis=1) - ((nu*r).sum(axis=1))**2)/2
                 cval[t, ...] = (np.sqrt((r * r).sum(axis=1)) - (nu * r).sum(axis=1)) / 2
                 obj += timeStep * ((-self.lmb[t, ...] * cval[t, ...]).sum() + (cval[t, ...] ** 2).sum() / (2 * self.mu))
