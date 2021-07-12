@@ -3,7 +3,7 @@ from scipy.spatial import Delaunay
 from .surfaces import Surface
 
 class Rectangle(Surface):
-    def __init__(self, corners = None, npt = 25):
+    def __init__(self, corners = None, npt = 25, spacing = None):
         super().__init__()
         if corners is None:
             self.corners = ([0,0,0], [1,0,0], [0,1,0])
@@ -13,34 +13,42 @@ class Rectangle(Surface):
         ul = np.array(self.corners[0])
         ur = np.array(self.corners[1])
         ll = np.array(self.corners[2])
-        lr = ur + ll - ul
-
-        t = np.zeros((npt**2,2))
         v0 = ur - ul
-        nv0 = np.sqrt((v0**2).sum())
-        t0 = np.linspace(0, 1, npt)
-
         v1 = ll - ul
-        nv1 = np.sqrt((v1**2).sum())
-        t1 = np.linspace(0, 1, npt)
+
+        if spacing is None:
+            if np.isscalar(npt):
+                npt0 = npt
+                npt1 = npt
+            else:
+                npt0 = npt[0]
+                npt1 = npt[1]
+        else:
+            nv0 = np.sqrt((v0 ** 2).sum())
+            nv1 = np.sqrt((v1**2).sum())
+            npt0 = int(np.ceil(nv0/spacing))
+            npt1 = int(np.ceil(nv1/spacing))
+
+        t0 = np.linspace(0, 1, npt0)
+
+        t1 = np.linspace(0, 1, npt1)
         x,y = np.meshgrid(t0,t1)
         x = np.ravel(x)
         y = np.ravel(y)
         self.vertices = ul[None, :] +  x[:, None] * v0[None, :] + y[:, None] * v1[None, :]
-        pts = np.zeros((npt**2, 2))
 
-        nf = 2*(npt-1)**2
+        nf = 2*(npt0-1)*(npt1-1)
         self.faces = np.zeros((nf,3), dtype=int)
         jf = 0
-        for k1 in range(npt -1):
-            for k2 in range(npt-1):
-                c1 = k1 * npt + k2
+        for k1 in range(npt1 -1):
+            for k2 in range(npt0-1):
+                c1 = k1 * npt0 + k2
                 self.faces[jf, 0] = c1
-                self.faces[jf, 1] = c1 + npt
+                self.faces[jf, 1] = c1 + npt0
                 self.faces[jf, 2] = c1 + 1
                 self.faces[jf+1, 0] = c1 + 1
-                self.faces[jf+1, 1] = c1 + npt
-                self.faces[jf+1, 2] = c1 + npt + 1
+                self.faces[jf+1, 1] = c1 + npt0
+                self.faces[jf+1, 2] = c1 + npt0 + 1
                 jf += 2
         self.component = np.zeros(self.faces.shape[0], dtype=int)
         self.weights = np.ones(self.vertices.shape[0], dtype=int)

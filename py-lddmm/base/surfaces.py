@@ -1943,7 +1943,8 @@ class Surface:
 
     def connected_components(self, split=False):
         self.getEdges()
-        A = csr_matrix((np.ones(self.edges.shape[0]), (self.edges[:,0], self.edges[:,1])))
+        N = self.edges.max()+1
+        A = csr_matrix((np.ones(self.edges.shape[0]), (self.edges[:,0], self.edges[:,1])), shape=(N,N))
         nc, labels = connected_components(A, directed=False)
         self.component = labels[self.faces[:,0]]
         logging.info(f'Found {nc} connected components')
