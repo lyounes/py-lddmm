@@ -410,10 +410,11 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 for kk,j in enumerate(fk[:,2]):
                     lnu[j, :] += lnu0[kk,:]
                 #print lnu.shape
-                dxcval[k][t] = self.param.KparDiff.applyDiffKT(z, a[np.newaxis,...], lnu[np.newaxis,...], firstVar=x)
-                dxcval[self.nsurf][t][npt:npt1, :] += (self.param.KparDiff.applyDiffKT(x, lnu[np.newaxis,...], a[np.newaxis,...], firstVar=z)
-                                         - self.param.KparDiffOut.applyDiffKT(zB, lnu[np.newaxis,...], aB[np.newaxis,...], firstVar=z))
-                dxcval[self.nsurf][t] -= self.param.KparDiffOut.applyDiffKT(z, aB[np.newaxis,...], lnu[np.newaxis,...], firstVar=zB)
+                dxcval[k][t] = self.param.KparDiff.applyDiffKT(z, a, lnu, firstVar=x)
+                dxcval[self.nsurf][t][npt:npt1, :] += \
+                    (self.param.KparDiff.applyDiffKT(x, lnu, a, firstVar=z)
+                     - self.param.KparDiffOut.applyDiffKT(zB, lnu, aB, firstVar=z))
+                dxcval[self.nsurf][t] -= self.param.KparDiffOut.applyDiffKT(z, aB, lnu, firstVar=zB)
                 dxcval[self.nsurf][t][npt:npt1, :] += np.dot(lnu, A)
                 if self.useKernelDotProduct:
                     Kxx = self.param.KparDiff.getK(x)
@@ -487,10 +488,11 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 r2 = self.param.KparDiffOut.applyK(zB, aB, firstVar=x)
                 lmb[t, npt:npt1] = self.lmb[t, npt:npt1] - np.squeeze(np.multiply(nu, r-r2).sum(axis=1))/self.mu
                 lnu = np.multiply(nu, lmb[t, npt:npt1].reshape([self.npt[k], 1]))
-                dxcval[k][t] = (self.param.KparDiff.applyDiffKT(x, [lnu,a], [a,lnu]) -
-                                self.param.KparDiffOut.applyDiffKT(zB, [lnu], [aB], firstVar=x))
+                dxcval[k][t] = (self.param.KparDiff.applyDiffKT(x, lnu, a)
+                                + self.param.KparDiff.applyDiffKT(x, a, lnu)
+                                - self.param.KparDiffOut.applyDiffKT(zB, lnu, aB, firstVar=x))
                 dxcval[k][t] += np.dot(lnu, A)
-                dxcval[self.nsurf][t] -= self.param.KparDiffOut.applyDiffKT(x, [aB], [lnu], firstVar=zB)
+                dxcval[self.nsurf][t] -= self.param.KparDiffOut.applyDiffKT(x, aB, lnu, firstVar=zB)
                 dacval[k][t] = self.param.KparDiff.applyK(x, lnu)
                 dacval[self.nsurf][t] -= self.param.KparDiffOut.applyK(x, lnu, firstVar=zB) 
                 dAffcval[k][t] = np.dot(self.affineBasis.T, np.concatenate(np.dot(lnu.T, x).flatten(), lnu.sum(axis=0)))
@@ -725,10 +727,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 z = np.squeeze(xt[k][M-t-1, :, :])
                 a = np.squeeze(at[k][M-t-1, :, :])
                 zpx = np.copy(dxcval[k][M-t-1])
-                a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...]))
-                a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
+                # a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...]))
+                # a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
                 #a2 = np.array([a, px, a])
-                zpx += self.param.KparDiff.applyDiffKT(z, a1, a2)
+                zpx += self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
                 if self.affineDim > 0:
                     zpx += np.dot(px, A[k][0][M-t-1])
                 if self.typeConstraint == 'slidingNormal':
@@ -745,11 +747,11 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             z = np.squeeze(xt[self.nsurf][M-t-1, :, :])
             a = np.squeeze(at[self.nsurf][M-t-1, :, :])
             zpx = np.copy(dxcval[self.nsurf][M-t-1])
-            a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweightOut*a[np.newaxis,...]))
-            a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
+            # a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweightOut*a[np.newaxis,...]))
+            # a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
             #a1 = [px, a, -2*self.regweightOut*a]
             #a2 = [a, px, a]
-            zpx += self.param.KparDiffOut.applyDiffKT(z, a1, a2)
+            zpx += self.param.KparDiffOut.applyDiffKT(z, px, a, regweight=self.regweightOut, lddmm=True)
             pxt[self.nsurf][M-t-2, :, :] = np.squeeze(pxt[self.nsurf][M-t-1, :, :]) + timeStep * zpx
             
 

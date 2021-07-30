@@ -1,28 +1,43 @@
 import matplotlib
-matplotlib.use("QT5Agg")
 import os
 import numpy as np
+from numba import jit, int64
 import scipy as sp
 import scipy.linalg as LA
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import connected_components
 from skimage import measure
+try:
+    from vtk import vtkCellArray, vtkPoints, vtkPolyData, vtkVersion,\
+        vtkLinearSubdivisionFilter, vtkQuadricDecimation,\
+        vtkWindowedSincPolyDataFilter, vtkImageData, VTK_FLOAT,\
+        vtkDoubleArray, vtkContourFilter, vtkPolyDataConnectivityFilter,\
+        vtkCleanPolyData, vtkPolyDataReader, vtkOBJReader, vtkSTLReader,\
+        vtkDecimatePro, VTK_UNSIGNED_CHAR, vtkPolyDataToImageStencil,\
+        vtkImageStencil
+    import vtk.util.numpy_support as v2n
+    gotVTK = True
+except ImportError:
+    v2n = None
+    print('could not import VTK functions')
+    gotVTK = False
+
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-try:
-    import diffeo
-except ImportError:
-    from . import diffeo
+from . import diffeo
 import scipy.linalg as spLA
 from scipy.sparse import coo_matrix
 import glob
 import logging
-try:
-    from vtk import *
-    import vtk.util.numpy_support as v2n
-    gotVTK = True
-except ImportError:
-    print('could not import VTK functions')
-    gotVTK = False
+# try:
+#     from vtk import *
+#     import vtk.util.numpy_support as v2n
+#     gotVTK = True
+# except ImportError:
+#     v2n = None
+#     print('could not import VTK functions')
+#     gotVTK = False
 
 
 class vtkFields:
@@ -31,41 +46,256 @@ class vtkFields:
         self.vectors = []
         self.normals = []
         self.tensors = []
-        
+
+
+@jit(nopython=True)
+def get_edges_(faces):
+    int64 = "int"
+    nv = faces.max() + 1
+    nf = faces.shape[0]
+
+    edg0 = np.zeros((nv,nv), dtype = int64)
+    for k in range(faces.shape[0]):
+        i0 = faces[k,0]
+        i1 = faces[k,1]
+        i2 = faces[k,2]
+        edg0[min(i0, i1), max(i0, i1)] = 1
+        edg0[min(i1, i2), max(i1, i2)] = 1
+        edg0[min(i2, i0), max(i2, i0)] = 1
+
+    J = np.nonzero(edg0)
+    ne = J[0].shape[0]
+    edges = np.zeros((ne, 2), dtype = int64)
+    edges[:,0] = J[0]
+    edges[:,1] = J[1]
+
+    edgi = np.zeros((nv, nv), dtype = int64)
+    for k in range(ne):
+        edgi[edges[k,0], edges[k,1]] = k
+    
+    faceEdges = np.zeros(faces.shape, dtype=int64)
+    for k in range(faces.shape[0]):
+        i0 = faces[k,0]
+        i1 = faces[k,1]
+        i2 = faces[k,2]
+        faceEdges[k, 0] = edgi[min(i0, i1), max(i0,i1)]    
+        faceEdges[k, 1] = edgi[min(i1, i2), max(i1,i2)]    
+        faceEdges[k, 2] = edgi[min(i2, i0), max(i2,i0)]    
+
+
+    edgeFaces = - np.ones((ne,2), dtype=int64)
+    for k in range(faces.shape[0]):
+        i0 = faces[k,0]
+        i1 = faces[k,1]
+        i2 = faces[k,2]
+        for f in ([i0,i1], [i1,i2], [i2, i0]):
+            kk = edgi[min(f[0], f[1]), max(f[0], f[1])]
+            if edgeFaces[kk, 0] >= 0:
+                edgeFaces[kk,1] = k
+            else:
+                edgeFaces[kk,0] = k
+
+    
+    bdry = np.zeros(edges.shape[0], dtype=int64)
+    for k in range(edges.shape[0]):
+        if edgeFaces[k,1] < 0:
+            bdry[k] = 1
+    return edges, edgeFaces, faceEdges, bdry
 # General surface class
+
+#@jit(nopython=True)
+def extract_components_(target_comp, nbvert, faces, component, edge_info = None):
+    #labels = np.zeros(self.vertices.shape[0], dtype = int)
+    #for j in range(self.faces.shape[1]):
+    #   labels[self.faces[:,i]] = self.component
+
+    int_type = int
+    Jf = np.zeros(component.shape[0], dtype = int_type)
+    for k in target_comp:
+        for i in range(component.shape[0]):
+            if component[i] == k:
+                Jf[i] = 1
+#        Jf = np.logical_or(Jf, component==k)
+#    for i in range(component.shape[0]):
+#        print(component[i])
+#        if component[i] in target_comp:
+#            Jf[i] = True
+    #Jf = np.isin(component, target_comp)
+    print(nbvert)
+    J = np.zeros(nbvert, dtype = int_type)
+    for i in range(faces.shape[1]):
+        J[faces[:,i]] = np.logical_or(J[faces[:,i]], Jf)
+    J = np.where(J)[0]
+    #V = vertices[J,:]
+    #w = weights[J]
+    newI = -np.ones(nbvert, dtype=int_type)
+    newI[J] = np.arange(0, J.shape[0])
+    F = np.zeros(faces.shape, dtype=int_type)
+    If = np.zeros(faces.shape[0], dtype=int_type)
+    ii = 0
+    for i in range(faces.shape[0]):
+        pos = True
+        for j in range(faces.shape[1]):
+            F[i,j] = newI[faces[i,j]]
+            if F[i,j]< 0:
+                pos = False
+        if pos:
+            If[ii] = i
+            ii += 1
+    If = If[:ii]
+    #If = np.max(F, axis=1) >= 0
+    F = F[If, :]
+    if edge_info is not None:
+        edges = edge_info[0]
+        faceEdges = edge_info[1]
+        edgeFaces = edge_info[2]
+        newIf = -np.ones(faces.shape[0], dtype = int_type)
+        newIf[If] = np.arange(If.shape[0])
+        E = np.zeros(edges.shape, dtype=int_type)
+        Ie = np.zeros(edges.shape[0], dtype=int_type)
+        ii = 0
+        for i in range(edges.shape[0]):
+            pos = True
+            for j in range(edges.shape[1]):
+                E[i,j] = newI[edges[i,j]]
+                if E[i,j]< 0:
+                    pos = False
+            if pos:
+                Ie[ii] = i
+                ii += 1
+        Ie = Ie[:ii]
+        E = E[Ie, :]
+        #E = newI[edges]
+        #Ie = np.amax(E, axis=1) >= 0
+        newIe = -np.ones(edges.shape[0], dtype = int_type)
+        newIe[Ie] = np.arange(Ie.shape[0])
+        #E = E[Ie, :]
+
+        FE = np.zeros(faceEdges.shape, dtype=int_type)
+        Ife = np.zeros(faceEdges.shape[0], dtype=int_type)
+        ii = 0
+        for i in range(faceEdges.shape[0]):
+            pos = True
+            for j in range(faceEdges.shape[1]):
+                FE[i,j] = newIe[faceEdges[i,j]]
+                if FE[i,j]< 0:
+                    pos = False
+            if pos:
+                Ife[ii] = i
+                ii += 1
+        Ife = Ife[:ii]
+        FE = FE[Ife, :]
+        #FE = newIe[faceEdges]
+        #I_ = np.amax(FE, axis=1) >= 0
+        #FE = FE[I_, :]
+        EF = np.zeros(edgeFaces.shape, dtype=int_type)
+        Ief = np.zeros(edgeFaces.shape[0], dtype=int_type)
+        ii = 0
+        for i in range(edgeFaces.shape[0]):
+            pos = True
+            for j in range(edgeFaces.shape[1]):
+                EF[i,j] = newIf[edgeFaces[i,j]]
+                if EF[i,j]< 0:
+                    pos = False
+            if pos:
+                Ief[ii] = i
+                ii += 1
+        Ief = Ief[:ii]
+        EF = EF[Ief, :]
+        #EF = newIf[edgeFaces]
+        #I_ = np.amax(EF, axis=1) >= 0
+        #EF = EF[I_, :]
+    else:
+        E = None
+        FE = None
+        EF = None
+
+    return F, J, E, FE, EF
+
+
 class Surface:
-    def __init__(self, surf=None, filename=None, FV = None):
-        if surf == None:
-            if FV == None:
-                if filename == None:
-                    self.vertices = np.empty(0)
-                    self.centers = np.empty(0)
-                    self.faces = np.empty(0)
-                    self.surfel = np.empty(0)
-                    self.component = np.empty(0)
-                else:
-                    if type(filename) is list:
-                        fvl = []
-                        for name in filename:
-                            fvl.append(Surface(filename=name))
-                        self.concatenate(fvl)
-                    else:
-                        self.read(filename)
-            else:
-                self.vertices = np.copy(FV[1])
-                self.faces = np.int_(FV[0])
-                self.component = np.zeros(self.faces.shape[0], dtype=int)
-                self.computeCentersAreas()
-        else:
-            if type(surf) is list:
+    def __init__(self, surf=None, weights=None):
+        if type(surf) in (list, tuple):
+            if isinstance(surf[0], Surface):
                 self.concatenate(surf)
+            elif type(surf[0]) is str:
+                fvl = []
+                for name in surf:
+                    fvl.append(Surface(surf=name))
+                self.concatenate(fvl)
             else:
-                self.vertices = np.copy(surf.vertices)
-                self.faces = np.copy(surf.faces)
-                #self.surfel = np.copy(surf.surfel)
-                #self.centers = np.copy(surf.centers)
-                self.component = np.copy(surf.component)
+                self.vertices = np.copy(surf[1])
+                self.faces = np.int_(np.copy(surf[0]))
+                self.component = np.zeros(self.faces.shape[0], dtype=int)
+                if weights is None:
+                    self.weights = np.ones(self.vertices.shape[0], dtype=int)
+                    self.face_weights = np.ones(self.faces.shape[0], dtype=int)
+                else:
+                    self.updateWeights(weights)
                 self.computeCentersAreas()
+        # elif type(surf) is np.ndarray:
+        #     self.vertices = np.copy(surf)
+        #     self.faces = np.zeros([surf.shape[0], 2], dtype=int)
+        #     self.component = np.zeros(surf.shape[0], dtype=int)
+        #     for k in range(surf.shape[0] - 1):
+        #         self.faces[k, :] = (k, k + 1)
+        #     self.computeCentersAreas()
+        elif type(surf) is str:
+            self.read(surf)
+        elif issubclass(type(surf), Surface):
+            self.vertices = np.copy(surf.vertices)
+            self.surfel = np.copy(surf.surfel)
+            self.faces = np.copy(surf.faces)
+            self.centers = np.copy(surf.centers)
+            self.component = np.copy(surf.component)
+            if weights is None:
+                self.weights = np.copy(surf.weights)
+                self.face_weights = np.copy(surf.face_weights)
+            else:
+                self.updateWeights(weights)
+        else:
+            self.vertices = np.empty(0)
+            self.centers = np.empty(0)
+            self.faces = np.empty(0)
+            self.surfel = np.empty(0)
+            self.component = np.empty(0)
+            self.weights = np.empty(0)
+            self.face_weights = np.empty(0)
+
+        self.edges = None
+        self.edgeFaces = None
+        self.faceEdges = None
+        # if surf == None:
+        #     if FV == None:
+        #         if filename == None:
+        #             self.vertices = np.empty(0)
+        #             self.centers = np.empty(0)
+        #             self.faces = np.empty(0)
+        #             self.surfel = np.empty(0)
+        #             self.component = np.empty(0)
+        #         else:
+        #             if type(filename) is list:
+        #                 fvl = []
+        #                 for name in filename:
+        #                     fvl.append(Surface(filename=name))
+        #                 self.concatenate(fvl)
+        #             else:
+        #                 self.read(filename)
+        #     else:
+        #         self.vertices = np.copy(FV[1])
+        #         self.faces = np.int_(FV[0])
+        #         self.component = np.zeros(self.faces.shape[0], dtype=int)
+        #         self.computeCentersAreas()
+        # else:
+        #     if type(surf) is list:
+        #         self.concatenate(surf)
+        #     else:
+        #         self.vertices = np.copy(surf.vertices)
+        #         self.faces = np.copy(surf.faces)
+        #         #self.surfel = np.copy(surf.surfel)
+        #         #self.centers = np.copy(surf.centers)
+        #         self.component = np.copy(surf.component)
+        #         self.computeCentersAreas()
 
     def read(self, filename):
         (mainPart, ext) = os.path.splitext(filename)
@@ -80,13 +310,15 @@ class Surface:
         elif ext == '.obj':
             self.readOBJ(filename)
         else:
-            raise NameError('Unknown Surface Extension: '+filename) 
             self.vertices = np.empty(0)
             self.centers = np.empty(0)
             self.faces = np.empty(0)
             self.component = np.empty(0)
             self.surfel = np.empty(0)
-            
+            self.weights = np.empty(0)
+            self.face_weights = np.empty(0)
+            raise NameError('Unknown Surface Extension: '+filename)
+
     # face centers and area weighted normal
     def computeCentersAreas(self):
         xDef1 = self.vertices[self.faces[:, 0], :]
@@ -94,6 +326,17 @@ class Surface:
         xDef3 = self.vertices[self.faces[:, 2], :]
         self.centers = (xDef1 + xDef2 + xDef3) / 3
         self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
+        w1 = self.weights[self.faces[:, 0]]
+        w2 = self.weights[self.faces[:, 1]]
+        w3 = self.weights[self.faces[:, 2]]
+        self.face_weights = (w1+w2+w3)/3
+
+    def updateWeights(self, w0):
+        self.weights = np.copy(w0)
+        w1 = self.weights[self.faces[:, 0]]
+        w2 = self.weights[self.faces[:, 1]]
+        w3 = self.weights[self.faces[:, 2]]
+        self.face_weights = (w1+w2+w3)/3
 
     # modify vertices without toplogical change
     def updateVertices(self, x0):
@@ -105,9 +348,15 @@ class Surface:
         self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
 
     def computeSparseMatrices(self):
-        self.v2f0 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]), (range(self.faces.shape[0]), self.faces[:,0]))).transpose(copy=False)
-        self.v2f1 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]), (range(self.faces.shape[0]), self.faces[:,1]))).transpose(copy=False)
-        self.v2f2 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]), (range(self.faces.shape[0]), self.faces[:,2]))).transpose(copy=False)
+        self.v2f0 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]),
+                                          (range(self.faces.shape[0]),
+                                           self.faces[:,0]))).transpose(copy=False)
+        self.v2f1 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]),
+                                          (range(self.faces.shape[0]),
+                                           self.faces[:,1]))).transpose(copy=False)
+        self.v2f2 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]),
+                                          (range(self.faces.shape[0]),
+                                           self.faces[:,2]))).transpose(copy=False)
 
     def computeVertexArea(self):
         # compute areas of faces and vertices
@@ -188,66 +437,49 @@ class Surface:
 
     # Computes edges from vertices/faces
     def getEdges(self):
-        self.edges = []
-        for k in range(self.faces.shape[0]):
-            for kj in (0,1,2):
-                u = [self.faces[k, kj], self.faces[k, (kj+1)%3]]
-                if (u not in self.edges) & (u.reverse() not in self.edges):
-                    self.edges.append(u)
-        self.edgeFaces = []
-        for u in self.edges:
-            self.edgeFaces.append([])
-        for k in range(self.faces.shape[0]):
-            for kj in (0,1,2):
-                u = [self.faces[k, kj], self.faces[k, (kj+1)%3]]
-                if u in self.edges:
-                    kk = self.edges.index(u)
-                else:
-                    u.reverse()
-                    kk = self.edges.index(u)
-                self.edgeFaces[kk].append(k)
-        self.edges = np.int_(np.array(self.edges))
-        self.bdry = np.int_(np.zeros(self.edges.shape[0]))
-        for k in range(self.edges.shape[0]):
-            if len(self.edgeFaces[k]) < 2:
-                self.bdry[k] = 1
+        self.edges, self.edgeFaces, self.faceEdges, self.bdry = get_edges_(self.faces)
+
 
     # computes the signed distance function in a small neighborhood of a shape 
     def LocalSignedDistance(self, data, value):
-        d2 = 2*np.array(data >= value) - 1
+        d2 = 2 * np.array(data >= value) - 1
         c2 = np.cumsum(d2, axis=0)
         for j in range(2):
-            c2 = np.cumsum(c2, axis=j+1)
+            c2 = np.cumsum(c2, axis=j + 1)
         (n0, n1, n2) = c2.shape
 
         rad = 3
-        diam = 2*rad+1
-        (x,y,z) = np.mgrid[-rad:rad+1, -rad:rad+1, -rad:rad+1]
-        cube = (x**2+y**2+z**2)
-        maxval = (diam)**3
-        s = 3.0*rad**2
-        res = d2*s
-        u = maxval*np.ones(c2.shape)
-        u[rad+1:n0-rad, rad+1:n1-rad, rad+1:n2-rad] = (c2[diam:n0, diam:n1, diam:n2]
-        - c2[0:n0-diam, diam:n1, diam:n2] - c2[diam:n0, 0:n1-diam, diam:n2] - c2[diam:n0, diam:n1, 0:n2-diam] 
-        + c2[0:n0-diam, 0:n1-diam, diam:n2] + c2[diam:n0, 0:n1-diam, 0:n2-diam] + c2[0:n0-diam, diam:n1, 0:n2-diam]
-        - c2[0:n0-diam, 0:n1-diam, 0:n2-diam])
+        diam = 2 * rad + 1
+        (x, y, z) = np.mgrid[-rad:rad + 1, -rad:rad + 1, -rad:rad + 1]
+        cube = (x ** 2 + y ** 2 + z ** 2)
+        maxval = (diam) ** 3
+        s = 3.0 * rad ** 2
+        res = d2 * s
+        u = maxval * np.ones(c2.shape)
+        u[rad + 1:n0 - rad, rad + 1:n1 - rad, rad + 1:n2 - rad] = (c2[diam:n0, diam:n1, diam:n2]
+                                                                   - c2[0:n0 - diam, diam:n1, diam:n2]
+                                                                   - c2[diam:n0, 0:n1 - diam, diam:n2]
+                                                                   - c2[diam:n0,diam:n1,0:n2 - diam]
+                                                                   + c2[0:n0 - diam, 0:n1 - diam, diam:n2]
+                                                                   + c2[diam:n0, 0:n1 - diam, 0:n2 - diam]
+                                                                   + c2[0:n0 - diam, diam:n1,0:n2 - diam]
+                                                                   - c2[0:n0 - diam, 0:n1 - diam, 0:n2 - diam])
 
         I = np.nonzero(np.fabs(u) < maxval)
-        #print len(I[0])
+        # print len(I[0])
 
         for k in range(len(I[0])):
             p = np.array((I[0][k], I[1][k], I[2][k]))
-            bmin = p-rad
-            bmax = p+rad + 1
-            #print p, bmin, bmax
-            if (d2[p[0],p[1], p[2]] > 0):
-                #print u[p[0],p[1], p[2]]
-                #print d2[bmin[0]:bmax[0], bmin[1]:bmax[1], bmin[2]:bmax[2]].sum()
-                res[p[0],p[1], p[2]] = min(cube[np.nonzero(d2[bmin[0]:bmax[0], bmin[1]:bmax[1], bmin[2]:bmax[2]] < 0)])-.25
+            bmin = p - rad
+            bmax = p + rad + 1
+            # print p, bmin, bmax
+            if (d2[p[0], p[1], p[2]] > 0):
+                # print u[p[0],p[1], p[2]]
+                # print d2[bmin[0]:bmax[0], bmin[1]:bmax[1], bmin[2]:bmax[2]].sum()
+                res[p[0], p[1], p[2]] = min(cube[np.nonzero(d2[bmin[0]:bmax[0], bmin[1]:bmax[1], bmin[2]:bmax[2]] < 0)]) - .25
             else:
-                res[p[0],p[1], p[2]] =- min(cube[np.nonzero(d2[bmin[0]:bmax[0], bmin[1]:bmax[1], bmin[2]:bmax[2]] > 0)])-.25
-                
+                res[p[0], p[1], p[2]] = - min(cube[np.nonzero(d2[bmin[0]:bmax[0], bmin[1]:bmax[1], bmin[2]:bmax[2]] > 0)]) - .25
+
         return res
 
     def toPolyData(self):
@@ -290,6 +522,7 @@ class Surface:
         self.vertices = np.multiply(V, scales)
         self.faces = np.int_(F[0:gf, :])
         self.component = np.zeros(self.faces.shape[0], dtype = int)
+        self.weights = np.ones(self.vertices.shape[0])
         self.computeCentersAreas()
 
     def subDivide(self, number=1):
@@ -312,7 +545,7 @@ class Surface:
             polydata = self.toPolyData()
             red = 1 - min(np.float(target) / polydata.GetNumberOfPoints(), 1)
             if deciPro:
-                dc = vtk.vtkDecimatePro()
+                dc = vtkDecimatePro()
                 if vtkVersion.GetVTKMajorVersion() >= 6:
                     dc.SetInputData(polydata)
                 else:
@@ -340,7 +573,7 @@ class Surface:
     def flipFaces(self):
         self.faces = self.faces[:, [0,2,1]]
         self.computeCentersAreas()
-          
+
 
 
     def smooth(self, n=30, smooth=0.1):
@@ -367,12 +600,13 @@ class Surface:
 
     def Isosurface_ski(self, data, value=0.5, step = 1):
         verts,faces,n,v = measure.marching_cubes_lewiner(data, allow_degenerate=False, level=value,step_size=step)
-        self.__init__(FV=(faces,verts))
+        self.__init__(surf=(faces,verts))
 
 
 
     # Computes isosurfaces using vtk               
-    def Isosurface(self, data, value=0.5, target=1000.0, scales = (1., 1., 1.), smooth = 0.1, fill_holes = 1., orientation=1):
+    def Isosurface(self, data, value=0.5, target=1000.0, scales = (1., 1., 1.),
+                   smooth = 0.1, fill_holes = 1., orientation=1):
         if gotVTK:
             #data = self.LocalSignedDistance(data0, value)
             if isinstance(data, vtkImageData):
@@ -574,12 +808,13 @@ class Surface:
         self.faces = np.int_(Q[self.faces])
 
 
-    def removeDuplicates(self, c=0.0001):
+    def removeDuplicates(self, c=0.0001, verb = False):
         c2 = c ** 2
         N0 = self.vertices.shape[0]
         w = np.zeros(N0, dtype=int)
 
         newv = np.zeros(self.vertices.shape)
+        newweights = np.ones(self.vertices.shape[0])
         removed = np.zeros(self.vertices.shape[0], dtype=bool)
         newv[0, :] = self.vertices[0, :]
         N = 1
@@ -590,16 +825,20 @@ class Surface:
             J = J[0]
             # print kj, ' ', J, len(J)
             if (len(J) > 0):
-                logging.info("duplicate: {0:d} {1:d}".format(kj, J[0]))
+                if verb:
+                    logging.info("duplicate: {0:d} {1:d}".format(kj, J[0]))
                 removed[kj] = True
                 w[kj] = J[0]
             else:
                 w[kj] = N
                 newv[N, :] = self.vertices[kj, :]
+                newweights[N] = self.weights[kj]
                 N = N + 1
 
         newv = newv[0:N, :]
+        newweights = newweights[0:N]
         self.vertices = newv
+        self.weights = newweights
         self.faces = w[self.faces]
 
         newf = np.zeros(self.faces.shape, dtype=int)
@@ -607,7 +846,8 @@ class Surface:
         nj = 0
         for kj in range(Nf):
             if len(set(self.faces[kj,:]))< 3:
-                logging.info('Empty face: {0:d} {1:d}'.format(kj, nj))
+                if verb:
+                    logging.info('Empty face: {0:d} {1:d}'.format(kj, nj))
             else:
                 newf[nj, :] = self.faces[kj, :]
                 #newc[nj] = self.component[kj]
@@ -625,7 +865,7 @@ class Surface:
         edges[(f[2],f[0])] = len(faces)-1
 
 
-    def split_in_4(self, faces, vert, val, popped, edges, i, with_vertex = None):
+    def split_in_4(self, faces, vert, weights, val, popped, edges, i, with_vertex = None):
         if not popped[i]:
             vali = np.array(val)[faces[i]]
             kmax = faces[i][vali.argmax()]
@@ -652,6 +892,8 @@ class Surface:
                     v0 = (1-r0) * vert[kmax] + r0 * vert[kmin]
                     knew0 = len(vert)
                     vert.append(v0)
+                    w0 = (1-r0) * weights[kmax] + r0 * weights[kmin]
+                    weights.append(w0)
                     val.append(0)
                     if val[kmid] < 1e-10 and val[kmid] > -1e-10:
                         if pos:
@@ -691,10 +933,14 @@ class Surface:
                         v1 = (1-r1) * vert[kmid] + r1 * vert[kmin]
                         knew1 = len(vert)
                         vert.append(v1)
+                        w1 = (1 - r1) * weights[kmid] + r1 * weights[kmin]
+                        weights.append(w1)
                         val.append(0)
                         v2 = (vert[kmid]+vert[kmax])/2
                         knew2 = len(vert)
                         vert.append(v2)
+                        w2 = (weights[kmid] + weights[kmax])/2
+                        weights.append(w2)
                         val.append((val[kmid]+val[kmax])/2)
                         if pos:
                             self.addFace([knew1, kmid, knew2], faces, edges)
@@ -750,10 +996,14 @@ class Surface:
                         v1 = (1-r1) * vert[kmax] + r1 * vert[kmid]
                         knew1 = len(vert)
                         vert.append(v1)
+                        w1 = (1 - r1) * weights[kmax] + r1 * weights[kmid]
+                        weights.append(w1)
                         val.append(0)
                         v2 = (vert[kmid]+vert[kmin])/2
                         knew2 = len(vert)
                         vert.append(v2)
+                        w2 = (weights[kmid] + weights[kmin])/2
+                        weights.append(w2)
                         val.append((val[kmid]+val[kmin])/2)
                         if pos:
                             self.addFace([knew1, knew2, kmid], faces, edges)
@@ -817,6 +1067,7 @@ class Surface:
         val = list(val)
         vert = list(res.vertices)
         faces = list(res.faces)
+        weights = list(res.weights)
         edges = {}
         for i,f in enumerate(faces):
             edges[(f[0],f[1])] = i
@@ -827,7 +1078,7 @@ class Surface:
         nf = len(faces)
         i = 0
         while i < nf:
-            res.split_in_4(faces, vert, val, popped, edges, i)
+            res.split_in_4(faces, vert, weights, val, popped, edges, i)
             i += 1
 
         npopped = 0
@@ -838,7 +1089,8 @@ class Surface:
                 npopped += 1
 
 
-        res = Surface(FV=(np.array(faces, dtype=int), np.array(vert)))
+        res = Surface(surf=(np.array(faces, dtype=int), np.array(vert)))
+        res.updateWeights(weights)
         removed = res.removeDuplicates()
         val = np.array(val)[np.logical_not(removed)]
         #val = (res.vertices*a[0:3]).sum(axis=1) - a[3]
@@ -851,6 +1103,7 @@ class Surface:
     def cut(self, select):
         res = Surface()
         res.vertices = self.vertices[select, :]
+        res.updateWeights(self.weights[select])
         newindx = np.arange(self.vertices.shape[0], dtype=int)
         newindx[select] = np.arange(select.sum(), dtype=int)
         res.faces = np.zeros(self.faces.shape, dtype= int)
@@ -921,37 +1174,89 @@ class Surface:
         #         labels[j] = 2
         return h, labels, np.sqrt(w0)
 
+    def rayTraces(self, points, ray):
+        nu = np.sqrt((ray**2).sum())
+        u = ray/nu
+        v = np.cross(np.array([1,0,0]), u)
+        nv = np.sqrt((v**2).sum())
+        if nv < 1e-4:
+            v = np.cross(np.array([0, 1, 0]), u)
+            nv = np.sqrt((v**2).sum())
+        v /= nv
+        w = np.cross(v,u)
+        x0 = self.vertices[self.faces[:,0], :]
+        x1 = self.vertices[self.faces[:,1], :]
+        x2 = self.vertices[self.faces[:,2], :]
+        nf = self.faces.shape[0]
+        npt = points.shape[0]
+        pu = np.dot(points, u)
+        pv = np.dot(points, v)
+        pw = np.dot(points, w)
+        c00 = np.dot(x0, u)[:, None] - pu[None, :]
+        c10 = np.dot(x0, v)[:, None] - pv[None, :]
+        c20 = np.dot(x0, w)[:, None] - pw[None, :]
+        c01 = np.dot(x1, u)[:, None] - pu[None, :]
+        c11 = np.dot(x1, v)[:, None] - pv[None, :]
+        c21 = np.dot(x1, w)[:, None] - pw[None, :]
+        c02 = np.dot(x2, u)[:, None] - pu[None, :]
+        c12 = np.dot(x2, v)[:, None] - pv[None, :]
+        c22 = np.dot(x2, w)[:, None] - pw[None, :]
+
+        det = c00*c11*c22 - c00*c12*c21 - c01*c10*c22 - c02*c11*c20 + c01*c12*c20 + c02*c10*c21
+        # com = np.zeros((3,3, nv, npt))
+        # com[0, 0, ...] = c11*c22 - c12*c21
+        # com[1, 1, ...] = c00*c22 - c02*c20
+        # com[2, 2, ...] = c11*c00 - c10*c01
+        # com[0, 1, ...] = -(c01*c22 - c21*c02)
+        # com[1, 0, ...] = -(c10*c22 -c12*c20)
+        # com[0, 2, ...] = c01*c12 - c02*c11
+        # com[2, 0, ...] = c10*c21 - c20*c11
+        # com[1, 2, ...] = -(c00*c12 - c02*c10)
+        # com[2, 1, ...] = -(c00*c21 - c20*c01)
+        abc = np.zeros((3, nf, npt))
+        abc[0, ...] = c11*c22 - c12*c21
+        abc[1, ...] = -(c10*c22 -c12*c20)
+        abc[2, ...] = c10*c21 - c20*c11
+        abc *= np.sign(det)
+        inter = np.logical_and(abc[0,...] > 0, abc[1,...] > 0)
+        inter2 = np.logical_and(abc[2,...]>0, np.fabs(det) > 1e-6)
+        inter = np.logical_and(inter, inter2)
+        n_inter = inter.sum(axis = 0)
+        return n_inter % 2==1
+
 
     def compute3DVolumeImage(self, xmin = 0, xmax = 100, spacing = 1., origin = None):
         ln = xmax - xmin + 1
         vpoints = self.toPolyData()
-        whiteImage = vtk.vtkImageData()
+        whiteImage = vtkImageData()
         whiteImage.SetSpacing(spacing ,spacing ,spacing)
         whiteImage.SetDimensions(ln ,ln ,ln)
         whiteImage.SetExtent(xmin , xmax , xmin ,xmax ,xmin,xmax)
         bounds = vpoints.GetBounds()
         if origin is None:
             origin = np.zeros(3)
-            for i in range(3):
-                origin[i] = bounds[2*i] + spacing / 2
+            # for i in range(3):
+            #     origin[i] = bounds[2*i] + spacing / 2
         whiteImage.SetOrigin(origin[0] ,origin[1] ,origin[2])
-        whiteImage.AllocateScalars(vtk.VTK_UNSIGNED_CHAR ,1)
+        whiteImage.AllocateScalars(VTK_UNSIGNED_CHAR ,1)
         count = whiteImage.GetNumberOfPoints()
         inval = 255
         outval = 0
         for i in range(count):
             whiteImage.GetPointData().GetScalars().SetTuple1(i ,inval)
 
-        orig2 = self.vertices.mean(axis=0)
+        orig2 = np.zeros(3)
+        for i in range(3):
+             orig2[i] = bounds[2*i]
 
-        pol2stenc = vtk.vtkPolyDataToImageStencil()
+        pol2stenc = vtkPolyDataToImageStencil()
         pol2stenc.SetInputData(vpoints)
         pol2stenc.SetOutputOrigin((orig2[0], orig2[1], orig2[2]))
         pol2stenc.SetOutputSpacing(spacing, spacing, spacing)
         pol2stenc.SetOutputWholeExtent(whiteImage.GetExtent())
         pol2stenc.Update()
 
-        img2stenc = vtk.vtkImageStencil()
+        img2stenc = vtkImageStencil()
         img2stenc.SetInputData(whiteImage)
         img2stenc.SetStencilConnection(pol2stenc.GetOutputPort())
         img2stenc.ReverseStencilOff()
@@ -961,6 +1266,10 @@ class Surface:
         result = img2stenc.GetOutput()
 
         img = v2n.vtk_to_numpy(result.GetPointData().GetScalars())
+        # dims = result.GetDimensions()
+        #
+        # img = img.reshape(dims[2], dims[1], dims[0])
+        # img = img.transpose(2, 1, 0)
         img = np.reshape(img, (ln,ln,ln)).astype(float)
         # img = np.zeros((ln,ln,ln))
         # ii = 0
@@ -970,7 +1279,7 @@ class Surface:
         #             img[j,i,k] = result.GetPointData().GetScalars().GetTuple1(ii)
         #             ii += 1
 
-        return img
+        return img, origin, orig2
 
     def addToPlot(self, ax, ec = 'b', fc = 'r', al=.5, lw=1):
         x = self.vertices[self.faces[:,0],:]
@@ -1178,7 +1487,7 @@ class Surface:
         N = y.shape[0]
         d = y.shape[1]
         I = np.argsort(y.sum(axis=1))
-        I0 =np.floor((N-1)*sp.linspace(0, 1, num=k)).astype(int)
+        I0 =np.floor((N-1)*np.linspace(0, 1, num=k)).astype(int)
         #print y.shape, L.shape, N, k, d
         C = y[I0, :].copy()
 
@@ -1190,7 +1499,7 @@ class Surface:
         j=0
         while j< 5000:
             u0 = u - u.min(axis=0).reshape([1, N])
-            w = np.exp(-u0/T) ;
+            w = np.exp(-u0/T)
             w = w / (eps + w.sum(axis=0).reshape([1,N]))
             #print w.min(), w.max()
             cost = (u*w).sum() + T*(w*np.log(w+eps)).sum()
@@ -1277,6 +1586,7 @@ class Surface:
                 self.vertices[k, 1] = float(ln[1]) 
                 self.vertices[k, 2] = float(ln[2])
 
+            self.weights = np.ones(self.vertices.shape[0])
             self.faces = np.int_(np.empty([nfaces, 3]))
             for k in range(nfaces):
                 ln = readskip(f,'#').split()
@@ -1309,16 +1619,17 @@ class Surface:
             k=-1
             while k < npoints-1:
                 ln = fbyu.readline().split()
-                k=k+1 ;
+                k=k+1
                 self.vertices[k, 0] = float(ln[0]) 
                 self.vertices[k, 1] = float(ln[1]) 
                 self.vertices[k, 2] = float(ln[2])
                 if len(ln) > 3:
-                    k=k+1 ;
+                    k=k+1
                     self.vertices[k, 0] = float(ln[3])
                     self.vertices[k, 1] = float(ln[4]) 
                     self.vertices[k, 2] = float(ln[5])
 
+            self.weights = np.ones(self.vertices.shape[0])
             self.faces = np.empty([nfaces, 3])
             ln = fbyu.readline().split()
             kf = 0
@@ -1328,18 +1639,19 @@ class Surface:
                     break
                 #print nfaces, kf, ln
                 for s in ln:
-                    self.faces[kf,j] = int(sp.fabs(int(s)))
+                    self.faces[kf,j] = int(np.fabs(int(s)))
                     j = j+1
                     if j == 3:
                         kf=kf+1
                         j=0
                 ln = fbyu.readline().split()
         self.faces = np.int_(self.faces) - 1
-        xDef1 = self.vertices[self.faces[:, 0], :]
-        xDef2 = self.vertices[self.faces[:, 1], :]
-        xDef3 = self.vertices[self.faces[:, 2], :]
-        self.centers = (xDef1 + xDef2 + xDef3) / 3
-        self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
+        self.computeCentersAreas()
+        # xDef1 = self.vertices[self.faces[:, 0], :]
+        # xDef2 = self.vertices[self.faces[:, 1], :]
+        # xDef3 = self.vertices[self.faces[:, 2], :]
+        # self.centers = (xDef1 + xDef2 + xDef3) / 3
+        # self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
         self.component = np.zeros(self.faces.shape[0], dtype=int)
 
     #Saves in .byu format
@@ -1387,9 +1699,12 @@ class Surface:
                     fbyu.write('\n')
                     j=0
 
-    def saveVTK(self, fileName, scalars = None, normals = None, tensors=None, scal_name='scalars', vectors=None, vect_name='vectors'):
+    def saveVTK(self, fileName, scalars = None, normals = None, tensors=None, scal_name='scalars',
+                vectors=None, vect_name='vectors'):
         vf = vtkFields()
         #print scalars
+        vf.scalars.append('weights')
+        vf.scalars.append(self.weights)
         if not (scalars is None):
             vf.scalars.append(scal_name)
             vf.scalars.append(scalars)
@@ -1417,6 +1732,12 @@ class Surface:
             fvtkout.write('\nPOLYGONS {0:d} {1:d}'.format(F.shape[0], 4*F.shape[0]))
             for ll in range(F.shape[0]):
                 fvtkout.write('\n3 {0: d} {1: d} {2: d}'.format(F[ll,0], F[ll,1], F[ll,2]))
+
+            fvtkout.write(('\nCELL_DATA {0: d}').format(F.shape[0]))
+            fvtkout.write('\nSCALARS labels int 1\nLOOKUP_TABLE default')
+            for ll in range(F.shape[0]):
+                fvtkout.write('\n {0:d}'.format(self.component[ll]))
+
             if vtkFields is not  None:
                 wrote_pd_hdr = False
                 if len(vtkFields.scalars) > 0:
@@ -1470,12 +1791,28 @@ class Surface:
             u.SetFileName(fileName)
             u.Update()
             v = u.GetOutput()
+            w = v.GetPointData().GetScalars('weights')
+            lab = v.GetCellData().GetScalars('labels')
             #print v
             npoints = int(v.GetNumberOfPoints())
             nfaces = int(v.GetNumberOfPolys())
             V = np.zeros([npoints, 3])
             for kk in range(npoints):
                 V[kk, :] = np.array(v.GetPoint(kk))
+
+            if lab:
+                Lab = np.zeros(nfaces, dtype=int)
+                for kk in range(nfaces):
+                    Lab[kk] = lab.GetTuple(kk)[0]
+            else:
+                Lab = np.zeros(nfaces, dtype=int)
+
+            if w:
+                W = np.zeros(npoints)
+                for kk in range(npoints):
+                    W[kk] = w.GetTuple(kk)[0]
+            else:
+                W = np.ones(npoints)
 
             F = np.zeros([nfaces, 3])
             for kk in range(nfaces):
@@ -1484,13 +1821,15 @@ class Surface:
                     F[kk,ll] = c.GetPointId(ll)
             
             self.vertices = V
+            self.weights = W
             self.faces = np.int_(F)
-            xDef1 = self.vertices[self.faces[:, 0], :]
-            xDef2 = self.vertices[self.faces[:, 1], :]
-            xDef3 = self.vertices[self.faces[:, 2], :]
-            self.centers = (xDef1 + xDef2 + xDef3) / 3
-            self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
-            self.component = np.zeros(self.faces.shape[0], dtype=int)
+            self.computeCentersAreas()
+            # xDef1 = self.vertices[self.faces[:, 0], :]
+            # xDef2 = self.vertices[self.faces[:, 1], :]
+            # xDef3 = self.vertices[self.faces[:, 2], :]
+            # self.centers = (xDef1 + xDef2 + xDef3) / 3
+            # self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
+            self.component = Lab #np.zeros(self.faces.shape[0], dtype=int)
         else:
             raise Exception('Cannot run readVTK without VTK')
     
@@ -1534,12 +1873,14 @@ class Surface:
                     F[kk,ll] = c.GetPointId(ll)
             
             self.vertices = V
+            self.weights = np.ones(self.vertices.shape[0])
             self.faces = np.int_(F)
-            xDef1 = self.vertices[self.faces[:, 0], :]
-            xDef2 = self.vertices[self.faces[:, 1], :]
-            xDef3 = self.vertices[self.faces[:, 2], :]
-            self.centers = (xDef1 + xDef2 + xDef3) / 3
-            self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
+            self.computeCentersAreas()
+            # xDef1 = self.vertices[self.faces[:, 0], :]
+            # xDef2 = self.vertices[self.faces[:, 1], :]
+            # xDef3 = self.vertices[self.faces[:, 2], :]
+            # self.centers = (xDef1 + xDef2 + xDef3) / 3
+            # self.surfel =  np.cross(xDef2-xDef1, xDef3-xDef1)/2
             self.component = np.zeros(self.faces.shape[0], dtype=int)
         else:
             raise Exception('Cannot run readOBJ without VTK')
@@ -1563,12 +1904,15 @@ class Surface:
                     F[kk, ll] = c.GetPointId(ll)
 
             self.vertices = V
+            self.weights = np.ones(self.vertices.shape[0])
             self.faces = np.int_(F)
-            xDef1 = self.vertices[self.faces[:, 0], :]
-            xDef2 = self.vertices[self.faces[:, 1], :]
-            xDef3 = self.vertices[self.faces[:, 2], :]
-            self.centers = (xDef1 + xDef2 + xDef3) / 3
-            self.surfel = np.cross(xDef2 - xDef1, xDef3 - xDef1) / 2
+            # xDef1 = self.vertices[self.faces[:, 0], :]
+            # xDef2 = self.vertices[self.faces[:, 1], :]
+            # xDef3 = self.vertices[self.faces[:, 2], :]
+            # self.centers = (xDef1 + xDef2 + xDef3) / 3
+            # self.surfel = np.cross(xDef2 - xDef1, xDef3 - xDef1) / 2
+            self.computeCentersAreas()
+            self.component = np.zeros(self.faces.shape[0], dtype=int)
         else:
             raise Exception('Cannot run readSTL without VTK')
 
@@ -1579,6 +1923,7 @@ class Surface:
             nv += fv.vertices.shape[0]
             nf += fv.faces.shape[0]
         self.vertices = np.zeros([nv,3])
+        self.weights = np.zeros(nv)
         self.faces = np.zeros([nf,3], dtype='int')
         self.component = np.zeros(nf, dtype='int')
 
@@ -1589,13 +1934,70 @@ class Surface:
             nv = nv0 + fv.vertices.shape[0]
             nf = nf0 + fv.faces.shape[0]
             self.vertices[nv0:nv, :] = fv.vertices
+            self.weights[nv0:nv] = fv.weights
             self.faces[nf0:nf, :] = fv.faces + nv0
-            self.component[nf0:nf] = c
+            self.component[nf0:nf] = fv.component + c
             nv0 = nv
             nf0 = nf
-            c += 1
+            c = self.component[:nf].max() + 1
         self.computeCentersAreas()
-    
+
+    def connected_components(self, split=False):
+        self.getEdges()
+        N = self.edges.max()+1
+        A = csr_matrix((np.ones(self.edges.shape[0]), (self.edges[:,0], self.edges[:,1])), shape=(N,N))
+        nc, labels = connected_components(A, directed=False)
+        self.component = labels[self.faces[:,0]]
+        logging.info(f'Found {nc} connected components')
+        if split:
+            return self.split_components(labels)
+
+    def split_components(self, labels):
+        nc = labels.max() + 1
+        res = []
+        for i in range(nc):
+            J = np.nonzero(labels == i)[0]
+            V = self.vertices[J,:]
+            w = self.weights[J]
+            newI = -np.ones(self.vertices.shape[0], dtype=int)
+            newI[J] = np.arange(0, J.shape[0])
+            F = newI[self.faces]
+            I = np.amax(F, axis=1) >= 0
+            F = F[I, :]
+            res.append(Surface(surf=(F,V), weights=w))
+        return res
+
+    def extract_components(self, comp=None, comp_info=None):
+        #labels = np.zeros(self.vertices.shape[0], dtype = int)
+        #for j in range(self.faces.shape[1]):
+         #   labels[self.faces[:,i]] = self.component
+
+        #print('extracting components')
+        if comp_info is not None:
+            F, J, E, FE, EF = comp_info
+        elif comp is not None:
+            if self.edges is None:
+                F, J, E, FE, EF = extract_components_(comp, self.vertices.shape[0], self.faces, self.component,
+                                                            edge_info = None)
+            else:
+                F, J, E, FE, EF = extract_components_(comp, self.vertices.shape[0], self.faces, self.component,
+                                                            edge_info = (self.edges, self.faceEdges, self.edgeFaces))
+        else:
+            res = Surface
+            J = np.zeros(self.vertices.shape[0], dtype=bool)
+            return res, J
+
+        V = self.vertices[J,:]
+        w = self.weights[J]
+        res = Surface(surf=(F,V), weights=w)
+        if self.edges is not None:
+            res.edges = E
+            res.faceEdges = FE
+            res.edgeFaces = EF
+
+        #print(f'End of extraction: vertices: {res.vertices.shape[0]} faces: {res.faces.shape[0]}')
+        return res, J
+
     def normGrad(self, phi):
         v1 = self.vertices[self.faces[:,0],:]
         v2 = self.vertices[self.faces[:,1],:]
@@ -1682,7 +2084,8 @@ class Surface:
             res[f[1],:] += r2[k,:]
             res[f[2],:] += r3[k,:]
         return res
-    
+
+
 # Reads several .byu files
 def readMultipleByu(regexp, Nmax = 0):
     files = glob.glob(regexp)
@@ -1703,398 +2106,6 @@ def saveEvolution(fileName, fv0, xt):
         fv.savebyu(fileName+'{0: 02d}'.format(k)+'.byu')
 
 
-
-
-def haussdorffDist(fv1, fv2):
-    dst = ((fv1.vertices[:, np.newaxis, :] - fv2.vertices[np.newaxis, :, :])**2).sum(axis=2)
-    res = np.amin(dst, axis=1).max() + np.amin(dst, axis=0).max()
-    return res
-
-
-# Current norm of fv1
-def currentMagnitude(fv1, KparDist):
-    c2 = fv1.centers
-    cr2 = np.copy(fv1.surfel)
-    obj = np.multiply(cr2, KparDist.applyK(c2, cr2)).sum()
-    return obj
-
-# Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (current norm)
-def currentMagnitudeGradient(fvDef, KparDist):
-    xDef = fvDef.vertices
-    c1 = fvDef.centers
-    cr1 = np.copy(fvDef.surfel)
-    dim = c1.shape[1]
-
-    z1 = KparDist.applyK(c1, cr1)/2
-    dz1 = (1./3.) * KparDist.applyDiffKT(c1, cr1[np.newaxis,...], cr1[np.newaxis,...])
-
-    xDef1 = xDef[fvDef.faces[:, 0], :]
-    xDef2 = xDef[fvDef.faces[:, 1], :]
-    xDef3 = xDef[fvDef.faces[:, 2], :]
-
-    px = np.zeros([xDef.shape[0], dim])
-    I = fvDef.faces[:,0]
-    crs = np.cross(xDef3 - xDef2, z1)
-    for k in range(I.size):
-        px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
-
-    I = fvDef.faces[:,1]
-    crs = np.cross(xDef1 - xDef3, z1)
-    for k in range(I.size):
-        px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
-
-    I = fvDef.faces[:,2]
-    crs = np.cross(xDef2 - xDef1, z1)
-    for k in range(I.size):
-        px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
-
-    return 2*px
-
-
-def currentNorm0(fv1, KparDist, weight=1.):
-    return currentMagnitude(fv1, KparDist)
-
-
-# Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct 
-def currentNormDef(fvDef, fv1, KparDist, weight=1.):
-    c1 = fvDef.centers
-    cr1 = np.copy(fvDef.surfel)
-    c2 = fv1.centers
-    cr2 = np.copy(fv1.surfel)
-    obj = (np.multiply(cr1, KparDist.applyK(c1, cr1)).sum()
-        - 2*np.multiply(cr1, KparDist.applyK(c2, cr2, firstVar=c1)).sum())
-    return obj
-
-# Returns |fvDef - fv1|^2 for current norm
-def currentNorm(fvDef, fv1, KparDist, weight=1.):
-    return currentNormDef(fvDef, fv1, KparDist) + currentNorm0(fv1, KparDist) 
-
-# Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (current norm)
-def currentNormGradient(fvDef, fv1, KparDist, weight=1.):
-    xDef = fvDef.vertices
-    c1 = fvDef.centers
-    cr1 = np.copy(fvDef.surfel)
-    c2 = fv1.centers
-    cr2 = np.copy(fv1.surfel)
-    dim = c1.shape[1]
-
-    z1 = (KparDist.applyK(c1, cr1) - KparDist.applyK(c2, cr2, firstVar=c1))/2
-    dz1 = (1./3.) * (KparDist.applyDiffKT(c1, cr1[np.newaxis,...], cr1[np.newaxis,...]) -
-                     KparDist.applyDiffKT(c2, cr1[np.newaxis,...], cr2[np.newaxis,...], firstVar=c1))
-
-    xDef1 = xDef[fvDef.faces[:, 0], :]
-    xDef2 = xDef[fvDef.faces[:, 1], :]
-    xDef3 = xDef[fvDef.faces[:, 2], :]
-
-    px = np.zeros([xDef.shape[0], dim])
-    I = fvDef.faces[:,0]
-    crs = np.cross(xDef3 - xDef2, z1)
-    for k in range(I.size):
-        px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
-
-    I = fvDef.faces[:,1]
-    crs = np.cross(xDef1 - xDef3, z1)
-    for k in range(I.size):
-        px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
-
-    I = fvDef.faces[:,2]
-    crs = np.cross(xDef2 - xDef1, z1)
-    for k in range(I.size):
-        px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
-
-    return 2*px
-
-# Measure norm of fv1
-def measureNorm0(fv1, KparDist):
-    c2 = fv1.centers
-    cr2 = np.sqrt((fv1.surfel**2).sum(axis=1)+1e-10)[:,np.newaxis]
-    return np.multiply(cr2, KparDist.applyK(c2, cr2)).sum()
-        
-    
-# Computes |fvDef|^2 - 2 fvDef * fv1 with measure dot produuct 
-def measureNormDef(fvDef, fv1, KparDist):
-    c1 = fvDef.centers
-    cr1 = np.sqrt((fvDef.surfel**2).sum(axis=1)+1e-10)[:,np.newaxis]
-    c2 = fv1.centers
-    cr2 = np.sqrt((fv1.surfel**2).sum(axis=1)+1e-10)[:,np.newaxis]
-    obj = (np.multiply(cr1, KparDist.applyK(c1, cr1)).sum()
-        - 2*np.multiply(cr1, KparDist.applyK(c2, cr2, firstVar=c1)).sum())
-    return obj
-
-# Returns |fvDef - fv1|^2 for measure norm
-def measureNorm(fvDef, fv1, KparDist):
-    return measureNormDef(fvDef, fv1, KparDist) + measureNorm0(fv1, KparDist) 
-
-
-# Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (measure norm)
-def measureNormGradient(fvDef, fv1, KparDist):
-    xDef = fvDef.vertices
-    c1 = fvDef.centers
-    c2 = fv1.centers
-    dim = c1.shape[1]
-    a1 = np.sqrt((fvDef.surfel**2).sum(axis=1)+1e-10)
-    a2 = np.sqrt((fv1.surfel**2).sum(axis=1)+1e-10)
-    cr1 = fvDef.surfel / a1[:, np.newaxis]
-    #cr2 = fv1.surfel / a2[:, np.newaxis]
-
-    z1 = KparDist.applyK(c1, a1[:, np.newaxis]) - KparDist.applyK(c2, a2[:, np.newaxis], firstVar=c1)
-    z1 = np.multiply(z1, cr1)
-    #print a1.shape, c1.shape
-    dz1 = (1./3.) * (KparDist.applyDiffKT(c1, a1[np.newaxis,:,np.newaxis], a1[np.newaxis,:,np.newaxis]) -
-                      KparDist.applyDiffKT(c2, a1[np.newaxis,:,np.newaxis], a2[np.newaxis,:,np.newaxis], firstVar=c1))
-                        
-
-    xDef1 = xDef[fvDef.faces[:, 0], :]
-    xDef2 = xDef[fvDef.faces[:, 1], :]
-    xDef3 = xDef[fvDef.faces[:, 2], :]
-
-    px = np.zeros([xDef.shape[0], dim])
-    I = fvDef.faces[:,0]
-    crs = np.cross(xDef3 - xDef2, z1)/2
-    for k in range(I.size):
-        px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
-
-    I = fvDef.faces[:,1]
-    crs = np.cross(xDef1 - xDef3, z1)/2
-    for k in range(I.size):
-        px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
-
-    I = fvDef.faces[:,2]
-    crs = np.cross(xDef2 - xDef1, z1)/2
-    for k in range(I.size):
-        px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
-
-    return 2*px
-
-def varifoldNorm0(fv1, KparDist, weight=1.):
-    d=weight
-    c2 = fv1.centers
-    a2 = np.sqrt((fv1.surfel**2).sum(axis=1)+1e-10)
-    cr2 = fv1.surfel/a2[:,np.newaxis]
-    cr2cr2 = (cr2[:,np.newaxis,:]*cr2[np.newaxis,:,:]).sum(axis=2)
-    a2a2 = a2[:,np.newaxis]*a2[np.newaxis,:]
-    beta2 = (1 + d*cr2cr2**2)*a2a2
-    return KparDist.applyK(c2, beta2[...,np.newaxis], matrixWeights=True).sum()
-        
-
-# Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct 
-def varifoldNormDef(fvDef, fv1, KparDist, weight=1.):
-    d=weight
-    c1 = fvDef.centers
-    c2 = fv1.centers
-    a1 = np.sqrt((fvDef.surfel**2).sum(axis=1)+1e-10)
-    a2 = np.sqrt((fv1.surfel**2).sum(axis=1)+1e-10)
-    cr1 = fvDef.surfel/a1[:,np.newaxis]
-    cr2 = fv1.surfel/a2[:,np.newaxis]
-
-    cr1cr1 = (cr1[:,np.newaxis,:]*cr1[np.newaxis,:,:]).sum(axis=2)
-    a1a1 = a1[:,np.newaxis]*a1[np.newaxis,:]
-    cr1cr2 = (cr1[:,np.newaxis,:]*cr2[np.newaxis,:,:]).sum(axis=2)
-    a1a2 = a1[:,np.newaxis]*a2[np.newaxis,:]
-
-    beta1 = (1 + d*cr1cr1**2)*a1a1
-    beta2 = (1 + d*cr1cr2**2)*a1a2
-
-    obj = (KparDist.applyK(c1, beta1[...,np.newaxis], matrixWeights=True).sum()
-        - 2*KparDist.applyK(c2, beta2[...,np.newaxis], firstVar=c1, matrixWeights=True).sum())
-    return obj
-
-# Returns |fvDef - fv1|^2 for current norm
-def varifoldNorm(fvDef, fv1, KparDist, weight=1.):
-    return varifoldNormDef(fvDef, fv1, KparDist, weight=weight) + varifoldNorm0(fv1, KparDist, weight=weight)
-
-# Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (current norm)
-def varifoldNormGradient(fvDef, fv1, KparDist, weight=1.):
-    d=weight
-    xDef = fvDef.vertices
-    c1 = fvDef.centers
-    c2 = fv1.centers
-    dim = c1.shape[1]
-
-    a1 = np.sqrt((fvDef.surfel**2).sum(axis=1)+1e-10)
-    a2 = np.sqrt((fv1.surfel**2).sum(axis=1)+1e-10)
-    cr1 = fvDef.surfel / a1[:, np.newaxis]
-    cr2 = fv1.surfel / a2[:, np.newaxis]
-    cr1cr1 =  (cr1[:, np.newaxis, :] * cr1[np.newaxis, :, :]).sum(axis=2)
-    cr1cr2 =  (cr1[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
-
-    beta1 = a1[:,np.newaxis]*a1[np.newaxis,:] * (1 + d*cr1cr1**2) 
-    beta2 = a1[:,np.newaxis]*a2[np.newaxis,:] * (1 + d*cr1cr2**2)
-
-    u1 = (2*d*cr1cr1[...,np.newaxis]*cr1[np.newaxis,...] - d*(cr1cr1**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
-          + cr1[:,np.newaxis,:])*a1[np.newaxis,:,np.newaxis]
-    u2 = (2*d*cr1cr2[...,np.newaxis]*cr2[np.newaxis,...] - d*(cr1cr2**2)[...,np.newaxis]*cr1[:,np.newaxis,:]
-          + cr1[:,np.newaxis,:])*a2[np.newaxis,:,np.newaxis]
-
-    z1 = KparDist.applyK(c1, u1,matrixWeights=True) - KparDist.applyK(c2, u2, firstVar=c1, matrixWeights=True)
-    #print a1.shape, c1.shape
-    dz1 = (1./3.) * (KparDist.applyDiffKmat(c1, beta1) - KparDist.applyDiffKmat(c2, beta2, firstVar=c1))
-                        
-    xDef1 = xDef[fvDef.faces[:, 0], :]
-    xDef2 = xDef[fvDef.faces[:, 1], :]
-    xDef3 = xDef[fvDef.faces[:, 2], :]
-
-    px = np.zeros([xDef.shape[0], dim])
-    I = fvDef.faces[:,0]
-    crs = np.cross(xDef3 - xDef2, z1)/2
-    for k in range(I.size):
-        px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
-
-    I = fvDef.faces[:,1]
-    crs = np.cross(xDef1 - xDef3, z1)/2
-    for k in range(I.size):
-        px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
-
-    I = fvDef.faces[:,2]
-    crs = np.cross(xDef2 - xDef1, z1)/2
-    for k in range(I.size):
-        px[I[k], :] = px[I[k], :]+dz1[k, :] -  crs[k, :]
-
-    return 2*px
-
-
-def L2Norm0(fv1):
-    return np.fabs(fv1.surfVolume())
-    
-def L2Norm(fvDef, vfld):
-    vf = np.zeros((fvDef.centers.shape[0], 3))
-    for k in range(3):
-        vf[:,k] = diffeo.multilinInterp(vfld[k, ...], fvDef.centers.T)
-    #vf = fvDef.centers/3 - 2*vf
-    #vf =  - 2*vf
-    #print 'volume: ', fvDef.surfVolume(), (vf*fvDef.surfel).sum()
-    return np.fabs(fvDef.surfVolume()) - 2*(vf*fvDef.surfel).sum()
-    
-def L2NormGradient(fvDef, vfld):
-    xDef = fvDef.vertices
-    c1 = fvDef.centers
-    cr1 = fvDef.surfel
-    dvf = np.zeros((fvDef.faces.shape[0], 3, 3))
-    for k in range(3):
-        dvf[:,k,:] = diffeo.multilinInterpGradient(vfld[k, ...], c1.T).T
-    gradc = cr1/3
-    for k in range(3):
-        gradc[:,k] -= 2*(dvf[:,:,k]*cr1).sum(axis=1)
-    gradc = gradc/3
-    
-    gradn = np.zeros((fvDef.faces.shape[0],3))
-    for k in range(3):
-        gradn[:,k] = diffeo.multilinInterp(vfld[k, ...], c1.T)
-    gradn = c1/3 - 2*gradn
-    gradn = gradn/2
-    
-    grad = np.zeros((xDef.shape[0], 3))
-    xDef0 = xDef[fvDef.faces[:, 0], :]
-    xDef1 = xDef[fvDef.faces[:, 1], :]
-    xDef2 = xDef[fvDef.faces[:, 2], :]
-
-    crs = np.cross(xDef2 - xDef1, gradn)
-    I = fvDef.faces[:,0]
-    for k in range(I.size):
-        grad[I[k], :] = grad[I[k], :] + gradc[k,:] - crs[k,:]
-
-    crs = np.cross(xDef0 - xDef2, gradn)
-    I = fvDef.faces[:,1]
-    for k in range(I.size):
-        grad[I[k], :] = grad[I[k], :] + gradc[k,:] - crs[k,:]
-
-    crs = np.cross(xDef1 - xDef0, gradn)
-    I = fvDef.faces[:,2]
-    for k in range(I.size):
-        grad[I[k], :] = grad[I[k], :] + gradc[k,:] - crs[k,:]
-        
-    return grad
-
-
-def normGrad(fv, phi):
-    v1 = fv.vertices[fv.faces[:,0],:]
-    v2 = fv.vertices[fv.faces[:,1],:]
-    v3 = fv.vertices[fv.faces[:,2],:]
-    l1 = ((v2-v3)**2).sum(axis=1)
-    l2 = ((v1-v3)**2).sum(axis=1)
-    l3 = ((v1-v2)**2).sum(axis=1)
-    phi1 = phi[fv.faces[:,0],:]
-    phi2 = phi[fv.faces[:,1],:]
-    phi3 = phi[fv.faces[:,2],:]
-    a = 4*np.sqrt((fv.surfel**2).sum(axis=1))
-    u = l1*((phi2-phi1)*(phi3-phi1)).sum(axis=1) + l2*((phi3-phi2)*(phi1-phi2)).sum(axis=1) + l3*((phi1-phi3)*(phi2-phi3)).sum(axis=1)
-    res = (u/a).sum()
-    return res
-
-def laplacian(fv, phi, weighted=False):
-    res = np.zeros(phi.shape)
-    v1 = fv.vertices[fv.faces[:,0],:]
-    v2 = fv.vertices[fv.faces[:,1],:]
-    v3 = fv.vertices[fv.faces[:,2],:]
-    l1 = (((v2-v3)**2).sum(axis=1))[...,np.newaxis]
-    l2 = (((v1-v3)**2).sum(axis=1))[...,np.newaxis]
-    l3 = (((v1-v2)**2).sum(axis=1))[...,np.newaxis]
-    phi1 = phi[fv.faces[:,0],:]
-    phi2 = phi[fv.faces[:,1],:]
-    phi3 = phi[fv.faces[:,2],:]
-    a = 8*(np.sqrt((fv.surfel**2).sum(axis=1)))[...,np.newaxis]
-    r1 = (l1 * (phi2 + phi3-2*phi1) + (l2-l3) * (phi2-phi3))/a
-    r2 = (l2 * (phi1 + phi3-2*phi2) + (l1-l3) * (phi1-phi3))/a
-    r3 = (l3 * (phi1 + phi2-2*phi3) + (l2-l1) * (phi2-phi1))/a
-    for k,f in enumerate(fv.faces):
-        res[f[0],:] += r1[k,:]
-        res[f[1],:] += r2[k,:]
-        res[f[2],:] += r3[k,:]
-    if weighted:
-        av = fv.computeVertexArea()
-        return res/av[0]
-    else:
-        return res
-
-def diffNormGrad(fv, phi, variables='both'):
-    v1 = fv.vertices[fv.faces[:,0],:]
-    v2 = fv.vertices[fv.faces[:,1],:]
-    v3 = fv.vertices[fv.faces[:,2],:]
-    l1 = (((v2-v3)**2).sum(axis=1))
-    l2 = (((v1-v3)**2).sum(axis=1))
-    l3 = (((v1-v2)**2).sum(axis=1))
-    phi1 = phi[fv.faces[:,0],:]
-    phi2 = phi[fv.faces[:,1],:]
-    phi3 = phi[fv.faces[:,2],:]
-    #a = ((fv.surfel**2).sum(axis=1))
-    a = 2*np.sqrt((fv.surfel**2).sum(axis=1))
-    a2 = 2*a[...,np.newaxis]
-    if variables == 'both' or variables == 'phi':
-        r1 = (l1[:, np.newaxis] * (phi2 + phi3-2*phi1) + (l2-l3)[:, np.newaxis] * (phi2-phi3))/a2
-        r2 = (l2[:, np.newaxis] * (phi1 + phi3-2*phi2) + (l1-l3)[:, np.newaxis] * (phi1-phi3))/a2
-        r3 = (l3[:, np.newaxis] * (phi1 + phi2-2*phi3) + (l2-l1)[:, np.newaxis] * (phi2-phi1))/a2
-        gradphi = np.zeros(phi.shape)
-        for k,f in enumerate(fv.faces):
-            gradphi[f[0],:] -= r1[k,:]
-            gradphi[f[1],:] -= r2[k,:]
-            gradphi[f[2],:] -= r3[k,:]
-
-    if variables == 'both' or variables == 'x':
-        gradx = np.zeros(fv.vertices.shape)
-        u = (l1*((phi2-phi1)*(phi3-phi1)).sum(axis=1) + l2*((phi3-phi2)*(phi1-phi2)).sum(axis=1) 
-        + l3*((phi1-phi3)*(phi2-phi3)).sum(axis=1))
-        #u = (2*u/a**2)[...,np.newaxis]
-        u = (u/(a**3))[...,np.newaxis]
-        r1 = (- u * np.cross(v2-v3,fv.surfel) + 2*((v1-v3) *(((phi3-phi2)*(phi1-phi2)).sum(axis=1))[:,np.newaxis]
-            + (v1-v2)*(((phi1-phi3)*(phi2-phi3)).sum(axis=1)[:,np.newaxis]))/a2)
-        r2 = (- u * np.cross(v3-v1,fv.surfel) + 2*((v2-v1) *(((phi1-phi3)*(phi2-phi3)).sum(axis=1))[:,np.newaxis]
-            + (v2-v3)*(((phi2-phi1)*(phi3-phi1)).sum(axis=1))[:,np.newaxis])/a2)
-        r3 = (- u * np.cross(v1-v2,fv.surfel) + 2*((v3-v2) *(((phi2-phi1)*(phi3-phi1)).sum(axis=1))[:,np.newaxis]
-            + (v3-v1)*(((phi3-phi2)*(phi1-phi2)).sum(axis=1)[:,np.newaxis]))/a2)
-        for k,f in enumerate(fv.faces):
-            gradx[f[0],:] += r1[k,:]
-            gradx[f[1],:] += r2[k,:]
-            gradx[f[2],:] += r3[k,:]
-
-    if variables == 'both':
-        return (gradphi, gradx)
-    elif variables == 'phi':
-        return gradphi
-    elif variables == 'x':
-        return gradx
-    else:
-        logging.info('Incorrect option in diffNormGrad')
-    
 
 
 

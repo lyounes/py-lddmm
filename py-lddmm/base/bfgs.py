@@ -178,6 +178,13 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
 
             grdOld = copyDir(grd)
 
+            if it == 0 or it == burnIn:
+                if gradEps is None:
+                    gradEps = max(0.001 * np.sqrt(grd2), 0.0001)
+                else:
+                    gradEps = max(min(gradEps, 0.001 * np.sqrt(grd2)), 0.0001)
+                logging.info(f'Gradient threshold: {gradEps:.6f}')
+
             if Wolfe:
                 eps *= 2.
                 if eps > 1.:
@@ -273,9 +280,9 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
             if it > burnIn:
                 logging.info('Stopping Gradient Descent: small variation')
                 opt.converged = True
+                if hasattr(opt, 'endOfProcedure'):
+                    opt.endOfProcedure()
                 break
-            if hasattr(opt, 'endOfIteration'):
-                opt.endOfIteration()
 
         diffVar = prod(dir0, -eps)
         opt.acceptVarTry()

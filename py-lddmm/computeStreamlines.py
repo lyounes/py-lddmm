@@ -1,12 +1,9 @@
 from base import surfaces
-from base import examples
 from base.kernelFunctions import Kernel
 from base import surfaceMatchingNormalExtremities as SMNE
 import matplotlib
 matplotlib.use("QT5Agg")
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-import logging
 from base import loggingUtils
 
 if __name__ == "__main__":

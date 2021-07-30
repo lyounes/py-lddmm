@@ -15,9 +15,13 @@ from .affineBasis import *
 #      sigmaError: normlization for error term
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
-class SurfaceMatchingParam(surfaceMatching.SurfaceMatchingParam):
-    def __init__(self, timeStep = .1, KparDiff = None, KparDist = None, KparDiffOut = None, sigmaKernel = 6.5, sigmaKernelOut=6.5, sigmaDist=2.5, sigmaError=1.0, typeKernel='gauss', errorType='varifold'):
-        surfaceMatching.SurfaceMatchingParam.__init__(self, timeStep = timeStep, KparDiff = KparDiff, KparDist=KparDist, sigmaKernel =  sigmaKernel, sigmaDist = sigmaDist, sigmaError = sigmaError, typeKernel = typeKernel, errorType=errorType)
+class SurfaceMatchingParamAtrophy(surfaceMatching.SurfaceMatchingParam):
+    def __init__(self, timeStep = .1, KparDiff = None, KparDist = None, KparDiffOut = None, sigmaKernel = 6.5,
+                 sigmaKernelOut=6.5, sigmaDist=2.5, sigmaError=1.0, typeKernel='gauss', errorType='varifold'):
+        surfaceMatching.SurfaceMatchingParam.__init__(self, timeStep = timeStep, KparDiff = KparDiff, KparDist=KparDist,
+                                                      sigmaKernel =  sigmaKernel, sigmaDist = sigmaDist,
+                                                      sigmaError = sigmaError,
+                                                      typeKernel = typeKernel, errorType=errorType)
         self.sigmaKernelOut = sigmaKernelOut
         if KparDiffOut == None:
             self.KparDiffOut = kfun.Kernel(name = self.typeKernel, sigma = self.sigmaKernelOut)
@@ -41,11 +45,12 @@ class SurfaceMatchingParam(surfaceMatching.SurfaceMatchingParam):
 #        maxIter_cg: max iterations in conjugate gradient
 #        maxIter_al: max interation for augmented lagrangian
 
-class SurfaceMatching(surfaceMatching.SurfaceMatching):
-    def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, verb=True, regWeight=1.0, affineWeight = 1.0,
+class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
+    def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, verb=True, regWeight=1.0,
+                 affineWeight = 1.0,
                   testGradient=False, mu = 0.1, outputDir='.', saveFile = 'evolution', affine='none', volumeOnly=False,
                   rotWeight = None, scaleWeight = None, transWeight = None, symmetric=False, maxIter_cg=1000, maxIter_al=100):
-        super(SurfaceMatching, self).__init__(Template, Target, fileTempl, fileTarg, param, maxIter_cg, regWeight, affineWeight,
+        super(SurfaceMatchingAtrophy, self).__init__(Template, Target, fileTempl, fileTarg, param, maxIter_cg, regWeight, affineWeight,
                                                               verb, -1, rotWeight, scaleWeight, transWeight, symmetric, testGradient,
                                                               saveFile, False, affine, outputDir)
 
@@ -164,8 +169,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 lv = vt * lmb[t,:,np.newaxis]
             #lnu = np.multiply(nu, np.mat(lmb[t, npt:npt1]).T)
             #print lnu.shape
-            dxcval[t] = self.param.KparDiff.applyDiffKT(x, a[np.newaxis,...], lnu[np.newaxis,...])
-            dxcval[t] += self.param.KparDiff.applyDiffKT(x, lnu[np.newaxis,...], a[np.newaxis,...])
+            dxcval[t] = self.param.KparDiff.applyDiffKT(x, a, lnu)
+            dxcval[t] += self.param.KparDiff.applyDiffKT(x, lnu, a)
             #dxcval[t] += np.dot(lnu, A)
             if self.useKernelDotProduct:
                 dacval[t] = np.copy(lnu)
@@ -221,8 +226,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         #     vA = np.multiply(dA, AfftTry-Afft).sum()/eps
         #     logging.info('var affine: %f %f' %(self.Tsize*(uA[0]-u0[0])/(eps), -vA ))
 
-    def  objectiveFunDef(self, at, Afft, withTrajectory = False, withJacobian = False, x0 = None):
-        f = super(SurfaceMatching, self).objectiveFunDef(at, Afft, withTrajectory=True, withJacobian=withJacobian,x0=x0)
+    def  objectiveFunDef(self, at, Afft=None, withTrajectory = False, withJacobian = False, fv0 = None, kernel=None,
+                         regWeight=None):
+        f = super(SurfaceMatchingAtrophy, self).objectiveFunDef(at, Afft=Afft, withTrajectory=True,
+                                                                withJacobian=withJacobian, fv0=fv0)
         cstr = self.constraintTerm(f[1], at, Afft)
         obj = f[0]+cstr[0]
 
@@ -261,11 +268,14 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             AfftTry = self.Afft - eps * dir.aff
         else:
             AfftTry = []
+
+        fv0 = surfaces.Surface(surf=self.fv0)
         if self.symmetric:
-            x0Try = self.x0 - eps * dir.initx
+            x0Try = self.x0 - eps * dr.initx
+            fv0.updateVertices(x0Try)
         else:
-            x0Try = self.x0
-        foo = self.objectiveFunDef(atTry, AfftTry, x0 = x0Try, withTrajectory=True)
+            x0Try = None
+        foo = self.objectiveFunDef(atTry, AfftTry, fv0 = fv0, withTrajectory=True)
         objTry = 0
 
         ff = surfaces.Surface(surf=self.fvDef)
@@ -321,9 +331,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             z = np.squeeze(xt[M-t-1, :, :])
             a = np.squeeze(at[M-t-1, :, :])
             zpx = np.copy(dxcval[M-t-1])
-            a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...]))
-            a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
-            zpx += self.param.KparDiff.applyDiffKT(z, a1, a2)
+            zpx += self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
             if self.affineDim > 0:
                 pxt[M-t-1, :, :] = np.dot(px, self.affB.getExponential(timeStep*A[0][M-t-1])) + timeStep * zpx
                 #zpx += np.dot(px, A[0][M-t-1])
@@ -533,10 +541,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             self.fvInit.updateVertices(self.x0)
 
     def optimizeMatching(self):
-	self.coeffZ = 10.
+        self.coeffZ = 10.
         self.coeffAff = self.coeffAff2
-	grd = self.getGradient(self.gradCoeff)
-	[grd2] = self.dotProduct(grd, [grd])
+        grd = self.getGradient(self.gradCoeff)
+        [grd2] = self.dotProduct(grd, [grd])
 
         self.gradEps = np.sqrt(grd2) / 100
         self.coeffAff = self.coeffAff1

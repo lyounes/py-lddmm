@@ -2,7 +2,7 @@ import numpy as np
 import scipy.linalg as LA
 from . import surfaces
 import logging
-from . import surfaceMatching as smatch
+from . import surfaceMatching as smatch, surface_distances as sd
 import multiprocessing as mp
 from multiprocessing import Lock
 from . import conjugateGradient as cg, kernelFunctions as kfun
@@ -54,7 +54,8 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 
     def __init__(self, HyperTmpl=None, Targets=None, fileHTempl=None, fileTarg=None, param=None, maxIter=1000,
                  internalWeight=1.0, lambdaPrior = 1.0, regWeight = 1.0, affineWeight = 1.0, verb=True, sgd = None,
-                 rotWeight = None, scaleWeight = None, transWeight = None, testGradient=False, pplot = True, saveFile = 'evolution',
+                 rotWeight = None, scaleWeight = None, transWeight = None, testGradient=False, pplot = True,
+                 saveFile = 'evolution',
                  affine = 'none', outputDir = '.'):
 
 
@@ -64,7 +65,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                 print('Please provide A hyper-template surface')
                 return
             else:
-                self.fv0 = surfaces.Surface(filename=fileHTempl)
+                self.fv0 = surfaces.Surface(surf=fileHTempl)
         else:
             self.fv0 = surfaces.Surface(surf=HyperTmpl)
         if Targets is None:
@@ -73,7 +74,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                 return
             else:
                 for ff in fileTarg:
-                    self.fv1.append(surfaces.Surface(filename=ff))
+                    self.fv1.append(surfaces.Surface(surf=ff))
         else:
             self.fv1 = []
             for ff in Targets:
@@ -187,8 +188,8 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             self.sgd = sgd
 
         if self.param.internalCost == 'h1':
-            self.internalCost = surfaces.normGrad
-            self.internalCostGrad = surfaces.diffNormGrad
+            self.internalCost = sd.normGrad
+            self.internalCostGrad = sd.diffNormGrad
         else:
             self.internalCost = None
         self.internalWeight = internalWeight
@@ -245,7 +246,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         if self.param.errorType == 'L2Norm':
             for k,f in enumerate(_fvDef):
                 if self.select[k]:
-                    obj += c*surfaces.L2Norm(f, self.fv1[k].vfld) / (self.param.sigmaError ** 2)
+                    obj += c*sd.L2Norm(f, self.fv1[k].vfld) / (self.param.sigmaError ** 2)
         else:
             for k,f in enumerate(_fvDef):
                 if self.select[k]:
@@ -273,7 +274,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             ff = surfaces.Surface(surf=self.fv0)
             for (kk, a) in enumerate(self.atAll):
                 if self.select[kk]:
-                    foo = self.objectiveFunDef(a, self.AfftAll[kk], withTrajectory=True, x0 = self.fvTmpl.vertices)
+                    foo = self.objectiveFunDef(a, self.AfftAll[kk], withTrajectory=True, fv0 = self.fvTmpl)
                     ff.updateVertices(np.squeeze(foo[1][-1]))
                     self.obj += c*(foo[0] + self.fun_obj(ff, self.fv1[kk]) / (self.param.sigmaError**2))
                     self.xtAll[kk] = np.copy(foo[1])
@@ -324,7 +325,8 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         else:
             atTry = np.copy(self.at)
         #print 'x0 hypertemplate', self.x0.sum()
-        foo = self.objectiveFunDef(atTry, self.Afft, kernel = self.param.KparDiff0, withTrajectory=True, regWeight=self.lambdaPrior)
+        foo = self.objectiveFunDef(atTry, self.Afft, kernel = self.param.KparDiff0, withTrajectory=True,
+                                   regWeight=self.lambdaPrior)
         objTry += foo[0]
         x0 = np.squeeze(foo[1][-1,...])
         fvTmplTry = surfaces.Surface(surf=self.fv0)
@@ -343,7 +345,8 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                     AfftAllTry.append(self.AfftAll[kk] - eps * d.aff)
                 else:
                     AfftAllTry.append(np.copy(self.AfftAll[kk]))
-                foo = self.objectiveFunDef(atAllTry[-1], AfftAllTry[-1], kernel = self.param.KparDiff, withTrajectory=True, x0 = x0)
+                foo = self.objectiveFunDef(atAllTry[-1], AfftAllTry[-1], kernel = self.param.KparDiff,
+                                           withTrajectory=True, fv0 = fvTmplTry)
                 objTry += c*foo[0]
                 ff = surfaces.Surface(surf=self.fv0)
                 ff.updateVertices(np.squeeze(foo[1][-1,...]))
@@ -373,7 +376,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
     def gradientComponent(self, q, kk):
         #print kk, 'th gradient'
         if self.param.errorType == 'L2Norm':
-            px1 = -surfaces.L2NormGradient(self.fvDef[kk], self.fv1[kk].vfld) / self.param.sigmaError ** 2
+            px1 = -sd.L2NormGradient(self.fvDef[kk], self.fv1[kk].vfld) / self.param.sigmaError ** 2
         else:
             px1 = -self.fun_objGrad(self.fvDef[kk], self.fv1[kk]) / self.param.sigmaError**2
             #print 'in fun' ,kk
@@ -385,7 +388,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                 #print self.dim, dim2, AB.shape, self.affineBasis.shape
                 A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
                 A[1][t] = AB[dim2:dim2+self.dim]
-        foo = self.hamiltonianGradient(px1, kernel=self.param.KparDiff, x0=self.fvTmpl.vertices, at=self.atAll[kk], affine=A)
+        foo = self.hamiltonianGradient(px1, kernel=self.param.KparDiff, fv0=self.fvTmpl, at=self.atAll[kk], affine=A)
         grd = foo[0:3]
         pxTmpl = foo[4][0, ...]
 
@@ -408,14 +411,14 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             _ff.append(ff)
             _dff.append(dff)
             if self.param.errorType == 'L2Norm':
-                grd = surfaces.L2NormGradient(self.fvDef[k], self.fv1[k].vfld) / self.param.sigmaError ** 2
+                grd = sd.L2NormGradient(self.fvDef[k], self.fv1[k].vfld) / self.param.sigmaError ** 2
             else:   
                 grd = self.param.fun_objGrad(self.fvDef[k], self.fv1[k], self.param.KparDist) / self.param.sigmaError**2
             incr += (grd*dff).sum()
         c1 = self.dataTerm(_ff)
         logging.info("test endpoint gradient: {0:.5f} {1:.5f}".format((c1-c0)/eps, incr ))
 
-    def getGradient(self, coeff=1.0):
+    def getGradient(self, coeff=1.0, update=None):
         #grd0 = np.zeros(self.atAll.shape)
         #pxIncr = np.zeros([self.Ntarg, self.atAll.shape[1], self.atAll.shape[2]])
         pxTmpl = np.zeros(self.at.shape[1:3])
@@ -474,7 +477,8 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         #print q.get()
         #print pxTmpl.sum()
         #print 'Template gradient'
-        foo2 = self.hamiltonianGradient(pxTmpl, kernel = self.param.KparDiff0, regWeight=self.lambdaPrior, x0=self.x0, at=self.at)
+        foo2 = self.hamiltonianGradient(pxTmpl, kernel = self.param.KparDiff0, regWeight=self.lambdaPrior,
+                                        fv0=self.fv0, at=self.at)
         #print self.at.shape, self.atAll[0].shape
         #print((foo2[1][-1,...]-self.fvTmpl.vertices)**2).bit_length
         if self.updateTemplate:
@@ -548,15 +552,19 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             self.coeffAff = self.coeffAff2
         if self.iter >= self.templateBurnIn:
             self.updateAllTraj = True
-        (obj1, self.xt, Jt) = self.objectiveFunDef(self.at, self.Afft, kernel = self.param.KparDiff0, withTrajectory=True, withJacobian=True)
+        (obj1, self.xt, Jt) = self.objectiveFunDef(self.at, self.Afft, kernel = self.param.KparDiff0,
+                                                   withTrajectory=True, withJacobian=True)
         self.fvTmpl.updateVertices(np.squeeze(self.xt[-1, :, :]))
-        self.fvTmpl.saveVTK(self.outputDir +'/'+ 'Template.vtk', scalars = Jt[-1], scal_name='Jacobian')
+        self.fvTmpl.saveVTK(self.outputDir +'/'+ 'Template.vtk', scalars = Jt[-1, :,0], scal_name='Jacobian')
         for kk in range(self.Ntarg):
             if self.select[kk]:
-                (obj1, self.xtAll[kk], Jt) = self.objectiveFunDef(self.atAll[kk], self.AfftAll[kk], kernel = self.param.KparDiff,
-                                                                  withTrajectory=True, x0 = self.fvTmpl.vertices, withJacobian=True)
+                (obj1, self.xtAll[kk], Jt) = self.objectiveFunDef(self.atAll[kk], self.AfftAll[kk], kernel = self.
+                                                                  param.KparDiff,
+                                                                  withTrajectory=True, fv0 = self.fvTmpl,
+                                                                  withJacobian=True)
                 self.fvDef[kk].updateVertices(self.xtAll[kk][self.xtAll[kk].shape[0]-1, ...])
-                self.fvDef[kk].saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = Jt[-1, :], scal_name='Jacobian')
+                self.fvDef[kk].saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = Jt[-1, :,0],
+                                       scal_name='Jacobian')
         if self.pplot:
             fig=plt.figure(1)
             #fig.clf()

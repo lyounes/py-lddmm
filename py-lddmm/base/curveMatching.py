@@ -1,8 +1,7 @@
 import os
 import glob
 import logging
-#import scipy as sp
-from . import curves
+from . import curves, curve_distances as cd
 from . import pointSets
 from . import kernelFunctions as kfun
 from . import conjugateGradient as cg, grid, matchingParam, pointEvolution as evol, bfgs
@@ -20,11 +19,12 @@ from functools import partial
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class CurveMatchingParam(matchingParam.MatchingParam):
-    def __init__(self, timeStep = .1, algorithm = 'bfgs', Wolfe=False, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist=2.5, sigmaError=1.0,
+    def __init__(self, timeStep = .1, algorithm = 'bfgs', Wolfe=False, KparDiff = None, KparDist = None,
+                 sigmaKernel = 6.5, sigmaDist=2.5, sigmaError=1.0,
                  errorType = 'measure', typeKernel='gauss', internalCost=None):
-        matchingParam.MatchingParam.__init__(self, timeStep=timeStep, algorithm = algorithm, Wolfe=Wolfe,
-                                             KparDiff = KparDiff, KparDist = KparDist, sigmaKernel = sigmaKernel, sigmaDist=sigmaDist,
-                                         sigmaError=sigmaError, errorType = errorType, typeKernel=typeKernel)
+        super().__init__(timeStep=timeStep, algorithm = algorithm, Wolfe=Wolfe,
+                        KparDiff = KparDiff, KparDist = KparDist, sigmaError=sigmaError,
+                        errorType = errorType)
           
         self.internalCost = internalCost
         self.errorType = errorType
@@ -62,7 +62,7 @@ class CurveMatching:
                 print('Please provide a template curve')
                 return
             else:
-                self.fv0 = curves.Curve(filename=fileTempl)
+                self.fv0 = curves.Curve(curve=fileTempl)
         else:
             self.fv0 = curves.Curve(curve=Template)
         if Target==None:
@@ -70,7 +70,7 @@ class CurveMatching:
                 print('Please provide a target curve')
                 return
             else:
-                self.fv1 = curves.Curve(filename=fileTarg)
+                self.fv1 = curves.Curve(curve=fileTarg)
         else:
             self.fv1 = curves.Curve(curve=Target)
 
@@ -137,11 +137,11 @@ class CurveMatching:
         elif self.param.internalCost == 'h1Alpha':
             self.internalCost = curves.h1AlphaNorm
             self.internalCostGrad = curves.diffH1Alpha
-            self.internalWeight *= self.fv0.length()/(self.fv0.component.max()+1)
+            #self.internalWeight *= self.fv0.length()/(self.fv0.component.max()+1)
         elif self.param.internalCost == 'h1AlphaInvariant':
             self.internalCost = curves.h1AlphaNormInvariant
             self.internalCostGrad = curves.diffH1AlphaInvariant
-            self.internalWeight *= self.fv0.length()/(self.fv0.component.max()+1)
+            #self.internalWeight *= self.fv0.length()/(self.fv0.component.max()+1)
         elif self.param.internalCost == 'h1Invariant':
             if self.fv0.vertices.shape[1] == 2:
                 self.internalCost = curves.normGradInvariant
@@ -205,7 +205,7 @@ class CurveMatching:
                 for kf in range(self.fvDef.faces.shape[0]):
                     ax.plot(self.fvDef.vertices[self.fvDef.faces[kf,:],0], self.fvDef.vertices[self.fvDef.faces[kf,:],1], 
                              self.fvDef.vertices[self.fvDef.faces[kf,:],2], color=[1,0,0], marker='*')
-                plt.axis('equal')
+                #plt.axis('equal')
             plt.pause(0.1)
 
 #        om = np.random.uniform(-1,1,[1,self.fv0.vertices.shape[1]])
@@ -220,42 +220,43 @@ class CurveMatching:
         self.param.errorType = errorType
         if errorType == 'current':
             print('Running Current Matching')
-            self.fun_obj0 = partial(curves.currentNorm0, KparDist=self.param.KparDist, weight=1.)
-            self.fun_obj = partial(curves.currentNormDef, KparDist=self.param.KparDist, weight=1.)
-            self.fun_objGrad = partial(curves.currentNormGradient, KparDist=self.param.KparDist, weight=1.)
+            weight = None
+            self.fun_obj0 = partial(cd.currentNorm0, KparDist=self.param.KparDist, weight=weight)
+            self.fun_obj = partial(cd.currentNormDef, KparDist=self.param.KparDist, weight=weight)
+            self.fun_objGrad = partial(cd.currentNormGradient, KparDist=self.param.KparDist, weight=weight)
             # self.fun_obj0 = curves.currentNorm0
             # self.fun_obj = curves.currentNormDef
             # self.fun_objGrad = curves.currentNormGradient
         elif errorType=='measure':
             print('Running Measure Matching')
-            self.fun_obj0 = partial(curves.measureNorm0, KparDist=self.param.KparDist)
-            self.fun_obj = partial(curves.measureNormDef,KparDist=self.param.KparDist)
-            self.fun_objGrad = partial(curves.measureNormGradient,KparDist=self.param.KparDist)
+            self.fun_obj0 = partial(cd.measureNorm0, KparDist=self.param.KparDist)
+            self.fun_obj = partial(cd.measureNormDef,KparDist=self.param.KparDist)
+            self.fun_objGrad = partial(cd.measureNormGradient,KparDist=self.param.KparDist)
         elif errorType=='varifold':
-            self.fun_obj0 = partial(curves.varifoldNorm0, KparDist=self.param.KparDist, weight=1.)
-            self.fun_obj = partial(curves.varifoldNormDef, KparDist=self.param.KparDist, weight=1.)
-            self.fun_objGrad = partial(curves.varifoldNormGradient, KparDist=self.param.KparDist, weight=1.)
+            self.fun_obj0 = partial(cd.varifoldNorm0, KparDist=self.param.KparDist, weight=1.)
+            self.fun_obj = partial(cd.varifoldNormDef, KparDist=self.param.KparDist, weight=1.)
+            self.fun_objGrad = partial(cd.varifoldNormGradient, KparDist=self.param.KparDist, weight=1.)
         elif errorType == 'varifoldComponent':
-            self.fun_obj0 = partial(curves.varifoldNormComponent0, KparDist=self.param.KparDist)
-            self.fun_obj = partial(curves.varifoldNormComponentDef, KparDist=self.param.KparDist)
-            self.fun_objGrad = partial(curves.varifoldNormComponentGradient, KparDist=self.param.KparDist)
+            self.fun_obj0 = partial(cd.varifoldNormComponent0, KparDist=self.param.KparDist)
+            self.fun_obj = partial(cd.varifoldNormComponentDef, KparDist=self.param.KparDist)
+            self.fun_objGrad = partial(cd.varifoldNormComponentGradient, KparDist=self.param.KparDist)
         elif errorType == 'landmarks':
-            self.fun_obj0 = curves.L2Norm0
-            self.fun_obj = curves.L2NormDef
-            self.fun_objGrad = curves.L2NormGradient
+            self.fun_obj0 = cd.L2Norm0
+            self.fun_obj = cd.L2NormDef
+            self.fun_objGrad = cd.L2NormGradient
             if self.fv1.vertices.shape[0] != self.fvDef.vertices.shape[0]:
                 sdef = self.fvDef.arclength()
                 s1 = self.fv1.arclength()
                 x1 = np.zeros(self.fvDef.vertices.shape)
                 x1[:,0] = np.interp(sdef, s1, self.fv1.vertices[:,0])
                 x1[:,1] = np.interp(sdef, s1, self.fv1.vertices[:,1])
-                self.fv1 = curves.Curve(FV=(self.fvDef.faces,x1))
+                self.fv1 = curves.Curve(curve=(self.fvDef.faces,x1))
             bestk = 0
-            minL2 = curves.L2Norm(self.fvDef, self.fv1)
+            minL2 = cd.L2Norm(self.fvDef, self.fv1)
             fvTry = curves.Curve(curve=self.fv1)
             for k in range(1,self.fv1.vertices.shape[0]):
                 fvTry.updateVertices(np.roll(self.fv1.vertices, k, axis=0))
-                L2 = curves.L2Norm(self.fvDef, fvTry)
+                L2 = cd.L2Norm(self.fvDef, fvTry)
                 if L2 < minL2:
                     bestk = k
                     minL2 = L2
@@ -267,7 +268,6 @@ class CurveMatching:
 
     def dataTerm(self, _fvDef):
         obj = self.fun_obj(_fvDef, self.fv1) / (self.param.sigmaError**2)
-        obj2 = (obj+self.obj0)* self.param.sigmaError**2
         return obj
 
     def  objectiveFunDef(self, at, Afft, withTrajectory = False, withJacobian=False, x0 = None):
@@ -389,18 +389,19 @@ class CurveMatching:
                 grd = self.internalCostGrad(foo, v)
                 Lv =  grd[0]
                 DLv = self.internalWeight*grd[1]
-                a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...], 
-                                     -self.internalWeight*a[np.newaxis,...], Lv[np.newaxis,...]))
-                a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], 
-                                     Lv[np.newaxis,...], -self.internalWeight*a[np.newaxis,...]))
+                # a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...],
+                #                      -self.internalWeight*a[np.newaxis,...], Lv[np.newaxis,...]))
+                # a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...],
+                #                      Lv[np.newaxis,...], -self.internalWeight*a[np.newaxis,...]))
 #                a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...], 
 #                                     -2*self.internalWeight*a[np.newaxis,...]))
 #                a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...], Lv[np.newaxis,...]))
-                zpx = self.param.KparDiff.applyDiffKT(z, a1, a2) - DLv
+                zpx = self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True,
+                                                      extra_term = -self.internalWeight*Lv) - DLv
             else:
-                a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...]))
-                a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
-                zpx = self.param.KparDiff.applyDiffKT(z, a1, a2)
+                # a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*self.regweight*a[np.newaxis,...]))
+                # a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
+                zpx = self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
                 
             if not (affine is None):
                 pxt[M-t-1, :, :] = np.dot(px, A[M-t-1]) + timeStep * zpx
@@ -453,6 +454,17 @@ class CurveMatching:
             endPoint = self.fvDef
         px = self.fun_objGrad(endPoint, self.fv1)
         return px / self.param.sigmaError**2
+
+    def testEndpointGradient(self):
+        c0 = self.dataTerm(self.fvDef)
+        ff = curves.Curve(curve=self.fvDef)
+        dff = np.random.normal(size=ff.vertices.shape)
+        eps = 1e-6
+        ff.updateVertices(ff.vertices+eps*dff)
+        c1 = self.dataTerm(ff)
+        grd = self.endPointGradient()
+        logging.info("test endpoint gradient: {0:.5f} {1:.5f}".format((c1-c0)/eps, (grd*dff).sum()) )
+
 
 
     def getGradient(self, coeff=1.0, update=None):
@@ -567,9 +579,11 @@ class CurveMatching:
 
     def endOfIteration(self):
         (obj1, self.xt, Jt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True, withJacobian=True)
-        logging.info('Distance {0:f}'.format(np.sqrt(obj1/2)))
+        #logging.info('Distance {0:f}'.format(np.sqrt(obj1/2)))
         self.iter += 1
-        
+        if self.testGradient:
+            self.testEndpointGradient()
+
         if self.internalCost and self.testGradient:
             Phi = np.random.normal(size=self.x0.shape)
             dPhi1 = np.random.normal(size=self.x0.shape)
@@ -581,8 +595,8 @@ class CurveMatching:
             e1 = self.internalCost(self.fvDef, Phi+eps*dPhi1)
             e2 = self.internalCost(fv22, Phi)
             grad = self.internalCostGrad(self.fvDef, Phi)
-            print('Laplacian:', (e1-e0)/eps, (grad[0]*dPhi1).sum())
-            print('Gradient:', (e2-e0)/eps, (grad[1]*dPhi2).sum())
+            logging.info(f'Laplacian: {(e1-e0)/eps:.5f} {(grad[0]*dPhi1).sum():.5f};  '+
+                         f'Gradient: {(e2-e0)/eps:.5f} {(grad[1]*dPhi2).sum():.5f}\n')
 
         if self.saveRate > 0 and self.iter%self.saveRate==0:
             if self.dim==2:
@@ -605,7 +619,8 @@ class CurveMatching:
                     plt.axis('equal')
                     plt.axis(self.axis)
                     plt.savefig(self.outputDir +'/'+ self.saveFile+str(kk)+'.png')
-                    plt.pause(0.01)
+                    fig.canvas.flush_events()
+                    # plt.pause(0.01)
                 #self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = Jt[kk, :], scal_name='Jacobian')
                 self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk')
                 if self.dim == 2:
@@ -642,8 +657,9 @@ class CurveMatching:
                 for kf in range(self.fvDef.faces.shape[0]):
                     ax.plot(self.fvDef.vertices[self.fvDef.faces[kf,:],0], self.fvDef.vertices[self.fvDef.faces[kf,:],1], 
                                self.fvDef.vertices[self.fv1.faces[kf,:],2], color=[1,0,0], marker='*')
-            plt.axis('equal')
-            plt.pause(0.1)
+            #plt.axis('equal')
+            fig.canvas.flush_events()
+            #plt.pause(0.1)
                 
 
     def endOptim(self):
@@ -659,6 +675,7 @@ class CurveMatching:
 
 
     def optimizeMatching(self):
+        print('obj0', self.fun_obj0(self.fv1))
         grd = self.getGradient(self.gradCoeff)
         [grd2] = self.dotProduct(grd, [grd])
 

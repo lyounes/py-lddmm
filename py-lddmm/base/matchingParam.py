@@ -9,20 +9,34 @@ from . import kernelFunctions as kfun
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class MatchingParam:
-    def __init__(self, timeStep = .1, algorithm = 'bfgs', Wolfe = False, KparDiff = None, KparDist = None, sigmaKernel = 6.5, sigmaDist=2.5, sigmaError=1.0, errorType = 'measure', typeKernel='gauss'):
+    def __init__(self, timeStep = .1, algorithm = 'bfgs', Wolfe = False, KparDiff = None, KparDist = None,
+                 sigmaError=1.0, errorType = 'measure'):
         self.timeStep = timeStep
-        self.sigmaKernel = sigmaKernel
-        self.sigmaDist = sigmaDist
+        self.sigmaKernel = 6.5
+        self.orderKernel = 3
+        self.sigmaDist = 2.5
+        self.orderKDist = 3
+        self.typeKDist = 'gauss'
         self.sigmaError = sigmaError
-        self.typeKernel = typeKernel
+        self.typeKernel = 'gauss'
         self.errorType = errorType
         self.algorithm = algorithm
         self.wolfe = Wolfe
-        if KparDiff == None:
-            self.KparDiff = kfun.Kernel(name = self.typeKernel, sigma = self.sigmaKernel)
+
+        if type(KparDiff) in (list,tuple):
+            self.typeKernel = KparDiff[0]
+            self.sigmaKernel = KparDiff[1]
+            if self.typeKernel == 'laplacian' and len(KparDiff) > 2:
+                self.orderKernel = KparDiff[2]
+            self.KparDiff = kfun.Kernel(name = self.typeKernel, sigma = self.sigmaKernel, order=self.orderKernel)
         else:
             self.KparDiff = KparDiff
-        if KparDist == None:
-            self.KparDist = kfun.Kernel(name = 'laplacian', order=1, sigma = self.sigmaDist)
+
+        if type(KparDist) in (list,tuple):
+            self.typeKDist = KparDist[0]
+            self.sigmaDist = KparDist[1]
+            if self.typeKernel == 'laplacian' and len(KparDist) > 2:
+                self.orderKernel = KparDist[2]
+            self.KparDist = kfun.Kernel(name = self.typeKDist, sigma = self.sigmaDist, order=self.orderKDist)
         else:
             self.KparDist = KparDist

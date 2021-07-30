@@ -1,5 +1,4 @@
 import pandas as pd
-import string
 import os
 from os import path
 from glob import glob
@@ -52,7 +51,7 @@ if __name__=="__main__":
     #makeFileList(dataDir)
     pip = Pipeline(dataDir+'/fileList.csv', dataDir+'/Pipeline')
     loggingUtils.setup_default_logging(pip.dirOutput, fileName='info.txt', stdOutput = True)
-    #pip.Step1_Isosurface()
-    #pip.Step2_Rigid()
-    #pip.Step3_Template()
+    pip.Step1_Isosurface()
+    pip.Step2_Rigid()
+    pip.Step3_Template()
     pip.Step4_Registration()

@@ -25,17 +25,17 @@ def compute(createsurfaces=True):
             #sub1 = '0186193_1_6'
             #sub2 = '1449400_1_L'
             sub2 = 'LU027_R_sumNCBC20100628'
-            fv1 = surfaces.Surface(filename =path + '5_population_template_qc/newTemplate.byu')
+            fv1 = surfaces.Surface(surf =path + '5_population_template_qc/newTemplate.byu')
             v1 = fv1.surfVolume()
-            #f0.append(surfaces.Surface(filename = path+'amygdala/biocardAmyg 2/'+sub1+'_amyg_L.byu'))
-            fv2 = surfaces.Surface(filename =path + '2_qc_flipped_registered/' + sub2 + '_registered.byu')
+            #f0.append(surfaces.Surface(surf = path+'amygdala/biocardAmyg 2/'+sub1+'_amyg_L.byu'))
+            fv2 = surfaces.Surface(surf =path + '2_qc_flipped_registered/' + sub2 + '_registered.byu')
             v2 = fv2.surfVolume()
             if (v2*v1 < 0):
                 fv2.flipFaces()
         else:
-            #f1.append(surfaces.Surface(filename = path+'amygdala/biocardAmyg 2/'+sub2+'_amyg_L.byu'))
-            fv1 = Surface(filename='/Users/younes/Development/Results/Diffeons/fv1Alt.vtk')
-            fv2  = Surface(filename='/Users/younes/Development/Results/Diffeons/fv2Alt.vtk')
+            #f1.append(surfaces.Surface(surf = path+'amygdala/biocardAmyg 2/'+sub2+'_amyg_L.byu'))
+            fv1 = Surface(surf='/Users/younes/Development/Results/Diffeons/fv1Alt.vtk')
+            fv2  = Surface(surf='/Users/younes/Development/Results/Diffeons/fv2Alt.vtk')
 
         #return fv1, fv2
 

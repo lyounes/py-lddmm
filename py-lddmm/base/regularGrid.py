@@ -8,13 +8,13 @@ import scipy.interpolate
 import scipy.ndimage.interpolation
 #from tvtk.api import tvtk
 try:
-    from vtk import *
+    from vtk import vtkStructuredGrid, vtkPoints, vtkFloatArray, vtkVersion, vtkXMLStructuredGridWriter
     import vtk.util.numpy_support as v2n
     gotVTK = True
 except ImportError:
     print('could not import VTK functions')
     gotVTK = False
-from base import rg_fort
+from . import rg_py
 
 def meshgrid2(arrs):
     arrs = tuple(reversed(arrs))
@@ -502,29 +502,25 @@ class RegularGrid(object):
     def grid_interpolate3d(self, f, pts, useFortran=True):
         assert useFortran, \
             "3d interpolation is currently only implemented using fortran."
-        return rg_fort.interpolate_3d( \
+        return rg_py.interpolate_3d( \
                             f, pts, \
                             self.num_points[0], self.num_points[1], \
                             self.num_points[2], \
                             self.interp_mesh[0], \
                             self.interp_mesh[1], self.interp_mesh[2], \
-                            self.dx[0], self.dx[1], self.dx[2], self.num_nodes,
-                            self.dims[0], self.dims[1], \
-                            self.dims[2]).reshape(self.num_nodes)
+                            self.dx[0], self.dx[1], self.dx[2]).reshape(self.num_nodes)
 
     def grid_interpolate3d_dual_and_grad(self, p, f, v, dt, useFortran=True):
         assert useFortran, \
             "3d interpolation is currently only implemented using fortran."
-        return rg_fort.interp_dual_and_grad( \
+        return rg_py.interp_dual_and_grad( \
                             p, f, v, \
                             self.num_points[0], self.num_points[1], \
                             self.num_points[2], \
                             self.interp_mesh[0], \
                             self.interp_mesh[1], self.interp_mesh[2], \
-                            self.dx[0], self.dx[1], self.dx[2], dt, \
-                            self.num_nodes,
-                            self.dims[0], self.dims[1], \
-                            self.dims[2])
+                            self.dx[0], self.dx[1], self.dx[2], dt)\
+
 
 # CLR: REMOVE?
 #    def grid_interpolate_3d(self, f, pts):

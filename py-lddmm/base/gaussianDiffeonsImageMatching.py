@@ -410,16 +410,16 @@ class ImageMatching:
         dirfoo.aff = np.random.randn(self.Tsize, self.affineDim)
         return dirfoo
 
-    def getBGFSDir(Var, oldVar, grd, grdOld):
-        s = (Var[0] - oldVar[0]).unravel()
-        y = (grd.diff - grdOld.diff).unravel()
-        if skipBGFS==0:
-            rho = max(0, (s*y).sum())
-        else:
-            rho = 0 
-        Imsy = np.eye((s.shape[0], s.shape[0])) - rho*np.dot(s, y.T)
-        H0 = np.dot(Imsy, np.dot(H0, Imsy)) + rho * np.dot(s, s.T)
-        dir0.diff = (np.dot(H0, grd.diff.unravel()))
+    # def getBGFSDir(Var, oldVar, grd, grdOld):
+    #     s = (Var[0] - oldVar[0]).unravel()
+    #     y = (grd.diff - grdOld.diff).unravel()
+    #     if skipBGFS==0:
+    #         rho = max(0, (s*y).sum())
+    #     else:
+    #         rho = 0
+    #     Imsy = np.eye((s.shape[0], s.shape[0])) - rho*np.dot(s, y.T)
+    #     H0 = np.dot(Imsy, np.dot(H0, Imsy)) + rho * np.dot(s, s.T)
+    #     dir0.diff = (np.dot(H0, grd.diff.unravel()))
 
     def dotProduct(self, g1, g2):
         res = np.zeros(len(g2))
@@ -485,11 +485,11 @@ class ImageMatching:
             A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
             if self.affineDim > 0:
                 for t in range(self.Tsize):
-                    AB = np.dot(self.affineBasis, Afft[t])
+                    AB = np.dot(self.affineBasis, self.Afft[t])
                     A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
                     A[1][t] = AB[dim2:dim2+self.dim]
             (ct, St, grt)  = evol.gaussianDiffeonsEvolutionEuler(self.c0, self.S0, self.at, self.param.sigmaKernel, affine=A, withPointSet= self.gr0Fine)
- 	    # (ct, St, grt, Jt)  = evol.gaussianDiffeonsEvolutionEuler(self.c0, self.S0, self.at, self.param.sigmaKernel, affine=A,
+            # (ct, St, grt, Jt)  = evol.gaussianDiffeonsEvolutionEuler(self.c0, self.S0, self.at, self.param.sigmaKernel, affine=A,
             #                                                         withPointSet = self.fv0Fine.vertices, withJacobian=True)
             imDef = diffeo.gridScalars(grid = self.im1)
             for kk in range(self.Tsize+1):

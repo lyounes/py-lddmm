@@ -1,7 +1,6 @@
 import numpy as np
 from . import gaussianDiffeons as gd
 import numpy.linalg as LA
-from . import pointEvolution_fort as pfor
 from . import affineBasis
 
 
@@ -633,7 +632,7 @@ def landmarkEPDiff(T, x0, a0, KparDiff, affine = None, withJacobian=False, withN
         xt[k+1, :, :] = z + timeStep * KparDiff.applyK(z, a)
         #print 'test', px.sum()
         if k < (T-1):
-            at[k+1, :, :] = a - timeStep * KparDiff.applyDiffKT(z, a[np.newaxis,...], a[np.newaxis,...])
+            at[k+1, :, :] = a - timeStep * KparDiff.applyDiffKT(z, a, a)
         if not (affine is None):
             xt[k+1, :, :] += timeStep * (np.dot(z, A[k].T) + b[k])
         if not (withPointSet is None):
@@ -644,7 +643,7 @@ def landmarkEPDiff(T, x0, a0, KparDiff, affine = None, withJacobian=False, withN
 
         if not (withNormals is None):
             zn = np.squeeze(nt[k, :, :])        
-            nt[k+1, :, :] = zn - timeStep * KparDiff.applyDiffKT(z, zn[np.newaxis,...], a[np.newaxis,...]) 
+            nt[k+1, :, :] = zn - timeStep * KparDiff.applyDiffKT(z, zn, a)
             if not (affine is None):
                 nt[k+1, :, :] += timeStep * np.dot(zn, A[k])
         if withJacobian:
@@ -743,145 +742,254 @@ def landmarkDirectEvolutionEuler_py(x0, at, KparDiff, affine = None, withJacobia
         return output
 
 
-def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=False, withNormals=None, withPointSet=None):
+def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=None,
+                                 withJacobian=False, withNormals=None, withPointSet=None):
+    if not (affine is None or len(affine[0]) == 0):
+        withaff = True
+        A = affine[0]
+        b = affine[1]
+    else:
+        withaff = False
+        A = np.zeros((1,1,1)) #np.zeros((T,dim,dim))
+        b = np.zeros((1,1)) #np.zeros((T,dim))
+
     N = x0.shape[0]
     dim = x0.shape[1]
-    M = at.shape[0] 
-    timeStep = 1.0/(M)
-#    xt = np.zeros([M, N, dim])
+    T = at.shape[0]
+    timeStep = 1.0 / (T)
+    xt = np.zeros((T+1, N, dim))
+    xt[0, ...] = x0
+
+    Jt = np.zeros((T + 1, N, 1))
     simpleOutput = True
-    withJ = 0
-    withnu = 0
-    if withNormals is not None:
-        withnu = 1
-        simpleOutput = False
-        nt0 = withNormals
-    else:
-        nt0 = np.zeros([N,dim])
-        
-    if affine is not None and len(affine[0])!=0:
-        A0 = affine[0]
-        b = affine[1]
-        A = np.zeros([M,dim,dim])
-        for k in range(A0.shape[0]):
-            A[k,...] = affineBasis.getExponential(timeStep * A0[k])
-    else:
-        A = np.zeros([M,dim,dim])
-        b = np.zeros([M,dim])
-        for k in range(M):
-            A[k,...] = np.eye(dim) 
-        
     if withPointSet is not None:
         simpleOutput = False
         K = withPointSet.shape[0]
         y0 = withPointSet
+        yt = np.zeros((T + 1, K, dim))
+        yt[0, ...] = y0
         if withJacobian:
-            withJ = 1
-            simpleOutput = False
-    else:
-        K = 1
-        y0 = np.zeros([K,dim])
-        if withJacobian:
-            withJ = 1
             simpleOutput = False
 
-    foo = pfor.shoot1order(x0, at, y0, nt0, A, b, KparDiff.sigma, KparDiff.order, withJ, withnu, KparDiff.sigma.size,
-                            M, N, dim, K)
-    if simpleOutput:
-        return foo[0]
-    else:
-        output = [foo[0]]
+    if withNormals is not None:
+        simpleOutput = False
+        nt = np.zeros((T+1, N, dim))
+        nt[0, ...] = withNormals
+
+    if withJacobian:
+        simpleOutput = False
+
+    for t in range(T):
+        if withaff:
+            Rk = affineBasis.getExponential(timeStep * A[t,:,:])
+            xt[t+1,...] = np.dot(xt[t,...], Rk.T) + timeStep * b[t,:]
+        else:
+            xt[t+1, ...] = xt[t, ...]
+        xt[t+1,...] += timeStep*KparDiff.applyK(xt[t,...], at[t,...])
+
         if withPointSet is not None:
-            output.append(foo[1])
-        if withNormals is not None:
-            output.append(foo[3])
+            if withaff:
+                yt[t+1,...] = np.dot(yt[t, ...], Rk.T) + timeStep * b[t]
+            else:
+                yt[t+1,...] = yt[t, ...]
+            yt[t + 1, ...] += timeStep * KparDiff.applyK(xt[t, ...], at[t, ...], firstVar=yt[t, ...])
+
         if withJacobian:
-            output.append(foo[2])
+            Jt[t+1,...] = Jt[t+1,...] + timeStep * KparDiff.applyDivergence(xt[t,:,:], at[t,:,:])
+            if withaff:
+                Jt[t+1, ...] += timeStep * (np.trace(A[t]))
+
+        if withNormals is not None:
+            nt[t+1, ...] = nt[t, ...] - timeStep * KparDiff.applyDiffKT(xt[t,:,:], nt[t, :, :], at[t, :, :])
+            if withaff:
+                nt[t + 1, :, :] -= timeStep * np.dot(nt[t, :, :], A[t])
+
+    if simpleOutput:
+        return xt
+    else:
+        output = [xt]
+        if not (withPointSet is None):
+            output.append(yt)
+        if not (withNormals is None):
+            output.append(nt)
+        if withJacobian: #not (Jt is None):
+            output.append(Jt)
         return output
 
 
+#
+# def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine = None, withJacobian=False, withNormals=None, withPointSet=None):
+#     N = x0.shape[0]
+#     dim = x0.shape[1]
+#     M = at.shape[0]
+#     timeStep = 1.0/(M)
+# #    xt = np.zeros([M, N, dim])
+#     simpleOutput = True
+#     withJ = 0
+#     withnu = 0
+#     if withNormals is not None:
+#         withnu = 1
+#         simpleOutput = False
+#         nt0 = withNormals
+#     else:
+#         nt0 = np.zeros([N,dim])
+#
+#     if affine is not None and len(affine[0])!=0:
+#         A0 = affine[0]
+#         b = affine[1]
+#         A = np.zeros([M,dim,dim])
+#         for k in range(A0.shape[0]):
+#             A[k,...] = affineBasis.getExponential(timeStep * A0[k])
+#     else:
+#         A = np.zeros([M,dim,dim])
+#         b = np.zeros([M,dim])
+#         for k in range(M):
+#             A[k,...] = np.eye(dim)
+#
+#     if withPointSet is not None:
+#         simpleOutput = False
+#         K = withPointSet.shape[0]
+#         y0 = withPointSet
+#         if withJacobian:
+#             withJ = 1
+#             simpleOutput = False
+#     else:
+#         K = 1
+#         y0 = np.zeros([K,dim])
+#         if withJacobian:
+#             withJ = 1
+#             simpleOutput = False
+#
+#     foo = pfor.shoot1order(x0, at, y0, nt0, A, b, KparDiff.sigma, KparDiff.order, withJ, withnu, KparDiff.sigma.size,
+#                             M, N, dim, K)
+#     if simpleOutput:
+#         return foo[0]
+#     else:
+#         output = [foo[0]]
+#         if not (withPointSet is None):
+#             output.append(foo[1])
+#         if not (withNormals is None):
+#             output.append(foo[3])
+#         if withJacobian:
+#             output.append(foo[2])
+#         return output
 
-def landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine = None):
-    N = x0.shape[0]
-    dim = x0.shape[1]
-    M = at.shape[0]
-    timeStep = 1.0/M
-    xt = landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
-    if not(affine is None):
-        A0 = affine[0]
-        A = np.zeros([M,dim,dim])
-        for k in range(A0.shape[0]):
-            A[k,...] = affineBasis.getExponential(timeStep * A0[k])
-    else:
-        A = np.zeros([M,dim,dim])
-        for k in range(M):
-            A[k,...] = np.eye(dim) 
-            
-    if KparDiff.localMaps:
-        pxt = pfor.adjoint1orderlocal(xt, at, px1, A, KparDiff.sigma, KparDiff.order,  1+KparDiff.localMaps[0],
-                                      1 + KparDiff.localMaps[1], regweight, KparDiff.sigma.size,  M, N, dim, KparDiff.localMaps[0].size)
-    else:
-        pxt = pfor.adjoint1order(xt, at, px1, A, KparDiff.sigma, KparDiff.order, regweight, KparDiff.sigma.size, M, N, dim)
-    return pxt, xt
 
-def landmarkHamiltonianCovector_py(x0, at, px1, KparDiff, regweight, affine = None):
-    N = x0.shape[0]
-    dim = x0.shape[1]
-    M = at.shape[0]
-    timeStep = 1.0/M
-    xt = landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
-    
-    pxt = np.zeros([M+1, N, dim])
-    pxt[M, :, :] = px1
-    if not(affine is None):
+def landmarkHamiltonianCovector(x0, at, px1, Kpardiff, regweight, affine=None):
+    if not (affine is None or len(affine[0]) == 0):
+        withaff = True
         A = affine[0]
+    else:
+        withaff = False
+        A = np.zeros((1, 1, 1))
 
-    for t in range(M):
-        px = np.squeeze(pxt[M-t, :, :])
-        z = np.squeeze(xt[M-t-1, :, :])
-        a = np.squeeze(at[M-t-1, :, :])
-        # dgzz = kfun.kernelMatrix(KparDiff, z, diff=True)
-        # if (isfield(KparDiff, 'zs') && size(z, 2) == 3)
-        #     z(:,3) = z(:,3) / KparDiff.zs ;
-        # end
-        a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*regweight*a[np.newaxis,...]))
-        a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
-        #a1 = [px, a, -2*regweight*a]
-        #a2 = [a, px, a]
-        #print 'test', px.sum()
-        zpx = KparDiff.applyDiffKT(z, a1, a2)
-        #print 'zpx', np.fabs(zpx).sum(), np.fabs(px).sum(), z.sum()
-        #print 'pxt', np.fabs((pxt)[M-t-2]).sum()
-        if not (affine is None):
-            pxt[M-t-1, :, :] = np.dot(px, affineBasis.getExponential(timeStep * A[M - t - 1])) + timeStep * zpx
-        else:
-            pxt[M-t-1, :, :] = px + timeStep * zpx
-    return pxt, xt
-
-# Same, adding adjoint evolution for normals
-def landmarkAndNormalsCovector(x0, n0, at, px1, pn1, KparDiff, regweight):
     N = x0.shape[0]
     dim = x0.shape[1]
-    M = at.shape[0]
-    timeStep = 1.0/M
-    (xt, nt) = landmarkAndNormalsEvolutionEuler(x0, at, KparDiff)
-    pxt = np.zeros([M, N, dim])
-    pxt[M-1, :, :] = px1
-    pnt = np.zeros([M, N, dim])
-    pnt[M-1, :, :] = pn1
-    for t in range(M-1):
-        px = np.squeeze(pxt[M-t-1, :, :])
-        z = np.squeeze(xt[M-t-1, :, :])
-        a = np.squeeze(at[M-t-1, :, :])
-        # dgzz = kfun.kernelMatrix(KparDiff, z, diff=True)
-        # if (isfield(KparDiff, 'zs') && size(z, 2) == 3)
-        #     z(:,3) = z(:,3) / KparDiff.zs ;
-        # end
-        a1 = [px, a, -2*regweight*a]
-        a2 = [a, px, a]
-        pxt[M-t-2, :, :] = np.squeeze(pxt[M-t-1, :, :]) + timeStep * KparDiff.applyDiffKT(z, a1, a2)
+    T = at.shape[0]
+    timeStep = 1.0 / (T)
+
+    xt = landmarkDirectEvolutionEuler(x0, at, Kpardiff, affine=affine)
+
+    pxt = np.zeros((T + 1, N, dim))
+    pxt[T, :, :] = px1
+
+    for t in range(T, 0, -1):
+        if withaff:
+            pxt[t - 1, :, :] = np.dot(pxt[t,:,:], affineBasis.getExponential(timeStep * A[t - 1, :, :]))
+        else:
+            pxt[t - 1, ...] = pxt[t, : ,:]
+        pxt[t-1,...] += timeStep * Kpardiff.applyDiffKT(xt[t-1,:,:], pxt[t,:,:], at[t-1,:,:],
+                                                        regweight=regweight, lddmm=True)
+        #Kpardiff.testDiffKT(xt[t-1,:,:], xt[t-1,:,:], pxt[t,:,:], at[t-1,:,:])
+        # for k in prange(N):
+        #     for l in range(N):
+        #         a1a2 = pxt[t, k, :]*at[t-1, l, :] + at[t-1, k,:]*pxt[t, l,:] - 2 * regweight * at[t-1, k, :]*at[t-1, l, :]
+        #         pxt[t - 1, k, :] += timeStep * applyDiffKT_(xt[t-1, k, :], xt[t-1, l, :], a1a2, nameK, scaleK, orderK)
 
     return pxt, xt
+
+#
+# def landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine = None):
+#     N = x0.shape[0]
+#     dim = x0.shape[1]
+#     M = at.shape[0]
+#     timeStep = 1.0/M
+#     xt = landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+#     if not(affine is None):
+#         A0 = affine[0]
+#         A = np.zeros([M,dim,dim])
+#         for k in range(A0.shape[0]):
+#             A[k,...] = affineBasis.getExponential(timeStep * A0[k])
+#     else:
+#         A = np.zeros([M,dim,dim])
+#         for k in range(M):
+#             A[k,...] = np.eye(dim)
+#
+#     if KparDiff.localMaps:
+#         pxt = pfor.adjoint1orderlocal(xt, at, px1, A, KparDiff.sigma, KparDiff.order,  1+KparDiff.localMaps[0],
+#                                       1 + KparDiff.localMaps[1], regweight, KparDiff.sigma.size,  M, N, dim, KparDiff.localMaps[0].size)
+#     else:
+#         pxt = pfor.adjoint1order(xt, at, px1, A, KparDiff.sigma, KparDiff.order, regweight, KparDiff.sigma.size, M, N, dim)
+#     return pxt, xt
+
+# def landmarkHamiltonianCovector_py(x0, at, px1, KparDiff, regweight, affine = None):
+#     N = x0.shape[0]
+#     dim = x0.shape[1]
+#     M = at.shape[0]
+#     timeStep = 1.0/M
+#     xt = landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+#
+#     pxt = np.zeros([M+1, N, dim])
+#     pxt[M, :, :] = px1
+#     if not(affine is None):
+#         A = affine[0]
+#
+#     for t in range(M):
+#         px = np.squeeze(pxt[M-t, :, :])
+#         z = np.squeeze(xt[M-t-1, :, :])
+#         a = np.squeeze(at[M-t-1, :, :])
+#         # dgzz = kfun.kernelMatrix(KparDiff, z, diff=True)
+#         # if (isfield(KparDiff, 'zs') && size(z, 2) == 3)
+#         #     z(:,3) = z(:,3) / KparDiff.zs ;
+#         # end
+#         # a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*regweight*a[np.newaxis,...]))
+#         # a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
+#         #a1 = [px, a, -2*regweight*a]
+#         #a2 = [a, px, a]
+#         #print 'test', px.sum()
+#         zpx = KparDiff.applyDiffKT(z, px, a, regweight=regweight, lddmm=True)
+#         #print 'zpx', np.fabs(zpx).sum(), np.fabs(px).sum(), z.sum()
+#         #print 'pxt', np.fabs((pxt)[M-t-2]).sum()
+#         if not (affine is None):
+#             pxt[M-t-1, :, :] = np.dot(px, affineBasis.getExponential(timeStep * A[M - t - 1])) + timeStep * zpx
+#         else:
+#             pxt[M-t-1, :, :] = px + timeStep * zpx
+#     return pxt, xt
+
+# # Same, adding adjoint evolution for normals
+# def landmarkAndNormalsCovector(x0, n0, at, px1, pn1, KparDiff, regweight):
+#     N = x0.shape[0]
+#     dim = x0.shape[1]
+#     M = at.shape[0]
+#     timeStep = 1.0/M
+#     (xt, nt) = landmarkAndNormalsEvolutionEuler(x0, at, KparDiff)
+#     pxt = np.zeros([M, N, dim])
+#     pxt[M-1, :, :] = px1
+#     pnt = np.zeros([M, N, dim])
+#     pnt[M-1, :, :] = pn1
+#     for t in range(M-1):
+#         px = np.squeeze(pxt[M-t-1, :, :])
+#         z = np.squeeze(xt[M-t-1, :, :])
+#         a = np.squeeze(at[M-t-1, :, :])
+#         # dgzz = kfun.kernelMatrix(KparDiff, z, diff=True)
+#         # if (isfield(KparDiff, 'zs') && size(z, 2) == 3)
+#         #     z(:,3) = z(:,3) / KparDiff.zs ;
+#         # end
+#         a1 = [px, a, -2*regweight*a]
+#         a2 = [a, px, a]
+#         pxt[M-t-2, :, :] = np.squeeze(pxt[M-t-1, :, :]) + timeStep * KparDiff.applyDiffKT(z, a1, a2)
+#
+#     return pxt, xt
 
 # Computes gradient after covariant evolution for deformation cost a^TK(x,x) a
 def landmarkHamiltonianGradient(x0, at, px1, KparDiff, regweight, getCovector = False, affine = None):
@@ -1005,6 +1113,8 @@ def secondOrderEvolution(x0, a0, rhot, KparDiff, timeStep, withJacobian=False, w
         b = affine[1]
     else:
         aff_=False
+        A = None
+        b = None
     if not (withPointSet is None):
         simpleOutput = False
         K = withPointSet.shape[0]
@@ -1023,7 +1133,7 @@ def secondOrderEvolution(x0, a0, rhot, KparDiff, timeStep, withJacobian=False, w
         #print 'evolution v:', np.sqrt((v**2).sum(axis=1)).sum()/v.shape[0]
         rho = np.squeeze(rhot[k,:,:])
         zx = KparDiff.applyK(x, a)
-        za = -KparDiff.applyDiffKT(x, a[np.newaxis,...], a[np.newaxis,...]) + rho
+        za = -KparDiff.applyDiffKT(x, a, a) + rho
         if aff_:
             #U = np.eye(dim) + timeStep * A[k]
             U = affineBasis.getExponential(timeStep * A[k])
@@ -1041,11 +1151,11 @@ def secondOrderEvolution(x0, a0, rhot, KparDiff, timeStep, withJacobian=False, w
             else:
                 zt[k+1, :, :] = z + timeStep * zx  
             if withJacobian:
-                Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(x, a, firstVar=z)
+                Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(x, a, firstVar=z).ravel()
                 if aff_:
                     Jt[k+1, :] += timeStep * (np.trace(A[k]))
         elif withJacobian:
-            Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(z, a)
+            Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(z, a).ravel()
             if aff_:
                 Jt[k+1, :] += timeStep * (np.trace(A[k]))
     if simpleOutput:

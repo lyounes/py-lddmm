@@ -1,12 +1,9 @@
+from numba import jit, prange
 import numpy as np
-from base import kernelFunctions_fort as kff
+from math import pi, exp, sqrt
+from . import kernelFunctions_util as ku
 from scipy.spatial import distance as dfun
 
-#import kernelMatrix_fort
-
-## Computes matrix associated with Gaussian kernel
-# par[0] = width
-# if y=None, computes K(x,x), otherwise computes K(x,y)
 def kernelMatrixGauss(x, firstVar=None, grid=None, par=[1], diff = False, diff2 = False, constant_plane=False, precomp=None):
     sig = par[0]
     sig2 = 2*sig*sig
@@ -54,7 +51,9 @@ def kernelMatrixGauss(x, firstVar=None, grid=None, par=[1], diff = False, diff2 
     else:
         return K, precomp
 
+
 # Polynomial factor for Laplacian kernel
+@jit(nopython=True)
 def lapPol(u, ord):
     if ord == 0:
         pol = 1.
@@ -63,93 +62,69 @@ def lapPol(u, ord):
     elif ord == 2:
         pol = (3. + 3*u + u*u)/3.
     elif ord == 3:
-        pol = (15. + 15 * u + 6*u*u + u*u*u)/15.;
-    elif ord == 4:
-        pol = (105. + 105*u + 45*u*u + 10*u*u*u + u*u*u*u)/105.
+        pol = (15. + 15 * u + 6*u*u + u*u*u)/15.
     else:
-        exit(0,'Invalid Laplacian kernel order\n')
+        pol = (105. + 105*u + 45*u*u + 10*u*u*u + u*u*u*u)/105.
     return pol
 
 
 # Polynomial factor for Laplacian kernel (first derivative)
+@jit(nopython=True)
 def lapPolDiff(u, ord):
-    if ord == 0:
-        exit(0, 'Order zero Laplacian is not differentiable')
-    elif ord == 1:
+    if ord == 1:
         pol = 1.
     elif ord == 2:
         pol = (1 + u)/3.
     elif ord == 3:
         pol = (3 + 3*u + u*u)/15.
-    elif ord == 4:
-        pol = (15 + 15 * u + 6*u*u + u*u*u)/105.
     else:
-        exit(0,'Invalid Laplacian kernel order\n')
+        pol = (15 + 15 * u + 6*u*u + u*u*u)/105.
     return pol
 
 
 # Polynomial factor for Laplacian kernel (second derivative)
+@jit(nopython=True)
 def lapPolDiff2(u, ord):
-    if ord <= 1:
-        exit(0, 'Order zero or 1 Laplacian are not twice differentiable')
-    elif ord == 2:
+    pol = 0
+    if ord == 2:
         pol = 1.0/3.
     elif ord == 3:
         pol = (1 + u)/15.
-    elif ord == 4:
-        pol = (3 + 3 * u + u*u)/105.
     else:
-        exit(0,'Invalid Laplacian kernel order\n')
+        pol = (3 + 3 * u + u*u)/105.
     return pol
 
+# @jit(nopython=True)
+# def lapPol_(u, ord):
+#     if ord == 0:
+#         pol = 1. + np.zeros(u.shape)
+#     elif ord == 1:
+#         pol = 1. + u
+#     elif ord == 2:
+#         pol = (3. + 3*u + u*u)/3.
+#     elif ord == 3:
+#         pol = (15. + 15 * u + 6*u*u + u*u*u)/15.
+#     else:
+#         pol = (105. + 105*u + 45*u*u + 10*u*u*u + u*u*u*u)/105.
+#     return pol
+#
+#
+# # Polynomial factor for Laplacian kernel (first derivative)
+# @jit(nopython=True)
+# def lapPolDiff_(u, ord):
+#     if ord == 1:
+#         pol = 1. + 0*u
+#     elif ord == 2:
+#         pol = (1 + u)/3.
+#     elif ord == 3:
+#         pol = (3 + 3*u + u*u)/15.
+#     else:
+#         pol = (15 + 15 * u + 6*u*u + u*u*u)/105.
+#     return pol
+#
 
-# computes matrix associated with polynomial kernel
-# par[0] = width, par[1] =  order
-#def kernelMatrixLaplacian(x, y=None, par=[1., 3], diff=False, diff2 = False, constant_plane=False, precomp = None):
-#    sig = par[0]
-#    ord=par[1]
-#    if precomp == None:
-#        if y==None:
-#            u = dfun.pdist(x)/sig
-#        else:
-#            u = dfun.cdist(x, y)/sig
-#        precomp = u
-#    else:
-#        u = precomp
-#
-#    #if diff==False & diff2==False:
-#    if diff==False and diff2==False:
-#        if y == None:
-#            K = dfun.squareform(np.multiply(lapPol(u,ord), np.exp(-u)))
-#            np.fill_diagonal(K, 1)
-#        else:
-#            K = np.multiply(lapPol(u,ord), np.exp(-u))
-#    elif diff2==False:
-#        if y == None:
-#            K = dfun.squareform(np.multiply(-lapPolDiff(u, ord), np.exp(-u)/(2*sig*sig)))
-#            np.fill_diagonal(K, -1./((2*ord-1)*2*sig*sig))
-#        else:
-#            K = np.multiply(-lapPolDiff(u, ord), np.exp(-u)/(2*sig*sig))
-#    else:
-#        if y == None:
-#            K = dfun.squareform(np.multiply(lapPolDiff2(u, ord), np.exp(-u)/(4*sig**4)))
-#            #np.fill_diagonal(K, 1./((2*ord-1)*4*sig**4))
-#            np.fill_diagonal(K, 1./((35)*4*sig**4))
-#        else:
-#            K = np.multiply(lapPolDiff2(u, ord), np.exp(-u)/(4*sig**4))
-#
-#
-#    if constant_plane:
-#        uu = dfun.pdist(x[:,x.shape[1]-1])/sig
-#        K2 = dfun.squareform(lapPol(uu,ord)*np.exp(-uu))
-#        np.fill_diagonal(K2, 1)
-#        return K,K2,precomp
-#    else:
-#        return K,precomp
 
-# computes matrix associated with polynomial kernel
-# par[0] = width, par[1] =  order
-def kernelMatrixLaplacian(x, firstVar=None, grid=None, par=[1., 3], diff=False, diff2 = False, constant_plane=False, precomp = None):
+def kernelMatrixLaplacian(x, firstVar=None, grid=None, par=(1., 3), diff=False, diff2 = False, constant_plane=False, precomp = None):
     sig = par[0]
     ord=par[1]
     if precomp is None:
@@ -184,7 +159,7 @@ def kernelMatrixLaplacian(x, firstVar=None, grid=None, par=[1., 3], diff=False, 
     else:
         return K,precomp
 
-def kernelMatrixLaplacianPrecompute(x, firstVar=None, grid=None, par=[1., 3], diff=False, diff2 = False, constant_plane=False):
+def kernelMatrixLaplacianPrecompute(x, firstVar=None, grid=None, par=(1., 3), diff=False, diff2 = False, constant_plane=False):
     sig = par[0]
     ord=par[1]
     if firstVar is None:
@@ -227,6 +202,130 @@ def  kernelMatrix(Kpar, x, firstVar=None, grid=None, diff = False, diff2=False, 
     else:
         return res[0]
 
+# def applyKmin(x, a, firstVar=None):
+#     if firstVar is None:
+#         return applyKmin_(x,x,a)
+#     else:
+#         return applyKmin_(firstVar,x,a)
+#
+#
+# #@jit(nopython=True, parallel=True)
+# def applyKmin_(y, x, a):
+#     res = np.zeros(y.shape)
+#     for k in prange(y.shape[0]):
+#         for l in range(x.shape[0]):
+#             res[k, :] += (np.arctan(np.minimum(y[k,:], x[l,:])) + pi/2) * a[l,:]
+#     return res
+#
+#
+# def applyDiffKTmin(x, a1, a2, firstVar=None):
+#     if firstVar is None:
+#         return applyDiffKTmin_(x,x,a1, a2)
+#     else:
+#         return applyDiffKTmin_(firstVar,x,a1, a1)
+# # Computes array A(i) = sum_k sum_(j) nabla_1[a1(k,i). K(x(i), x(j))a2(k,j)]
+# #@jit(nopython=True, parallel=True)
+# def applyDiffKTmin_(y, x, a1, a2):
+#     res = np.zeros(y.shape)
+#     for k in prange(y.shape[0]):
+#         for l in range(x.shape[0]):
+#             for i in range(x.shape[1]):
+#                 if y[k,i] < x[l,i] - 1e-10:
+#                     res[k, i] += a1[k,i] * a2[l,i] / (1 + y[k, i]**2)
+#                 elif y[k,i] < x[l,i] + 1e-10:
+#                     res[k, i] += a1[k,i] * a2[l,i]/(2*(1 + y[k, i]**2))
+#     return res
+#
+
+@jit(nopython=True)
+def atanK(u):
+    return np.arctan(u) + pi/2
+
+@jit(nopython=True)
+def atanKDiff(u):
+    return 1/(1 + u**2)
+
+@jit(nopython=True)
+def logcoshK(u):
+    v = np.fabs(u)
+    return u + v + np.log1p(np.exp(-2*v))
+
+@jit(nopython=True)
+def logcoshKDiff(u):
+    return 1 + np.tanh(u)
+
+@jit(nopython=True)
+def ReLUK(u):
+    return np.maximum(u, 0)
+
+@jit(nopython=True)
+def ReLUKDiff(u):
+    return heaviside(u)
+
+@jit(nopython=True)
+def heaviside(u):
+    return (np.sign(u - 1e-8) + np.sign(u + 1e-8) + 2) / 4
+
+@jit(nopython=True)
+def applyK_(y, x, a, name, scale, order):
+    res = np.zeros(a.shape)
+    if name == 'min':
+        for s in scale:
+            u = np.minimum(y,x)/s
+            #res += atanK(u)*a
+            #res += logcoshK(u)*a
+            res += ReLUK(u)*a
+    elif 'gauss' in name:
+        for s in scale:
+            res += np.exp(- ((y-x)**2).sum()/(2*s**2)) * a
+    elif 'lap' in name:
+        for s in scale:
+            u_ = 0.
+            for j in range(y.size):
+                u_ += (y[j] - x[j])**2
+            u = sqrt(u_)/s
+            res += lapPol(u, order) * np.exp(- u) *a
+    return res /len(scale)
+
+@jit(nopython=True)
+def applyDiffKT_(y, x, a1a2, name, scale, order):
+    res = np.zeros(y.shape)
+    if name == 'min':
+        for s in scale:
+            u = np.minimum(y,x)/s
+            #res += (heaviside(x-y)*a1a2)*atanKDiff(u)/s
+            #res += (heaviside(x-y)*a1a2)*logcoshKDiff(u)/s
+            res += (heaviside(x-y)*a1a2)*ReLUKDiff(u)/s
+    elif 'gauss' in name:
+        for s in scale:
+            res += (y-x) * (-np.exp(- ((y-x)**2).sum()/(2*s**2)) * (a1a2).sum())/(s**2)
+    elif 'lap' in name:
+        for s in scale:
+            u = np.sqrt(((y-x)**2).sum())/s
+            res += (y-x) * (-lapPolDiff(u, order) * np.exp(- u) * (a1a2).sum()/(s**2))
+    return res /len(scale)
+
+
+@jit(nopython=True)
+def applyDiv_(y, x, a, name, scale, order):
+    res = 0
+    if name == 'min':
+        for s in scale:
+            u = np.minimum(y,x)/s
+            #res += (heaviside(x-y)*a*atanKDiff(u)/s).sum()
+            #res += (heaviside(x-y)*a*logcoshKDiff(u)/s).sum()
+            res += (heaviside(x-y)*a*ReLUKDiff(u)/s).sum()
+    elif 'gauss' in name:
+        for s in scale:
+            res += ((y-x)*a).sum() * (-np.exp(- ((y-x)**2).sum()/(2*s**2)))/(s**2)
+    elif 'lap' in name:
+        for s in scale:
+            u = np.sqrt(((y-x)**2).sum())/s
+            res += ((y-x)*a).sum() * (-lapPolDiff(u, order) * np.exp(- u) /(s**2))
+    return res /len(scale)
+
+
+
 
 # Kernel specification
 # name = 'gauss' or 'laplacian'
@@ -236,19 +335,22 @@ def  kernelMatrix(Kpar, x, firstVar=None, grid=None, diff = False, diff2=False, 
 # w1: weight for linear part; w2: weight for translation part; center: origin
 # dim: dimension
 class KernelSpec:
-    def __init__(self, name='gauss', affine = 'none', sigma = 6.5, order = 10, w1 = 1.0,
-                 w2 = 1.0, dim = 3, center = [0,0,0], weight = 1.0, localMaps=None):
+    def __init__(self, name='gauss', affine = 'none', sigma = (1.,), order = 3, w1 = 1.0,
+                 w2 = 1.0, dim = 3, center = None, weight = 1.0, localMaps=None):
         self.name = name
         if np.isscalar(sigma):
             self.sigma = np.array([sigma], dtype=float)
         else:
-            self.sigma = sigma
+            self.sigma = np.array(sigma, dtype=float)
         self.order = order
         self.weight=weight
         self.w1 = w1
         self.w2 = w2
         self.constant_plane=False
-        self.center = np.array(center)
+        if center is None:
+            self.center = np.zeros(dim)
+        else:
+            self.center = np.array(center)
         self.affine_basis = []
         self.dim = dim
         #self.prev_x = []
@@ -258,15 +360,22 @@ class KernelSpec:
         self._state = False
         self.affine = affine
         self.localMaps = localMaps
+        self.kff = False
+        self.pk_dtype = 'float64'
         if name == 'laplacian':
             self.kernelMatrix = kernelMatrixLaplacian
             if self.order > 4:
                 self.order = 3
             self.par = [sigma, self.order]
-        elif name == 'gauss':
+            self.kff = True
+        elif name == 'gauss' or name == 'gaussian':
             self.kernelMatrix = kernelMatrixGauss
             self.order = 10 
             self.par = [sigma]
+            self.kff = True
+        elif name == 'min':
+            self.kernelMatrix = None
+            self.par = []
         else:
             self.name = 'none'
             self.kernelMatrix = None
@@ -313,59 +422,47 @@ class Kernel(KernelSpec):
 
 
     def getK(self, x, firstVar = None):
+        z = None
         if not (self.kernelMatrix is None):
             if firstVar is None:
-                z = kff.kernelmatrix(x, x, self.sigma, self.order, x.shape[0], x.shape[0], self.sigma.size, x.shape[1])
+                z = ku.kernelmatrix(x, x, self.name, self.sigma, self.order)
             else:
-                z = kff.kernelmatrix(x, firstVar, self.sigma, self.order, x.shape[0], firstVar.shape[0], self.sigma.size, x.shape[1])
+                z = ku.kernelmatrix(x, firstVar, self.name, self.sigma, self.order)
         return z
 
         
     # Computes K(x,x)a or K(x,y)a
-    def applyK(self, x, a, firstVar = None, grid=None,matrixWeights=False):
-        if not (self.kernelMatrix is None):
-            #r = self.precompute(x, firstVar=firstVar, grid=grid, diff=False)
-            #z = np.dot(r, a)
-            #print 'OMP!'
-            if firstVar is None:
-                #z = np.zeros([x.shape[0],a.shape[1]])
-                if matrixWeights:
-                    z = kff.applykmat(x, x, a, self.sigma, self.order, x.shape[0], x.shape[0], len(self.sigma), x.shape[1], a.shape[2])
-                elif self.localMaps:
-                    z = kff.applylocalk(x ,x ,a ,self.sigma ,self.order ,1 + self.localMaps[0] ,
-                                        1 + self.localMaps[1] ,
-                                        x.shape[0] ,x.shape[0] , len(self.sigma),
-                                        x.shape[1] ,self.localMaps[0].size)
+    def applyK(self, x, a, firstVar = None, grid=None,matrixWeights=False, cpu=False):
+        if firstVar is None:
+            y = np.copy(x)
+            if matrixWeights:
+                z = ku.applykmat(y, x, a, self.name, self.sigma, self.order)
+            elif self.localMaps:
+                if self.localMaps[2] == 'naive':
+                    z = ku.applylocalk_naive(y ,x ,a ,self.name, self.sigma ,self.order)
                 else:
-                    z = kff.applyk(x ,x ,a ,self.sigma ,self.order ,x.shape[0] ,x.shape[0], len(self.sigma), x.shape[1] ,a.shape[1])
-                # for k in range(a.shape[1]):
-                #     z[:,k] = kff.applyk(x, x, a[:,k], self.sigma, self.order, x.shape[0], x.shape[0], x.shape[1])
+                    z = ku.applylocalk(y ,x ,a ,self.name, self.sigma ,self.order, self.localMaps[0] ,
+                                        self.localMaps[1])
             else:
-                if matrixWeights:
-                    z = kff.applykmat(firstVar, x, a, self.sigma, self.order, firstVar.shape[0], x.shape[0], len(self.sigma), x.shape[1], a.shape[2])
-                elif self.localMaps:
-                    z = kff.applylocalk(firstVar ,x ,a ,self.sigma ,self.order ,1 + self.localMaps[0] ,
-                                        1 + self.localMaps[1] ,
-                                        firstVar.shape[0] ,x.shape[0] , len(self.sigma),
-                                        x.shape[1] ,self.localMaps[0].size)
-                else:
-                    z = kff.applyk(firstVar ,x ,a ,self.sigma ,self.order ,firstVar.shape[0] ,x.shape[0], len(self.sigma), x.shape[1] ,
-                                         a.shape[1])
-                # z = np.zeros([firstVar.shape[0],a.shape[1]])
-                # for k in range(a.shape[1]):
-                #     z[:,k] = kff.applyk(firstVar, x, a[:,k], self.sigma, self.order, firstVar.shape[0], x.shape[0], x.shape[1])
-            #print r.sum(), a.sum()
+                z = ku.applyK(y ,x ,a ,self.name, self.sigma ,self.order, cpu=cpu, dtype=self.pk_dtype)
         else:
-            z = np.zeros([x.shape[0],a.shape[1]])
+            if matrixWeights:
+                z = ku.applykmat(firstVar, x, a, self.name, self.sigma, self.order)
+            elif self.localMaps:
+                if self.localMaps[2] == 'naive':
+                    z = ku.applylocalk_naive(firstVar ,x ,a ,self.name, self.sigma ,self.order)
+                else:
+                    z = ku.applylocalk(firstVar ,x ,a ,self.name, self.sigma ,self.order , self.localMaps[0] ,
+                                        self.localMaps[1])
+            else:
+                z = ku.applyK(firstVar ,x ,a , self.name, self.sigma ,self.order, cpu=cpu, dtype=self.pk_dtype)
         if self.affine == 'affine':
             xx = x-self.center
-            #aa = np.mat(a)
             if firstVar is None:
                 if grid is None:
                     z += self.w1 * np.dot(xx, np.dot(xx.T, a)) + self.w2 * a.sum(axis=0)
                 else:
                     yy = grid -self.center
-                    #yy = grid - self.center.reshape(np.concatenate([[self.center.size], np.ones(self.center.size)]))
                     z += self.w1 * np.dot(grid, np.dot(xx.T, a)) + self.w2 * a.sum(axis=0)
             else:
                 yy = firstVar-self.center
@@ -376,8 +473,6 @@ class Kernel(KernelSpec):
                 yy = firstVar-self.center
             if not (grid is None):
                 gg = grid - self.center
-                #self.center.reshape(np.concatenate([[self.center.size], np.ones(self.center.size)]))
-                #aa = np.mat(a)
             z += self.w2 * a.sum(axis=0)
             for E in self.affine_basis:
                 xE = np.dot(xx, E.T)
@@ -395,176 +490,88 @@ class Kernel(KernelSpec):
         return z
 
     # # Computes A(i) = sum_j D_1[K(x(i), x(j))a2(j)]a1(i)
-    # def applyDiffK(self, x, a1, a2):
-    #     zpx = np.zeros(x.shape)
-    #     v = np.dot(a1, x.T)
-    #     if not (self.kernelMatrix == None):
-    #         r = self.precompute(x, diff=True)
-    #         u = (x*a1).sum(axis=1)[:, np.newaxis] -v 
-    #         zpx +=  2* np.dot((r*u), a2)
-    #     if self.affine == 'affine':
-    #         xx = x-self.center
-    #         zpx += self.w1 * np.dot(v, a2)
-    #     elif self.affine == 'euclidean':
-    #         xx = x-self.center
-    #         for E in self.affine_basis:
-    #             yy = np.dot(xx,E.T)
-    #             bb = np.dot(a1,E.T)
-    #             zpx += self.w1 * np.multiply(yy, a2).sum() * bb
-    #     return zpx
-
-    # Computes A(i) = sum_j D_2[K(x(i), x(j))a2(j)]a1(j)
     def applyDiffK(self, x, a1, a2):
-        z = kff.applykdiff1(x, a1, a2, self.sigma, self.order, x.shape[0], self.sigma.size, x.shape[1])
+        z = ku.applykdiff1(x, a1, a2, self.name, self.sigma, self.order)
         return z
 
     # Computes A(i) = sum_j D_2[K(x(i), x(j))a2(j)]a1(j)
     def applyDiffK2(self, x, a1, a2):
-        z = kff.applykdiff2(x, a1, a2, self.sigma, self.order, x.shape[0], self.sigma.size, x.shape[1])
+        z = ku.applykdiff2(x, a1, a2, self.name, self.sigma, self.order)
         return z
 
     def applyDiffK1and2(self, x, a1, a2):
-        z = kff.applykdiff1and2(x, a1, a2, self.sigma, self.order, x.shape[0], self.sigma.size, x.shape[1])
+        z = ku.applykdiff1and2(x, a1, a2, self.name, self.sigma, self.order)
         return z
 
     # Computes A(i) = sum_j D_2[K(x(i), x(j))a2(j)]a1(j)
     def applyDiffKmat(self, x, beta, firstVar=None):
         if firstVar is None:
-            z = kff.applykdiffmat(x, x, beta, self.sigma, self.order, x.shape[0], x.shape[0], self.sigma.size, x.shape[1])
+            z = ku.applykdiffmat(x, x, beta, self.name, self.sigma, self.order)
         else:
-            z = kff.applykdiffmat(firstVar, x, beta, self.sigma, self.order, firstVar.shape[0], x.shape[0], self.sigma.size, x.shape[1])
+            z = ku.applykdiffmat(firstVar, x, beta, self.name, self.sigma, self.order)
         return z
 
     # Computes array A(i) = sum_k sum_(j) nabla_1[a1(k,i). K(x(i), x(j))a2(k,j)]
-    def applyDiffKT(self, x, a1, a2, firstVar=None):
-        # zpx = np.zeros(x.shape)
-        # a = np.dot(a1[0], a2[0].T)
-        # for k in range(1,len(a1)):
-        #     a += np.dot(a1[k], a2[k].T)
-        if not (self.kernelMatrix is None):
-            #print a1.shape
-            if firstVar is None:
-                if self.localMaps:
-                    zpx = kff.applylocalkdifft(x ,x ,a1 ,a2 ,self.sigma ,self.order ,1 + self.localMaps[0] ,
-                                               1 + self.localMaps[1] ,
-                                               x.shape[0] ,x.shape[0], len(self.sigma), x.shape[1] ,
-                                               self.localMaps[0].size ,a1.shape[0])
-                else:
-                    zpx = kff.applykdifft(x ,x ,a1 ,a2 ,self.sigma ,self.order ,x.shape[0] ,
-                                          x.shape[0], len(self.sigma), x.shape[1], a1.shape[2] ,a1.shape[0])
+    def applyDiffKT(self, x, p0, a, firstVar=None, regweight=1., lddmm=False, extra_term = None, cpu=False):
+        if firstVar is None:
+            y = np.copy(x)
+        else:
+            y = firstVar
+        if lddmm and (extra_term is not None):
+            p = p0 + extra_term
+        else:
+            p = p0
+        if self.localMaps:
+            if self.localMaps[2] == 'naive':
+                zpx = ku.applylocalk_naivedifft(y ,x , p ,a , self.name, self.sigma ,self.order,
+                                                regweight=regweight, lddmm=lddmm)
+                #ku.applylocalk_naivedifft.parallel_diagnostics(level=4)
             else:
-                if self.localMaps:
-                    zpx = kff.applylocalkdifft(firstVar ,x ,a1 ,a2 ,self.sigma ,self.order ,1 + self.localMaps[0] ,
-                                               1 + self.localMaps[1] ,
-                                               firstVar.shape[0] ,x.shape[0], len(self.sigma),
-                                               x.shape[1] ,self.localMaps[0].size ,a1.shape[0])
-                else:
-                    zpx = kff.applykdifft(firstVar ,x ,a1 ,a2 ,self.sigma ,self.order ,firstVar.shape[0] ,x.shape[0], len(self.sigma),
-                                          x.shape[1] ,a1.shape[2] ,a1.shape[0])
-            # r = self.precompute(x, diff=True, firstVar=firstVar)
-            # g1 =  r*a
-            # #print a.shape, r.shape, g1.shape
-            # if firstVar==None:
-            #     zpx = 2*(x*g1.sum(axis=1)[:, np.newaxis] - np.dot(g1,x))
-            # else:
-            #     zpx = 2*(firstVar*g1.sum(axis=1)[:, np.newaxis] - np.dot(g1,x))
+                zpx = ku.applylocalkdifft(y, x, p, a, self.name,  self.sigma, self.order, self.localMaps[0],
+                                           self.localMaps[1], regweight=regweight, lddmm=lddmm)
+        else:
+            zpx = ku.applyDiffKT(y ,x , p ,a , self.name, self.sigma ,self.order,
+                                 regweight=regweight, lddmm=lddmm, cpu=cpu, dtype=self.pk_dtype)
         if self.affine == 'affine':
             xx = x-self.center
-            # if firstVar==None:
-            #     xx = x-self.center
-            # else:
-            #     xx = firstVar-self.center
-            zpx += self.w1 * np.dot(a, xx)
+
+            ### TO CHECK
+            zpx += self.w1 * ((a*xx).sum() * p + (p*xx).sum() * a)
         elif self.affine == 'euclidean':
             xx = x-self.center
-            # if firstVar==None:
-            #     xx = x-self.center
-            # else:
-            #     xx = firstVar-self.center
             for E in self.affine_basis:
                 yy = np.dot(xx, E.T)
-                for k in range(len(a1)):
-                     bb = np.dot(a1[k], E)
-                     zpx += self.w1 * np.multiply(yy, a2[k]).sum() * bb
+                for k in range(len(a)):
+                     bb = np.dot(p[k], E)
+                     zpx += self.w1 * np.multiply(yy, a[k]).sum() * bb
+        return zpx
+
+    def testDiffKT(self, y, x, p, a):
+        k0 = (p*self.applyK(x,a, firstVar=y)).sum()
+        dy = np.random.randn(y.shape[0], y.shape[1])
+        eps = 1e-8
+        k1 = (p*self.applyK(x,a, firstVar=y+eps*dy)).sum()
+        grd = self.applyDiffKT(x,p,a,firstVar=y)
+        print('test diffKT: {0:.5f}, {1:.5f}'.format((k1-k0)/eps, (grd*dy).sum()))
+
+
+    def applyDivergence(self, x,a, firstVar=None):
+        if firstVar is None:
+            y = x
+        else:
+            y = firstVar
+        if self.localMaps:
+            if self.localMaps[2] == 'naive':
+                zpx = ku.applylocalk_naivediv(y, x,a, self.name, self.sigma, self.order)
+            else:
+                zpx = ku.applylocalkdiv(y, x, a, self.name, self.sigma, self.order, self.localMaps[0],
+                                        self.localMaps[1])
+        else:
+            zpx = ku.applyDiv(y,x,a, self.name, self.sigma, self.order)
         return zpx
 
 
     def applyDDiffK11and12(self, x, n, a, p):
-        z = kff.applykdiff11and12(x, n, a, p, self.sigma, self.order, x.shape[0], self.sigma.size, x.shape[1])
+        z = ku.applykdiff11and12(x, n, a, p, self.name, self.sigma, self.order)
         return z
 
-
-
-    # Computes sum_(l) D_11[n(k)^T K(x(k), x(l))a(l)]p(k)
-    def applyDDiffK11(self, x, n, a, p):
-        zpx = np.zeros(x.shape)
-        if not (self.kernelMatrix is None):
-            r1 = self.precompute(x, diff=True)
-            self.hold()
-            r2 = self.precompute(x, diff2=True)
-            self.reset()
-            #xxp = -np.dot(p, x.T) + np.multiply(x, p).sum(axis=1)
-            xxp = -np.dot(p, x.T) + (x*p).sum(axis=1)[:, np.newaxis]
-            na = np.dot(n, a.T)
-            #xpna = np.multiply(xxp, na)
-            #u = np.multiply(xpna, x) - np.mutiply(xpna, x.T)
-            #u = np.multiply(r2, xpna)
-            u = r2 * xxp * na
-            zpx = 4 * ((u.sum(axis=1))[:,np.newaxis]*x - np.dot(u, x))
-            #u = np.multiply(r1, na)
-            zpx += 2*(r1*na).sum(axis=1)[:,np.newaxis]*p
-            #zpx += 2*np.multiply(u.sum(axis=1).reshape([x.shape[0],1]), p)
-
-        return zpx
-
-    # Computes sum_(l) D_12[n(k)^T K(x(k), x(l))a(l)]p(l)
-    def applyDDiffK12(self, x, n, a, p):
-        zpx = np.zeros(x.shape)
-        na = np.dot(n, a.T)
-        if not (self.kernelMatrix is None):
-            r1 = self.precompute(x, diff=True)
-            self.hold()
-            r2 = self.precompute(x, diff2=True)
-            self.reset()
-            #xxp = (np.dot(p, x.T) - np.multiply(x, p).sum(axis=1)).T
-            xxp = np.dot(x, p.T) - (x*p).sum(axis=1)[np.newaxis, :]
-            na = np.dot(n, a.T)
-            u = r2 * xxp * na
-            #xpna = np.multiply(xxp, na)
-            #u = np.multiply(xpna, x) - np.mutiply(xpna, x.T)
-            #u = np.multiply(r2, xpna)
-            zpx = -4 * ((u.sum(axis=1))[:,np.newaxis]*x - np.dot(u, x))
-            zpx -= 2*np.dot(r1*na, p)
-            #zpx = - 4 * (np.multiply(u.sum(axis=1).reshape([x.shape[0],1]), x) - np.dot(u, x))
-            #u = np.multiply(r1, na)
-            #zpx -= 2* np.dot(u, p)
-        if self.affine == 'affine':
-            zpx += self.w1 * np.dot(na, p)
-        elif self.affine == 'euclidean':
-            for E in self.affine_basis:
-                zpx += self.w1 * np.multiply(a*E, p).sum() * np.dot(n, E)
-        return zpx
-
-
-    # Computes sum_l div_1(K(x_k, x_l)a_l)
-    def applyDivergence(self, x, a, firstVar=None):
-        zJ = np.zeros([x.shape[0],1])
-        if not (self.kernelMatrix is None):
-            r = self.precompute(x, firstVar=firstVar,  diff=True)
-            if firstVar is None:
-                zJ = 2 * (np.multiply(np.dot(r,a), x).sum(axis=1) - np.dot(r, np.multiply(a,x).sum(axis=1)))
-                if self.affine == 'affine':
-                    xx = x-self.center
-                    zJ += self.w1 * np.multiply(xx,a).sum(axis=1)
-            else:
-                #print r.shape, a.shape, y.shape, x.shape, zJ.shape
-                zJ = 2 * (np.multiply(np.dot(r,a), firstVar).sum(axis=1) - np.dot(r, np.multiply(a,x).sum(axis=1)))
-                if self.affine == 'affine':
-                    xx = firstVar-self.center
-                    zJ += self.w1 * np.multiply(xx,a).sum(axis=1)
-        else:
-            if firstVar is None:
-                zJ = np.zeros([x.shape[0],1])
-            else:
-                zJ = np.zeros([firstVar.shape[0],1])
-        return zJ.T

@@ -2,7 +2,7 @@ import numpy as np
 import scipy as sp
 import scipy.interpolate as interp
 try:
-    from vtk import *
+    from vtk import vtkPolyDataReader, VTK_ERROR
     gotVTK = True
 except ImportError:
     print('could not import VTK functions')

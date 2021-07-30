@@ -69,7 +69,7 @@ class SurfaceMatching:
                 print('Please provide a template surface')
                 return
             else:
-                self.fv0 = surfaces.Surface(filename=fileTempl)
+                self.fv0 = surfaces.Surface(surf=fileTempl)
         else:
             self.fv0 = surfaces.Surface(surf=Template)
         if Target==None:
@@ -79,7 +79,7 @@ class SurfaceMatching:
             else:
                 self.fv1 = []
                 for f in fileTarg:
-                    self.fv1.append(surfaces.Surface(filename=f))
+                    self.fv1.append(surfaces.Surface(surf=f))
         else:
             self.fv1 = []
             for s in Target:

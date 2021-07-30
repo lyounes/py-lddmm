@@ -93,7 +93,7 @@ class CurveMatchingRigid:
                 #print 'Please provide a template curve'
                 return
             else:
-                self.fv0 = curves.Curve(filename=fileTempl)
+                self.fv0 = curves.Curve(curve=fileTempl)
         else:
             self.fv0 = curves.Curve(curve=Template)
         if Target is None:
@@ -101,7 +101,7 @@ class CurveMatchingRigid:
                 print('Please provide a target curve')
                 return
             else:
-                self.fv1 = curves.Curve(filename=fileTarg)
+                self.fv1 = curves.Curve(curve=fileTarg)
         else:
             self.fv1 = curves.Curve(curve=Target)
 
@@ -788,9 +788,9 @@ class CurveMatchingRigid:
         zrig = self.gradRigid(z, a, tau)
         zrep = self.gradRepellZ(z, v)
         zc = np.concatenate([z, self.xc])
-        a1 = self.regweight * mu[np.newaxis, ...]
-        a2 = mu[np.newaxis, ...]
-        zpx = self.param.KparDiff.applyDiffKT(zc, a1, a2)
+        # a1 = self.regweight * mu[np.newaxis, ...]
+        # a2 = mu[np.newaxis, ...]
+        zpx = self.param.KparDiff.applyDiffKT(zc, self.regweight*mu, mu)
         zpx = zpx[0:self.npt, :] + zpot - zrig - zrep
 
         mu0 = np.copy(mu[0:self.npt, :])
@@ -1153,9 +1153,9 @@ class CurveMatchingRigid:
         v = a[self.component, np.newaxis] * Jz + tau[self.component, :]
         # K = self.param.KparDiff.getK(z)
         mu = self.solveK(z, v)
-        a1 = self.regweight * mu[np.newaxis, ...]
-        a2 = mu[np.newaxis, ...]
-        zpx = self.param.KparDiff.applyDiffKT(zc, a1, a2)[0:self.npt, :] - self.gradRepellZ(z, v) \
+        # a1 = self.regweight * mu[np.newaxis, ...]
+        # a2 = mu[np.newaxis, ...]
+        zpx = self.param.KparDiff.applyDiffKT(zc, self.regweight*mu, mu)[0:self.npt, :] - self.gradRepellZ(z, v) \
             + self.gradPotential(z)
 
         # pm = px-mu

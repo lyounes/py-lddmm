@@ -1,6 +1,6 @@
 import numpy.linalg as la
 import logging
-from . import surfaces
+from . import surfaces, surface_distances as sd
 #import pointEvolution_fort as evol_omp
 from . import conjugateGradient as cg, pointEvolution as evol
 from . import surfaceTimeSeries
@@ -30,9 +30,10 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
                 rotWeight = None, scaleWeight = None, transWeight = None,
                 rescaleTemplate=False, subsampleTargetSize=-1, testGradient=True, saveFile = 'evolution', outputDir = '.',
                 mu = 0.1, volumeOnly=False, maxIter_al=100):
-        super(SurfaceMatching, self).__init__(Template, Targets, fileTempl, fileTarg, param, times, maxIter_cg, regWeight, affineWeight,
-                                                verb, affine, rotWeight, scaleWeight, transWeight, rescaleTemplate, subsampleTargetSize, testGradient,
-                                                saveFile, outputDir)
+        super(SurfaceMatching, self).__init__(Template, Targets, fileTempl, fileTarg, param, times, maxIter_cg,
+                                              regWeight, affineWeight, verb, affine, rotWeight, scaleWeight,
+                                              transWeight, rescaleTemplate, subsampleTargetSize, testGradient,
+                                              saveFile, outputDir)
 
 
         self.volumeOnly = volumeOnly
@@ -54,7 +55,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
         #self.useKernelDotProduct = True
         #self.dotProduct = self.kernelDotProduct
         #self.saveRate = 1
-        self.coeffAff1 = self.coeffAff2 ;
+        self.coeffAff1 = self.coeffAff2
         self.affBurnIn = 10
         #self.volumeWeight = 1
 #        if self.affineDim > 0:
@@ -163,8 +164,8 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
                 lv = vt * lmb[t,:,np.newaxis]
             #lnu = np.multiply(nu, np.mat(lmb[t, npt:npt1]).T)
             #print lnu.shape
-            dxcval[t] = self.param.KparDiff.applyDiffKT(x, a[np.newaxis,...], lnu[np.newaxis,...])
-            dxcval[t] += self.param.KparDiff.applyDiffKT(x, lnu[np.newaxis,...], a[np.newaxis,...])
+            dxcval[t] = self.param.KparDiff.applyDiffKT(x, a, lnu)
+            dxcval[t] += self.param.KparDiff.applyDiffKT(x, lnu, a)
             #dxcval[t] += np.dot(lnu, A)
             #if self.useKernelDotProduct:
             dacval[t] = np.copy(lnu)
@@ -241,7 +242,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
             self.obj0 = 0
             for k in range(self.nTarg):
                 if self.param.errorType == 'L2Norm':
-                    self.obj0 += surfaces.L2Norm0(self.fv1[k]) / (self.param.sigmaError ** 2)
+                    self.obj0 += sd.L2Norm0(self.fv1[k]) / (self.param.sigmaError ** 2)
                 else:   
                     self.obj0 += self.param.fun_obj0(self.fv1[k], self.param.KparDist) / (self.param.sigmaError**2)
                 foo = surfaces.Surface(surf=self.fvDef[k])
@@ -317,7 +318,7 @@ class SurfaceMatching(surfaceTimeSeries.SurfaceMatching):
             #a1 = [px, a, -2*regweight*a]
             #a2 = [a, px, a]
             #print 'test', px.sum()
-            zpx += self.param.KparDiff.applyDiffKT(z, a1, a2)
+            zpx += self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
             # if not (affine == None):
             #     zpx += np.dot(px, A[M-t-1])
             # pxt[M-t-1, :, :] = px + timeStep * zpx

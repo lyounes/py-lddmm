@@ -3,7 +3,9 @@ import numpy as np
 from base.curves import Curve, remesh
 from base import loggingUtils
 from base.kernelFunctions import Kernel
-from curveMatching import CurveMatchingParam, CurveMatching
+from base.curveMatching import CurveMatchingParam, CurveMatching
+import matplotlib
+matplotlib.use("qt5agg")
 import matplotlib.pyplot as plt
 
 
@@ -12,6 +14,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
     sigma = 0.5
     sigmaDist = 0.5 
     sigmaError = 0.1
+    regweight = 1
     internalWeight = 1000        
     if model == 'smile':
         s = 0.025
@@ -23,15 +26,15 @@ def compute(model='default', dirOut='/cis/home/younes'):
         v = np.zeros([t.shape[0],2])
         v[:,0] = t
         v[:,1] = -x
-        fv1 = Curve(FV=(f,v))
+        fv1 = Curve(curve=(f,v))
         v[:,1] = x
-        fv11 = Curve(FV=(f,v))
+        fv11 = Curve(curve=(f,v))
         ftemp = [fv1, fv11]
         #x = 0.001*((t-5)**2 -25)
         #v[:,1] = x
-        fv2 = Curve(FV=(f,v))
+        fv2 = Curve(curve=(f,v))
         v[:,1] =  0.09*((t-5)**2 -25)
-        fv22 = Curve(FV=(f,v))
+        fv22 = Curve(curve=(f,v))
         ftarg = [fv2, fv22]
         sigma = 0.2
         sigmaDist = 0.5 
@@ -55,7 +58,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v = np.zeros([t.shape[0],2])
             v[:,0] = r*np.cos(t)
             v[:,1] = r*np.sin(t)
-            ftemp.append(Curve(FV=(f,v)))
+            ftemp.append(Curve(curve=(f,v)))
         s = 0.25
         ftarg = []
         rad = np.sqrt(np.arange(2.**2, (6.)**2, ((6.)**2-(2.)**2)/nc))
@@ -72,7 +75,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v = np.zeros([t.shape[0],2])
             v[:,0] = r*np.cos(t)
             v[:,1] = r*np.sin(t)
-            ftarg.append(Curve(FV=(f,v)))
+            ftarg.append(Curve(curve=(f,v)))
         sigma = 1.0
         sigmaDist = 2.5 
         sigmaError = 0.1
@@ -91,7 +94,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v = np.zeros([t.shape[0],2])
             v[:,0] = x0 + np.cos(theta[k])*t
             v[:,1] = y0 + np.sin(theta[k])*t
-            ftemp.append(Curve(FV=(f,v)))
+            ftemp.append(Curve(curve=(f,v)))
             
         f = np.zeros([nrays,2], dtype=int)
         f[0:nrays-1,0] = range(0, nrays-1)
@@ -102,7 +105,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
         for k in range(nrays):
             v[k,0] = x0 + np.cos(theta[k])*t[0]
             v[k,1] = y0 + np.sin(theta[k])*t[0]
-        ftemp.append(Curve(FV=(f,v)))
+        ftemp.append(Curve(curve=(f,v)))
             
         ftarg = []
         x0 = 8
@@ -115,7 +118,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v = np.zeros([t.shape[0],2])
             v[:,0] = x0 + np.cos(theta[k])*t
             v[:,1] = y0 + np.sin(theta[k])*t
-            ftarg.append(Curve(FV=(f,v)))
+            ftarg.append(Curve(curve=(f,v)))
         sigma = 0.2
         sigmaDist = 2.5 
         sigmaError = 0.1
@@ -136,7 +139,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v[:,0] = x0 + np.cos(theta[k])*t
             v[:,1] = y0 + np.sin(theta[k])*t
             v[:,2] = z0 + 0.5*theta[k]*t
-            ftemp.append(Curve(FV=(f,v)))
+            ftemp.append(Curve(curve=(f,v)))
             
         ftarg = []
         x0 = 8
@@ -152,7 +155,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v[:,0] = x0 + np.cos(theta[k])*t
             v[:,1] = y0 + np.sin(theta[k])*t
             v[:,2] = z0 + 0.4*theta[k]*t
-            ftarg.append(Curve(FV=(f,v)))      
+            ftarg.append(Curve(curve=(f,v)))
         sigma = 2.5
         sigmaDist = 2.5 
         sigmaError = 0.1
@@ -178,7 +181,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v[:,0] = x0 + r*(t)*np.cos(st+theta[k])
             v[:,1] = y0 + r*(t)*np.sin(st+theta[k])
             v[:,2] = z0 + a*st
-            ftemp.append(Curve(FV=(f,v)))
+            ftemp.append(Curve(curve=(f,v)))
             
         ftarg = []
         x0 = 5
@@ -197,18 +200,18 @@ def compute(model='default', dirOut='/cis/home/younes'):
             v[:,0] = x0 + r*(t)*np.cos(st+theta[k])
             v[:,1] = y0 + r*(t)*np.sin(st+theta[k])
             v[:,2] = z0 + a*st
-            ftarg.append(Curve(FV=(f,v)))
+            ftarg.append(Curve(curve=(f,v)))
         sigma = 0.1
         sigmaDist = 0.5 
         sigmaError = 0.1
         internalWeight = 500        
     elif model == 'atlasSections':
-        fv01 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas04_curve01.txt')
-        fv02 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas04_curve02.txt')
-        fv03 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas04_curve03.txt')
-        fv11 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas09_curve01.txt')
-        fv12 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas09_curve02.txt')
-        fv13 = Curve(filename='/cis/home/younes/MorphingData/Mostofskycurves/atlas09_curve03.txt')
+        fv01 = Curve(curve='/cis/home/younes/MorphingData/Mostofskycurves/atlas04_curve01.txt')
+        fv02 = Curve(curve='/cis/home/younes/MorphingData/Mostofskycurves/atlas04_curve02.txt')
+        fv03 = Curve(curve='/cis/home/younes/MorphingData/Mostofskycurves/atlas04_curve03.txt')
+        fv11 = Curve(curve='/cis/home/younes/MorphingData/Mostofskycurves/atlas09_curve01.txt')
+        fv12 = Curve(curve='/cis/home/younes/MorphingData/Mostofskycurves/atlas09_curve02.txt')
+        fv13 = Curve(curve='/cis/home/younes/MorphingData/Mostofskycurves/atlas09_curve03.txt')
         ftemp = [fv01, fv02, fv03]
         ftarg = [fv11, fv12, fv13]
     elif model == 'ellipses':
@@ -217,10 +220,10 @@ def compute(model='default', dirOut='/cis/home/younes'):
         y = y-1
         s2 = np.sqrt(2)
         scl = [10./N, 10./N]
-    
-        I1 = .06 - ((x-.30)**2 + 0.5*y**2)  
-        I2 = .008 - ((x-.16)**2 + y**2)  
-        I3 = .006 - ((x-.4)**2 + 2*y**2)  
+
+        I1 = .06 - ((x-.30)**2 + 0.5*y**2)
+        I2 = .008 - ((x-.16)**2 + y**2)
+        I3 = .006 - ((x-.4)**2 + 2*y**2)
         fv1 = Curve()
         fv1.Isocontour(I1, value = 0, target=100, scales=scl)
         fv11 = Curve()
@@ -228,14 +231,14 @@ def compute(model='default', dirOut='/cis/home/younes'):
         fv12 = Curve()
         fv12.Isocontour(I3, value = 0, target=100, scales=scl)
         ftemp = [fv1, fv11, fv12]
-    
+
         u = (x-.5 + y)/s2
         v = (x -.5 - y)/s2
-        I1 = .095 - (u**2 + 0.5*v**2) 
+        I1 = .095 - (u**2 + 0.5*v**2)
         u = (x-.35 + y)/s2
         v = (x -.35 - y)/s2
-        I2 = .01 - ((u-.12)**2 + 0.5*v**2) 
-        I3 = .01 - (2*(u+.10)**2 + 0.8*v**2) 
+        I2 = .01 - ((u-.12)**2 + 0.5*v**2)
+        I3 = .01 - (2*(u+.10)**2 + 0.8*v**2)
         fv2 = Curve()
         fv2.Isocontour(I1, value = 0, target=100, scales=scl)
         fv22 = Curve()
@@ -244,7 +247,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
         fv23.Isocontour(I3, value = 0, target=100, scales=scl)
         ftarg = [fv2, fv22, fv23]
         sigma = 0.2
-        sigmaDist = 2.0 
+        sigmaDist = 2.0
         sigmaError = 0.1
         internalWeight = 500
     elif model=="cardioid":
@@ -265,7 +268,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
         f[0:N-1,0] = range(0, N-1)
         f[0:N-1,1] = range(1, N)
         f[N-1,:] = [N-1,0]
-        ftemp = Curve(FV=(f,v))
+        ftemp = Curve(curve=(f,v))
 
         a = 5
         b = 3
@@ -280,23 +283,38 @@ def compute(model='default', dirOut='/cis/home/younes'):
         f = np.zeros([v.shape[0]-1,2], dtype=int)
         f[:,0] = range(0, v.shape[0]-1)
         f[:,1] = range(1, v.shape[0])
-        ftarg = Curve(FV=(f,v))
+        ftarg = Curve(curve=(f,v))
         sigma = 0.5
-        sigmaDist = 2.0 
+        sigmaDist = 2.0
         sigmaError = 0.1
         internalWeight = 250
+    elif model=='letters':
+        ftemp = Curve(curve='/Users/younes/Development/Data/letter1tmpl2.vtk', c=.1)
+        ftarg = Curve(curve='/Users/younes/Development/Data/letter1targ2.vtk', c=.1)
+        # ftemp.saveVTK('/Users/younes/Development/Data/letter1tmpl2.vtk')
+        # ftarg.saveVTK('/Users/younes/Development/Data/letter1targ2.vtk')
+        sigma = 0.5
+        sigmaDist = 2.0
+        sigmaError = 0.5
+        internalWeight = 100.
+        regweight = 0.1
     else:
         return
 
     ## Object kernel
+    # weights = np.fabs(ftemp.vertices[:, 1])
+    # weights /= weights.max()
+    # ftemp.updateWeights(weights)
     K1 = Kernel(name='laplacian', sigma = sigma)
-
     loggingUtils.setup_default_logging(dirOut + '/Development/Results/curveMatching', fileName='info.txt',
                                        stdOutput = True)   
-    
-    sm = CurveMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError, errorType='varifold', internalCost='h1Invariant')
-    f = CurveMatching(Template=ftemp, Target=ftarg, outputDir=dirOut+'/Development/Results/curveMatching'+model+'HLDDMM_0p2_nocomp25',param=sm, testGradient=True,
-                      regWeight=1., internalWeight=internalWeight, maxIter=10000, affine='none', rotWeight=1, transWeight = 1, scaleWeight=100., affineWeight=100.)
+    sm = CurveMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
+                            algorithm='cg', errorType='varifold', internalCost='h1AlphaInvariant')
+    f = CurveMatching(Template=ftemp, Target=ftarg,
+                      outputDir=dirOut+'/Development/Results/curveMatching'+model+'HLDDMM_0p2_nocomp25',
+                      param=sm, testGradient=True,saveRate=50,
+                      regWeight=regweight, internalWeight=internalWeight, maxIter=10000, affine='none',
+                      rotWeight=1, transWeight = 1, scaleWeight=100., affineWeight=100.)
  
     f.optimizeMatching()
 
@@ -305,7 +323,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
     
 if __name__=="__main__":
     plt.ion()
-    compute(model='rays', dirOut='/Users/younes')
+    compute(model='letters', dirOut='/Users/younes')
     plt.ioff()
     plt.show()
 
