@@ -64,13 +64,13 @@ def main():
     for k1 in range(img.shape[0]):
         for k2 in range(img.shape[1]):
             for k3 in range(img.shape[2]):
-                img[k1,k2,k3] = h.EvaluateFunction(grd[:,k1,k2,k3]) ;
+                img[k1,k2,k3] = h.EvaluateFunction(grd[:,k1,k2,k3])
 
                 #[u,v] = path.splitext(args.fileout) ;
     #diffeo.gridScalars(data=img,resol=resol,origin=origin).saveVTK(u+'.vtk')
 
-    fv.Isosurface(img, 0., target = args.targetSize, smooth=args.smooth) ;
-    fv.vertices = np.array([minx, miny, minz]) - 10*dx + dx * fv.vertices ;
+    fv.Isosurface(img, 0., target = args.targetSize, smooth=args.smooth)
+    fv.vertices = np.array([minx, miny, minz]) - 10*dx + dx * fv.vertices
 
     fv.savebyu(args.fileout) 
 

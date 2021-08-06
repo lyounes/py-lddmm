@@ -130,6 +130,70 @@ def currentNormGradient(fvDef, fv1, KparDist, weight=1., with_weights=False):
         return px
 
 
+
+# Measure norm of fv1
+def measureNormPS0(fv1, KparDist):
+    c2 = fv1.points
+    cr2 = fv1.weights[:, None]
+    return (cr2*KparDist.applyK(c2, cr2)).sum()
+
+
+# Computes |fvDef|^2 - 2 fvDef * fv1 with measure dot produuct
+def measureNormPSDef(fvDef, fv1, KparDist):
+    c1 = fvDef.centers
+    cr1 = np.sqrt((fvDef.surfel ** 2).sum(axis=1) + 1e-10)[:, None] * fvDef.face_weights[:, None]
+    c2 = fv1.points
+    cr2 = fv1.weights[:, None]
+    obj = ((cr1 * KparDist.applyK(c1, cr1)).sum()
+           - 2 * (cr1 * KparDist.applyK(c2, cr2, firstVar=c1)).sum())
+    return obj
+
+
+def measureNormPS(fvDef, fv1, KparDist):
+    return measureNormPSDef(fvDef, fv1, KparDist) + measureNormPS0(fv1, KparDist)
+
+
+# Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (measure norm)
+def measureNormPSGradient(fvDef, fv1, KparDist):
+    xDef = fvDef.vertices
+    c1 = fvDef.centers
+    c2 = fv1.points
+    dim = c1.shape[1]
+    a1 = np.sqrt((fvDef.surfel ** 2).sum(axis=1) + 1e-10)
+    a2 = fv1.weights
+    cr1 = fvDef.surfel / a1[:, np.newaxis]
+    # cr2 = fv1.surfel / a2[:, np.newaxis]
+
+    z1 = KparDist.applyK(c1, a1[:, np.newaxis]) - KparDist.applyK(c2, a2[:, np.newaxis], firstVar=c1)
+    z1 = z1 * cr1
+    # print a1.shape, c1.shape
+    dz1 = (2. / 3.) * (KparDist.applyDiffKT(c1, a1[:, np.newaxis], a1[:, np.newaxis]) -
+                       KparDist.applyDiffKT(c2, a1[:, np.newaxis], a2[:, np.newaxis], firstVar=c1))
+
+    xDef1 = xDef[fvDef.faces[:, 0], :]
+    xDef2 = xDef[fvDef.faces[:, 1], :]
+    xDef3 = xDef[fvDef.faces[:, 2], :]
+
+    px = np.zeros([xDef.shape[0], dim])
+    I = fvDef.faces[:, 0]
+    crs = np.cross(xDef3 - xDef2, z1)
+    for k in range(I.size):
+        px[I[k], :] = px[I[k], :] + dz1[k, :] - crs[k, :]
+
+    I = fvDef.faces[:, 1]
+    crs = np.cross(xDef1 - xDef3, z1)
+    for k in range(I.size):
+        px[I[k], :] = px[I[k], :] + dz1[k, :] - crs[k, :]
+
+    I = fvDef.faces[:, 2]
+    crs = np.cross(xDef2 - xDef1, z1)
+    for k in range(I.size):
+        px[I[k], :] = px[I[k], :] + dz1[k, :] - crs[k, :]
+    return px
+
+
+
+
 # Measure norm of fv1
 def measureNorm0(fv1, KparDist):
     c2 = fv1.centers
@@ -140,15 +204,14 @@ def measureNorm0(fv1, KparDist):
 # Computes |fvDef|^2 - 2 fvDef * fv1 with measure dot produuct
 def measureNormDef(fvDef, fv1, KparDist):
     c1 = fvDef.centers
-    cr1 = np.sqrt((fvDef.surfel ** 2).sum(axis=1) + 1e-10)[:, np.newaxis] * fvDef.face_weights[:, None]
+    cr1 = np.sqrt((fvDef.surfel ** 2).sum(axis=1) + 1e-10)[:, None] * fvDef.face_weights[:, None]
     c2 = fv1.centers
-    cr2 = np.sqrt((fv1.surfel ** 2).sum(axis=1) + 1e-10)[:, np.newaxis] * fv1.face_weights[:, None]
-    obj = (np.multiply(cr1, KparDist.applyK(c1, cr1)).sum()
-           - 2 * np.multiply(cr1, KparDist.applyK(c2, cr2, firstVar=c1)).sum())
+    cr2 = np.sqrt((fv1.surfel ** 2).sum(axis=1) + 1e-10)[:, None] * fv1.face_weights[:, None]
+    obj = ((cr1 * KparDist.applyK(c1, cr1)).sum()
+           - 2 * (cr1 * KparDist.applyK(c2, cr2, firstVar=c1)).sum())
     return obj
 
 
-# Returns |fvDef - fv1|^2 for measure norm
 def measureNorm(fvDef, fv1, KparDist):
     return measureNormDef(fvDef, fv1, KparDist) + measureNorm0(fv1, KparDist)
 

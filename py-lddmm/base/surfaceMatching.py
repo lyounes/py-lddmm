@@ -1,4 +1,5 @@
 import os
+from copy import deepcopy
 import numpy as np
 import numpy.linalg as la
 import logging
@@ -53,7 +54,7 @@ class Direction:
 #        affine: 'affine', 'similitude', 'euclidean', 'translation' or 'none'
 #        maxIter: max iterations in conjugate gradient
 class SurfaceMatching(object):
-    def __init__(self, Template=None, Target=None, param=None, maxIter=1000,
+    def __init__(self, Template=None, Target=None, param=None, maxIter=1000, passenger = None,
                  regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
                  subsampleTargetSize=-1, affineOnly = False,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
@@ -80,6 +81,8 @@ class SurfaceMatching(object):
         self.coeffAff = 1
         self.obj = 0
         self.xt = None
+        if Target is not None and issubclass(type(Target), pointSets.PointSet):
+            self.param.errorType = 'PointSet'
 
         self.setOutputDir(outputDir)
         self.set_fun(self.param.errorType)
@@ -95,10 +98,21 @@ class SurfaceMatching(object):
                             saveTrajectories = saveTrajectories, affine = affine)
         self.initialize_variables()
         self.gradCoeff = self.x0.shape[0]
-
+        self.set_passenger(passenger)
         self.pplot = pplot
         if self.pplot:
             self.initial_plot()
+
+    def set_passenger(self, passenger):
+        self.passenger = passenger
+        if isinstance(self.passenger, surfaces.Surface):
+            self.passenger_points = self.passenger.vertices
+        elif self.passenger is not None:
+            self.passenger_points = self.passenger
+        else:
+            self.passenger_points = None
+        self.passengerDef = deepcopy(self.passenger)
+
 
 
     def set_parameters(self, maxIter=1000,
@@ -153,6 +167,8 @@ class SurfaceMatching(object):
         self.affBurnIn = 25
         self.forceLineSearch = False
         self.saveEPDiffTrajectories = False
+        self.varCounter = 0
+        self.trajCounter = 0
 
 
     def set_template_and_target(self, Template, Target, subsampleTargetSize=-1):
@@ -170,6 +186,8 @@ class SurfaceMatching(object):
                 if self.param.errorType == 'L2Norm':
                     self.fv1 = surfaces.Surface()
                     self.fv1.readFromImage(Target)
+                elif self.param.errorType == 'PointSet':
+                    self.fv1 = pointSets.PointSet(data=Target)
                 else:
                     self.fv1 = surfaces.Surface(surf=Target)
         else:
@@ -188,7 +206,7 @@ class SurfaceMatching(object):
     def fix_orientation(self, fv1=None):
         if fv1 is None:
             fv1 = self.fv1
-        if fv1:
+        if issubclass(type(fv1), surfaces.Surface):
             self.fv0.getEdges()
             fv1.getEdges()
             self.closed = self.fv0.bdry.max() == 0 and fv1.bdry.max() == 0
@@ -240,6 +258,7 @@ class SurfaceMatching(object):
         self.Afft = np.zeros([self.Tsize, self.affineDim])
         self.AfftTry = np.zeros([self.Tsize, self.affineDim])
         self.xt = np.tile(self.x0, [self.Tsize+1, 1, 1])
+        self.xtTry = np.copy(self.xt)
         self.v = np.zeros([self.Tsize+1, self.npt, self.dim])
         self.saveFileList = []
         for kk in range(self.Tsize+1):
@@ -287,6 +306,10 @@ class SurfaceMatching(object):
             self.fun_obj0 = None
             self.fun_obj = None
             self.fun_objGrad = None
+        elif errorType == 'PointSet':
+            self.fun_obj0 = partial(sd.measureNormPS0, KparDist=self.param.KparDist)
+            self.fun_obj = partial(sd.measureNormPSDef, KparDist=self.param.KparDist)
+            self.fun_objGrad = partial(sd.measureNormPSGradient, KparDist=self.param.KparDist)
         else:
             print('Unknown error Type: ', self.param.errorType)
 
@@ -320,7 +343,7 @@ class SurfaceMatching(object):
         #print 'dataterm = ', obj + self.obj0
         return obj
 
-    def  objectiveFunDef(self, at, Afft=None, kernel = None, withTrajectory = False, withJacobian=False,
+    def  objectiveFunDef(self, at, Afft=None, kernel = None, withTrajectory = True, withJacobian=False,
                          fv0 = None, regWeight = None):
         if fv0 is None:
             fv0 = self.fv0
@@ -347,7 +370,7 @@ class SurfaceMatching(object):
         else:
             A = None
         if withJacobian:
-            (xt,Jt)  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A, withJacobian=True)
+            xt,Jt  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A, withJacobian=True)
         else:
             xt  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A)
         #print xt[-1, :, :]
@@ -424,6 +447,7 @@ class SurfaceMatching(object):
 
         foo = self.objectiveFunDef(atTry, AfftTry, fv0 = fv0, withTrajectory=True)
         objTry += foo[0]
+        xtTry = foo[1]
 
         ff = surfaces.Surface(surf=self.fvDef)
         ff.updateVertices(np.squeeze(foo[1][-1, :, :]))
@@ -441,6 +465,7 @@ class SurfaceMatching(object):
             self.atTry = atTry
             self.objTry = objTry
             self.AfftTry = AfftTry
+            self.xtTry = xtTry
             if self.symmetric:
                 self.x0Try = x0Try
             #print 'objTry=',objTry, dir.diff.sum()
@@ -475,15 +500,32 @@ class SurfaceMatching(object):
         return px / self.param.sigmaError**2
     
     
-    def hamiltonianCovector(self, at, px1, KparDiff, regWeight, affine = None, fv0 = None):
+    def hamiltonianCovector(self, px1, KparDiff, regWeight, affine = None, fv0 = None, at = None):
         if fv0 is None:
             fv0 = self.fvInit
+        if at is None:
+            at = self.at
+            current_at = True
+            if self.varCounter == self.trajCounter:
+                computeTraj = False
+            else:
+                computeTraj = True
+        else:
+            current_at = False
+            computeTraj = True
         x0 = fv0.vertices
         N = x0.shape[0]
         dim = x0.shape[1]
         M = at.shape[0]
         timeStep = 1.0/M
-        xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+        if computeTraj:
+            xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+            if current_at:
+                self.trajCounter = self.varCounter
+                self.xt = xt
+        else:
+            xt = self.xt
+
         if not(affine is None):
             A0 = affine[0]
             A = np.zeros([M,dim,dim])
@@ -567,56 +609,22 @@ class SurfaceMatching(object):
         #
         foo = surfaces.Surface(surf=fv0)
         foo.updateVertices(x0)
-        (pxt, xt) = self.hamiltonianCovector(at, px1, kernel, regWeight, fv0=foo, affine=affine)
+        (pxt, xt) = self.hamiltonianCovector(px1, kernel, regWeight, fv0=foo, at = at, affine=affine)
         return self.gradientFromHamiltonian(at, xt, pxt, fv0, affine, kernel, regWeight)
 
-        #at = self.at        
-#         dat = np.zeros(at.shape)
-#         timeStep = 1.0/at.shape[0]
-#         if not (affine is None):
-#             A = affine[0]
-#             dA = np.zeros(affine[0].shape)
-#             db = np.zeros(affine[1].shape)
-#         for k in range(at.shape[0]):
-#             z = np.squeeze(xt[k,...])
-#             foo.updateVertices(z)
-#             a = np.squeeze(at[k, :, :])
-#             px = np.squeeze(pxt[k+1, :, :])
-#             #print 'testgr', (2*a-px).sum()
-#             if not self.affineOnly:
-#                 v = kernel.applyK(z,a)
-#                 if self.internalCost:
-#                     Lv = self.internalCostGrad(foo, v, variables='phi')
-#                     #Lv = -foo.laplacian(v)
-#                     dat[k, :, :] = 2*regWeight*a-px + self.internalWeight * Lv
-#                 else:
-#                     dat[k, :, :] = 2*regWeight*a-px
-#
-#             if not (affine is None):
-#                 dA[k] = gradExponential(A[k]*timeStep, px, xt[k]) #.reshape([self.dim**2, 1])/timeStep
-#                 db[k] = pxt[k+1].sum(axis=0) #.reshape([self.dim,1])
-# #        if not self.internalCost:
-# #            foo = evol.landmarkHamiltonianGradient(x0, at, px1, kernel, regWeight, affine=affine,
-# #                                                    getCovector=True)
-# #            tk = -1
-# #            print 'dat', np.fabs(dat[tk,...]-foo[0][tk,...]).sum()
-# #            print 'xt', np.fabs(xt[tk,...]-foo[-2][tk,...]).sum()
-# #            print 'pxt', np.fabs(pxt[tk,...]-foo[-1][tk,...]).sum()
-#
-#         if affine is None:
-#             return dat, xt, pxt
-#         else:
-#             return dat, dA, db, xt, pxt
 
     def getGradient(self, coeff=1.0, update=None):
         if update is None:
-            at = self.at
+            at = None
+            Afft = self.Afft
             endPoint = self.fvDef
             A = self.affB.getTransforms(self.Afft)
+            xt = self.xt
         else:
             at = self.at - update[1] * update[0].diff
+            Afft = self.Afft - update[1]*update[0].aff
             if len(update[0].aff) > 0:
-                A = self.affB.getTransforms(self.Afft - update[1]*update[0].aff)
+                A = self.affB.getTransforms(Afft)
             else:
                 A = None
             xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
@@ -638,7 +646,7 @@ class SurfaceMatching(object):
         if self.euclideanGradient:
             grd.diff = np.zeros(foo[0].shape)
             for t in range(self.Tsize):
-                z = self.xt[t, :, :]
+                z = xt[t, :, :]
                 grd.diff[t,:,:] = self.param.KparDiff.applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
         else:
             grd.diff = foo[0]/(coeff*self.Tsize)
@@ -646,7 +654,7 @@ class SurfaceMatching(object):
         if self.affineDim > 0:
             dA = foo[1]
             db = foo[2]
-            grd.aff = 2*self.affineWeight.reshape([1, self.affineDim])*self.Afft
+            grd.aff = 2*self.affineWeight.reshape([1, self.affineDim])*Afft
             #grd.aff = 2 * self.Afft
             for t in range(self.Tsize):
                dAff = np.dot(self.affineBasis.T, np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])]))
@@ -747,6 +755,9 @@ class SurfaceMatching(object):
         self.obj = self.objTry
         self.at = np.copy(self.atTry)
         self.Afft = np.copy(self.AfftTry)
+        self.xt = np.copy(self.xtTry)
+        self.varCounter += 1
+        self.trajCounter = self.varCounter
         if self.symmetric:
             self.x0 = np.copy(self.x0Try)
         #print self.at
@@ -790,8 +801,8 @@ class SurfaceMatching(object):
             displ += dt * (vt * nu).sum(axis=1)
         self.saveCorrectedTarget(X[0], X[1])
 
-    def saveEvolution(self, fv0, xt, Jacobian=None, fileName='evolution', velocity = None, orientation= None,
-                      with_area_displacement=False):
+    def saveEvolution(self, fv0, xt, Jacobian=None, passenger = None, fileName='evolution', velocity = None,
+                      orientation= None, with_area_displacement=False):
         if velocity is None:
             velocity = self.v
         if orientation is None:
@@ -836,6 +847,13 @@ class SurfaceMatching(object):
                 area_displ[kk, :] = area_displ[kk - 1, :] + dt * ((AV + 1) * (v * nu).sum(axis=1))[np.newaxis, :]
             fvDef.saveVTK2(self.outputDir + '/' + fn[kk] + '.vtk', vf)
             displ += dt * (v * nu).sum(axis=1)
+            if passenger is not None and passenger[0] is not None:
+                if isinstance(passenger[0], surfaces.Surface):
+                    fvp = surfaces.Surface(surf=passenger[0])
+                    fvp.updateVertices(passenger[1][kk,...])
+                    fvp.saveVTK(self.outputDir+'/'+fn[kk]+'_passenger.vtk')
+                else:
+                    pointSets.savePoints(self.outputDir+'/'+fn[kk]+'_passenger.vtk', passenger[1][kk,...])
 
     def saveEPDiff(self, fv0, at, fileName='evolution'):
         xtEPDiff, atEPdiff = evol.landmarkEPDiff(at.shape[0], fv0.vertices,
@@ -859,16 +877,35 @@ class SurfaceMatching(object):
         ax.set_zlim(min(lim0[2][0], lim1[2][0]), max(lim0[2][1], lim1[2][1]))
         fig.canvas.flush_events()
 
-    def endOfIteration(self):
+    def endOfIteration(self, forceSave=False):
         self.iter += 1
         if self.testGradient:
             self.testEndpointGradient()
         if self.iter >= self.affBurnIn:
             self.coeffAff = self.coeffAff2
 
-        if self.iter % self.saveRate == 0:
+        dim2 = self.dim ** 2
+        A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+        if self.affineDim > 0:
+            for t in range(self.Tsize):
+                AB = np.dot(self.affineBasis, self.Afft[t])
+                A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
+                A[1][t] = AB[dim2:dim2 + self.dim]
+        if forceSave or self.iter % self.saveRate == 0:
             logging.info('Saving surfaces...')
-            (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
+            if self.passenger_points is None:
+                self.xt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
+                                                             withJacobian=True)
+                yt = None
+            else:
+                self.xt, yt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
+                                                             withPointSet=self.passenger_points, withJacobian=True)
+                if isinstance(self.passenger, surfaces.Surface):
+                    self.passengerDef.updateVertices(yt[-1,...])
+                else:
+                    deepcopy(yt[-1,...], self.passengerDef)
+            self.trajCounter = self.varCounter
+
             if self.saveEPDiffTrajectories and not self.internalCost and self.affineDim <= 0:
                 xtEPDiff, atEPdiff = self.saveEPDiff(self.fvInit, self.at, fileName=self.saveFile)
                 logging.info('EPDiff difference %f' % (np.fabs(self.xt[-1, :, :] - xtEPDiff[-1, :, :]).sum()))
@@ -876,23 +913,18 @@ class SurfaceMatching(object):
             if self.saveTrajectories:
                 pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curves.vtk', self.xt)
 
+
             self.updateEndPoint(self.xt)
             self.fvInit.updateVertices(self.x0)
-            dim2 = self.dim ** 2
-            A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-            if self.affineDim > 0:
-                for t in range(self.Tsize):
-                    AB = np.dot(self.affineBasis, self.Afft[t])
-                    A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-                    A[1][t] = AB[dim2:dim2 + self.dim]
-            (xt, Jt) = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
-                                                         withJacobian=True)
+
             if self.affine == 'euclidean' or self.affine == 'translation':
-                self.saveCorrectedEvolution(self.fvInit, xt, self.at, self.Afft, fileName=self.saveFileList,
+                self.saveCorrectedEvolution(self.fvInit, self.xt, self.at, self.Afft, fileName=self.saveFileList,
                                             Jacobian=Jt)
-            self.saveEvolution(self.fvInit, xt, Jacobian=Jt, fileName=self.saveFileList)
+            self.saveEvolution(self.fvInit, self.xt, Jacobian=Jt, fileName=self.saveFileList, passenger = (self.passenger, yt))
         else:
-            (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
+            if self.varCounter != self.trajCounter:
+                self.xt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A)
+                self.trajCounter = self.varCounter
             self.updateEndPoint(self.xt)
             self.fvInit.updateVertices(self.x0)
 
@@ -938,7 +970,7 @@ class SurfaceMatching(object):
 
 
     def endOfProcedure(self):
-        self.endOfIteration()
+        self.endOfIteration(forceSave=True)
 
     def optimizeMatching(self):
         #print 'dataterm', self.dataTerm(self.fvDef)

@@ -1,24 +1,63 @@
 import numpy as np
 
-def read3DVector(filename):
+
+class PointSet:
+    def __init__(self, data=None, weights = None):
+        if type(data) is str:
+            self.read(data)
+        elif issubclass(type(data), PointSet):
+            self.points = np.copy(data.points)
+            if weights is None:
+                self.weights = np.copy(data.weights)
+            else:
+                self.weights = weights
+        elif isinstance(data, np.ndarray):
+            self.points = data.copy()
+            if weights is None:
+                self.weights = np.ones(data.shape[0])
+            else:
+                self.weights = weights
+        else:
+            self.points = np.empty(0)
+            self.weights = np.empty(0)
+
+    def addToPlot(self, ax, ec = 'b', fc = 'r', al=.5, lw=1):
+        x = self.points[:, 0]
+        y = self.points[:, 1]
+        z = self.points[:, 2]
+        ax.scatter(x,y,z, alpha=al)
+        xlim = [x.min(),x.max()]
+        ylim = [y.min(),y.max()]
+        zlim = [z.min(),z.max()]
+        return [xlim, ylim, zlim]
+
+    def read(self, filename):
+        self.points, self.weights = readVector(filename)
+    def saveVTK(self, filename):
+        self.save(filename)
+    def save(self, filename):
+        savePoints(filename, self.points, scalars=self.weights)
+
+def readVector(filename):
     try:
         with open(filename, 'r') as fn:
-            ln0 = fn.readline()
+            ln0 = fn.readline().split()
             N = int(ln0[0])
+            dim = int(ln0[1])
             #print 'reading ', filename, ':', N, ' landmarks'
-            v = np.zeros([N, 3])
+            v = np.zeros([N, dim])
+            w = np.zeros([N,1])
 
             for i in range(N):
-                ln = fn.readline()
                 ln0 = fn.readline().split()
                 #print ln0
                 for k in range(3):
                     v[i,k] = float(ln0[k])
-                
+                w[i] = ln0[3]
     except IOError:
         print('cannot open ', filename)
         raise
-    return v
+    return v,w
 
 
 
@@ -71,7 +110,8 @@ def loadlmk(filename, dim=3):
                 centers = nextToLastLine.rstrip('\r\n').split(',')
                 scales = lastLine.rstrip('\r\n').split(',')
                 if len(scales) == dim and len(centers) == dim:
-                    if scales[0].isdigit and scales[1].isdigit and scales[2].isdigit and centers[0].isdigit and centers[1].isdigit and centers[2].isdigit:
+                    if scales[0].isdigit and scales[1].isdigit and scales[2].isdigit and centers[0].isdigit \
+                            and centers[1].isdigit and centers[2].isdigit:
                         x[:, 0] = x[:, 0] * float(scales[0]) + float(centers[0])
                         x[:, 1] = x[:, 1] * float(scales[1]) + float(centers[1])
                         x[:, 2] = x[:, 2] * float(scales[2]) + float(centers[2])
@@ -132,7 +172,7 @@ def saveTrajectories(fileName, xt):
         fvtkout.write('# vtk DataFile Version 3.0\ncurves \nASCII\nDATASET POLYDATA\n')
         fvtkout.write('\nPOINTS {0: d} float'.format(xt.shape[0]*xt.shape[1]))
         if xt.shape[2] == 2:
-            xt = np.concatenate(xt, np.zeros([xt.shape[0],xt.shape[1], 1]))
+            xt = np.concatenate((xt, np.zeros([xt.shape[0],xt.shape[1], 1])))
         for t in range(xt.shape[0]):
             for ll in range(xt.shape[1]):
                 fvtkout.write('\n{0: f} {1: f} {2: f}'.format(xt[t,ll,0], xt[t,ll,1], xt[t,ll,2]))

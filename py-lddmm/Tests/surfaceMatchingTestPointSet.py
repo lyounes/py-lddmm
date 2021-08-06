@@ -3,16 +3,20 @@ sys_path.append('..')
 sys_path.append('../base')
 import os
 import matplotlib
-if 'DISPLAY' in os.environ:
+if os.name == 'posix' or 'DISPLAY' in os.environ:
+    use_display = True
     matplotlib.use('qt5Agg')
 else:
+    use_display = False
     matplotlib.use("Agg")
     print(os.environ)
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.spatial.distance import pdist, squareform
 from base import surfaces, surfaceExamples
 from base import loggingUtils
 from base.surfaces import Surface
+from base.pointSets import PointSet
 from base.kernelFunctions import Kernel
 from base.affineRegistration import rigidRegistration
 from base.surfaceMatching import SurfaceMatching, SurfaceMatchingParam
@@ -52,7 +56,9 @@ def compute(model):
 
         ftemp = fv1
         ftarg = fv2
-        internalCost = None
+        internalCost = 'h1'
+        sigmaDist = 10.
+        sigmaKernel = 5.
     elif model=='Hearts':
         [x,y,z] = np.mgrid[0:200, 0:200, 0:200]/100.
         ay = np.fabs(y-1)
@@ -139,15 +145,21 @@ def compute(model):
                               sigmaError=sigmaError, errorType='measure', internalCost=internalCost)
     sm.KparDiff.pk_dtype = 'float64'
     sm.KparDist.pk_dtype = 'float64'
-    f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTest/'+model,param=sm,
+    d = squareform(pdist(ftarg.centers))
+    eps = d[:,5].mean() + 1e-10
+    a1 = np.pi * eps**2 / (d < eps).sum(axis=1)
+    #a1 = np.sqrt((ftarg.surfel ** 2).sum(axis=1) + 1e-10)
+    ftarg = PointSet(data=ftarg.centers, weights=a1)
+    f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTestPS/'+model,param=sm,
                         testGradient=True, regWeight = regweight,
                         #subsampleTargetSize = 500,
                         internalWeight=internalWeight, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01,
                         scaleWeight=10., affineWeight=100.)
 
     f.optimizeMatching()
-    plt.ioff()
-    plt.show()
+    if use_display:
+        plt.ioff()
+        plt.show()
 
     return f
 
