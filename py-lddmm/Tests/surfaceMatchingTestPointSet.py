@@ -32,7 +32,7 @@ def compute(model):
     sigmaDist = 5.
     sigmaError = 1.
     internalWeight = 200.
-    regweight = 0.1
+    regweight = 1.
     internalCost = 'h1'
     if model=='Balls':
         M=100
@@ -57,8 +57,9 @@ def compute(model):
         ftemp = fv1
         ftarg = fv2
         internalCost = 'h1'
+        internalWeight = 200
         sigmaDist = 10.
-        sigmaKernel = 5.
+        sigmaKernel = 10.
     elif model=='Hearts':
         [x,y,z] = np.mgrid[0:200, 0:200, 0:200]/100.
         ay = np.fabs(y-1)

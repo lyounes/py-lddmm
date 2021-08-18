@@ -1,10 +1,14 @@
 import numpy as np
+from os.path import splitext
+from vtk import vtkOBJReader
+from scipy.spatial.distance import squareform, pdist
+from numpy.random import default_rng
 
 
 class PointSet:
-    def __init__(self, data=None, weights = None):
+    def __init__(self, data=None, weights = None, maxPoints=None):
         if type(data) is str:
-            self.read(data)
+            self.read(data, maxPoints=maxPoints)
         elif issubclass(type(data), PointSet):
             self.points = np.copy(data.points)
             if weights is None:
@@ -31,8 +35,40 @@ class PointSet:
         zlim = [z.min(),z.max()]
         return [xlim, ylim, zlim]
 
-    def read(self, filename):
-        self.points, self.weights = readVector(filename)
+    def set_weights(self, knn=5):
+        d = squareform(pdist(self.points))
+        d = np.sort(d, axis=1)
+        eps = d[:, knn].mean() + 1e-10
+        self.weights = np.pi * eps ** 2 / (d < eps).sum(axis=1)
+
+
+    def read(self, filename, maxPoints=None):
+        head, tail = splitext(filename)
+        if tail in ('.obj', '.OBJ'):
+            self.readOBJ(filename, maxPoints=maxPoints)
+        else:
+            self.points, self.weights = readVector(filename)
+
+    def readOBJ(self, fileName, maxPoints=None):
+        u = vtkOBJReader()
+        u.SetFileName(fileName)
+        u.Update()
+        v = u.GetOutput()
+        # print v
+        npoints = int(v.GetNumberOfPoints())
+        V = np.zeros([npoints, 3])
+        for kk in range(npoints):
+            V[kk, :] = np.array(v.GetPoint(kk))
+
+        if maxPoints is not None and maxPoints < npoints:
+            rng = default_rng()
+            select = rng.choice(npoints, maxPoints, replace=False)
+            V = V[select, :]
+
+        self.points = V
+        self.set_weights(5)
+
+
     def saveVTK(self, filename):
         self.save(filename)
     def save(self, filename):

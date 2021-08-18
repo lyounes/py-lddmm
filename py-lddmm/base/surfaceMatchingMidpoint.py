@@ -6,6 +6,7 @@ import h5py
 import glob
 from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, bfgs
 from . import surfaces
+from . import surface_distances
 from . import pointSets
 from .surfaceMatching import SurfaceMatchingParam, SurfaceMatching
 from .affineBasis import AffineBasis, getExponential, gradExponential
@@ -57,7 +58,7 @@ class SurfaceMatchingMidpoint(SurfaceMatching):
             self.euclideanGradient = True
 
         self.setOutputDir(outputDir)
-        self.set_fun(self.param.errorType)
+        self.set_fun(self.param.errorType,vfun=self.param.vfun)
 
         self.set_template_and_target(Template, Target)
 
@@ -101,19 +102,19 @@ class SurfaceMatchingMidpoint(SurfaceMatching):
         self.v1 = np.zeros([self.Tsize+1, self.npt1, self.dim])
 
 
-    def set_fun(self, errorType):
+    def set_fun(self, errorType, vfun=None):
         self.param.errorType = errorType
         if errorType == 'current':
             #print('Running Current Matching')
-            self.fun_obj = partial(surfaces.currentNorm, KparDist=self.param.KparDist, weight=1.)
-            self.fun_objGrad = partial(surfaces.currentNormGradient, KparDist=self.param.KparDist, weight=1.)
+            self.fun_obj = partial(surface_distances.currentNorm, KparDist=self.param.KparDist, weight=1.)
+            self.fun_objGrad = partial(surface_distances.currentNormGradient, KparDist=self.param.KparDist, weight=1.)
         elif errorType=='measure':
             #print('Running Measure Matching')
-            self.fun_obj = partial(surfaces.measureNorm,KparDist=self.param.KparDist)
-            self.fun_objGrad = partial(surfaces.measureNormGradient,KparDist=self.param.KparDist)
+            self.fun_obj = partial(surface_distances.measureNorm,KparDist=self.param.KparDist)
+            self.fun_objGrad = partial(surface_distances.measureNormGradient,KparDist=self.param.KparDist)
         elif errorType=='varifold':
-            self.fun_obj = partial(surfaces.varifoldNorm, KparDist=self.param.KparDist, weight=1.)
-            self.fun_objGrad = partial(surfaces.varifoldNormGradient, KparDist=self.param.KparDist, weight=1.)
+            self.fun_obj = partial(surface_distances.varifoldNorm, KparDist=self.param.KparDist, fun=vfun)
+            self.fun_objGrad = partial(surface_distances.varifoldNormGradient, KparDist=self.param.KparDist, fun=vfun)
         else:
             print('Unknown error Type: ', self.param.errorType)
 
