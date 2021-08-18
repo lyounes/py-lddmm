@@ -1,6 +1,11 @@
 import numpy as np
 import scipy.linalg as linalg
 
+def randomRotation(dim):
+    A = np.random.normal(0,1, (dim, dim))
+    A = A - A.T
+    return linalg.expm(A)
+
 def rigidRegistrationLmk(x, y):
     N = x.shape[0]
     mx = x.sum(axis=0)/N
@@ -80,6 +85,8 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
     if (surfaces is None):
         surf = False
         norm = False
+        norm0 = 0
+        norm1 = 0
         Nsurf = 0
         Msurf = 0
         if landmarks is None:
@@ -111,23 +118,29 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
             Y0 = np.concatenate((Y0, landmarks[0]))
         if normals is None:
             norm = False
+            norm0 = 0
+            norm1 = 0
         else:
             norm = True
             norm0 = normals[0]
             norm1 = normals[1]
 
-    norm = False
+    #norm = False
     if lmk:
         if len(landmarks)==3:
             lmkWeight = landmarks[2]
         else:
             lmkWeight = 1.0
+    else:
+        lmkWeight=0
 
     if norm:
         if len(normals) == 3:
             normWeight = normals[2]
         else:
             normWeight = 1
+    else:
+        normWeight=0
 
     rotWeight *= X0.shape[0]
             
@@ -146,12 +159,13 @@ def rigidRegistration(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotat
     if surf:
         # Alternate minimization for surfaces with or without landmarks
         R = np.eye(dimn)
-        T= np.zeros([1, dimn])
+        T = np.zeros((1, dimn)) #np.random.normal(0,1, size=[1, dimn])
         RX = np.dot(X0,  R.T) + T
         d = (RX**2).sum(axis=1).reshape([N,1]) - 2 * np.dot(RX, Y1.T) + (Y1**2).sum(axis=1).reshape([1,M])
         if norm:
             Rn = np.dot(norm0, R.T)
-            d[0:Nsurf, 0:Msurf] += normWeight*((Rn**2).sum(axis=1).reshape([Nsurf,1]) - 2 * np.dot(Rn, norm1.T) + (norm1**2).sum(axis=1).reshape([1,Msurf]))
+            d[0:Nsurf, 0:Msurf] += normWeight*((Rn**2).sum(axis=1).reshape([Nsurf,1]) - 2 * np.dot(Rn, norm1.T) +
+                                               (norm1**2).sum(axis=1).reshape([1,Msurf]))
         dSurf = d[0:Nsurf, 0:Msurf]
         Rold = np.copy(R)
         Told = np.copy(T)

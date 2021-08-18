@@ -24,10 +24,10 @@ from mpl_toolkits.mplot3d import Axes3D
 #      typeKernel: 'gauss' or 'laplacian'
 class SurfaceMatchingParam(matchingParam.MatchingParam):
     def __init__(self, timeStep = .1, algorithm='cg', Wolfe=True, KparDiff = None, KparDist = None,
-                 sigmaError = 1.0, errorType = 'measure', internalCost = None):
+                 sigmaError = 1.0, errorType = 'measure', vfun = None, internalCost = None):
         super().__init__(timeStep=timeStep, algorithm = algorithm, Wolfe=Wolfe,
                          KparDiff = KparDiff, KparDist = KparDist, sigmaError=sigmaError,
-                         errorType = errorType)
+                         errorType = errorType, vfun=vfun)
         self.sigmaError = sigmaError
         self.internalCost = internalCost
 
@@ -81,9 +81,11 @@ class SurfaceMatching(object):
         self.coeffAff = 1
         self.obj = 0
         self.xt = None
+        if Target is not None and issubclass(type(Target), pointSets.PointSet):
+            self.param.errorType = 'PointSet'
 
         self.setOutputDir(outputDir)
-        self.set_fun(self.param.errorType)
+        self.set_fun(self.param.errorType, vfun=self.param.vfun)
 
         self.set_template_and_target(Template, Target, subsampleTargetSize)
 
@@ -184,6 +186,8 @@ class SurfaceMatching(object):
                 if self.param.errorType == 'L2Norm':
                     self.fv1 = surfaces.Surface()
                     self.fv1.readFromImage(Target)
+                elif self.param.errorType == 'PointSet':
+                    self.fv1 = pointSets.PointSet(data=Target)
                 else:
                     self.fv1 = surfaces.Surface(surf=Target)
         else:
@@ -202,7 +206,7 @@ class SurfaceMatching(object):
     def fix_orientation(self, fv1=None):
         if fv1 is None:
             fv1 = self.fv1
-        if fv1:
+        if issubclass(type(fv1), surfaces.Surface):
             self.fv0.getEdges()
             fv1.getEdges()
             self.closed = self.fv0.bdry.max() == 0 and fv1.bdry.max() == 0
@@ -274,7 +278,7 @@ class SurfaceMatching(object):
         ax.set_zlim(min(lim0[2][0], lim1[2][0]), max(lim0[2][1], lim1[2][1]))
         fig.canvas.flush_events()
 
-    def set_fun(self, errorType):
+    def set_fun(self, errorType, vfun = None):
         self.param.errorType = errorType
         if errorType == 'current':
             #print('Running Current Matching')
@@ -295,13 +299,17 @@ class SurfaceMatching(object):
             self.fun_obj = partial(sd.measureNormDef,KparDist=self.param.KparDist)
             self.fun_objGrad = partial(sd.measureNormGradient,KparDist=self.param.KparDist)
         elif errorType=='varifold':
-            self.fun_obj0 = partial(sd.varifoldNorm0, KparDist=self.param.KparDist, weight=1.)
-            self.fun_obj = partial(sd.varifoldNormDef, KparDist=self.param.KparDist, weight=1.)
-            self.fun_objGrad = partial(sd.varifoldNormGradient, KparDist=self.param.KparDist, weight=1.)
+            self.fun_obj0 = partial(sd.varifoldNorm0, KparDist=self.param.KparDist, fun=vfun)
+            self.fun_obj = partial(sd.varifoldNormDef, KparDist=self.param.KparDist, fun=vfun)
+            self.fun_objGrad = partial(sd.varifoldNormGradient, KparDist=self.param.KparDist, fun=vfun)
         elif errorType == 'L2Norm':
             self.fun_obj0 = None
             self.fun_obj = None
             self.fun_objGrad = None
+        elif errorType == 'PointSet':
+            self.fun_obj0 = partial(sd.measureNormPS0, KparDist=self.param.KparDist)
+            self.fun_obj = partial(sd.measureNormPSDef, KparDist=self.param.KparDist)
+            self.fun_objGrad = partial(sd.measureNormPSGradient, KparDist=self.param.KparDist)
         else:
             print('Unknown error Type: ', self.param.errorType)
 
@@ -604,53 +612,19 @@ class SurfaceMatching(object):
         (pxt, xt) = self.hamiltonianCovector(px1, kernel, regWeight, fv0=foo, at = at, affine=affine)
         return self.gradientFromHamiltonian(at, xt, pxt, fv0, affine, kernel, regWeight)
 
-        #at = self.at        
-#         dat = np.zeros(at.shape)
-#         timeStep = 1.0/at.shape[0]
-#         if not (affine is None):
-#             A = affine[0]
-#             dA = np.zeros(affine[0].shape)
-#             db = np.zeros(affine[1].shape)
-#         for k in range(at.shape[0]):
-#             z = np.squeeze(xt[k,...])
-#             foo.updateVertices(z)
-#             a = np.squeeze(at[k, :, :])
-#             px = np.squeeze(pxt[k+1, :, :])
-#             #print 'testgr', (2*a-px).sum()
-#             if not self.affineOnly:
-#                 v = kernel.applyK(z,a)
-#                 if self.internalCost:
-#                     Lv = self.internalCostGrad(foo, v, variables='phi')
-#                     #Lv = -foo.laplacian(v)
-#                     dat[k, :, :] = 2*regWeight*a-px + self.internalWeight * Lv
-#                 else:
-#                     dat[k, :, :] = 2*regWeight*a-px
-#
-#             if not (affine is None):
-#                 dA[k] = gradExponential(A[k]*timeStep, px, xt[k]) #.reshape([self.dim**2, 1])/timeStep
-#                 db[k] = pxt[k+1].sum(axis=0) #.reshape([self.dim,1])
-# #        if not self.internalCost:
-# #            foo = evol.landmarkHamiltonianGradient(x0, at, px1, kernel, regWeight, affine=affine,
-# #                                                    getCovector=True)
-# #            tk = -1
-# #            print 'dat', np.fabs(dat[tk,...]-foo[0][tk,...]).sum()
-# #            print 'xt', np.fabs(xt[tk,...]-foo[-2][tk,...]).sum()
-# #            print 'pxt', np.fabs(pxt[tk,...]-foo[-1][tk,...]).sum()
-#
-#         if affine is None:
-#             return dat, xt, pxt
-#         else:
-#             return dat, dA, db, xt, pxt
 
     def getGradient(self, coeff=1.0, update=None):
         if update is None:
             at = None
+            Afft = self.Afft
             endPoint = self.fvDef
             A = self.affB.getTransforms(self.Afft)
+            xt = self.xt
         else:
             at = self.at - update[1] * update[0].diff
+            Afft = self.Afft - update[1]*update[0].aff
             if len(update[0].aff) > 0:
-                A = self.affB.getTransforms(self.Afft - update[1]*update[0].aff)
+                A = self.affB.getTransforms(Afft)
             else:
                 A = None
             xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
@@ -672,7 +646,7 @@ class SurfaceMatching(object):
         if self.euclideanGradient:
             grd.diff = np.zeros(foo[0].shape)
             for t in range(self.Tsize):
-                z = self.xt[t, :, :]
+                z = xt[t, :, :]
                 grd.diff[t,:,:] = self.param.KparDiff.applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
         else:
             grd.diff = foo[0]/(coeff*self.Tsize)
@@ -680,7 +654,7 @@ class SurfaceMatching(object):
         if self.affineDim > 0:
             dA = foo[1]
             db = foo[2]
-            grd.aff = 2*self.affineWeight.reshape([1, self.affineDim])*self.Afft
+            grd.aff = 2*self.affineWeight.reshape([1, self.affineDim])*Afft
             #grd.aff = 2 * self.Afft
             for t in range(self.Tsize):
                dAff = np.dot(self.affineBasis.T, np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])]))
@@ -873,7 +847,7 @@ class SurfaceMatching(object):
                 area_displ[kk, :] = area_displ[kk - 1, :] + dt * ((AV + 1) * (v * nu).sum(axis=1))[np.newaxis, :]
             fvDef.saveVTK2(self.outputDir + '/' + fn[kk] + '.vtk', vf)
             displ += dt * (v * nu).sum(axis=1)
-            if passenger is not None:
+            if passenger is not None and passenger[0] is not None:
                 if isinstance(passenger[0], surfaces.Surface):
                     fvp = surfaces.Surface(surf=passenger[0])
                     fvp.updateVertices(passenger[1][kk,...])
@@ -922,6 +896,7 @@ class SurfaceMatching(object):
             if self.passenger_points is None:
                 self.xt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
                                                              withJacobian=True)
+                yt = None
             else:
                 self.xt, yt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
                                                              withPointSet=self.passenger_points, withJacobian=True)

@@ -130,6 +130,70 @@ def currentNormGradient(fvDef, fv1, KparDist, weight=1., with_weights=False):
         return px
 
 
+
+# Measure norm of fv1
+def measureNormPS0(fv1, KparDist):
+    c2 = fv1.points
+    cr2 = fv1.weights[:, None]
+    return (cr2*KparDist.applyK(c2, cr2)).sum()
+
+
+# Computes |fvDef|^2 - 2 fvDef * fv1 with measure dot produuct
+def measureNormPSDef(fvDef, fv1, KparDist):
+    c1 = fvDef.centers
+    cr1 = np.sqrt((fvDef.surfel ** 2).sum(axis=1) + 1e-10)[:, None] * fvDef.face_weights[:, None]
+    c2 = fv1.points
+    cr2 = fv1.weights[:, None]
+    obj = ((cr1 * KparDist.applyK(c1, cr1)).sum()
+           - 2 * (cr1 * KparDist.applyK(c2, cr2, firstVar=c1)).sum())
+    return obj
+
+
+def measureNormPS(fvDef, fv1, KparDist):
+    return measureNormPSDef(fvDef, fv1, KparDist) + measureNormPS0(fv1, KparDist)
+
+
+# Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (measure norm)
+def measureNormPSGradient(fvDef, fv1, KparDist):
+    xDef = fvDef.vertices
+    c1 = fvDef.centers
+    c2 = fv1.points
+    dim = c1.shape[1]
+    a1 = np.sqrt((fvDef.surfel ** 2).sum(axis=1) + 1e-10)
+    a2 = fv1.weights
+    cr1 = fvDef.surfel / a1[:, np.newaxis]
+    # cr2 = fv1.surfel / a2[:, np.newaxis]
+
+    z1 = KparDist.applyK(c1, a1[:, np.newaxis]) - KparDist.applyK(c2, a2[:, np.newaxis], firstVar=c1)
+    z1 = z1 * cr1
+    # print a1.shape, c1.shape
+    dz1 = (2. / 3.) * (KparDist.applyDiffKT(c1, a1[:, np.newaxis], a1[:, np.newaxis]) -
+                       KparDist.applyDiffKT(c2, a1[:, np.newaxis], a2[:, np.newaxis], firstVar=c1))
+
+    xDef1 = xDef[fvDef.faces[:, 0], :]
+    xDef2 = xDef[fvDef.faces[:, 1], :]
+    xDef3 = xDef[fvDef.faces[:, 2], :]
+
+    px = np.zeros([xDef.shape[0], dim])
+    I = fvDef.faces[:, 0]
+    crs = np.cross(xDef3 - xDef2, z1)
+    for k in range(I.size):
+        px[I[k], :] = px[I[k], :] + dz1[k, :] - crs[k, :]
+
+    I = fvDef.faces[:, 1]
+    crs = np.cross(xDef1 - xDef3, z1)
+    for k in range(I.size):
+        px[I[k], :] = px[I[k], :] + dz1[k, :] - crs[k, :]
+
+    I = fvDef.faces[:, 2]
+    crs = np.cross(xDef2 - xDef1, z1)
+    for k in range(I.size):
+        px[I[k], :] = px[I[k], :] + dz1[k, :] - crs[k, :]
+    return px
+
+
+
+
 # Measure norm of fv1
 def measureNorm0(fv1, KparDist):
     c2 = fv1.centers
@@ -140,15 +204,14 @@ def measureNorm0(fv1, KparDist):
 # Computes |fvDef|^2 - 2 fvDef * fv1 with measure dot produuct
 def measureNormDef(fvDef, fv1, KparDist):
     c1 = fvDef.centers
-    cr1 = np.sqrt((fvDef.surfel ** 2).sum(axis=1) + 1e-10)[:, np.newaxis] * fvDef.face_weights[:, None]
+    cr1 = np.sqrt((fvDef.surfel ** 2).sum(axis=1) + 1e-10)[:, None] * fvDef.face_weights[:, None]
     c2 = fv1.centers
-    cr2 = np.sqrt((fv1.surfel ** 2).sum(axis=1) + 1e-10)[:, np.newaxis] * fv1.face_weights[:, None]
-    obj = (np.multiply(cr1, KparDist.applyK(c1, cr1)).sum()
-           - 2 * np.multiply(cr1, KparDist.applyK(c2, cr2, firstVar=c1)).sum())
+    cr2 = np.sqrt((fv1.surfel ** 2).sum(axis=1) + 1e-10)[:, None] * fv1.face_weights[:, None]
+    obj = ((cr1 * KparDist.applyK(c1, cr1)).sum()
+           - 2 * (cr1 * KparDist.applyK(c2, cr2, firstVar=c1)).sum())
     return obj
 
 
-# Returns |fvDef - fv1|^2 for measure norm
 def measureNorm(fvDef, fv1, KparDist):
     return measureNormDef(fvDef, fv1, KparDist) + measureNorm0(fv1, KparDist)
 
@@ -205,23 +268,31 @@ def measureNormGradient(fvDef, fv1, KparDist, with_weights=False):
     else:
         return px
 
+def f0_(u):
+    return 1 + u**2
 
-def varifoldNorm0(fv1, KparDist, weight=1.):
-    d = weight
+def df0_(u):
+    return 2*u
+
+def varifoldNorm0(fv1, KparDist, fun = None):
+    if fun is None:
+        fun = (f0_, df0_)
     c2 = fv1.centers
     a2 = np.sqrt((fv1.surfel ** 2).sum(axis=1) + 1e-10)
     cr2 = fv1.surfel / a2[:, np.newaxis]
     a2 *= fv1.face_weights
+    f0 = fun[0]
 
     cr2cr2 = (cr2[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
     a2a2 = a2[:, np.newaxis] * a2[np.newaxis, :]
-    beta2 = (1 + d * cr2cr2 ** 2) * a2a2
+    beta2 = f0(cr2cr2) * a2a2
     return KparDist.applyK(c2, beta2[..., np.newaxis], matrixWeights=True).sum()
 
 
 # Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct
-def varifoldNormDef(fvDef, fv1, KparDist, weight=1.):
-    d = weight
+def varifoldNormDef(fvDef, fv1, KparDist, fun = None):
+    if fun is None:
+        fun = (f0_, df0_)
     c1 = fvDef.centers
     c2 = fv1.centers
     a1 = np.sqrt((fvDef.surfel ** 2).sum(axis=1) + 1e-10)
@@ -230,14 +301,15 @@ def varifoldNormDef(fvDef, fv1, KparDist, weight=1.):
     cr2 = fv1.surfel / a2[:, np.newaxis]
     a1 *= fvDef.face_weights
     a2 *= fv1.face_weights
+    f0 = fun[0]
 
     cr1cr1 = (cr1[:, np.newaxis, :] * cr1[np.newaxis, :, :]).sum(axis=2)
     a1a1 = a1[:, np.newaxis] * a1[np.newaxis, :]
     cr1cr2 = (cr1[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
     a1a2 = a1[:, np.newaxis] * a2[np.newaxis, :]
 
-    beta1 = (1 + d * cr1cr1 ** 2) * a1a1
-    beta2 = (1 + d * cr1cr2 ** 2) * a1a2
+    beta1 = f0(cr1cr1) * a1a1
+    beta2 = f0(cr1cr2) * a1a2
 
     obj = (KparDist.applyK(c1, beta1[..., np.newaxis], matrixWeights=True).sum()
            - 2 * KparDist.applyK(c2, beta2[..., np.newaxis], firstVar=c1, matrixWeights=True).sum())
@@ -245,13 +317,16 @@ def varifoldNormDef(fvDef, fv1, KparDist, weight=1.):
 
 
 # Returns |fvDef - fv1|^2 for current norm
-def varifoldNorm(fvDef, fv1, KparDist, weight=1.):
-    return varifoldNormDef(fvDef, fv1, KparDist, weight=weight) + varifoldNorm0(fv1, KparDist, weight=weight)
+def varifoldNorm(fvDef, fv1, KparDist, fun=None):
+    if fun is None:
+        fun = (f0_, df0_)
+    return varifoldNormDef(fvDef, fv1, KparDist, fun=fun) + varifoldNorm0(fv1, KparDist, fun=fun)
 
 
 # Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (current norm)
-def varifoldNormGradient(fvDef, fv1, KparDist, weight=1., with_weights=False):
-    d = weight
+def varifoldNormGradient(fvDef, fv1, KparDist, with_weights=False, fun=None):
+    if fun is None:
+        fun = (f0_, df0_)
     xDef = fvDef.vertices
     c1 = fvDef.centers
     c2 = fv1.centers
@@ -263,19 +338,25 @@ def varifoldNormGradient(fvDef, fv1, KparDist, weight=1., with_weights=False):
     cr2 = fv1.surfel / a2[:, np.newaxis]
     a1w = a1 * fvDef.face_weights
     a2w = a2 * fv1.face_weights
+    f0 = fun[0]
+    df0 = fun[1]
 
     cr1cr1 = (cr1[:, np.newaxis, :] * cr1[np.newaxis, :, :]).sum(axis=2)
     cr1cr2 = (cr1[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
 
-    beta1 = a1w[:, np.newaxis] * a1w[np.newaxis, :] * (1 + d * cr1cr1 ** 2)
-    beta2 = a1w[:, np.newaxis] * a2w[np.newaxis, :] * (1 + d * cr1cr2 ** 2)
+    beta1 = a1w[:, np.newaxis] * a1w[np.newaxis, :] * f0(cr1cr1)
+    beta2 = a1w[:, np.newaxis] * a2w[np.newaxis, :] * f0(cr1cr2)
 
-    u1 = (2 * d * cr1cr1[..., np.newaxis] * cr1[np.newaxis, ...]
-          - d * (cr1cr1 ** 2)[..., np.newaxis] * cr1[:, np.newaxis, :]
-          + cr1[:, np.newaxis, :]) * a1w[np.newaxis, :, np.newaxis]
-    u2 = (2 * d * cr1cr2[..., np.newaxis] * cr2[np.newaxis, ...]
-          - d * (cr1cr2 ** 2)[..., np.newaxis] * cr1[:, np.newaxis, :]
-          + cr1[:, np.newaxis, :]) * a2w[np.newaxis, :, np.newaxis]
+    u1 = (df0(cr1cr1[:,:, np.newaxis]) * (cr1[np.newaxis, :, :] - cr1cr1[:,:, None] * cr1[:, None, :])
+          + f0(cr1cr1[:,:,None]) * cr1[:,None,:]) * a1w[np.newaxis, :, np.newaxis]
+    u2 = (df0(cr1cr2[:,:, np.newaxis]) * (cr2[np.newaxis, :, :] - cr1cr2[:,:, None] * cr1[:, None, :])
+          + f0(cr1cr2[:,:,None]) * cr1[:,None,:]) * a2w[np.newaxis, :, np.newaxis]
+    # u1 = (2 * d * cr1cr1[..., np.newaxis] * cr1[np.newaxis, ...]
+    #       - d * (cr1cr1 ** 2)[..., np.newaxis] * cr1[:, np.newaxis, :]
+    #       + cr1[:, np.newaxis, :]) * a1w[np.newaxis, :, np.newaxis]
+    # u2 = (2 * d * cr1cr2[..., np.newaxis] * cr2[np.newaxis, ...]
+    #       - d * (cr1cr2 ** 2)[..., np.newaxis] * cr1[:, np.newaxis, :]
+    #       + cr1[:, np.newaxis, :]) * a2w[np.newaxis, :, np.newaxis]
 
     z1 = fvDef.face_weights[:, None] * (KparDist.applyK(c1, u1, matrixWeights=True)
                                         - KparDist.applyK(c2, u2, firstVar=c1, matrixWeights=True))
@@ -303,8 +384,8 @@ def varifoldNormGradient(fvDef, fv1, KparDist, weight=1., with_weights=False):
         px[I[k], :] = px[I[k], :] + dz1[k, :] - crs[k, :]
 
     if with_weights:
-        beta1 = (1 + d * cr1cr1 ** 2) * a1[:, np.newaxis] * a1w[np.newaxis, :]
-        beta2 = (1 + d * cr1cr2 ** 2) * a1[:, np.newaxis] * a2w[np.newaxis, :]
+        beta1 = f0(cr1cr1) * a1[:, np.newaxis] * a1w[np.newaxis, :]
+        beta2 = f0(cr1cr2) * a1[:, np.newaxis] * a2w[np.newaxis, :]
         z1w = (2 / 3) * fvDef.face_weights * (KparDist.applyK(c1, beta1[..., np.newaxis], matrixWeights=True)
                                               - KparDist.applyK(c2, beta2[..., np.newaxis], firstVar=c1,
                                                                 matrixWeights=True))
