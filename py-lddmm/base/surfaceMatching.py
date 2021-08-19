@@ -24,10 +24,10 @@ from mpl_toolkits.mplot3d import Axes3D
 #      typeKernel: 'gauss' or 'laplacian'
 class SurfaceMatchingParam(matchingParam.MatchingParam):
     def __init__(self, timeStep = .1, algorithm='cg', Wolfe=True, KparDiff = None, KparDist = None,
-                 sigmaError = 1.0, errorType = 'measure', internalCost = None):
+                 sigmaError = 1.0, errorType = 'measure', vfun = None, internalCost = None):
         super().__init__(timeStep=timeStep, algorithm = algorithm, Wolfe=Wolfe,
                          KparDiff = KparDiff, KparDist = KparDist, sigmaError=sigmaError,
-                         errorType = errorType)
+                         errorType = errorType, vfun=vfun)
         self.sigmaError = sigmaError
         self.internalCost = internalCost
 
@@ -85,7 +85,7 @@ class SurfaceMatching(object):
             self.param.errorType = 'PointSet'
 
         self.setOutputDir(outputDir)
-        self.set_fun(self.param.errorType)
+        self.set_fun(self.param.errorType, vfun=self.param.vfun)
 
         self.set_template_and_target(Template, Target, subsampleTargetSize)
 
@@ -278,7 +278,7 @@ class SurfaceMatching(object):
         ax.set_zlim(min(lim0[2][0], lim1[2][0]), max(lim0[2][1], lim1[2][1]))
         fig.canvas.flush_events()
 
-    def set_fun(self, errorType):
+    def set_fun(self, errorType, vfun = None):
         self.param.errorType = errorType
         if errorType == 'current':
             #print('Running Current Matching')
@@ -299,9 +299,9 @@ class SurfaceMatching(object):
             self.fun_obj = partial(sd.measureNormDef,KparDist=self.param.KparDist)
             self.fun_objGrad = partial(sd.measureNormGradient,KparDist=self.param.KparDist)
         elif errorType=='varifold':
-            self.fun_obj0 = partial(sd.varifoldNorm0, KparDist=self.param.KparDist, weight=1.)
-            self.fun_obj = partial(sd.varifoldNormDef, KparDist=self.param.KparDist, weight=1.)
-            self.fun_objGrad = partial(sd.varifoldNormGradient, KparDist=self.param.KparDist, weight=1.)
+            self.fun_obj0 = partial(sd.varifoldNorm0, KparDist=self.param.KparDist, fun=vfun)
+            self.fun_obj = partial(sd.varifoldNormDef, KparDist=self.param.KparDist, fun=vfun)
+            self.fun_objGrad = partial(sd.varifoldNormGradient, KparDist=self.param.KparDist, fun=vfun)
         elif errorType == 'L2Norm':
             self.fun_obj0 = None
             self.fun_obj = None
