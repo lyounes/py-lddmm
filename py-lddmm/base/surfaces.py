@@ -233,13 +233,6 @@ class Surface:
                 else:
                     self.updateWeights(weights)
                 self.computeCentersAreas()
-        # elif type(surf) is np.ndarray:
-        #     self.vertices = np.copy(surf)
-        #     self.faces = np.zeros([surf.shape[0], 2], dtype=int)
-        #     self.component = np.zeros(surf.shape[0], dtype=int)
-        #     for k in range(surf.shape[0] - 1):
-        #         self.faces[k, :] = (k, k + 1)
-        #     self.computeCentersAreas()
         elif type(surf) is str:
             self.read(surf)
         elif issubclass(type(surf), Surface):
