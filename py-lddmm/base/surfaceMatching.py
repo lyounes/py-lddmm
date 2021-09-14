@@ -268,9 +268,9 @@ class SurfaceMatching(object):
     def initial_plot(self):
         fig = plt.figure(3)
         ax = Axes3D(fig)
-        lim1 = self.addSurfaceToPlot(self.fv0, ax, ec='k', fc='r')
+        lim1 = self.addSurfaceToPlot(self.fv0, ax, ec='k', fc='r', setLim=False)
         if self.fv1:
-            lim0 = self.addSurfaceToPlot(self.fv1, ax, ec='k', fc='b')
+            lim0 = self.addSurfaceToPlot(self.fv1, ax, ec='k', fc='b', setLim=False)
         else:
             lim0 = lim1
         ax.set_xlim(min(lim0[0][0], lim1[0][0]), max(lim0[0][1], lim1[0][1]))
@@ -313,7 +313,7 @@ class SurfaceMatching(object):
         else:
             print('Unknown error Type: ', self.param.errorType)
 
-    def addSurfaceToPlot(self, fv1, ax, ec = 'b', fc = 'r', al=.5, lw=1):
+    def addSurfaceToPlot(self, fv1, ax, ec = 'b', fc = 'r', al=.5, lw=1, setLim=False):
         return fv1.addToPlot(ax, ec = ec, fc = fc, al=al, lw=lw)
 
     def setOutputDir(self, outputDir, clean=True):
