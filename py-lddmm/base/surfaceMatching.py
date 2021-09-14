@@ -407,7 +407,7 @@ class SurfaceMatching(object):
     def objectiveFun(self):
         if self.obj is None:
             if self.param.errorType == 'L2Norm':
-                self.obj0 = surfaces.L2Norm0(self.fv1) / (self.param.sigmaError ** 2)
+                self.obj0 = sd.L2Norm0(self.fv1) / (self.param.sigmaError ** 2)
             else:
                 self.obj0 = self.fun_obj0(self.fv1) / (self.param.sigmaError**2)
             if self.symmetric:
