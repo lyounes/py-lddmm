@@ -81,7 +81,8 @@ class SurfaceMatching(object):
         self.coeffAff = 1
         self.obj = 0
         self.xt = None
-        if Target is not None and issubclass(type(Target), pointSets.PointSet):
+        if Target is not None and (issubclass(type(Target), pointSets.PointSet) or
+                                   (type(Target) in (tuple, list) and issubclass(type(Target[0]), pointSets.PointSet))):
             self.param.errorType = 'PointSet'
 
         self.setOutputDir(outputDir)

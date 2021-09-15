@@ -89,6 +89,7 @@ class SurfaceTimeMatching(SurfaceMatching):
         self.Afft = np.zeros([self.Tsize, self.affineDim])
         self.AfftTry = np.zeros([self.Tsize, self.affineDim])
         self.xt = np.tile(self.x0, [self.Tsize + 1, 1, 1])
+        self.xtTry = np.copy(self.xt)
         self.v = np.zeros([self.Tsize + 1, self.npt, self.dim])
 
         self.fvDef = []
@@ -124,7 +125,7 @@ class SurfaceTimeMatching(SurfaceMatching):
                     self.fv1.append(fv1)
             elif self.param.errorType == 'PointSet':
                 for f in Target:
-                    self.fv1.append(pointSets.PointSet(data=Target))
+                    self.fv1.append(pointSets.PointSet(data=f))
             else:
                 for f in Target:
                     self.fv1.append(surfaces.Surface(surf=f))
@@ -232,6 +233,7 @@ class SurfaceTimeMatching(SurfaceMatching):
             AfftTry = self.Afft
         foo = self.objectiveFunDef(atTry, AfftTry, withTrajectory=True)
         objTry += foo[0]
+        xtTry = foo[1]
 
         ff = [] 
         for k in range(self.nTarg):
@@ -246,6 +248,7 @@ class SurfaceTimeMatching(SurfaceMatching):
             self.atTry = atTry
             self.AfftTry = AfftTry
             self.objTry = objTry
+            self.xtTry = xtTry
             #print 'objTry=',objTry, dir.diff.sum()
 
         return objTry
