@@ -2,7 +2,7 @@ import logging
 import os
 import numpy.linalg as la
 from . import surfaces, surface_distances as sd
-from .pointSets import *
+from . import pointSets
 from . import conjugateGradient as cg, pointEvolution as evol
 from .affineBasis import *
 from .surfaceMatching import SurfaceMatching, Direction
@@ -27,7 +27,7 @@ from .surfaceMatching import SurfaceMatching, Direction
 class SurfaceTimeMatching(SurfaceMatching):
     def __init__(self, Template=None, Target=None, param=None, times = None,
                  maxIter=1000, regWeight = 1.0, affineWeight = 1.0, verb=True, affine = 'none',
-                  rotWeight = None, scaleWeight = None, transWeight = None, internalWeight=1.,
+                  rotWeight = None, scaleWeight = None, transWeight = None, internalWeight=1., volumeWeight = None,
                   rescaleTemplate=False, subsampleTargetSize=-1, testGradient=True,  saveFile = 'evolution', outputDir = '.'):
 
         self.rescaleTemplate = rescaleTemplate
@@ -43,8 +43,7 @@ class SurfaceTimeMatching(SurfaceMatching):
                  testGradient=testGradient, saveFile = saveFile,
                  saveTrajectories = False, affine = affine, outputDir = outputDir,pplot=False)
 
-
-        self.volumeWeight = 10.0
+        self.volumeWeight = volumeWeight
 
         # if self.affine=='euclidean' or self.affine=='translation':
         #     self.saveCorrected = True
@@ -90,6 +89,7 @@ class SurfaceTimeMatching(SurfaceMatching):
         self.Afft = np.zeros([self.Tsize, self.affineDim])
         self.AfftTry = np.zeros([self.Tsize, self.affineDim])
         self.xt = np.tile(self.x0, [self.Tsize + 1, 1, 1])
+        self.xtTry = np.copy(self.xt)
         self.v = np.zeros([self.Tsize + 1, self.npt, self.dim])
 
         self.fvDef = []
@@ -123,6 +123,9 @@ class SurfaceTimeMatching(SurfaceMatching):
                     fv1 = surfaces.Surface()
                     fv1.readFromImage(f)
                     self.fv1.append(fv1)
+            elif self.param.errorType == 'PointSet':
+                for f in Target:
+                    self.fv1.append(pointSets.PointSet(data=f))
             else:
                 for f in Target:
                     self.fv1.append(surfaces.Surface(surf=f))
@@ -150,8 +153,10 @@ class SurfaceTimeMatching(SurfaceMatching):
     def initial_plot(self):
         pass
 
-    def fix_orientation(self):
-        if self.fv1:
+    def fix_orientation(self, fv1 = None):
+        if fv1 is None:
+            fv1 = self.fv1
+        if fv1 and issubclass(type(fv1[0]), surfaces.Surface):
             self.fv0.getEdges()
             self.closed = self.fv0.bdry.max() == 0
             if self.closed:
@@ -168,7 +173,7 @@ class SurfaceTimeMatching(SurfaceMatching):
                 self.fv0ori = 1
                 v0 = 0
             self.fv1ori = np.zeros(len(self.fv1), dtype=int)
-            for k,f in enumerate(self.fv1):
+            for k,f in enumerate(fv1):
                 f.getEdges()
                 closed = self.closed and f.bdry.max() == 0
                 if closed:
@@ -195,7 +200,8 @@ class SurfaceTimeMatching(SurfaceMatching):
             fv1 = self.fv1
         for k,s in enumerate(_fvDef):
             obj += super().dataTerm(s, fv1 = fv1[k])
-            obj += self.volumeWeight * (s.surfVolume() - fv1[k].surfVolume()) ** 2
+            if self.volumeWeight:
+                obj += self.volumeWeight * (s.surfVolume() - fv1[k].surfVolume()) ** 2
 
         return obj
 
@@ -227,6 +233,7 @@ class SurfaceTimeMatching(SurfaceMatching):
             AfftTry = self.Afft
         foo = self.objectiveFunDef(atTry, AfftTry, withTrajectory=True)
         objTry += foo[0]
+        xtTry = foo[1]
 
         ff = [] 
         for k in range(self.nTarg):
@@ -241,6 +248,7 @@ class SurfaceTimeMatching(SurfaceMatching):
             self.atTry = atTry
             self.AfftTry = AfftTry
             self.objTry = objTry
+            self.xtTry = xtTry
             #print 'objTry=',objTry, dir.diff.sum()
 
         return objTry
@@ -285,21 +293,38 @@ class SurfaceTimeMatching(SurfaceMatching):
                     targGradient = -self.fun_objGrad(endPoint[k], self.fv1[k])/(self.param.sigmaError**2)
                 else:
                     targGradient = -self.fun_objGrad(endPoint[k])
-            targGradient -= (2./3) * self.volumeWeight*(endPoint[k].surfVolume() - self.fv1[k].surfVolume()) * self.fvDef[k].computeAreaWeightedVertexNormals()
+            if self.volumeWeight:
+                targGradient -= (2./3) * self.volumeWeight*(endPoint[k].surfVolume() - self.fv1[k].surfVolume()) * self.fvDef[k].computeAreaWeightedVertexNormals()
             px.append(targGradient)
         #print "px", (px[0]**2).sum()
         return px
 
-    def hamiltonianCovector(self, at, px1, KparDiff, regweight, affine=None, fv0 = None):
+    def hamiltonianCovector(self, px1, KparDiff, regweight, affine=None, fv0 = None, at=None):
         if fv0 is None:
             fv0 = self.fvInit
+        if at is None:
+            at = self.at
+            current_at = True
+            if self.varCounter == self.trajCounter:
+                computeTraj = False
+            else:
+                computeTraj = True
+        else:
+            current_at = False
+            computeTraj = True
         x0 = fv0.vertices
         N = x0.shape[0]
         dim = x0.shape[1]
         M = at.shape[0]
         nTarg = len(px1)
         timeStep = 1.0 / M
-        xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+        if computeTraj:
+            xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+            if current_at:
+                self.trajCounter = self.varCounter
+                self.xt = xt
+        else:
+            xt = self.xt
         pxt = np.zeros([M + 1, N, dim])
         pxt[M, :, :] = px1[nTarg - 1]
         jk = nTarg - 2

@@ -81,7 +81,8 @@ class SurfaceMatching(object):
         self.coeffAff = 1
         self.obj = 0
         self.xt = None
-        if Target is not None and issubclass(type(Target), pointSets.PointSet):
+        if Target is not None and (issubclass(type(Target), pointSets.PointSet) or
+                                   (type(Target) in (tuple, list) and issubclass(type(Target[0]), pointSets.PointSet))):
             self.param.errorType = 'PointSet'
 
         self.setOutputDir(outputDir)
@@ -268,9 +269,9 @@ class SurfaceMatching(object):
     def initial_plot(self):
         fig = plt.figure(3)
         ax = Axes3D(fig)
-        lim1 = self.addSurfaceToPlot(self.fv0, ax, ec='k', fc='r')
+        lim1 = self.addSurfaceToPlot(self.fv0, ax, ec='k', fc='r', setLim=False)
         if self.fv1:
-            lim0 = self.addSurfaceToPlot(self.fv1, ax, ec='k', fc='b')
+            lim0 = self.addSurfaceToPlot(self.fv1, ax, ec='k', fc='b', setLim=False)
         else:
             lim0 = lim1
         ax.set_xlim(min(lim0[0][0], lim1[0][0]), max(lim0[0][1], lim1[0][1]))
@@ -313,7 +314,7 @@ class SurfaceMatching(object):
         else:
             print('Unknown error Type: ', self.param.errorType)
 
-    def addSurfaceToPlot(self, fv1, ax, ec = 'b', fc = 'r', al=.5, lw=1):
+    def addSurfaceToPlot(self, fv1, ax, ec = 'b', fc = 'r', al=.5, lw=1, setLim=False):
         return fv1.addToPlot(ax, ec = ec, fc = fc, al=al, lw=lw)
 
     def setOutputDir(self, outputDir, clean=True):
@@ -407,7 +408,7 @@ class SurfaceMatching(object):
     def objectiveFun(self):
         if self.obj is None:
             if self.param.errorType == 'L2Norm':
-                self.obj0 = surfaces.L2Norm0(self.fv1) / (self.param.sigmaError ** 2)
+                self.obj0 = sd.L2Norm0(self.fv1) / (self.param.sigmaError ** 2)
             else:
                 self.obj0 = self.fun_obj0(self.fv1) / (self.param.sigmaError**2)
             if self.symmetric:
