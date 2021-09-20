@@ -44,6 +44,7 @@ class SurfaceTimeMatching(SurfaceMatching):
                  saveTrajectories = False, affine = affine, outputDir = outputDir,pplot=False)
 
         self.volumeWeight = volumeWeight
+        #self.saveRate = 1
 
         # if self.affine=='euclidean' or self.affine=='translation':
         #     self.saveCorrected = True
@@ -414,10 +415,15 @@ class SurfaceTimeMatching(SurfaceMatching):
 
     def saveCorrectedTarget(self, X0, X1):
         for k, fv in enumerate(self.fv1):
-            f = surfaces.Surface(surf=fv)
             U = la.inv(X0[self.jumpIndex[k]])
-            yyt = np.dot(f.vertices - X1[self.jumpIndex[k], ...], U.T)
-            f.updateVertices(yyt)
+            if self.param.errorType == "PointSet":
+                f = pointSets.PointSet(data=fv)
+                yyt = np.dot(f.points - X1[self.jumpIndex[k], ...], U.T)
+                f.points = yyt
+            else:
+                f = surfaces.Surface(surf=fv)
+                yyt = np.dot(f.vertices - X1[self.jumpIndex[k], ...], U.T)
+                f.updateVertices(yyt)
             f.saveVTK(self.outputDir + f'/Target{k:02d}Corrected.vtk')
 
 
