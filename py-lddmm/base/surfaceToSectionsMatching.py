@@ -295,9 +295,9 @@ class SurfaceToSectionsMatching(SurfaceMatching):
             self.fun_objGrad = partial(currentNormGradient, KparDist=self.param.KparDist, weight=1.)
         elif errorType=='measure':
             #print('Running Measure Matching')
-            self.fun_obj0 = partial(measureNorm0, KparDist=self.param.KparDist, cpu=False)
-            self.fun_obj = partial(measureNormDef,KparDist=self.param.KparDist, cpu=False)
-            self.fun_objGrad = partial(measureNormGradient,KparDist=self.param.KparDist, cpu=False)
+            self.fun_obj0 = partial(measureNorm0, KparDist=self.param.KparDist, cpu=True)
+            self.fun_obj = partial(measureNormDef,KparDist=self.param.KparDist, cpu=True)
+            self.fun_objGrad = partial(measureNormGradient,KparDist=self.param.KparDist, cpu=True)
         elif errorType=='varifold':
             self.fun_obj0 = partial(varifoldNorm0, KparDist=self.param.KparDist, weight=1.)
             self.fun_obj = partial(varifoldNormDef, KparDist=self.param.KparDist, weight=1.)

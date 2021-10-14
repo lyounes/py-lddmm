@@ -21,9 +21,9 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 class SurfaceTemplateParam(smatch.SurfaceMatchingParam):
     def __init__(self, timeStep = .1, KparDiff = None, KparDiff0 = None, KparDist = None,
-                 sigmaError = 1.0, errorType = 'measure',  typeKernel='gauss', internalCost = None):
+                 sigmaError = 1.0, errorType = 'measure',  internalCost = None):
         smatch.SurfaceMatchingParam.__init__(self, timeStep = timeStep, KparDiff = KparDiff, KparDist = KparDist,
-                     sigmaError = sigmaError, errorType = errorType,  typeKernel=typeKernel, internalCost = internalCost)
+                     sigmaError = sigmaError, errorType = errorType, internalCost = internalCost)
         if KparDiff0 == None:
             self.KparDiff0 = kfun.Kernel(name = self.typeKernel, sigma = self.sigmaKernel)
         else:
@@ -81,6 +81,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                 self.fv1.append(surfaces.Surface(surf=ff))
 
         self.Ntarg = len(self.fv1)
+        self.affineOnly = False
         #lambdaPrior *= np.sqrt(self.Ntarg)
         self.npt = self.fv0.vertices.shape[0]
         self.dim = self.fv0.vertices.shape[1]

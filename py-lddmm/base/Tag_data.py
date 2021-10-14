@@ -66,4 +66,7 @@ def writeTagData(filename, tag_pl, curves, Template = None):
                 h.create_dataset('Edges', data=inter.faces)
 
 
+<<<<<<< HEAD
+=======
 #readTagData('/Users/younes/Johns Hopkins/Tag MRI Research - Data/HDF5_SA50_43R_20180102_PRE-2018-01-05_JW/SA50_43R_20180102_PRE-2018-01-05_JW.h5')
+>>>>>>> 03d4865ab4511f87e67a43016abeafbe6fcb5c59

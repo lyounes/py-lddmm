@@ -53,7 +53,7 @@ class vtkFields:
 
 @jit(nopython=True)
 def get_edges_(faces):
-    int64 = "int"
+    int64 = "int64"
     nv = faces.max() + 1
     nf = faces.shape[0]
 
@@ -124,7 +124,7 @@ def extract_components_(target_comp, nbvert, faces, component, edge_info = None)
 #        if component[i] in target_comp:
 #            Jf[i] = True
     #Jf = np.isin(component, target_comp)
-    #print(nbvert)
+
     J = np.zeros(nbvert, dtype = int_type)
     for i in range(faces.shape[1]):
         J[faces[:,i]] = np.logical_or(J[faces[:,i]], Jf)

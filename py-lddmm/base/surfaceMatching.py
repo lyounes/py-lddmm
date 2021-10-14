@@ -640,13 +640,14 @@ class SurfaceMatching(object):
         dat = np.zeros(at.shape)
         timeStep = 1.0/at.shape[0]
         foo = surfaces.Surface(surf=fv0)
+        nvert = foo.vertices.shape[0]
         if not (affine is None):
             A = affine[0]
             dA = np.zeros(affine[0].shape)
             db = np.zeros(affine[1].shape)
         for k in range(at.shape[0]):
             z = np.squeeze(xt[k,...])
-            foo.updateVertices(z[:self.nvert, :])
+            foo.updateVertices(z[:nvert, :])
             a = np.squeeze(at[k, :, :])
             px = np.squeeze(pxt[k+1, :, :])
             #print 'testgr', (2*a-px).sum()
