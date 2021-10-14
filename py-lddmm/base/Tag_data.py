@@ -64,4 +64,3 @@ def writeTagData(filename, tag_pl, curves, Template = None):
                 h.create_dataset('Edges', data=inter.faces)
 
 
-readTagData('/Users/younes/Johns Hopkins/Tag MRI Research - Data/HDF5_SA50_43R_20180102_PRE-2018-01-05_JW/SA50_43R_20180102_PRE-2018-01-05_JW.h5')
