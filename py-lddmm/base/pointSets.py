@@ -25,6 +25,9 @@ class PointSet:
             self.points = np.empty(0)
             self.weights = np.empty(0)
 
+    def updatePoints(self, pts):
+        self.points = np.copy(pts)
+
     def addToPlot(self, ax, ec = 'b', fc = 'r', al=.5, lw=1):
         x = self.points[:, 0]
         y = self.points[:, 1]

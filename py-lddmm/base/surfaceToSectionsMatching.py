@@ -66,6 +66,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
 
         self.set_fun(self.param.errorType)
         self.set_template_and_target(Template, Target, subsampleTargetSize, select_planes, componentMap)
+        self.match_landmarks = False
         print(f'Template has {self.fv0.vertices.shape[0]} vertices')
         print(f'There are {self.hyperplanes.shape[0]} planes')
         print(f'There are {len(self.fv1)} target curves')
@@ -285,7 +286,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
             print('Unknown error Type: ', self.param.errorType)
 
 
-    def dataTerm(self, _fvDef, fv1 = None, _fvInit = None):
+    def dataTerm(self, _fvDef, fv1 = None, _fvInit = None, _lmk_def = None, lmk1 = None):
         #print('starting dt')
         if fv1 is None:
             fv1 = self.fv1
