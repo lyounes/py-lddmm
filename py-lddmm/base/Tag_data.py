@@ -17,7 +17,7 @@ def readTagData(filename):
         print('Missing information in ' + filename)
         return None, None, None
 
-    tag_pl = np.array(f['Tagplane']).T
+    tag_pl = np.array(f['Tagplane']['Corners']).T
     npl = tag_pl.shape[0]
 
     g = f['Curves']
@@ -42,7 +42,9 @@ def readTagData(filename):
                     curve_in_image[ins] = crvs.Curve(curve=(faces,vert))
             curve_in_phase[im] = curve_in_image
         curves[ph] = curve_in_phase
-    return Template, tag_pl, curves
+
+    activity = f['ActiveMatrix']
+    return Template, tag_pl, curves, activity
 
 def writeTagData(filename, tag_pl, curves, Template = None):
     f = h5py.File(filename, 'w')
@@ -64,3 +66,7 @@ def writeTagData(filename, tag_pl, curves, Template = None):
                 h.create_dataset('Edges', data=inter.faces)
 
 
+<<<<<<< HEAD
+=======
+#readTagData('/Users/younes/Johns Hopkins/Tag MRI Research - Data/HDF5_SA50_43R_20180102_PRE-2018-01-05_JW/SA50_43R_20180102_PRE-2018-01-05_JW.h5')
+>>>>>>> 03d4865ab4511f87e67a43016abeafbe6fcb5c59

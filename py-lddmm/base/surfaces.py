@@ -24,6 +24,9 @@ except ImportError:
 
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from matplotlib.colors import LightSource
+from matplotlib import colors
+from matplotlib import pyplot as plt
 
 from . import diffeo
 import scipy.linalg as spLA
@@ -50,7 +53,7 @@ class vtkFields:
 
 @jit(nopython=True)
 def get_edges_(faces):
-    int64 = "int"
+    int64 = "int64"
     nv = faces.max() + 1
     nf = faces.shape[0]
 
@@ -121,6 +124,7 @@ def extract_components_(target_comp, nbvert, faces, component, edge_info = None)
 #        if component[i] in target_comp:
 #            Jf[i] = True
     #Jf = np.isin(component, target_comp)
+
     J = np.zeros(nbvert, dtype = int_type)
     for i in range(faces.shape[1]):
         J[faces[:,i]] = np.logical_or(J[faces[:,i]], Jf)
@@ -291,7 +295,7 @@ class Surface:
 
     def read(self, filename):
         (mainPart, ext) = os.path.splitext(filename)
-        if ext == '.byu':
+        if ext in ('.byu', '.g'):
             self.readbyu(filename)
         elif ext=='.off':
             self.readOFF(filename)
@@ -1273,7 +1277,16 @@ class Surface:
 
         return img, origin, orig2
 
-    def addToPlot(self, ax, ec = 'b', fc = 'r', al=.5, lw=1):
+    def plot(self, fig=1, ec = 'b', fc = 'r', al=.5, lw=1, azim = 100, elev = 45, setLim=True, addTo = False):
+        f = plt.figure(fig)
+        plt.clf()
+        ax = Axes3D(f, azim=azim, elev=elev)
+        self.addToPlot(ax, ec=ec, fc=fc, al=al, setLim=setLim)
+        plt.axis('off')
+
+
+
+    def addToPlot(self, ax, ec = 'b', fc = 'r', al=.5, lw=1, setLim=True):
         x = self.vertices[self.faces[:,0],:]
         y = self.vertices[self.faces[:,1],:]
         z = self.vertices[self.faces[:,2],:]
@@ -1281,11 +1294,20 @@ class Surface:
         poly = [ [a[i,j*3:j*3+3] for j in range(3)] for i in range(a.shape[0])]
         tri = Poly3DCollection(poly, alpha=al, linewidths=lw)
         tri.set_edgecolor(ec)
+        ls = LightSource(90, 45)
+        fc = np.array(colors.to_rgb(fc))
+        normals = self.surfel/np.sqrt((self.surfel**2).sum(axis=1))[:,None]
+        shade = ls.shade_normals(normals, fraction=1.0)
+        fc = fc[None, :] * shade[:, None]
         tri.set_facecolor(fc)
         ax.add_collection3d(tri)
         xlim = [self.vertices[:,0].min(),self.vertices[:,0].max()]
         ylim = [self.vertices[:,1].min(),self.vertices[:,1].max()]
         zlim = [self.vertices[:,2].min(),self.vertices[:,2].max()]
+        if setLim:
+            ax.set_xlim(xlim[0], xlim[1])
+            ax.set_ylim(ylim[0], ylim[1])
+            ax.set_zlim(zlim[0], zlim[1])
         return [xlim, ylim, zlim]
 
 
