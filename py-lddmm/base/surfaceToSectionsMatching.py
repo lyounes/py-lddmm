@@ -137,6 +137,26 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         self.fvInit = Surface(surf=self.fv0)
         self.fix_orientation()
         self.fv0.saveVTK(self.outputDir+'/Template.vtk')
+        outCurve = ()
+        normals = np.zeros((0, 3))
+        npt = 0
+        for k in range(self.hyperplanes.shape[0]):
+            target_label = np.where(componentMap[:, k])[0]
+            h = Hyperplane(u=self.hyperplanes[k, :3], offset=self.hyperplanes[k, 3])
+            surf_, J = self.fv0.extract_components(target_label)
+            f2 = SurfaceSection(hyperplane=h, surf=surf_)
+            npt += f2.curve.vertices.shape[0]
+            outCurve += (f2.curve,)
+            normals = np.concatenate((normals, f2.normals), axis=0)
+        labels = np.zeros(npt, dtype=int)
+        npt = 0
+        for k, f in enumerate(outCurve):
+            npt2 = npt + f.vertices.shape[0]
+            labels[npt:npt2] = k + 1
+            npt = npt2
+        c = Curve(outCurve)
+        c.saveVTK(self.outputDir + f'/InitialCurves.vtk', cell_normals=normals, scalars=labels, scal_name='labels')
+
         if self.fv1:
             outCurve = ()
             normals = np.zeros((0,3))
