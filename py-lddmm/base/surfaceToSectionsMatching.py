@@ -67,6 +67,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         self.set_fun(self.param.errorType)
         self.set_template_and_target(Template, Target, subsampleTargetSize, select_planes, componentMap)
         self.match_landmarks = False
+        self.def_lmk = None
         print(f'Template has {self.fv0.vertices.shape[0]} vertices')
         print(f'There are {self.hyperplanes.shape[0]} planes')
         print(f'There are {len(self.fv1)} target curves')
@@ -141,9 +142,12 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         normals = np.zeros((0, 3))
         npt = 0
         for k in range(self.hyperplanes.shape[0]):
-            target_label = np.where(componentMap[:, k])[0]
+            if componentMap is not None:
+                target_label = np.where(componentMap[:, k])[0]
+                surf_, J = self.fv0.extract_components(target_label)
+            else:
+                surf_ = self.fv0
             h = Hyperplane(u=self.hyperplanes[k, :3], offset=self.hyperplanes[k, 3])
-            surf_, J = self.fv0.extract_components(target_label)
             f2 = SurfaceSection(hyperplane=h, surf=surf_)
             npt += f2.curve.vertices.shape[0]
             outCurve += (f2.curve,)
@@ -178,14 +182,14 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         self.ncomp_template = self.fv0.component.max()+1
         self.ncomp_target = len(self.fv1)
         if componentMap is None or componentMap.shape[0] != self.ncomp_template \
-            or componentMap.shape[1] != self.ncomp_target:
-            self.componentMap = np.ones((self.ncomp_template, self.ncomp_target), dtype=bool)
+            or componentMap.shape[1] != self.hyperplanes.shape[0]:
+            self.componentMap = np.ones((self.ncomp_template, self.hyperplanes.shape[0]), dtype=bool)
         else:
             self.componentMap = componentMap
         self.fv0.getEdges()
         self.component_structure = []
         for k,f in enumerate(self.fv1):
-            target_label = np.where(self.componentMap[:, k])[0]
+            target_label = np.where(self.componentMap[:, f.hypLabel])[0]
             self.component_structure.append(extract_components_(target_label, self.fv0.vertices.shape[0], self.fv0.faces,
                                                                 self.fv0.component,
                                                                 edge_info = (self.fv0.edges, self.fv0.faceEdges, self.fv0.edgeFaces)))
