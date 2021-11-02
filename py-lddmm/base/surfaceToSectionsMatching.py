@@ -66,6 +66,8 @@ class SurfaceToSectionsMatching(SurfaceMatching):
 
         self.set_fun(self.param.errorType)
         self.set_template_and_target(Template, Target, subsampleTargetSize, select_planes, componentMap)
+        self.match_landmarks = False
+        self.def_lmk = None
         print(f'Template has {self.fv0.vertices.shape[0]} vertices')
         print(f'There are {self.hyperplanes.shape[0]} planes')
         print(f'There are {len(self.fv1)} target curves')
@@ -136,6 +138,29 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         self.fvInit = Surface(surf=self.fv0)
         self.fix_orientation()
         self.fv0.saveVTK(self.outputDir+'/Template.vtk')
+        outCurve = ()
+        normals = np.zeros((0, 3))
+        npt = 0
+        for k in range(self.hyperplanes.shape[0]):
+            if componentMap is not None:
+                target_label = np.where(componentMap[:, k])[0]
+                surf_, J = self.fv0.extract_components(target_label)
+            else:
+                surf_ = self.fv0
+            h = Hyperplane(u=self.hyperplanes[k, :3], offset=self.hyperplanes[k, 3])
+            f2 = SurfaceSection(hyperplane=h, surf=surf_)
+            npt += f2.curve.vertices.shape[0]
+            outCurve += (f2.curve,)
+            normals = np.concatenate((normals, f2.normals), axis=0)
+        labels = np.zeros(npt, dtype=int)
+        npt = 0
+        for k, f in enumerate(outCurve):
+            npt2 = npt + f.vertices.shape[0]
+            labels[npt:npt2] = k + 1
+            npt = npt2
+        c = Curve(outCurve)
+        c.saveVTK(self.outputDir + f'/InitialCurves.vtk', cell_normals=normals, scalars=labels, scal_name='labels')
+
         if self.fv1:
             outCurve = ()
             normals = np.zeros((0,3))
@@ -157,14 +182,14 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         self.ncomp_template = self.fv0.component.max()+1
         self.ncomp_target = len(self.fv1)
         if componentMap is None or componentMap.shape[0] != self.ncomp_template \
-            or componentMap.shape[1] != self.ncomp_target:
-            self.componentMap = np.ones((self.ncomp_template, self.ncomp_target), dtype=bool)
+            or componentMap.shape[1] != self.hyperplanes.shape[0]:
+            self.componentMap = np.ones((self.ncomp_template, self.hyperplanes.shape[0]), dtype=bool)
         else:
             self.componentMap = componentMap
         self.fv0.getEdges()
         self.component_structure = []
         for k,f in enumerate(self.fv1):
-            target_label = np.where(self.componentMap[:, k])[0]
+            target_label = np.where(self.componentMap[:, f.hypLabel])[0]
             self.component_structure.append(extract_components_(target_label, self.fv0.vertices.shape[0], self.fv0.faces,
                                                                 self.fv0.component,
                                                                 edge_info = (self.fv0.edges, self.fv0.faceEdges, self.fv0.edgeFaces)))
@@ -274,9 +299,9 @@ class SurfaceToSectionsMatching(SurfaceMatching):
             self.fun_objGrad = partial(currentNormGradient, KparDist=self.param.KparDist, weight=1.)
         elif errorType=='measure':
             #print('Running Measure Matching')
-            self.fun_obj0 = partial(measureNorm0, KparDist=self.param.KparDist, cpu=False)
-            self.fun_obj = partial(measureNormDef,KparDist=self.param.KparDist, cpu=False)
-            self.fun_objGrad = partial(measureNormGradient,KparDist=self.param.KparDist, cpu=False)
+            self.fun_obj0 = partial(measureNorm0, KparDist=self.param.KparDist, cpu=True)
+            self.fun_obj = partial(measureNormDef,KparDist=self.param.KparDist, cpu=True)
+            self.fun_objGrad = partial(measureNormGradient,KparDist=self.param.KparDist, cpu=True)
         elif errorType=='varifold':
             self.fun_obj0 = partial(varifoldNorm0, KparDist=self.param.KparDist, weight=1.)
             self.fun_obj = partial(varifoldNormDef, KparDist=self.param.KparDist, weight=1.)
@@ -285,7 +310,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
             print('Unknown error Type: ', self.param.errorType)
 
 
-    def dataTerm(self, _fvDef, fv1 = None, _fvInit = None):
+    def dataTerm(self, _fvDef, fv1 = None, _fvInit = None, _lmk_def = None, lmk1 = None):
         #print('starting dt')
         if fv1 is None:
             fv1 = self.fv1

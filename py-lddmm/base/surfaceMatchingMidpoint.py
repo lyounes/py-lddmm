@@ -61,6 +61,7 @@ class SurfaceMatchingMidpoint(SurfaceMatching):
         self.set_fun(self.param.errorType,vfun=self.param.vfun)
 
         self.set_template_and_target(Template, Target)
+        self.match_landmarks = False
 
         self.set_parameters(maxIter=maxIter, regWeight=regWeight, affineWeight=affineWeight,
                             internalWeight=internalWeight, verb=verb, affineOnly=affineOnly,
@@ -82,6 +83,7 @@ class SurfaceMatchingMidpoint(SurfaceMatching):
         self.fvDef0 = surfaces.Surface(surf=self.fv0)
         self.x1 = np.copy(self.fv1.vertices)
         self.fvDef1 = surfaces.Surface(surf=self.fv1)
+        #self.nvert = self.fvInit.vertices.shape[0]
         self.npt0 = self.fv0.vertices.shape[0]
         self.npt1 = self.fv1.vertices.shape[0]
 

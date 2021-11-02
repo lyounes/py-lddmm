@@ -30,6 +30,7 @@ def compute(model):
     internalWeight = 200.
     regweight = 0.1
     internalCost = 'h1'
+    landmarks = None
     if model=='Balls':
         M=100
         targSize = 1000
@@ -52,6 +53,7 @@ def compute(model):
 
         ftemp = fv1
         ftarg = fv2
+        landmarks = (fv1.vertices[0:5, :], fv2.vertices[0:5, :], 1)
         internalCost = None
     elif model=='Hearts':
         [x,y,z] = np.mgrid[0:200, 0:200, 0:200]/100.
@@ -140,7 +142,7 @@ def compute(model):
     sm.KparDiff.pk_dtype = 'float64'
     sm.KparDist.pk_dtype = 'float64'
     f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTest/'+model,param=sm,
-                        testGradient=True, regWeight = regweight,
+                        testGradient=True, regWeight = regweight, Landmarks = landmarks,
                         #subsampleTargetSize = 500,
                         internalWeight=internalWeight, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01,
                         scaleWeight=10., affineWeight=100.)
