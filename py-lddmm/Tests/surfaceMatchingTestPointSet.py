@@ -152,7 +152,7 @@ def compute(model):
     #a1 = np.sqrt((ftarg.surfel ** 2).sum(axis=1) + 1e-10)
     ftarg = PointSet(data=ftarg.centers, weights=a1)
     f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTestPS/'+model,param=sm,
-                        testGradient=True, regWeight = regweight,
+                        testGradient=False, regWeight = regweight,
                         #subsampleTargetSize = 500,
                         internalWeight=internalWeight, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01,
                         scaleWeight=10., affineWeight=100.)

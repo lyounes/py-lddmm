@@ -98,7 +98,7 @@ class Ellipse(Surface):
         self.updateVertices(v)
 
 class Torus(Surface):
-    def __init__(self, center, radius1, radius2, resolution = 100, targetSize = 1000):
+    def __init__(self, center=(0,0,0), radius1 = 2, radius2=0.5, resolution = 100, targetSize = 1000):
         super().__init__()
         self.center = center
         self.radius1 = radius1
