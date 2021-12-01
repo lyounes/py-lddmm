@@ -47,11 +47,11 @@ sigmaError = .01
 K1 = Kernel(name='gauss', sigma = sigmaKernel)
 
 sm = PointSetMatchingParam(timeStep=0.1, KparDiff=K1, KparDist=('gauss', sigmaDist),
-                           sigmaError=sigmaError, errorType='PointSet', algorithm='cg')
+                           sigmaError=sigmaError, errorType='measure', algorithm='cg')
 sm.KparDiff.pk_dtype = 'float64'
 sm.KparDist.pk_dtype = 'float64'
 f = PointSetMatching(Template=fv0, Target=fv1, outputDir='../Output/pointSetMatchingTest/'+model,param=sm,
-                    testGradient=True, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01,
+                    testGradient=False, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01,
                     scaleWeight=10., affineWeight=100.)
 
 f.optimizeMatching()
