@@ -51,20 +51,30 @@ def readTagData(filename, contoursOnly=False):
     endo_contours = []
     if 'Epi' in fkeys:
         images = list(f['Epi'].keys())
-        nphases = f['Epi'][images[0]].shape[0]
+        if f['Epi'][images[0]].ndim == 2:
+            nphases = 1
+        else:
+            nphases = f['Epi'][images[0]].shape[0]
         epi_contours = [[]] * nphases
         for img in f['Epi']:
-            allc = f['Epi'][img]
+            allc = np.array(f['Epi'][img])
+            if allc.ndim == 2:
+                allc = allc[None, :, :]
             for i in range(allc.shape[0]):
                 c = crvs.Curve(curve=allc[i,:,:].T)
                 c = surfaceSection.SurfaceSection(curve=c)
                 epi_contours[i].append(c)
     if 'Endo' in fkeys:
         images = list(f['Endo'].keys())
-        nphases = f['Endo'][images[0]].shape[0]
+        if f['Endo'][images[0]].ndim == 2:
+            nphases = 1
+        else:
+            nphases = f['Epi'][images[0]].shape[0]
         endo_contours = [[]] * nphases
         for img in f['Endo']:
-            allc = f['Endo'][img]
+            allc = np.array(f['Endo'][img])
+            if allc.ndim == 2:
+                allc = allc[None, :, :]
             for i in range(allc.shape[0]):
                 c = crvs.Curve(curve=allc[i,:,:].T)
                 c = surfaceSection.SurfaceSection(curve=c)

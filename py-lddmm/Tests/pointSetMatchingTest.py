@@ -32,10 +32,12 @@ fv0 = np.zeros((N, dim))
 fv0[:, :true_dim+1] = np.random.normal(0,1,size=(N, true_dim+1))
 fv0 /= np.sqrt((fv0**2).sum(axis=1))[:,None]
 fv0 = PointSet(data=np.dot(fv0, R))
-fv1 = np.zeros((N,dim))
-fv1[:, :true_dim+1] = np.random.normal(0,1,size=(N, true_dim+1))
-fv1 /= np.sqrt((fv1**2).sum(axis=1))[:,None]
-fv1 = PointSet(data=np.dot(fv1, R))
+fv1pts = np.zeros((N,dim))
+fv1pts[:, :true_dim+1] = np.random.normal(0,1,size=(N, true_dim+1))
+fv1pts /= np.sqrt((fv1pts**2).sum(axis=1))[:,None]
+fv1 = PointSet(data=np.dot(fv1pts, R))
+
+R2, T2 = rigidRegistration((fv1pts, fv1.points))
 
 
 loggingUtils.setup_default_logging('../Output', stdOutput = True)
