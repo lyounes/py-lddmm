@@ -273,7 +273,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
 
     def initial_plot(self):
         fig = plt.figure(3)
-        ax = Axes3D(fig, auto_add_to_figure=False)
+        ax = Axes3D(fig)#, auto_add_to_figure=False)
         fig.add_axes(ax)
         lim1 = self.addSurfaceToPlot(self.fv0, ax, ec='k', fc='r', al=0.2)
         for k,f in enumerate(self.fv1):
