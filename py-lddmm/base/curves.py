@@ -47,7 +47,7 @@ class Curve:
         elif type(curve) is str:
             self.read(curve)
             self.component = np.zeros(self.faces.shape[0], dtype=int)
-        elif type(curve) is Curve:
+        elif issubclass(type(curve), Curve):
             self.vertices = np.copy(curve.vertices)
             self.linel = np.copy(curve.linel)
             self.faces = np.copy(curve.faces)

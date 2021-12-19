@@ -32,10 +32,12 @@ fv0 = np.zeros((N, dim))
 fv0[:, :true_dim+1] = np.random.normal(0,1,size=(N, true_dim+1))
 fv0 /= np.sqrt((fv0**2).sum(axis=1))[:,None]
 fv0 = PointSet(data=np.dot(fv0, R))
-fv1 = np.zeros((N,dim))
-fv1[:, :true_dim+1] = np.random.normal(0,1,size=(N, true_dim+1))
-fv1 /= np.sqrt((fv1**2).sum(axis=1))[:,None]
-fv1 = PointSet(data=np.dot(fv1, R))
+fv1pts = np.zeros((N,dim))
+fv1pts[:, :true_dim+1] = np.random.normal(0,1,size=(N, true_dim+1))
+fv1pts /= np.sqrt((fv1pts**2).sum(axis=1))[:,None]
+fv1 = PointSet(data=np.dot(fv1pts, R))
+
+R2, T2 = rigidRegistration((fv1pts, fv1.points))
 
 
 loggingUtils.setup_default_logging('../Output', stdOutput = True)
@@ -47,11 +49,11 @@ sigmaError = .01
 K1 = Kernel(name='gauss', sigma = sigmaKernel)
 
 sm = PointSetMatchingParam(timeStep=0.1, KparDiff=K1, KparDist=('gauss', sigmaDist),
-                           sigmaError=sigmaError, errorType='PointSet', algorithm='cg')
+                           sigmaError=sigmaError, errorType='measure', algorithm='cg')
 sm.KparDiff.pk_dtype = 'float64'
 sm.KparDist.pk_dtype = 'float64'
 f = PointSetMatching(Template=fv0, Target=fv1, outputDir='../Output/pointSetMatchingTest/'+model,param=sm,
-                    testGradient=True, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01,
+                    testGradient=False, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01,
                     scaleWeight=10., affineWeight=100.)
 
 f.optimizeMatching()

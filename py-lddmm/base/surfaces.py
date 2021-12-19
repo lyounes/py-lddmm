@@ -15,7 +15,7 @@ try:
         vtkCleanPolyData, vtkPolyDataReader, vtkOBJReader, vtkSTLReader,\
         vtkDecimatePro, VTK_UNSIGNED_CHAR, vtkPolyDataToImageStencil,\
         vtkImageStencil
-    import vtk.util.numpy_support as v2n
+    from vtk.util.numpy_support import vtk_to_numpy
     gotVTK = True
 except ImportError:
     v2n = None
@@ -1261,7 +1261,7 @@ class Surface:
 
         result = img2stenc.GetOutput()
 
-        img = v2n.vtk_to_numpy(result.GetPointData().GetScalars())
+        img = vtk_to_numpy(result.GetPointData().GetScalars())
         # dims = result.GetDimensions()
         #
         # img = img.reshape(dims[2], dims[1], dims[0])
@@ -1788,7 +1788,7 @@ class Surface:
                     if not wrote_pd_hdr:
                         fvtkout.write(('\nPOINT_DATA {0: d}').format(V.shape[0]))
                         wrote_pd_hdr = True
-                    nf = len(vtkFields.tensors)/2
+                    nf = len(vtkFields.tensors)//2
                     for k in range(nf):
                         fvtkout.write('\nTENSORS '+ vtkFields.tensors[2*k] +' float')
                         tensors = vtkFields.tensors[2*k+1]
