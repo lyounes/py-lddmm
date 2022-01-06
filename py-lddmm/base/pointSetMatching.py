@@ -9,7 +9,6 @@ from .pointSets import PointSet
 from . import pointSets, pointset_distances as psd
 from .affineBasis import AffineBasis, getExponential
 import matplotlib
-matplotlib.use("TKAgg")
 
 nlayers = 1
 
