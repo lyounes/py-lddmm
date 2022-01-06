@@ -6,10 +6,9 @@ import logging
 from . import matchingParam
 from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils, bfgs
 from .pointSets import PointSet
-from . import pointSets, pointset_distances as psd
+from . import meshes, mesh_distances as msd
 from .affineBasis import AffineBasis, getExponential
 import matplotlib
-
 
 ## Parameter class for matching
 #      timeStep: time discretization
@@ -18,23 +17,15 @@ import matplotlib
 #      sigmaError: normlization for error term
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
-class PointSetMatchingParam(matchingParam.MatchingParam):
+class MeshMatchingParam(matchingParam.MatchingParam):
     def __init__(self, timeStep = .1, algorithm='cg', Wolfe=True, KparDiff = None, KparDist = None,
-                 sigmaError = 1.0, errorType = 'measure'):
+                 sigmaError = 1.0):
         super().__init__(timeStep=timeStep, algorithm = algorithm, Wolfe=Wolfe,
-                         KparDiff = KparDiff, KparDist = KparDist, sigmaError=sigmaError,
-                         errorType = errorType)
+                         KparDiff = KparDiff, KparDist = KparDist, sigmaError=sigmaError)
         self.sigmaError = sigmaError
-        if errorType == 'L2':
-            self.fun_obj0 = psd.L2Norm0
-            self.fun_obj = psd.L2NormDef
-            self.fun_objGrad = psd.L2NormGradient
-        elif errorType == 'measure':
-            self.fun_obj0 = psd.measureNorm0
-            self.fun_obj = psd.measureNormDef
-            self.fun_objGrad = psd.measureNormGradient
-        else:
-            logging.error('Unknown error Type: ' + self.errorType)
+        self.fun_obj0 = msd.varifoldNorm0
+        self.fun_obj = msd.varifoldNormDef
+        self.fun_objGrad = msd.varifoldNormGradient
 
 
 class Direction:
@@ -43,7 +34,7 @@ class Direction:
         self.aff = []
 
 
-## Main class for surface matching
+## Main class for image varifold matching
 #        Template: surface class (from surface.py); if not specified, opens fileTemp
 #        Target: surface class (from surface.py); if not specified, opens fileTarg
 #        param: surfaceMatchingParam
@@ -58,16 +49,16 @@ class Direction:
 #        saveFile: generic name for saved surfaces
 #        affine: 'affine', 'similitude', 'euclidean', 'translation' or 'none'
 #        maxIter: max iterations in conjugate gradient
-class PointSetMatching(object):
+class MeshMatching(object):
 
-    def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000,
+    def __init__(self, Template, Target, param=None, maxIter=1000,
                  regWeight = 1.0, affineWeight = 1.0, verb=True, testSet = None, addDim = 0, intercept=True,
                  u0 = None, normalizeInput = False, l1Cost = 0.0, relearnRate = 1,
                  rotWeight = None, scaleWeight = None, transWeight = None, randomInit = 0.,
                  testGradient=True, saveFile = 'evolution',
                  saveTrajectories = False, affine = 'none', outputDir = '.',pplot=True):
         if param is None:
-            self.param = PointSetMatchingParam()
+            self.param = MeshMatchingParam()
         else:
             self.param = param
 
@@ -76,31 +67,14 @@ class PointSetMatching(object):
         else:
             self.euclideanGradient = True
 
-        if Template is None:
-            if fileTempl is None:
-                logging.error('Please provide a template surface')
-                return
-            else:
-                self.fv0 = pointSets.loadlmk(fileTempl)[0]
-        else:
-            self.fv0 = deepcopy(Template)
-            
-        if Target is None:
-            if fileTarg is None:
-                logging.error('Please provide a target surface')
-                return
-            else:
-                self.fv1 = pointSets.loadlmk(fileTarg)[0]
-        else:
-            self.fv1 = deepcopy(Target)
-
-            #print np.fabs(self.fv1.surfel-self.fv0.surfel).max()
+        self.fv0 = meshes.Mesh(mesh=Template)
+        self.fv1 = meshes.Mesh(mesh=Target)
 
 
         self.saveRate = 10
         self.iter = 0
         self.setOutputDir(outputDir)
-        self.dim = self.fv0.points.shape[1]
+        self.dim = self.fv0.vertices.shape[1]
         self.maxIter = maxIter
         self.verb = verb
         self.saveTrajectories = saveTrajectories
@@ -119,12 +93,9 @@ class PointSetMatching(object):
             self.affineWeight[self.affB.transComp] = transWeight
 
 
-        self.x0 = np.copy(self.fv0.points)
-        self.x0Try = np.copy(self.fv0.points)
+        self.x0 = np.copy(self.fv0.vertices)
         self.fvDef = deepcopy(self.fv0)
         self.npt = self.x0.shape[0]
-        # self.u = np.zeros((self.dim, 1))
-        # self.u[0:2] = 1/np.sqrt(2.)
 
         self.Tsize = int(round(1.0/self.param.timeStep))
         self.at = np.random.normal(0, randomInit, [self.Tsize, self.x0.shape[0], self.x0.shape[1]])
@@ -165,15 +136,11 @@ class PointSetMatching(object):
         #     obj = pointSets.LogisticScoreL2(_fvDef, self.fv1, self.u, w=self.wTr, intercept=self.intercept, l1Cost=self.l1Cost) \
         #           / (self.param.sigmaError**2)
         #     #obj = pointSets.LogisticScore(_fvDef, self.fv1, self.u) / (self.param.sigmaError**2)
-        if self.param.errorType == 'measure':
-            obj = self.param.fun_obj(_fvDef, self.fv1, self.param.KparDist) / (self.param.sigmaError ** 2)
-        else:
-            obj = self.param.fun_obj(_fvDef, self.fv1) / (self.param.sigmaError**2)
+        obj = self.param.fun_obj(_fvDef, self.fv1, self.param.KparDist) / (self.param.sigmaError ** 2)
         return obj
 
-    def  objectiveFunDef(self, at, Afft, kernel = None, withTrajectory = False, withJacobian=False, x0 = None, regWeight = None):
-        if x0 is None:
-            x0 = self.x0
+    def  objectiveFunDef(self, at, Afft, kernel = None, withTrajectory = False, withJacobian=False, regWeight = None):
+        x0 = self.x0
         if kernel is None:
             kernel = self.param.KparDiff
         #print 'x0 fun def', x0.sum()
@@ -217,12 +184,9 @@ class PointSetMatching(object):
 
     def objectiveFun(self):
         if self.obj == None:
-            if self.param.errorType == 'measure':
-                self.obj0 = self.param.fun_obj0(self.fv1, self.param.KparDist) / (self.param.sigmaError ** 2)
-            else:
-                self.obj0 = self.param.fun_obj0(self.fv1) / (self.param.sigmaError**2)
+            self.obj0 = self.param.fun_obj0(self.fv1, self.param.KparDist) / (self.param.sigmaError ** 2)
             (self.obj, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
-            self.fvDef.points = np.copy(np.squeeze(self.xt[-1, :, :]))
+            self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
             self.obj += self.obj0 + self.dataTerm(self.fvDef)
         return self.obj
 
@@ -238,9 +202,10 @@ class PointSetMatching(object):
             AfftTry = self.Afft
         x0Try = self.x0
 
-        foo = self.objectiveFunDef(atTry, AfftTry, x0 = x0Try, withTrajectory=True)
+        foo = self.objectiveFunDef(atTry, AfftTry, withTrajectory=True)
         objTry += foo[0]
-        ff = PointSet(data=np.squeeze(foo[1][-1, :, :]), weights=self.fv0.weights)
+        ff = meshes.Mesh(mesh=self.fvDef)
+        ff.updateVertices(foo[1][-1, :, :])
         objTry += self.dataTerm(ff)
 
         if np.isnan(objTry):
@@ -260,9 +225,9 @@ class PointSetMatching(object):
     def testEndpointGradient(self):
         c0 = self.dataTerm(self.fvDef)
         ff = deepcopy(self.fvDef)
-        dff = np.random.normal(size=ff.points.shape)
+        dff = np.random.normal(size=ff.vertices.shape)
         eps = 1e-6
-        ff.points += eps*dff
+        ff.updateVertices(self.fvDef.vertices + eps*dff)
         c1 = self.dataTerm(ff)
         grd = self.endPointGradient()
         logging.info("test endpoint gradient: {0:.5f} {1:.5f}".format((c1-c0)/eps, (grd*dff).sum()) )
@@ -270,12 +235,8 @@ class PointSetMatching(object):
     def endPointGradient(self, endPoint= None):
         if endPoint is None:
             endPoint = self.fvDef
-        if self.param.errorType == 'measure':
-            px = self.param.fun_objGrad(endPoint, self.fv1, self.param.KparDist)
-        else:
-            px = self.param.fun_objGrad(endPoint, self.fv1)
+        px = self.param.fun_objGrad(endPoint, self.fv1, self.param.KparDist)
         return px / self.param.sigmaError**2
-
     
     def hamiltonianCovector(self, x0, at, px1, KparDiff, regWeight, affine = None):
         N = x0.shape[0]
@@ -295,13 +256,10 @@ class PointSetMatching(object):
                 
         pxt = np.zeros([M+1, N, dim])
         pxt[M, :, :] = px1
-        foo = np.copy(self.fv0)
         for t in range(M):
             px = np.squeeze(pxt[M-t, :, :])
             z = np.squeeze(xt[M-t-1, :, :])
             a = np.squeeze(at[M-t-1, :, :])
-            foo = np.copy(z)
-            v = KparDiff.applyK(z,a)
             a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*regWeight*a[np.newaxis,...]))
             a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
             zpx = KparDiff.applyDiffKT(z, a1, a2)
@@ -312,11 +270,10 @@ class PointSetMatching(object):
                 pxt[M-t-1, :, :] = px + timeStep * zpx
         return pxt, xt
     
-    def hamiltonianGradient(self, px1, kernel = None, affine=None, regWeight=None, x0=None, at=None):
+    def hamiltonianGradient(self, px1, kernel = None, affine=None, regWeight=None, at=None):
         if regWeight is None:
             regWeight = self.regweight
-        if x0 is None:
-            x0 = self.x0
+        x0 = self.x0
         if at is None:
             at = self.at
         if kernel is None:
@@ -451,7 +408,7 @@ class PointSetMatching(object):
             logging.info('Saving Points...')
             (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
 
-            self.fvDef.points = np.copy(np.squeeze(self.xt[-1, :, :]))
+            self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
             dim2 = self.dim**2
             A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
             if self.affineDim > 0:
@@ -461,32 +418,33 @@ class PointSetMatching(object):
                     A[1][t] = AB[dim2:dim2+self.dim]
             (xt, Jt)  = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
                                                               withJacobian=True)
-            if self.affine=='euclidean' or self.affine=='translation':
-                X = self.affB.integrateFlow(self.Afft)
-                displ = np.zeros(self.x0.shape[0])
-                dt = 1.0 /self.Tsize
-                for t in range(self.Tsize+1):
-                    U = la.inv(X[0][t])
-                    yyt = np.dot(self.xt[t,...] - X[1][t, ...], U.T)
-                    f = np.copy(yyt)
-                    # vf = surfaces.vtkFields() ;
-                    # vf.scalars.append('Jacobian') ;
-                    # vf.scalars.append(np.exp(Jt[t, :]))
-                    # vf.scalars.append('displacement')
-                    # vf.scalars.append(displ)
-                    # vf.vectors.append('velocity') ;
-                    # vf.vectors.append(vt)
-                    # nu = self.fv0ori*f.computeVertexNormals()
-                    pointSets.savelmk(f, self.outputDir + '/' + self.saveFile + 'Corrected' + str(t) + '.lmk')
-                f = np.copy(self.fv1)
-                yyt = np.dot(f - X[1][-1, ...], U.T)
-                f = np.copy(yyt)
-                pointSets.savePoints(self.outputDir + '/TargetCorrected.vtk', f)
+            # if self.affine=='euclidean' or self.affine=='translation':
+            #     X = self.affB.integrateFlow(self.Afft)
+            #     displ = np.zeros(self.x0.shape[0])
+            #     dt = 1.0 /self.Tsize
+            #     for t in range(self.Tsize+1):
+            #         U = la.inv(X[0][t])
+            #         yyt = np.dot(self.xt[t,...] - X[1][t, ...], U.T)
+            #         f = np.copy(yyt)
+            #         # vf = surfaces.vtkFields() ;
+            #         # vf.scalars.append('Jacobian') ;
+            #         # vf.scalars.append(np.exp(Jt[t, :]))
+            #         # vf.scalars.append('displacement')
+            #         # vf.scalars.append(displ)
+            #         # vf.vectors.append('velocity') ;
+            #         # vf.vectors.append(vt)
+            #         # nu = self.fv0ori*f.computeVertexNormals()
+            #         pointSets.savelmk(f, self.outputDir + '/' + self.saveFile + 'Corrected' + str(t) + '.lmk')
+            #     f = np.copy(self.fv1)
+            #     yyt = np.dot(f - X[1][-1, ...], U.T)
+            #     f = np.copy(yyt)
+            #     pointSets.savePoints(self.outputDir + '/TargetCorrected.vtk', f)
             for kk in range(self.Tsize+1):
-                fvDef = PointSet(data=np.squeeze(xt[kk, :, :]), weights=self.fv0.weights)
+                fvDef = meshes.Mesh(mesh=self.fvDef)
+                fvDef.updateVertices(xt[kk, :, :])
                 fvDef.save(self.outputDir + '/' + self.saveFile + str(kk) + '.vtk')
         (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
-        self.fvDef.points = np.copy(np.squeeze(self.xt[-1, :, :]))
+        self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
 
     def endOfProcedure(self):
         self.endOfIteration(endP=True)
@@ -509,26 +467,5 @@ class PointSetMatching(object):
                       Wolfe=self.param.wolfe, memory=50)
         #bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
         #return self.at, self.xt
-
-
-# if __name__ == "__main__":
-#     outputDir0 = '/Users/younes/Development/Results/PointSets'
-#     loggingUtils.setup_default_logging(outputDir0, fileName='info', stdOutput=True)
-#     fv0 = np.random.multivariate_normal(-np.ones(2), np.eye(2), 150)
-#     fv1 = np.random.multivariate_normal(np.ones(2), np.array([[4, 1], [1, 2]]), 100)
-#     K1 = kfun.Kernel(name='laplacian', sigma=1, order=3)
-#     K2 = kfun.Kernel(name='laplacian', sigma=0.5, order=3)
-#     sm = PointSetMatchingParam(timeStep=0.1, KparDiff = K1, KparDist=K2, sigmaError=.01, errorType='measure')
-#
-#
-#     f = PointSetMatching(Template=fv0, Target=fv1, outputDir=outputDir0, param=sm, regWeight=1.,
-#                          saveTrajectories=True, pplot=True,
-#                          normalizeInput=False,
-#                          affine='none', testGradient=True, affineWeight=10.,
-#                          maxIter=1500)
-#     #f.sgd = (1,1)
-#     f.optimizeMatching()
-#
-
 
 
