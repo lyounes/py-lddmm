@@ -78,7 +78,7 @@ def compute(model):
     sm.KparDiff.pk_dtype = 'float64'
     sm.KparDist.pk_dtype = 'float64'
     f = MeshMatching(Template=ftemp, Target=ftarg, outputDir='../Output/meshMatchingTest/'+model,param=sm,
-                        testGradient=True, regWeight = regweight, maxIter=1000,
+                        testGradient=False, regWeight = regweight, maxIter=1000,
                      affine= 'none', rotWeight=.01, transWeight = .01,
                         scaleWeight=10., affineWeight=100.)
 
