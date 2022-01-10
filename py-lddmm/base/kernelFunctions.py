@@ -489,6 +489,15 @@ class Kernel(KernelSpec):
 
         return z
 
+    # Computes K(x,x)a or K(x,y)a
+    def applyKTensor(self, x, ax, ay, betax, betay, firstVar = None, grid=None, cpu=False):
+        if firstVar is None:
+            y = np.copy(x)
+            z = ku.applyktensor(y ,x , ax, ay, betax, betay ,self.name, self.sigma ,self.order, cpu=cpu, dtype=self.pk_dtype)
+        else:
+            z = ku.applyktensor(firstVar ,x , ax, ay, betax, betay , self.name, self.sigma ,self.order, cpu=cpu, dtype=self.pk_dtype)
+        return z
+
     # # Computes A(i) = sum_j D_1[K(x(i), x(j))a2(j)]a1(i)
     def applyDiffK(self, x, a1, a2):
         z = ku.applykdiff1(x, a1, a2, self.name, self.sigma, self.order)
@@ -509,6 +518,14 @@ class Kernel(KernelSpec):
             z = ku.applykdiffmat(x, x, beta, self.name, self.sigma, self.order)
         else:
             z = ku.applykdiffmat(firstVar, x, beta, self.name, self.sigma, self.order)
+        return z
+
+    # Computes A(i) = sum_j D_2[K(x(i), x(j))a2(j)]a1(j)
+    def applyDiffKTensor(self, x, ax, ay, betax, betay, firstVar=None):
+        if firstVar is None:
+            z = ku.applydiffktensor(x, x, ax, ay, betax, betay, self.name, self.sigma, self.order)
+        else:
+            z = ku.applydiffktensor(firstVar, x, ax, ay, betax, betay, self.name, self.sigma, self.order)
         return z
 
     # Computes array A(i) = sum_k sum_(j) nabla_1[a1(k,i). K(x(i), x(j))a2(k,j)]
@@ -545,6 +562,7 @@ class Kernel(KernelSpec):
                      bb = np.dot(p[k], E)
                      zpx += self.w1 * np.multiply(yy, a[k]).sum() * bb
         return zpx
+
 
     def testDiffKT(self, y, x, p, a):
         k0 = (p*self.applyK(x,a, firstVar=y)).sum()
