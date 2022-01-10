@@ -77,7 +77,7 @@ class Mesh:
                 else:
                     self.image = np.copy(image)
                     self.imageDim = self.image.shape[1]
-                self.computeCentersVolumesNormals()
+                self.computeCentersVolumesNormals(checkOrientation=True)
         elif type(mesh) is str:
             self.read(mesh)
         elif issubclass(type(mesh), Mesh):
@@ -112,7 +112,7 @@ class Mesh:
                 w = weights
             self.vertex_weights = w * np.ones(self.vertices.shape[0], dtype=int)
             self.weights = w * np.ones(self.faces.shape[0], dtype=int)
-            self.computeCentersVolumesNormals()
+            self.computeCentersVolumesNormals(checkOrientation=True)
             self.image = np.ones((self.faces.shape[0], 1))
             self.imageDim = 1
         elif issubclass(type(mesh), Surface):
@@ -135,7 +135,7 @@ class Mesh:
             self.computeCentersVolumesNormals()
             self.image = np.ones((self.faces.shape[0], 1))
             self.imageDim = 1
-            self.computeCentersVolumesNormals()
+            self.computeCentersVolumesNormals(checkOrientation=True)
             print(f'Mesh: {self.vertices.shape[0]} vertices, {self.faces.shape[0]} cells')
         else:
             self.vertices = np.empty(0)
@@ -171,7 +171,7 @@ class Mesh:
             raise NameError('Unknown Mesh Extension: '+filename)
 
     # face centers and area weighted normal
-    def computeCentersVolumesNormals(self):
+    def computeCentersVolumesNormals(self, checkOrientation= False):
         if self.dim == 2:
             xDef1 = self.vertices[self.faces[:, 0], :]
             xDef2 = self.vertices[self.faces[:, 1], :]
@@ -180,6 +180,17 @@ class Mesh:
             x12 = xDef2-xDef1
             x13 = xDef3-xDef1
             self.volumes =  np.cross(x12, x13)/2
+            if checkOrientation:
+                if self.volumes.min() < -1e-12:
+                    if self.volumes.max() > 1e-12:
+                        print('Warning: mesh has inconsistent orientation')
+                    else:
+                        self.faces = self.faces[:, [0,2,1]]
+                        xDef2 = self.vertices[self.faces[:, 1], :]
+                        xDef3 = self.vertices[self.faces[:, 2], :]
+                        x12 = xDef2-xDef1
+                        x13 = xDef3-xDef1
+                        self.volumes =  np.cross(x12, x13)/2
             J = np.array([[0, -1], [1,0]])
             self.normals = np.zeros((3, self.faces.shape[0], 2))
             self.normals[0, :, :] = (xDef3 - xDef2) @ J.T
@@ -195,6 +206,17 @@ class Mesh:
             x13 = xDef3-xDef1
             x14 = xDef4-xDef1
             self.volumes =  det3D(x12, x13, x14)/6
+            if checkOrientation:
+                if self.volumes.min() < -1e-12:
+                    if self.volumes.max() > 1e-12:
+                        print('Warning: mesh has inconsistent orientation')
+                    else:
+                        self.faces = self.faces[:, [0,1,3,2]]
+                        xDef3 = self.vertices[self.faces[:, 2], :]
+                        xDef4 = self.vertices[self.faces[:, 3], :]
+                        x13 = xDef3 - xDef1
+                        x14 = xDef4 - xDef1
+                        self.volumes = det3D(x12, x13, x14) / 6
             self.normals = np.zeros((4, self.faces.shape[0], 3))
             self.normals[0, :, :] = np.cross(xDef4 - xDef2, xDef3 - xDef2)
             self.normals[1, :, :] = np.cross(xDef2 - xDef1, xDef4 - xDef1)
