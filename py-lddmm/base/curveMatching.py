@@ -19,7 +19,7 @@ from functools import partial
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class CurveMatchingParam(matchingParam.MatchingParam):
-    def __init__(self, timeStep = .1, algorithm = 'bfgs', Wolfe=False, KparDiff = None, KparDist = None,
+    def __init__(self, timeStep = .1, algorithm = 'bfgs', Wolfe=True, KparDiff = None, KparDist = None,
                  sigmaKernel = 6.5, sigmaDist=2.5, sigmaError=1.0,
                  errorType = 'measure', typeKernel='gauss', internalCost=None):
         super().__init__(timeStep=timeStep, algorithm = algorithm, Wolfe=Wolfe,
@@ -348,7 +348,7 @@ class CurveMatching:
             print('Warning: nan in updateTry')
             return 1e500
 
-        if (objRef == None) | (objTry < objRef):
+        if (objRef == None)  or (objTry < objRef):
             self.atTry = atTry
             self.objTry = objTry
             self.AfftTry = AfftTry

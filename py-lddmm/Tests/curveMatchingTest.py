@@ -11,7 +11,7 @@ import matplotlib
 matplotlib.use("qt5agg")
 import matplotlib.pyplot as plt
 
-model = 'cardioid'
+model = 'ellipses'
 def compute(model='default', dirOut='../Output/curveMatchingTest/'):
 
     sigma = 0.5
@@ -256,9 +256,9 @@ def compute(model='default', dirOut='../Output/curveMatchingTest/'):
         fv23 = Curve()
         fv23.Isocontour(I3, value = 0, target=100, scales=scl)
         ftarg = [fv2, fv22, fv23]
-        sigma = 0.2
+        sigma = .1
         sigmaDist = 2.0
-        sigmaError = 0.1
+        sigmaError = 0.01
         internalWeight = 500
     elif model=="cardioid":
         t = np.arange(0., 2*np.pi, 0.05)
@@ -305,7 +305,7 @@ def compute(model='default', dirOut='../Output/curveMatchingTest/'):
     loggingUtils.setup_default_logging(dirOut + '../Output', fileName='info.txt',
                                        stdOutput = True)   
     sm = CurveMatchingParam(timeStep=0.1, KparDiff=K1, KparDist=('laplacian', sigmaDist), sigmaError=sigmaError,
-                            algorithm='cg', errorType='varifold', internalCost=internalCost)
+                            algorithm='bfgs', errorType='varifold', internalCost=internalCost)
     f = CurveMatching(Template=ftemp, Target=ftarg,
                       outputDir=dirOut+'/'+model,
                       param=sm, testGradient=False,saveRate=50,

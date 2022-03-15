@@ -1,5 +1,6 @@
 import numpy as np
 import logging
+from .linesearch import line_search_wolfe
 
 # added comment to test git, 4-26-19
 
@@ -121,15 +122,18 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
     it = 0
     diffVar = None
     grdOld = None
+    obj_old = None
     while it < maxIter:
         if hasattr(opt, 'startOfIteration'):
             opt.startOfIteration()
 
         try_BFGS = True
+        stopBFGS = False
         while(try_BFGS):
             if opt.reset:
                 opt.obj = None
                 obj = opt.objectiveFun()
+                obj_old = None
 
             grd = opt.getGradient(gradCoeff)
 
@@ -186,9 +190,8 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
                 logging.info(f'Gradient threshold: {gradEps:.6f}')
 
             if Wolfe:
-                eps *= 2.
-                if eps > 1.:
-                    eps = 1.
+                epsBig = epsMax / (grdTry)
+                eps = 1.
             else:
                 epsBig = epsMax / (grdTry)
                 if eps > epsBig:
@@ -205,7 +208,13 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
                     if opt.reset:
                         logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, gradient: {3:.5f}'.format(it+1, obj, eps, np.sqrt(grd2)))
                         logging.info('Stopping Gradient Descent: bad direction')
-                        break
+                        if hasattr(opt, 'endOfProcedure'):
+                            opt.endOfProcedure()
+                        if hasattr(opt, 'endOptim'):
+                            opt.endOptim()
+
+                        return opt.getVariable()
+
                     else:
                         logging.info('Resetting BFGS')
                         opt.reset = True
@@ -216,78 +225,69 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
 
 
         opt.reset = False
+        _eps = eps
 
 
 
         ### Starting Line Search
 
-        if Wolfe:
-            #var = opt.getVariable()
-            d1 = dotProduct(dir0, [grd])[0]
-            c1 = 0.1
-            c2 = 0.5
-            lb1 = obj - c1*eps*d1
-            while (objTry > lb1):
-                eps /= 1.5
-                lb1 = obj - c1 * eps * d1
-                objTry = opt.updateTry(dir0, eps, obj)
-            lb2 = c2*d1
-            #varTry = opt.update(dir0, -eps)
-            grdTry = opt.getGradient(coeff=gradCoeff, update=[dir0, eps])
-            d2 = dotProduct(dir0, [grdTry])[0]
-            while (objTry > lb1) or (abs(d2) < abs(lb2)):
-                eps /= 1.5
-                lb1 = obj - c1 * eps * d1
-                objTry = opt.updateTry(dir0, eps, obj)
-                #varTry = addProd(var, dir0, -eps)
-                grdTry = opt.getGradient(gradCoeff, update=[dir0,eps])
-                d2 = dotProduct(dir0, [grdTry])[0]
-        else:
-            while (objTry > obj) and (eps > epsMin):
-                eps = eps / 2
-                objTry = opt.updateTry(dir0, eps, obj)
-                        #opt.acceptVarTry()
-
-                        #print 'improve'
-            ## reducing step if improves
-            contt = 1
-            while contt==1:
-                objTry2 = opt.updateTry(dir0, .5*eps, objTry)
-                if objTry > objTry2:
+        if not stopBFGS:
+            __Wolfe = True
+            if Wolfe:
+                eps, fc, gc, phi_star, old_fval = line_search_wolfe(opt, dir0, gfk=grd, old_fval=obj,
+                                   old_old_fval=obj_old, c1=1e-4, c2=0.9, amax=None,
+                                   maxiter=10)
+                if eps is not None:
+                    diffVar = prod(dir0, -eps)
+                    obj_old = obj
+                    opt.acceptVarTry()  #
+                    obj = phi_star
+                else:
+                    logging.info('Wolfe search unsuccessful')
+                    __Wolfe = False
+            if not Wolfe or not __Wolfe:
+                eps = _eps
+                while (objTry > obj) and (eps > epsMin):
                     eps = eps / 2
-                    objTry=objTry2
-                else:
-                    contt=0
+                    objTry = opt.updateTry(dir0, eps, obj)
+                contt = 1
+                while contt==1:
+                    objTry2 = opt.updateTry(dir0, .5*eps, objTry)
+                    if objTry > objTry2:
+                        eps = eps / 2
+                        objTry=objTry2
+                    else:
+                        contt=0
 
-
-        # increasing step if improves
-            contt = 5
-            #eps0 = eps / 4
-            while contt>=1 and eps<epsBig:
-                objTry2 = opt.updateTry(dir0, 1.25*eps, objTry)
-                if objTry > objTry2:
-                    eps *= 1.25
-                    objTry=objTry2
-                    #contt -= 1
-                else:
-                    contt=0
-        ### end of line search
+            # increasing step if improves
+                contt = 5
+                while contt>=1 and eps<epsBig:
+                    objTry2 = opt.updateTry(dir0, 1.25*eps, objTry)
+                    if objTry > objTry2:
+                        eps *= 1.25
+                        objTry=objTry2
+                        #contt -= 1
+                    else:
+                        contt=0
+                diffVar = prod(dir0, -eps)
+                obj_old = obj
+                opt.acceptVarTry()  #
+                obj = objTry
+            ### end of line search
 
 
         #print obj+obj0, objTry+obj0
-        if (np.fabs(obj-objTry) < 1e-6) and stopCondition():
+        if (np.fabs(obj-obj_old) < 1e-7) and stopCondition():
             logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, gradient: {3:.5f}'.format(it+1, obj, eps, np.sqrt(grd2)))
             if it > burnIn:
                 logging.info('Stopping Gradient Descent: small variation')
                 opt.converged = True
                 if hasattr(opt, 'endOfProcedure'):
                     opt.endOfProcedure()
+                elif hasattr(opt, 'endOfIteration'):
+                    opt.endOfIteration()
                 break
 
-        diffVar = prod(dir0, -eps)
-        opt.acceptVarTry()
-        obj = objTry
-        #logging.info('Obj Fun CG: ' + str(opt.objectiveFun(force=True)))
         if verb | (it == maxIter):
             logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, gradient: {3:.5f}'.format(it+1, obj, eps, np.sqrt(grd2)))
 
@@ -296,6 +296,8 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
             opt.converged = True
             if hasattr(opt, 'endOfProcedure'):
                 opt.endOfProcedure()
+            elif hasattr(opt, 'endOfIteration'):
+                opt.endOfIteration()
             break
         eps = np.minimum(100*eps, epsMax)
 

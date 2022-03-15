@@ -175,6 +175,10 @@ def Surf2SecDist(surf, s, curveDist, curveDist0 = None, plot = None, target_labe
     s0 = SurfaceSection(surf=surf_, hyperplane=s.hyperplane, plot = plot)
     if s0.curve.faces.shape[0]>0:
         obj = curveDist(s0.curve, s.curve)
+        n0 = s0.curve.weightedLength()
+        n1 = s.curve.weightedLength()
+        #logging.info(f'     Source {n0:.2f} points; target {n1:.2f}; distance: {obj:.4f}')
+
     else:
         obj = 0
     if curveDist0 is not None:
