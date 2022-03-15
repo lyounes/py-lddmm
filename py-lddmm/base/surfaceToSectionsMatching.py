@@ -316,8 +316,9 @@ class SurfaceToSectionsMatching(SurfaceMatching):
             fv1 = self.fv1
         obj = 0
         for k,f in enumerate(fv1):
-            obj += Surf2SecDist(_fvDef, f, self.fun_obj, target_comp_info=self.component_structure[k])
+            #logging.info(f'     Target {k}')
                                 #target_label=np.where(self.componentMap[:,k])[0]) # curveDist0=self.fun_obj0) plot=101+k)
+            obj += Surf2SecDist(_fvDef, f, self.fun_obj, target_comp_info=self.component_structure[k])
         obj /= self.param.sigmaError**2
         #print('ending dt')
         return obj

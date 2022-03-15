@@ -1,4 +1,5 @@
 import os
+import time
 from copy import deepcopy
 import numpy as np
 import numpy.linalg as la
@@ -701,8 +702,8 @@ class SurfaceMatching(object):
             xt = self.xt
         else:
             at = self.at - update[1] * update[0].diff
-            Afft = self.Afft - update[1]*update[0].aff
-            if len(update[0].aff) > 0:
+            if update[0].aff is not None:
+                Afft = self.Afft - update[1]*update[0].aff
                 A = self.affB.getTransforms(Afft)
             else:
                 A = None
@@ -988,7 +989,9 @@ class SurfaceMatching(object):
         if self.match_landmarks:
             ax.scatter3D(self.def_lmk.points[:,0], self.def_lmk.points[:,1], self.def_lmk.points[:,2], color='r')
             ax.scatter3D(self.targ_lmk.points[:, 0], self.targ_lmk.points[:, 1], self.targ_lmk.points[:, 2], color='b')
+        fig.canvas.draw_idle()
         fig.canvas.flush_events()
+        time.sleep(0.5)
 
     def endOfIteration(self, forceSave=False):
         self.iter += 1
@@ -1098,7 +1101,7 @@ class SurfaceMatching(object):
         self.coeffAff = self.coeffAff1
         if self.param.algorithm == 'cg':
             cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=0.1,
-                  forceLineSearch=self.forceLineSearch)
+                  Wolfe=self.param.wolfe)
         elif self.param.algorithm == 'bfgs':
             bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=1.,
                       Wolfe=self.param.wolfe, memory=50)

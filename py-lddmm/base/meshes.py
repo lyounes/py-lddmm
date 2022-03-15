@@ -2,6 +2,9 @@ import matplotlib
 import os
 import numpy as np
 from numba import jit, int64
+import pandas as pd
+from scipy.interpolate import LinearNDInterpolator
+from scipy.spatial import Delaunay
 import scipy as sp
 import scipy.linalg as LA
 from scipy.sparse import csr_matrix
@@ -850,3 +853,66 @@ class Mesh:
     #     return res
 
 
+def buildMeshFromMerfishData(fileCounts, fileData, geneSet = None, resolution=100):
+    counts = pd.read_csv(fileCounts, index_col=0)
+    if geneSet is not None:
+        counts = counts.loc[:, geneSet]
+    data = pd.read_csv(fileData)
+    centers = np.zeros((data.shape[0], 2))
+    centers[:, 0] = data.loc[:, 'center_x']
+    centers[:, 1] = data.loc[:, 'center_y']
+    minx = data.loc[:, 'min_x'].min()
+    miny = data.loc[:, 'min_y'].min()
+    maxx = data.loc[:, 'max_x'].max()
+    maxy = data.loc[:, 'max_y'].max()
+
+    spacing = max(maxy - miny, maxx - minx) / resolution
+    ul = np.array((minx, miny))
+    ur = np.array((maxx, miny))
+    ll = np.array((minx, maxy))
+    v0 = ur - ul
+    v1 = ll - ul
+
+    nv0 = np.sqrt((v0 ** 2).sum())
+    nv1 = np.sqrt((v1 ** 2).sum())
+    npt0 = int(np.ceil(nv0 / spacing))
+    npt1 = int(np.ceil(nv1 / spacing))
+
+    t0 = np.linspace(0, 1, npt0)
+
+    t1 = np.linspace(0, 1, npt1)
+    x, y = np.meshgrid(t0, t1)
+    x = np.ravel(x)
+    y = np.ravel(y)
+    pts = ul[None, :] + x[:, None] * v0[None, :] + y[:, None] * v1[None, :]
+
+    tri = Delaunay(pts)
+    vert = np.zeros((tri.points.shape[0], 3))
+    vert[:,:2] = tri.points
+
+    cts = counts.to_numpy()
+    sp = tri.find_simplex(centers)
+    # surf = Surface(surf=(tri.simplices, vert))
+    # surf.component[sp] = 1
+    # surf.saveVTK('test.vtk')
+    g = np.zeros((tri.simplices.shape[0], cts.shape[1]))
+    for k in range(centers.shape[0]):
+        g[sp[k], :] += cts[k,:]
+
+    keepface = np.nonzero((g ** 2).sum(axis=1) > 1e-10)[0]
+    newf = tri.simplices[keepface, :]
+    keepvert = np.zeros(tri.points.shape[0], dtype=bool)
+    for j in range(tri.simplices.shape[1]):
+        keepvert[newf[:, j]] = True
+    keepvert = np.nonzero(keepvert)[0]
+    newv = tri.points[keepvert, :]
+    newI = - np.ones(tri.points.shape[0], dtype=int)
+    newI[keepvert] = np.arange(newv.shape[0])
+    newf = newI[newf]
+    g = g[keepface, :]
+    #g = (g[keepface, :] > 0).astype(float)
+    #g = (np.log(1+g[keepface, :])).astype(float)
+
+    fv0 = Mesh(mesh=(newf, newv), image=g)
+    fv0.image /= fv0.volumes[:, None]
+    return fv0
