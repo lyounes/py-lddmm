@@ -20,7 +20,7 @@ def compute(model='default', dirOut='../Output/curveMatchingTest/'):
     regweight = 1
     affine = None
     internalWeight = 1000
-    internalCost = 'h1AlphaInvariant'
+    internalCost = None #'h1AlphaInvariant'
     if model == 'smile':
         s = 0.025
         t = np.arange(0, 10+1e-3, s)        
@@ -263,8 +263,8 @@ def compute(model='default', dirOut='../Output/curveMatchingTest/'):
     elif model=="cardioid":
         t = np.arange(0., 2*np.pi, 0.05)
         a = 1.5
-        b = 2
-        c = 0.7
+        b = 3
+        c = 0.9
         x0 = 10
         y0 = 2
         x = x0+a*np.cos(t) * (1-c*np.cos(t))
@@ -281,8 +281,8 @@ def compute(model='default', dirOut='../Output/curveMatchingTest/'):
         ftemp = Curve(curve=(f,v))
 
         a = 5
-        b = 3
-        c = 0.6
+        b = 2
+        c = 1.0
         #x0 = 9
         #y0 = 3
         x = x0+a*np.cos(t) * (1-c*np.cos(t))
