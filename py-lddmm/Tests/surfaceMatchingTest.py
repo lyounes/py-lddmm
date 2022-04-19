@@ -7,7 +7,6 @@ if 'DISPLAY' in os.environ:
     matplotlib.use('qt5Agg')
 else:
     matplotlib.use("Agg")
-    print(os.environ)
 import matplotlib.pyplot as plt
 import numpy as np
 from base import surfaces, surfaceExamples
@@ -27,9 +26,10 @@ def compute(model):
     sigmaKernel = 0.5
     sigmaDist = 5.
     sigmaError = 1.
-    internalWeight = 200.
+    internalWeight = 0.
     regweight = 0.1
-    internalCost = 'h1'
+    #internalCost = 'h1'
+    internalCost = 'elastic'
     landmarks = None
     if model=='Balls':
         M=100
@@ -54,7 +54,7 @@ def compute(model):
         ftemp = fv1
         ftarg = fv2
         landmarks = (fv1.vertices[0:5, :], fv2.vertices[0:5, :], 1)
-        internalCost = None
+        #internalCost = None
     elif model=='Hearts':
         [x,y,z] = np.mgrid[0:200, 0:200, 0:200]/100.
         ay = np.fabs(y-1)
@@ -137,8 +137,8 @@ def compute(model):
     ## Object kernel
     K1 = Kernel(name='gauss', sigma = sigmaKernel)
 
-    sm = SurfaceMatchingParam(timeStep=0.1, algorithm='cg', KparDiff=K1, KparDist=('gauss', sigmaDist),
-                              sigmaError=sigmaError, errorType='measure', internalCost=internalCost)
+    sm = SurfaceMatchingParam(timeStep=0.1, algorithm='bfgs', KparDiff=K1, KparDist=('gauss', sigmaDist),
+                              sigmaError=sigmaError, errorType='varifold', internalCost=internalCost)
     sm.KparDiff.pk_dtype = 'float64'
     sm.KparDist.pk_dtype = 'float64'
     f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTest/'+model,param=sm,

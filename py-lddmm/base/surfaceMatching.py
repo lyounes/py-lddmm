@@ -154,7 +154,13 @@ class SurfaceMatching(object):
         if self.param.internalCost == 'h1':
             self.internalCost = sd.normGrad
             self.internalCostGrad = sd.diffNormGrad
+        elif self.param.internalCost == 'elastic':
+            self.internalCost = sd.elasticNorm
+            self.internalCostGrad = sd.diffElasticNorm
         else:
+            print(self.param.internalCost)
+            if self.param.internalCost is not None:
+                print('unknown ', self.internalCost)
             self.internalCost = None
 
 
