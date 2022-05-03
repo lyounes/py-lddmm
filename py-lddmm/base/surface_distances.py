@@ -549,3 +549,82 @@ def diffNormGrad(fv, phi, variables='both'):
     else:
         logging.info('Incorrect option in diffNormGrad')
 
+def elasticNorm(fv, phi):
+    v1 = fv.vertices[fv.faces[:, 0], :]
+    v2 = fv.vertices[fv.faces[:, 1], :]
+    v3 = fv.vertices[fv.faces[:, 2], :]
+    l1 = ((v2 - v3) ** 2).sum(axis=1)
+    l2 = ((v1 - v3) ** 2).sum(axis=1)
+    l3 = ((v1 - v2) ** 2).sum(axis=1)
+    phi1 = phi[fv.faces[:, 0], :]
+    phi2 = phi[fv.faces[:, 1], :]
+    phi3 = phi[fv.faces[:, 2], :]
+    a = 4 * np.sqrt((fv.surfel ** 2).sum(axis=1))
+    u = l1 * ((phi2 - phi1) * (phi3 - phi1)).sum(axis=1) + l2 * ((phi3 - phi2) * (phi1 - phi2)).sum(axis=1) + \
+        l3 * ((phi1 - phi3) * (phi2 - phi3)).sum(axis=1) - \
+        0.5 * (((v1-v3)*(phi1-phi2)).sum(axis=1) - ((v1-v2)*(phi1-phi3)).sum(axis=1))**2
+    res = (u / a).sum()
+    return res
+
+
+
+def diffElasticNorm(fv, phi, variables='both'):
+    v1 = fv.vertices[fv.faces[:, 0], :]
+    v2 = fv.vertices[fv.faces[:, 1], :]
+    v3 = fv.vertices[fv.faces[:, 2], :]
+    l1 = (((v2 - v3) ** 2).sum(axis=1))
+    l2 = (((v1 - v3) ** 2).sum(axis=1))
+    l3 = (((v1 - v2) ** 2).sum(axis=1))
+    phi1 = phi[fv.faces[:, 0], :]
+    phi2 = phi[fv.faces[:, 1], :]
+    phi3 = phi[fv.faces[:, 2], :]
+    # a = ((fv.surfel**2).sum(axis=1))
+    a = 2 * np.sqrt((fv.surfel ** 2).sum(axis=1))
+    a2 = 2 * a[..., np.newaxis]
+    correct =  ((v1-v3)*(phi1-phi2)).sum(axis=1) - ((v1-v2)*(phi1-phi3)).sum(axis=1)
+    if variables == 'both' or variables == 'phi':
+        r1 = (l1[:, np.newaxis] * (phi2 + phi3 - 2 * phi1) + (l2 - l3)[:, np.newaxis] * (phi2 - phi3)) / a2 \
+        + .5 * (v2-v3) * correct[:, None] / a[:, None]
+        r2 = (l2[:, np.newaxis] * (phi1 + phi3 - 2 * phi2) + (l1 - l3)[:, np.newaxis] * (phi1 - phi3)) / a2 \
+        + .5 * (v3-v1) * correct[:, None] / a[:, None]
+        r3 = (l3[:, np.newaxis] * (phi1 + phi2 - 2 * phi3) + (l2 - l1)[:, np.newaxis] * (phi2 - phi1)) / a2 \
+        + .5 * (v1 -v2) * correct[:, None] / a[:, None]
+        gradphi = np.zeros(phi.shape)
+        for k, f in enumerate(fv.faces):
+            gradphi[f[0], :] -= r1[k, :]
+            gradphi[f[1], :] -= r2[k, :]
+            gradphi[f[2], :] -= r3[k, :]
+
+    if variables == 'both' or variables == 'x':
+        gradx = np.zeros(fv.vertices.shape)
+        u = (l1 * ((phi2 - phi1) * (phi3 - phi1)).sum(axis=1) + l2 * ((phi3 - phi2) * (phi1 - phi2)).sum(axis=1)
+             + l3 * ((phi1 - phi3) * (phi2 - phi3)).sum(axis=1)) - \
+            0.5 * (((v1-v3)*(phi1-phi2)).sum(axis=1) - ((v1-v2)*(phi1-phi3)).sum(axis=1))**2
+        # u = (2*u/a**2)[...,np.newaxis]
+        u = (u / (a ** 3))[..., np.newaxis]
+        r1 = (- u * np.cross(v2 - v3, fv.surfel) + 2 * (
+                    (v1 - v3) * (((phi3 - phi2) * (phi1 - phi2)).sum(axis=1))[:, np.newaxis]
+                    + (v1 - v2) * (((phi1 - phi3) * (phi2 - phi3)).sum(axis=1)[:, np.newaxis])) / a2)
+        r2 = (- u * np.cross(v3 - v1, fv.surfel) + 2 * (
+                    (v2 - v1) * (((phi1 - phi3) * (phi2 - phi3)).sum(axis=1))[:, np.newaxis]
+                    + (v2 - v3) * (((phi2 - phi1) * (phi3 - phi1)).sum(axis=1))[:, np.newaxis]) / a2)
+        r3 = (- u * np.cross(v1 - v2, fv.surfel) + 2 * (
+                    (v3 - v2) * (((phi2 - phi1) * (phi3 - phi1)).sum(axis=1))[:, np.newaxis]
+                    + (v3 - v1) * (((phi3 - phi2) * (phi1 - phi2)).sum(axis=1)[:, np.newaxis])) / a2)
+        r1 -= .5 * (phi3 - phi2) * correct[:, None] / a[:, None]
+        r2 -= .5 * (phi1 - phi3) * correct[:, None] / a[:, None]
+        r3 -= .5 * (phi2 - phi1) * correct[:, None] / a[:, None]
+        for k, f in enumerate(fv.faces):
+            gradx[f[0], :] += r1[k, :]
+            gradx[f[1], :] += r2[k, :]
+            gradx[f[2], :] += r3[k, :]
+
+    if variables == 'both':
+        return (gradphi, gradx)
+    elif variables == 'phi':
+        return gradphi
+    elif variables == 'x':
+        return gradx
+    else:
+        logging.info('Incorrect option in diffElasticNorm')
+

@@ -4,7 +4,7 @@ from . import surfaces
 from . import curves as crvs
 from . import surfaceSection
 
-def readTagData(filename, contoursOnly=False):
+def readTagData(filename, contoursOnly=False, select_sections_tag = None):
     f = h5py.File(filename, 'r')
     fkeys = list(f.keys())
     if not contoursOnly:
@@ -21,12 +21,41 @@ def readTagData(filename, contoursOnly=False):
 
         tag_pl = np.array(f['Tagplane']['Corners']).T
         npl = tag_pl.shape[0]
+        if select_sections_tag is not None:
+            saxal = False
+            select_plane = np.zeros(npl, dtype=bool)
+            for a in select_sections_tag:
+                if 'SAX' in a:
+                    saxal = True
+                    break
+            k = 0
+            for i in range(npl):
+                labf = f['Tagplane']['Label'][i]
+                if type(labf) in (bytes, np.bytes_):
+                    labf = labf.decode()
+                if ( labf == 'SAXAL' and saxal) or labf in select_sections_tag:
+                    tag_pl[k, :] = tag_pl[i, :]
+                    select_plane[i] = True
+                    k += 1
+            tag_pl = tag_pl[:k, :]
+        else:
+            select_plane = np.ones(npl, dtype=bool)
+
+
 
         g = f['Curves']
         phases = list(g.keys())
         curves = {}
+        select_img = np.ones(len(g[phases[0]].keys()), dtype=bool)
+        if select_sections_tag is not None:
+            for k,im in enumerate(g[phases[0]].keys()):
+                if im not in select_sections_tag:
+                    select_img[k] = False
         for ph in phases:
-            images = list(g[ph].keys())
+            if select_sections_tag is not None:
+                images = list(set(g[ph].keys()) & set(select_sections_tag))
+            else:
+                images = list(g[ph].keys())
             nim = len(images)
             curve_in_phase = {s: None for s in images}
             for im in images:
@@ -45,17 +74,21 @@ def readTagData(filename, contoursOnly=False):
                 curve_in_phase[im] = curve_in_image
             curves[ph] = curve_in_phase
 
-        activity = f['ActiveMatrix']
+        activity = np.array(f['ActiveMatrix'])[select_plane, :].astype(bool)
+        activity = activity[:, select_img]
 
     epi_contours = []
     endo_contours = []
     if 'Epi' in fkeys:
-        images = list(f['Epi'].keys())
+        if select_sections_tag is not None:
+            images = list(set(f['Epi'].keys()) & set(select_sections_tag))
+        else:
+            images = list(f['Epi'].keys())
         if f['Epi'][images[0]].ndim == 2:
             nphases = 1
         else:
             nphases = f['Epi'][images[0]].shape[0]
-        epi_contours = [[]] * nphases
+        epi_contours = [[] for i in range(nphases)]
         for img in f['Epi']:
             allc = np.array(f['Epi'][img])
             if allc.ndim == 2:
@@ -65,12 +98,15 @@ def readTagData(filename, contoursOnly=False):
                 c = surfaceSection.SurfaceSection(curve=c)
                 epi_contours[i].append(c)
     if 'Endo' in fkeys:
-        images = list(f['Endo'].keys())
+        if select_sections_tag is not None:
+            images = list(set(f['Endo'].keys()) & set(select_sections_tag))
+        else:
+            images = list(f['Endo'].keys())
         if f['Endo'][images[0]].ndim == 2:
             nphases = 1
         else:
             nphases = f['Epi'][images[0]].shape[0]
-        endo_contours = [[]] * nphases
+        endo_contours = [[] for i in range(nphases)]
         for img in f['Endo']:
             allc = np.array(f['Endo'][img])
             if allc.ndim == 2:
