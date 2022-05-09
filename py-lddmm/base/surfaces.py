@@ -1,4 +1,4 @@
-import matplotlib
+#import matplotlib
 import os
 import numpy as np
 from numba import jit, int64
@@ -27,6 +27,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from matplotlib.colors import LightSource
 from matplotlib import colors
 from matplotlib import pyplot as plt
+import pygalmesh
 
 from . import diffeo
 import scipy.linalg as spLA
@@ -599,7 +600,6 @@ class Surface:
         self.__init__(surf=(faces,verts))
 
 
-
     # Computes isosurfaces using vtk               
     def Isosurface(self, data, value=0.5, target=1000.0, scales = (1., 1., 1.),
                    smooth = 0.1, fill_holes = 1., orientation=1):
@@ -839,6 +839,7 @@ class Surface:
 
         newf = np.zeros(self.faces.shape, dtype=int)
         Nf = self.faces.shape[0]
+        newcomp = np.zeros(Nf)
         nj = 0
         for kj in range(Nf):
             if len(set(self.faces[kj,:]))< 3:
@@ -846,9 +847,11 @@ class Surface:
                     logging.info('Empty face: {0:d} {1:d}'.format(kj, nj))
             else:
                 newf[nj, :] = self.faces[kj, :]
+                newcomp[nj] = self.component[kj]
                 #newc[nj] = self.component[kj]
                 nj += 1
         self.faces = newf[0:nj, :]
+        self.component = newcomp[0:nj]
         self.computeCentersAreas()
         return removed
         #self.component = newc[0:nj]
@@ -1086,7 +1089,7 @@ class Surface:
 
 
         res = Surface(surf=(np.array(faces, dtype=int), np.array(vert)))
-        res.updateWeights(weights)
+        res.updateWeights(np.array(weights))
         removed = res.removeDuplicates()
         val = np.array(val)[np.logical_not(removed)]
         #val = (res.vertices*a[0:3]).sum(axis=1) - a[3]
@@ -1099,16 +1102,19 @@ class Surface:
     def cut(self, select):
         res = Surface()
         res.vertices = self.vertices[select, :]
-        res.updateWeights(self.weights[select])
         newindx = np.arange(self.vertices.shape[0], dtype=int)
         newindx[select] = np.arange(select.sum(), dtype=int)
         res.faces = np.zeros(self.faces.shape, dtype= int)
+        res.component = np.zeros(self.faces.shape[0], dtype= int)
         j = 0
         for i in range(self.faces.shape[0]):
             if np.all(select[self.faces[i, :]]):
                 res.faces[j, :] = newindx[np.copy(self.faces[i, :])]
+                res.component[j] = self.component[i]
                 j += 1
         res.faces = res.faces[0:j, :]
+        res.component = res.component[0:j]
+        res.updateWeights(self.weights[select])
         res.computeCentersAreas()
         return res
 
@@ -1132,23 +1138,43 @@ class Surface:
         else:
             w0 = (thickness/2)**2
 
-        [x,y,z] = np.mgrid[0:2*M+1, 0:2*M+1, 0:2*M+1] / M
-        x = emax*(x-1)
-        y = emax*(y-1)
-        z = emax*(z-1)
-        I1 = np.logical_and((z ** 2 / w[2] + y ** 2 / w[1]) < 3, x ** 2 < w0)
-        h = Surface()
-        h.Isosurface_ski(data=I1, value=.5, step=3)
+        class Pancake(pygalmesh.DomainBase):
+            def __init__(self):
+                super().__init__()
+
+            def eval(self, x0):
+                x = emax * (x0[0] - 1)
+                y = emax * (x0[1] - 1)
+                z = emax * (x0[2] - 1)
+                I1 = np.maximum(z ** 2 / w[2] + y ** 2 / w[1] + x ** 2/w0 - 3, x ** 2/w0 - 1)
+                return I1
+
+            def get_bounding_sphere_squared_radius(self):
+                return 12.0
+
+        # d = Heart()
+        d = Pancake()
+        mesh = pygalmesh.generate_surface_mesh(d, max_facet_distance=1.0, min_facet_angle=30.0,
+                                               max_radius_surface_delaunay_ball=2/M)
+        # [x,y,z] = np.mgrid[0:2*M+1, 0:2*M+1, 0:2*M+1] / M
+        # x = emax*(x-1)
+        # y = emax*(y-1)
+        # z = emax*(z-1)
+        # I1 = np.logical_and((z ** 2 / w[2] + y ** 2 / w[1]) < 3, x ** 2 < w0)
+        # h = Surface()
+        h = Surface(surf=(mesh.cells[0].data, mesh.points))
+        #h.updateVertices(emax*(h.vertices-1))
+        # h.Isosurface_ski(data=I1, value=.5, step=3)
         labels = np.zeros(h.vertices.shape[0], dtype=int)
-        u2 = (h.vertices[:,0] - M) * (emax/M)
+        u2 = (h.vertices[:,0] - 1) * (emax)
         for j in range(labels.shape[0]):
             #u2 = x[0]  * v[0, 0] + x[1] * v[1, 0] + x[2] * v[2, 0]
-            if np.fabs(u2[j]-np.sqrt(w0)) < emax/M:
+            if np.fabs(u2[j]-np.sqrt(w0)) < .05:
                 labels[j] = 1
-            elif np.fabs(u2[j]+np.sqrt(w0)) < emax/M:
+            elif np.fabs(u2[j]+np.sqrt(w0)) < .05:
                 labels[j] = 2
 
-        u = np.dot(h.vertices-M, v.T)
+        u = np.dot(h.vertices-1, v.T)
         # u = np.zeros(hv.shape)
         # u[0,:] = x*v[0,0] + y*v[1,0] + z*v[2,0]
         # u[1,:] = x*v[0,1] + y*v[1,1] + z*v[2,1]
@@ -1157,9 +1183,9 @@ class Surface:
         # I1 = np.logical_and((u2 ** 2 / w[2] + u1 ** 2 / w[1]) < 3, u0 ** 2 < w0)
         # h = Surface()
         # h.Isosurface_ski(data=I1, value=.5, step=3)
-        print('Vertices', h.vertices.shape[0])
+        logging.info(f'Vertices: {h.vertices.shape[0]}')
         #h.Isosurface(I1, value = 1, target=max(1000, self.vertices.shape[0]), scales=[1, 1, 1], smooth=0.0001)
-        h.updateVertices(x0 + (u)*emax/M)
+        h.updateVertices(x0 + (u)*emax)
         # labels = np.zeros(h.vertices.shape[0], dtype=int)
         # for j in range(labels.shape[0]):
         #     x = h.vertices[j,:] - x0

@@ -15,7 +15,9 @@ def compute(model='default', dirOut='/cis/home/younes'):
     sigmaDist = 0.5 
     sigmaError = 0.1
     regweight = 1
-    internalWeight = 1000        
+    internalWeight = 1000
+#    internalCost = 'h1AlphaInvariant'
+    internalCost = None
     if model == 'smile':
         s = 0.025
         t = np.arange(0, 10+1e-3, s)        
@@ -246,10 +248,16 @@ def compute(model='default', dirOut='/cis/home/younes'):
         fv23 = Curve()
         fv23.Isocontour(I3, value = 0, target=100, scales=scl)
         ftarg = [fv2, fv22, fv23]
-        sigma = 0.2
-        sigmaDist = 2.0
-        sigmaError = 0.1
-        internalWeight = 500
+        if internalCost is not None:
+            sigma = 0.1
+            internalWeight = 500
+            regweight = 0.1
+        else:
+            sigma = .5
+            regweight = 1.
+        sigmaDist = 0.5
+        sigmaError = 0.05
+
     elif model=="cardioid":
         t = np.arange(0., 2*np.pi, 0.05)
         a = 1.5
@@ -305,14 +313,18 @@ def compute(model='default', dirOut='/cis/home/younes'):
     # weights = np.fabs(ftemp.vertices[:, 1])
     # weights /= weights.max()
     # ftemp.updateWeights(weights)
+    if internalCost is not None:
+        desc = internalCost + f'_{internalWeight:.0f}'
+    else:
+        desc = 'LDDMM' + f'_{sigma*100:.0f}'
     K1 = Kernel(name='laplacian', sigma = sigma)
     loggingUtils.setup_default_logging(dirOut + '/Development/Results/curveMatching', fileName='info.txt',
                                        stdOutput = True)   
-    sm = CurveMatchingParam(timeStep=0.1, KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
-                            algorithm='cg', errorType='varifold', internalCost='h1AlphaInvariant')
+    sm = CurveMatchingParam(timeStep=0.1, KparDiff=K1, KparDist=('gauss', sigmaDist), sigmaError=sigmaError,
+                            algorithm='bfgs', errorType='varifold', internalCost=internalCost)
     f = CurveMatching(Template=ftemp, Target=ftarg,
-                      outputDir=dirOut+'/Development/Results/curveMatching'+model+'HLDDMM_0p2_nocomp25',
-                      param=sm, testGradient=True,saveRate=50,
+                      outputDir=dirOut+'/Development/Results/curveMatching/'+model+'_' + desc,
+                      param=sm, testGradient=False,saveRate=50,
                       regWeight=regweight, internalWeight=internalWeight, maxIter=10000, affine='none',
                       rotWeight=1, transWeight = 1, scaleWeight=100., affineWeight=100.)
  
@@ -323,7 +335,7 @@ def compute(model='default', dirOut='/cis/home/younes'):
     
 if __name__=="__main__":
     plt.ion()
-    compute(model='letters', dirOut='/Users/younes')
+    compute(model='ellipses', dirOut='/Users/younes')
     plt.ioff()
     plt.show()
 
