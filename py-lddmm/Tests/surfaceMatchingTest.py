@@ -9,6 +9,7 @@ else:
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import pygalmesh
 from base import surfaces, surfaceExamples
 from base import loggingUtils
 from base.surfaces import Surface
@@ -20,40 +21,83 @@ pykeops.clean_pykeops()
 plt.ion()
 
 model = 'Balls'
+typeCost = 'Elastic'
 
 def compute(model):
     loggingUtils.setup_default_logging('../Output', stdOutput = True)
-    sigmaKernel = 0.5
+    if typeCost == 'LDDMM':
+        sigmaKernel = 5
+        internalCost = None
+        internalWeight = 0.
+        regweight = 1.
+    else:
+        sigmaKernel = 0.5
+        internalWeight = 100.
+        regweight = 0.1
+        internalCost = 'elastic'
+
     sigmaDist = 5.
     sigmaError = 1.
-    internalWeight = 0.
-    regweight = 0.1
     #internalCost = 'h1'
-    internalCost = 'elastic'
     landmarks = None
     if model=='Balls':
-        M=100
-        targSize = 1000
-        [x,y,z] = np.mgrid[0:2*M, 0:2*M, 0:2*M]/float(M)
-        y = y-1
-        z = z-1
         s2 = np.sqrt(2)
+        class Ball1(pygalmesh.DomainBase):
+            def __init__(self):
+                super().__init__()
 
-        I1 = .06 - ((x-.50)**2 + 0.5*y**4 + z**2)  
-        fv1 = Surface()
-        fv1.Isosurface(I1, value = 0, target=targSize, scales=[1, 1, 1], smooth=0.01)
+            def eval(self, x):
+                return (.06 - ((x[0] - .50) ** 2 + 0.5 * x[1] ** 4 + x[2] ** 2))
 
-        #return fv1
-        
-        u = (z + y)/s2
-        v = (z - y)/s2
-        I1 = np.maximum(0.05 - (x-.7)**2 - 0.5*y**2 - z**2, 0.02 - (x-.50)**2 - 0.5*y**2 - z**2)  
-        fv2 = Surface()
-        fv2.Isosurface(I1, value = 0, target=targSize, scales=[1, 1, 1], smooth=0.01)
+            def get_bounding_sphere_squared_radius(self):
+                return 4.0
+
+        class Ball2(pygalmesh.DomainBase):
+            def __init__(self):
+                super().__init__()
+
+            def eval(self, x):
+                I1 = np.maximum(0.05 - (x[0] - .7) ** 2 - 0.5 * x[1] ** 2 - x[2] ** 2,
+                                0.02 - (x[0] - .50) ** 2 - 0.5 * x[1] ** 2 - x[2] ** 2)
+                return I1
+
+            def get_bounding_sphere_squared_radius(self):
+                return 4.0
+
+        # d = Heart()
+        d = Ball1()
+        mesh = pygalmesh.generate_surface_mesh(d, max_facet_distance=0.01, min_facet_angle=30.0,
+                                               max_radius_surface_delaunay_ball=0.05)
+        fv1 = Surface(surf=(mesh.cells[0].data, mesh.points))
+        fv1.updateVertices(fv1.vertices*100)
+
+        d = Ball2()
+        mesh = pygalmesh.generate_surface_mesh(d, max_facet_distance=0.01, min_facet_angle=30.0,
+                                               max_radius_surface_delaunay_ball=0.05)
+        fv2 = Surface(surf=(mesh.cells[0].data, mesh.points))
+        fv2.updateVertices(fv2.vertices*100)
+
+        # M=100
+        # targSize = 1000
+        # [x,y,z] = np.mgrid[0:2*M, 0:2*M, 0:2*M]/float(M)
+        # y = y-1
+        # z = z-1
+        #
+        # I1 = .06 - ((x-.50)**2 + 0.5*y**4 + z**2)
+        # fv1 = Surface()
+        # fv1.Isosurface(I1, value = 0, target=targSize, scales=[1, 1, 1], smooth=0.01)
+        #
+        # #return fv1
+        #
+        # u = (z + y)/s2
+        # v = (z - y)/s2
+        # I1 = np.maximum(0.05 - (x-.7)**2 - 0.5*y**2 - z**2, 0.02 - (x-.50)**2 - 0.5*y**2 - z**2)
+        # fv2 = Surface()
+        # fv2.Isosurface(I1, value = 0, target=targSize, scales=[1, 1, 1], smooth=0.01)
 
         ftemp = fv1
         ftarg = fv2
-        landmarks = (fv1.vertices[0:5, :], fv2.vertices[0:5, :], 1)
+        #landmarks = (fv1.vertices[0:5, :], fv2.vertices[0:5, :], 1)
         #internalCost = None
     elif model=='Hearts':
         [x,y,z] = np.mgrid[0:200, 0:200, 0:200]/100.
@@ -141,8 +185,8 @@ def compute(model):
                               sigmaError=sigmaError, errorType='varifold', internalCost=internalCost)
     sm.KparDiff.pk_dtype = 'float64'
     sm.KparDist.pk_dtype = 'float64'
-    f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTest/'+model,param=sm,
-                        testGradient=True, regWeight = regweight, Landmarks = landmarks,
+    f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTest/'+model +'_'+typeCost,param=sm,
+                        testGradient=False, regWeight = regweight, Landmarks = landmarks,
                         #subsampleTargetSize = 500,
                         internalWeight=internalWeight, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01,
                         scaleWeight=10., affineWeight=100.)

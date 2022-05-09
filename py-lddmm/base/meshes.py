@@ -32,16 +32,16 @@ except ImportError:
     print('could not import VTK functions')
     gotVTK = False
 
-from mpl_toolkits.mplot3d import Axes3D
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from matplotlib.colors import LightSource
-from matplotlib import colors
-from matplotlib import pyplot as plt
-
-from . import diffeo
-import scipy.linalg as spLA
-from scipy.sparse import coo_matrix
-import glob
+# from mpl_toolkits.mplot3d import Axes3D
+# from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+# from matplotlib.colors import LightSource
+# from matplotlib import colors
+# from matplotlib import pyplot as plt
+#
+# from . import diffeo
+# import scipy.linalg as spLA
+# from scipy.sparse import coo_matrix
+# import glob
 import logging
 
 
@@ -49,6 +49,31 @@ def det3D(x1, x2, x3):
     return (x1 * np.cross(x2, x3)).sum(axis = 1)
 
 
+def twelve_vertexes(dimension=3):
+    if dimension == 2:
+        t = np.linspace(0, 2*np.pi, 12)
+        ico = np.zeros((12,2))
+        ico[:,0] = np.cos(t)
+        ico[:,1] = np.sin(t)
+    else:
+        phi = (1+np.sqrt(5))/2
+
+        ico = np.array([
+            [phi, 1, 0],
+            [phi,-1, 0],
+            [-phi, -1, 0],
+            [-phi, 1, 0],
+            [1, 0, phi],
+            [-1, 0, phi],
+            [-1, 0, -phi],
+            [1, 0,-phi],
+            [0, phi, 1],
+            [0, phi,-1],
+            [0,-phi, -1],
+            [0,-phi, 1]]
+        )
+
+    return ico
 
 
 class Mesh:
@@ -853,20 +878,29 @@ class Mesh:
     #     return res
 
 
-def buildMeshFromMerfishData(fileCounts, fileData, geneSet = None, resolution=100):
-    counts = pd.read_csv(fileCounts, index_col=0)
+def buildMeshFromMerfishData(fileCounts, fileData, geneSet = None, resolution=100, radius = None,
+                             coordinate_columns = ('center_x', 'center_y')):
+    counts = pd.read_csv(fileCounts)
     if geneSet is not None:
         counts = counts.loc[:, geneSet]
     data = pd.read_csv(fileData)
     centers = np.zeros((data.shape[0], 2))
-    centers[:, 0] = data.loc[:, 'center_x']
-    centers[:, 1] = data.loc[:, 'center_y']
-    minx = data.loc[:, 'min_x'].min()
-    miny = data.loc[:, 'min_y'].min()
-    maxx = data.loc[:, 'max_x'].max()
-    maxy = data.loc[:, 'max_y'].max()
+    centers[:, 0] = data.loc[:, coordinate_columns[0]]
+    centers[:, 1] = data.loc[:, coordinate_columns[1]]
+    # minx = data.loc[:, 'min_x'].min()
+    # miny = data.loc[:, 'min_y'].min()
+    # maxx = data.loc[:, 'max_x'].max()
+    # maxy = data.loc[:, 'max_y'].max()
 
-    spacing = max(maxy - miny, maxx - minx) / resolution
+    minx = centers[:, 0].min() - 50
+    maxx = centers[:, 0].max() + 50
+    miny = centers[:, 1].min() - 50
+    maxy = centers[:, 1].max() + 50
+    if radius is None:
+        spacing = max(maxy - miny, maxx - minx) / resolution
+    else:
+        spacing = radius/2
+
     ul = np.array((minx, miny))
     ur = np.array((maxx, miny))
     ll = np.array((minx, maxy))
@@ -891,13 +925,20 @@ def buildMeshFromMerfishData(fileCounts, fileData, geneSet = None, resolution=10
     vert[:,:2] = tri.points
 
     cts = counts.to_numpy()
-    sp = tri.find_simplex(centers)
-    # surf = Surface(surf=(tri.simplices, vert))
-    # surf.component[sp] = 1
-    # surf.saveVTK('test.vtk')
     g = np.zeros((tri.simplices.shape[0], cts.shape[1]))
+    sp = tri.find_simplex(centers)
     for k in range(centers.shape[0]):
-        g[sp[k], :] += cts[k,:]
+        g[sp[k], :] += cts[k, :]
+    if radius is not None:
+        ico = twelve_vertexes(dimension=2)
+        for j in range(12):
+            sp = tri.find_simplex(centers + 0.5*radius*ico[j,:])
+            for k in range(centers.shape[0]):
+                g[sp[k], :] += cts[k, :]
+            sp = tri.find_simplex(centers + radius * ico[j, :])
+            for k in range(centers.shape[0]):
+                g[sp[k], :] += cts[k, :]
+        g /= 25
 
     keepface = np.nonzero((g ** 2).sum(axis=1) > 1e-10)[0]
     newf = tri.simplices[keepface, :]
@@ -910,8 +951,6 @@ def buildMeshFromMerfishData(fileCounts, fileData, geneSet = None, resolution=10
     newI[keepvert] = np.arange(newv.shape[0])
     newf = newI[newf]
     g = g[keepface, :]
-    #g = (g[keepface, :] > 0).astype(float)
-    #g = (np.log(1+g[keepface, :])).astype(float)
 
     fv0 = Mesh(mesh=(newf, newv), image=g)
     fv0.image /= fv0.volumes[:, None]

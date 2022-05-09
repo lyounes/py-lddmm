@@ -9,13 +9,21 @@ from base.surfaceMatchingNormalExtremities import SurfaceMatching as SMN, Surfac
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
-def BuildLaminar(target, outputDir, pancakeThickness=None, runRegistration=True):
+def BuildLaminar(target0, outputDir, pancakeThickness=None, runRegistration=True, fromPancake=True):
     # Step 1: Create a labeled  "pancake" approximation to the target
-    h, lab, width = target.createFlatApproximation(thickness=pancakeThickness, M=75)
+    h, lab, width = target0.createFlatApproximation(thickness=pancakeThickness, M=75)
+    h.saveVTK(outputDir + '/pancakeTemplate.vtk', scalars=lab, scal_name='Labels')
+
+    if fromPancake:
+        target = h
+    else:
+        target = target0
+
     #h.smooth()
     fig = plt.figure(1)
     # fig.clf()
-    ax = Axes3D(fig)
+    ax = Axes3D(fig, auto_add_to_figure=False)
+    fig.add_axes(ax)
     lim0 = target.addToPlot(ax, ec='k', fc='b')
     h.addToPlot(ax, ec='k', fc='r')
     ax.set_xlim(lim0[0][0], lim0[0][1])
@@ -25,18 +33,19 @@ def BuildLaminar(target, outputDir, pancakeThickness=None, runRegistration=True)
 
     # Step2: Register the target to the template
     if runRegistration:
-        sigmaKernel = width
-        sigmaDist = width
+        sigmaKernel = width/10
+        sigmaDist = width/2
         sigmaError = .5
-        internalWeight = 50.
-        internalCost = 'h1'
+        regweight = 0.1
+        internalWeight = 10.
+        internalCost = 'elastic'
 
         K1 = Kernel(name='laplacian', sigma=sigmaKernel)
 
-        sm = SMP(timeStep=0.1, algorithm='cg', KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
+        sm = SMP(timeStep=0.1, algorithm='bfgs', KparDiff=K1, KparDist=('gauss', sigmaDist), sigmaError=sigmaError,
                  errorType='varifold', internalCost=internalCost)
         f = SM(Template=target, Target=h, outputDir=outputDir, param=sm,
-               testGradient=False,
+               testGradient=False, regWeight=regweight,
                # subsampleTargetSize = 500,
                internalWeight=internalWeight, maxIter=100, affine='none', rotWeight=.01, transWeight=.01, scaleWeight=10.,
                affineWeight=100., saveFile='firstRun')
@@ -44,7 +53,10 @@ def BuildLaminar(target, outputDir, pancakeThickness=None, runRegistration=True)
         f.optimizeMatching()
         fvDef = f.fvDef
     else:
-        fvDef = surfaces.Surface(filename=outputDir+'/firstRun10.vtk')
+        if fromPancake:
+            fvDef = h
+        else:
+            fvDef = surfaces.Surface(surf=outputDir+'/firstRun010.vtk')
 
     # Step 3: Label the target surface based on the deformed template
     lab2 = np.zeros(fvDef.vertices.shape[0], dtype=int)
@@ -79,7 +91,6 @@ def BuildLaminar(target, outputDir, pancakeThickness=None, runRegistration=True)
     #lab2 = lab[closest]
 
     # Step 4: Extract the upper and lower surfaces from the target and save data
-    h.saveVTK(outputDir + '/pancakeTemplate.vtk', scalars=lab, scal_name='Labels')
     target.saveVTK(outputDir + '/labeledTarget.vtk', scalars=lab2, scal_name='Labels')
     fv1 = target.truncate(val=0.5 - np.fabs(1 - lab2))
     fv1.saveVTK(outputDir + '/labeledTarget1.vtk')
@@ -87,15 +98,15 @@ def BuildLaminar(target, outputDir, pancakeThickness=None, runRegistration=True)
     fv2.saveVTK(outputDir + '/labeledTarget2.vtk')
 
     # Step 5: Run surface matching with normality constraints from the lower surface of the target to the upper
-    sigmaKernel = 2.5
+    sigmaKernel = .5
     sigmaDist = 2.5
     sigmaError = .1
-    internalWeight = 50.
-    internalCost = 'h1'
+    internalWeight = 10.
+    internalCost = 'elastic'
     K1 = Kernel(name='laplacian', sigma=sigmaKernel)
 
 
-    sm = SMPN(timeStep=0.1, algorithm='bfgs', KparDiff=K1, sigmaDist=sigmaDist, internalCost = internalCost,
+    sm = SMPN(timeStep=0.1, algorithm='bfgs', KparDiff=K1, KparDist=('gauss', sigmaDist), internalCost = internalCost,
               sigmaError=sigmaError, errorType='varifold')
 
     if target.surfVolume() > 0:
@@ -118,13 +129,13 @@ if __name__ == "__main__":
 
     # Read target surface file.
     #hf = './TestData/ERC.vtk'
-    #hf = '/USERS/younes/Development/Data/labeledTarget.vtk'
-    hf = '/USERS/younes/Development/results/testERC2/template.vtk'
+    hf = '/USERS/younes/Development/Data/labeledTarget.vtk'
+    #hf = '/USERS/younes/Development/results/testERC2/template.vtk'
 
-    fv = surfaces.Surface(filename = hf)
+    fv = surfaces.Surface(surf = hf)
     #fv = examples.ellipsoid(a=0.5, b=0.5, c=0.25, d=100)
 
-    BuildLaminar(fv, outputDir = '/Users/younes/Development/results/testERC2Streamlines',
+    BuildLaminar(fv, outputDir = '/Users/younes/Development/results/laminarExample',
                  pancakeThickness = None, runRegistration=False)
 
     plt.ioff()

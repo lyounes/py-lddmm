@@ -188,7 +188,7 @@ def compute(model):
     ## Object kernel
     K1 = Kernel(name='laplacian', sigma = sigmaKernel)
 
-    sm = SurfaceMatchingParam(timeStep=0.1, algorithm='cg', KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
+    sm = SurfaceMatchingParam(timeStep=0.1, algorithm='cg', KparDiff=K1, KparDist=('gauss', sigmaDist), sigmaError=sigmaError,
                               errorType='varifold', internalCost=internalCost)
     # weights = np.fabs(ftemp.vertices[:, 2])
     # weights /= weights.max()
