@@ -143,7 +143,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
                 else:
                     dirfoo = np.random.normal(size=grd.shape)
                 epsfoo = 1e-8
-                objfoo = opt.updateTry(dirfoo, epsfoo, obj-1e10)
+                objfoo = opt.updateTry(dirfoo, epsfoo, obj-1e8)
                 [grdfoo] = dotProduct(grd, [dirfoo])
                 logging.info('Test Gradient: %.4f %.4f' %((objfoo - obj)/epsfoo, -grdfoo * gradCoeff ))
 

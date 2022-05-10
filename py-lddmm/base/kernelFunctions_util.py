@@ -1,7 +1,7 @@
 from numba import jit, prange, int64
 import numpy as np
 from math import pi
-from pykeops.numpy import Genred
+from pykeops.numpy import Genred, LazyTensor
 import pykeops
 
 KP = -1
@@ -165,9 +165,12 @@ def applyK_pykeops(y, x, a, name, scale, order, dtype='float64'):
     ns = len(scale)
     sKP = scale**KP
     wsig = sKP.sum()
+    a_ = a.astype(dtype)
     for s in range(ns):
         ys = y/scale[s]
         xs = x/scale[s]
+        ys_ = LazyTensor(ys.astype(dtype)[:, None, :])
+        xs_ = LazyTensor(xs.astype(dtype)[None, :, :])
         if name == 'min':
             D = xs.shape[1]
             Dv = a.shape[1]
@@ -181,46 +184,54 @@ def applyK_pykeops(y, x, a, name, scale, order, dtype='float64'):
             my_routine_min = Genred(formula_min, variables_min, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
             res = my_routine_min(ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
         elif 'gauss' in name:
-            D = xs.shape[1]
-            Dv = a.shape[1]
-            g = np.array([0.5])  # Parameter of the Gaussian RBF kernel
-            sKPs = np.array([sKP[s]])
-            formula_gauss = "Exp(- 0.5 * SqDist(ys,xs)) * a * sKPs"
-            # formula_gauss = "Exp(-g * SqDist(ys,xs)) * a * sKPs"
-            # variables_gauss = ["g = Pm(1)",   # First arg: scalar parameter
-            #                    "ys = Vi(" + str(D) + ")",  # Second arg:  i-variable of size D
+            Dij = ((ys_ - xs_)**2).sum(-1)
+            Kij = (-0.5*Dij).exp()
+            res = Kij @ a_ * sKP[s]
+            # D = xs.shape[1]
+            # Dv = a.shape[1]
+            # g = np.array([0.5])  # Parameter of the Gaussian RBF kernel
+            # sKPs = np.array([sKP[s]])
+            # formula_gauss = "Exp(- 0.5 * SqDist(ys,xs)) * a * sKPs"
+            # # formula_gauss = "Exp(-g * SqDist(ys,xs)) * a * sKPs"
+            # # variables_gauss = ["g = Pm(1)",   # First arg: scalar parameter
+            # #                    "ys = Vi(" + str(D) + ")",  # Second arg:  i-variable of size D
+            # #                    "xs = Vj(" + str(D) + ")",  # Third arg: j-variable of size D
+            # #                    "a = Vj(" + str(Dv) + ")",  # Fourth arg:  j-variable of size Dv
+            # #                    "sKPs = Pm(1)"
+            # #                    ]  # Fifth arg: scalar parameter
+            # variables_gauss = ["ys = Vi(" + str(D) + ")",  # Second arg:  i-variable of size D
             #                    "xs = Vj(" + str(D) + ")",  # Third arg: j-variable of size D
             #                    "a = Vj(" + str(Dv) + ")",  # Fourth arg:  j-variable of size Dv
             #                    "sKPs = Pm(1)"
             #                    ]  # Fifth arg: scalar parameter
-            variables_gauss = ["ys = Vi(" + str(D) + ")",  # Second arg:  i-variable of size D
-                               "xs = Vj(" + str(D) + ")",  # Third arg: j-variable of size D
-                               "a = Vj(" + str(Dv) + ")",  # Fourth arg:  j-variable of size Dv
-                               "sKPs = Pm(1)"
-                               ]  # Fifth arg: scalar parameter
-            my_routine_gauss = Genred(formula_gauss, variables_gauss, reduction_op="Sum",dtype=dtype,dtype_acc=dtype,axis=1)
-            #res = my_routine_gauss(g.astype(dtype), ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
-            res = my_routine_gauss(ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
+            # my_routine_gauss = Genred(formula_gauss, variables_gauss, reduction_op="Sum",dtype=dtype,dtype_acc=dtype,axis=1)
+            # #res = my_routine_gauss(g.astype(dtype), ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
+            # res = my_routine_gauss(ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
         elif 'lap' in name:
-            D = xs.shape[1]
-            Dv = a.shape[1]
-            sKPs = np.array([sKP[s]])
-            formula_lap = "(c_0 + c_1 * Norm2(ys-xs) + c_2 * Square(Norm2(ys-xs)) + c_3 * Norm2(ys-xs)*Square(Norm2(ys-xs)) + c_4 * Square(Norm2(ys-xs))*Square(Norm2(ys-xs))) * Exp(-Norm2(ys-xs)) * a * sKPs"
-            variables_lap = ["c_0 = Pm(1)",  # First arg: scalar parameter
-                             "c_1 = Pm(1)",  # Second arg: scalar parameter
-                             "c_2 = Pm(1)",  # Third arg: scalar parameter
-                             "c_3 = Pm(1)",  # Fourth arg: scalar parameter
-                             "c_4 = Pm(1)",  # Fifth arg: scalar parameter
-                             "ys = Vi(" + str(D) + ")",  # Sixth arg:  i-variable of size D
-                             "xs = Vj(" + str(D) + ")",  # Seventh arg: j-variable of size D
-                             "a = Vj(" + str(Dv) + ")",  # Eighth arg:  j-variable of size Dv
-                             "sKPs = Pm(1)"
-                             ]  # Ninth arg: scalar parameter
-            my_routine_lap = Genred(formula_lap, variables_lap, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
-            res = my_routine_lap(np.array([c_[order, 0]]).astype(dtype), np.array([c_[order, 1]]).astype(dtype),
-                                 np.array([c_[order, 2]]).astype(dtype), np.array([c_[order, 3]]).astype(dtype),
-                                 np.array([c_[order, 4]]).astype(dtype),
-                                 ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
+            Dij = ((ys_ - xs_)**2).sum(-1).sqrt()
+            polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij*Dij*Dij\
+            + c_[order, 4] *Dij*Dij*Dij*Dij
+            Kij = polij * (-Dij).exp()
+            res = Kij @ a_ * sKP[s]
+            # D = xs.shape[1]
+            # Dv = a.shape[1]
+            # sKPs = np.array([sKP[s]])
+            # formula_lap = "(c_0 + c_1 * Norm2(ys-xs) + c_2 * Square(Norm2(ys-xs)) + c_3 * Norm2(ys-xs)*Square(Norm2(ys-xs)) + c_4 * Square(Norm2(ys-xs))*Square(Norm2(ys-xs))) * Exp(-Norm2(ys-xs)) * a * sKPs"
+            # variables_lap = ["c_0 = Pm(1)",  # First arg: scalar parameter
+            #                  "c_1 = Pm(1)",  # Second arg: scalar parameter
+            #                  "c_2 = Pm(1)",  # Third arg: scalar parameter
+            #                  "c_3 = Pm(1)",  # Fourth arg: scalar parameter
+            #                  "c_4 = Pm(1)",  # Fifth arg: scalar parameter
+            #                  "ys = Vi(" + str(D) + ")",  # Sixth arg:  i-variable of size D
+            #                  "xs = Vj(" + str(D) + ")",  # Seventh arg: j-variable of size D
+            #                  "a = Vj(" + str(Dv) + ")",  # Eighth arg:  j-variable of size Dv
+            #                  "sKPs = Pm(1)"
+            #                  ]  # Ninth arg: scalar parameter
+            # my_routine_lap = Genred(formula_lap, variables_lap, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
+            # res = my_routine_lap(np.array([c_[order, 0]]).astype(dtype), np.array([c_[order, 1]]).astype(dtype),
+            #                      np.array([c_[order, 2]]).astype(dtype), np.array([c_[order, 3]]).astype(dtype),
+            #                      np.array([c_[order, 4]]).astype(dtype),
+            #                      ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
         elif 'euclidean' in name:
             D = xs.shape[1]
             Dv = a.shape[1]
@@ -293,9 +304,17 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
     wsig = sKP.sum()
     D = x.shape[1]
     Da = a.shape[1]
+    p_ = p.astype(dtype)
+    a_ = a.astype(dtype)
+    pi_ = LazyTensor(p_[:, None, :])
+    pj_ = LazyTensor(p_[None, :, :])
+    ai_ = LazyTensor(a_[:, None, :])
+    aj_ = LazyTensor(a_[None, :, :])
     for s in range(ns):
         ys = y/scale[s]
         xs = x/scale[s]
+        ys_ = LazyTensor(ys.astype(dtype)[:, None, :])
+        xs_ = LazyTensor(xs.astype(dtype)[None, :, :])
         if name == 'min':
             sKP1s = np.array([sKP1[s]])
             if lddmm:
@@ -327,76 +346,107 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
             g = np.array([0.5])   # Parameter of the Gaussian RBF kernel
             sKP1s = np.array([sKP1[s]])
             if lddmm:
-                h = np.array([2. * regweight])
-                formula2_gauss = "(ys-xs) * (-Exp(-g * SqDist(ys,xs)) * Sum(p_i * a_j + a_i * p_j - h * a_i * a_j)) * sKP1s"
-                # formula2_gauss = "(ys-xs) * (-Exp(-g * SqDist(ys,xs)) * ((p_i | a_j)+(a_i | p_j) - h * (a_i | a_j))) * sKP1s"
-                variables2_gauss = ["ys = Vi(" + str(D) + ")",  # First arg:  i-variable of size D
-                                    "xs = Vj(" + str(D) + ")",  # Second arg: j-variable of size D
-                                    "a_j = Vj(" + str(Da) + ")",  # Third arg:  j-variable of size D
-                                    "a_i = Vi(" + str(Da) + ")",  # Fourth arg:  i-variable of size D
-                                    "p_j = Vj(" + str(Da) + ")",  # Fifth arg: j-variable of size D
-                                    "p_i = Vi(" + str(Da) + ")",  # Sixth arg: i-variable of size D
-                                    "g = Pm(1)",
-                                    "h = Pm(1)",
-                                    "sKP1s = Pm(1)",
-                                    ]  # Seventh, eighth, and ninth args: scalar parameters
-                my_routine2_gauss = Genred(formula2_gauss, variables2_gauss, reduction_op="Sum",dtype=dtype,dtype_acc=dtype,axis=1)
-                res = my_routine2_gauss(ys.astype(dtype), xs.astype(dtype), a.astype(dtype), a.astype(dtype),
-                                        p.astype(dtype), p.astype(dtype), g.astype(dtype), h.astype(dtype),
-                                        sKP1s.astype(dtype))
+                ap_ = (pi_ * aj_ + ai_ * pj_ - 2*regweight * ai_ * aj_).sum(-1)
+                diffij = ys_ - xs_
+                Dij = (diffij ** 2).sum(-1)
+                Kij = diffij * (-0.5 * Dij).exp()
+                #print(Kij.shape, ap_.shape)
+                res = (Kij * ap_).sum(1)
+                res *= -sKP1[s]
+                # h = np.array([2. * regweight])
+                # formula2_gauss = "(ys-xs) * (-Exp(-g * SqDist(ys,xs)) * Sum(p_i * a_j + a_i * p_j - h * a_i * a_j)) * sKP1s"
+                # # formula2_gauss = "(ys-xs) * (-Exp(-g * SqDist(ys,xs)) * ((p_i | a_j)+(a_i | p_j) - h * (a_i | a_j))) * sKP1s"
+                # variables2_gauss = ["ys = Vi(" + str(D) + ")",  # First arg:  i-variable of size D
+                #                     "xs = Vj(" + str(D) + ")",  # Second arg: j-variable of size D
+                #                     "a_j = Vj(" + str(Da) + ")",  # Third arg:  j-variable of size D
+                #                     "a_i = Vi(" + str(Da) + ")",  # Fourth arg:  i-variable of size D
+                #                     "p_j = Vj(" + str(Da) + ")",  # Fifth arg: j-variable of size D
+                #                     "p_i = Vi(" + str(Da) + ")",  # Sixth arg: i-variable of size D
+                #                     "g = Pm(1)",
+                #                     "h = Pm(1)",
+                #                     "sKP1s = Pm(1)",
+                #                     ]  # Seventh, eighth, and ninth args: scalar parameters
+                # my_routine2_gauss = Genred(formula2_gauss, variables2_gauss, reduction_op="Sum",dtype=dtype,dtype_acc=dtype,axis=1)
+                # res = my_routine2_gauss(ys.astype(dtype), xs.astype(dtype), a.astype(dtype), a.astype(dtype),
+                #                         p.astype(dtype), p.astype(dtype), g.astype(dtype), h.astype(dtype),
+                #                         sKP1s.astype(dtype))
             else:
-                formula2_gauss = "(ys-xs) * (-Exp(-g * SqDist(ys,xs)) * Sum(p_i * a_j)) * sKP1s"
-                variables2_gauss = ["ys = Vi(" + str(D) + ")",  # First arg:  i-variable of size D
-                                    "xs = Vj(" + str(D) + ")",  # Second arg: j-variable of size D
-                                    "a_j = Vj(" + str(Da) + ")",  # Third arg:  j-variable of size D
-                                    "p_i = Vi(" + str(Da) + ")",  # Fourth arg: i-variable of size D
-                                    "g = Pm(1)",
-                                    "sKP1s = Pm(1)",
-                                    ]  # Fifth and sixth args: scalar parameters
-                my_routine2_gauss = Genred(formula2_gauss, variables2_gauss, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
-                res = my_routine2_gauss(ys.astype(dtype), xs.astype(dtype), a.astype(dtype),
-                                        p.astype(dtype), g.astype(dtype), sKP1s.astype(dtype))
+                ap_ = (pi_ * aj_).sum(-1)
+                diffij = ys_ - xs_
+                Dij = (diffij ** 2).sum(-1)
+                Kij = diffij * (-0.5 * Dij).exp()
+                #print(Kij.shape, ap_.shape)
+                res = (Kij * ap_).sum(1)
+                res *= -sKP1[s]
+                # formula2_gauss = "(ys-xs) * (-Exp(-g * SqDist(ys,xs)) * Sum(p_i * a_j)) * sKP1s"
+                # variables2_gauss = ["ys = Vi(" + str(D) + ")",  # First arg:  i-variable of size D
+                #                     "xs = Vj(" + str(D) + ")",  # Second arg: j-variable of size D
+                #                     "a_j = Vj(" + str(Da) + ")",  # Third arg:  j-variable of size D
+                #                     "p_i = Vi(" + str(Da) + ")",  # Fourth arg: i-variable of size D
+                #                     "g = Pm(1)",
+                #                     "sKP1s = Pm(1)",
+                #                     ]  # Fifth and sixth args: scalar parameters
+                # my_routine2_gauss = Genred(formula2_gauss, variables2_gauss, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
+                # res = my_routine2_gauss(ys.astype(dtype), xs.astype(dtype), a.astype(dtype),
+                #                         p.astype(dtype), g.astype(dtype), sKP1s.astype(dtype))
         elif 'lap' in name:
             sKP1s = np.array([sKP1[s]])
             if lddmm:
-                h = np.array([2. * regweight])
-                formula2_lap = "(ys-xs) * (-(c_0 + c_1 * Norm2(ys-xs) + c_2 * Square(Norm2(ys-xs)) +"\
-                        + "c_3 * Norm2(ys-xs)*Square(Norm2(ys-xs))) * Exp(-Norm2(ys-xs)) * "\
-                        + "Sum(p_i * a_j + a_i * p_j - h * a_i * a_j)) * sKP1s"
-                variables2_lap = ["c_0 = Pm(1)",  # First arg: scalar parameter
-                                  "c_1 = Pm(1)",  # Second arg: scalar parameter
-                                  "c_2 = Pm(1)",  # Third arg: scalar parameter
-                                  "c_3 = Pm(1)",  # Fourth arg: scalar parameter
-                                  "ys = Vi(" + str(D) + ")",  # Fifth arg:  i-variable of size D
-                                  "xs = Vj(" + str(D) + ")",  # Sixth arg: j-variable of size D
-                                  "a_j = Vj(" + str(Da) + ")",  # Seventh arg:  j-variable of size D
-                                  "a_i = Vi(" + str(Da) + ")",  # Eighth arg:  i-variable of size D
-                                  "p_j = Vj(" + str(Da) + ")",  # Ninth arg: j-variable of size D
-                                  "p_i = Vi(" + str(Da) + ")",  # Tenth arg: i-variable of size D
-                                  "h = Pm(1)",
-                                  "sKP1s = Pm(1)",
-                                  ]  # Eleventh and twelfth args: scalar parameters
-                my_routine2_lap = Genred(formula2_lap, variables2_lap, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
-                res += my_routine2_lap(np.array([c1_[order, 0]]).astype(dtype), np.array([c1_[order, 1]]).astype(dtype),
-                                      np.array([c1_[order, 2]]).astype(dtype), np.array([c1_[order, 3]]).astype(dtype),
-                                      ys.astype(dtype), xs.astype(dtype), a.astype(dtype), a.astype(dtype),
-                                      p.astype(dtype), p.astype(dtype), h.astype(dtype), sKP1s.astype(dtype))
+                ap_ = (pi_ * aj_ + ai_ * pj_ - 2*regweight * ai_ * aj_).sum(-1)
+                diffij = ys_ - xs_
+                Dij = (diffij ** 2).sum(-1).sqrt()
+                Kij = diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
+                + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
+                #print(Kij.shape, ap_.shape)
+                res = (Kij * ap_).sum(1)
+                res *= -sKP1[s]
+
+                # h = np.array([2. * regweight])
+                # formula2_lap = "(ys-xs) * (-(c_0 + c_1 * Norm2(ys-xs) + c_2 * Square(Norm2(ys-xs)) +"\
+                #         + "c_3 * Norm2(ys-xs)*Square(Norm2(ys-xs))) * Exp(-Norm2(ys-xs)) * "\
+                #         + "Sum(p_i * a_j + a_i * p_j - h * a_i * a_j)) * sKP1s"
+                # variables2_lap = ["c_0 = Pm(1)",  # First arg: scalar parameter
+                #                   "c_1 = Pm(1)",  # Second arg: scalar parameter
+                #                   "c_2 = Pm(1)",  # Third arg: scalar parameter
+                #                   "c_3 = Pm(1)",  # Fourth arg: scalar parameter
+                #                   "ys = Vi(" + str(D) + ")",  # Fifth arg:  i-variable of size D
+                #                   "xs = Vj(" + str(D) + ")",  # Sixth arg: j-variable of size D
+                #                   "a_j = Vj(" + str(Da) + ")",  # Seventh arg:  j-variable of size D
+                #                   "a_i = Vi(" + str(Da) + ")",  # Eighth arg:  i-variable of size D
+                #                   "p_j = Vj(" + str(Da) + ")",  # Ninth arg: j-variable of size D
+                #                   "p_i = Vi(" + str(Da) + ")",  # Tenth arg: i-variable of size D
+                #                   "h = Pm(1)",
+                #                   "sKP1s = Pm(1)",
+                #                   ]  # Eleventh and twelfth args: scalar parameters
+                # my_routine2_lap = Genred(formula2_lap, variables2_lap, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
+                # res += my_routine2_lap(np.array([c1_[order, 0]]).astype(dtype), np.array([c1_[order, 1]]).astype(dtype),
+                #                       np.array([c1_[order, 2]]).astype(dtype), np.array([c1_[order, 3]]).astype(dtype),
+                #                       ys.astype(dtype), xs.astype(dtype), a.astype(dtype), a.astype(dtype),
+                #                       p.astype(dtype), p.astype(dtype), h.astype(dtype), sKP1s.astype(dtype))
             else:
-                formula2_lap = "(ys-xs) * (-(c_0 + c_1 * Norm2(ys-xs) + c_2 * Square(Norm2(ys-xs)) + c_3 * Norm2(ys-xs)*Square(Norm2(ys-xs))) * Exp(-Norm2(ys-xs)) * Sum(p_i * a_j)) * sKP1s"
-                variables2_lap = ["c_0 = Pm(1)",  # First arg: scalar parameter
-                                  "c_1 = Pm(1)",  # Second arg: scalar parameter
-                                  "c_2 = Pm(1)",  # Third arg: scalar parameter
-                                  "c_3 = Pm(1)",  # Fourth arg: scalar parameter
-                                  "ys = Vi(" + str(D) + ")",  # Fifth arg:  i-variable of size D
-                                  "xs = Vj(" + str(D) + ")",  # Sixth arg: j-variable of size D
-                                  "a_j = Vj(" + str(Da) + ")",  # Seventh arg:  j-variable of size D
-                                  "p_i = Vi(" + str(Da) + ")",  # Eighth arg: i-variable of size D
-                                  "sKP1s = Pm(1)",
-                                  ]  # Ninth arg: scalar parameter
-                my_routine2_lap = Genred(formula2_lap, variables2_lap, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
-                res += my_routine2_lap(np.array([c1_[order, 0]]).astype(dtype), np.array([c1_[order, 1]]).astype(dtype),
-                                      np.array([c1_[order, 2]]).astype(dtype), np.array([c1_[order, 3]]).astype(dtype),
-                                      ys.astype(dtype), xs.astype(dtype), a.astype(dtype), p.astype(dtype), sKP1s.astype(dtype))
+                ap_ = (pi_ * aj_).sum(-1)
+                diffij = ys_ - xs_
+                Dij = (diffij ** 2).sum(-1).sqrt()
+                Kij = diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
+                + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
+                #print(Kij.shape, ap_.shape)
+                res = (Kij * ap_).sum(1)
+                res *= -sKP1[s]
+                # formula2_lap = "(ys-xs) * (-(c_0 + c_1 * Norm2(ys-xs) + c_2 * Square(Norm2(ys-xs)) + c_3 * Norm2(ys-xs)*Square(Norm2(ys-xs))) * Exp(-Norm2(ys-xs)) * Sum(p_i * a_j)) * sKP1s"
+                # variables2_lap = ["c_0 = Pm(1)",  # First arg: scalar parameter
+                #                   "c_1 = Pm(1)",  # Second arg: scalar parameter
+                #                   "c_2 = Pm(1)",  # Third arg: scalar parameter
+                #                   "c_3 = Pm(1)",  # Fourth arg: scalar parameter
+                #                   "ys = Vi(" + str(D) + ")",  # Fifth arg:  i-variable of size D
+                #                   "xs = Vj(" + str(D) + ")",  # Sixth arg: j-variable of size D
+                #                   "a_j = Vj(" + str(Da) + ")",  # Seventh arg:  j-variable of size D
+                #                   "p_i = Vi(" + str(Da) + ")",  # Eighth arg: i-variable of size D
+                #                   "sKP1s = Pm(1)",
+                #                   ]  # Ninth arg: scalar parameter
+                # my_routine2_lap = Genred(formula2_lap, variables2_lap, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
+                # res += my_routine2_lap(np.array([c1_[order, 0]]).astype(dtype), np.array([c1_[order, 1]]).astype(dtype),
+                #                       np.array([c1_[order, 2]]).astype(dtype), np.array([c1_[order, 3]]).astype(dtype),
+                #                       ys.astype(dtype), xs.astype(dtype), a.astype(dtype), p.astype(dtype), sKP1s.astype(dtype))
     res /= wsig
     return res
 
