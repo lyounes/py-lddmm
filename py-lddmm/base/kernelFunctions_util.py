@@ -150,6 +150,12 @@ def applyK_numba(y, x, a, name, scale, order):
                     u1 *= sKP[s]
                     resk += u1 *a[l,:]
                 res[k,:] += resk
+        elif 'euclidean' in name:
+            for k in prange(y.shape[0]):
+                resk = np.zeros(a.shape[1])
+                for l in range(x.shape[0]):
+                    resk += (ys[k,:]*xs[l,:]).sum() * a[l,:] *sKP[s]
+                res[k,:] += resk
                     #print('a', a[l,:])
     res /= wsig
     return res
@@ -179,15 +185,22 @@ def applyK_pykeops(y, x, a, name, scale, order, dtype='float64'):
             Dv = a.shape[1]
             g = np.array([0.5])  # Parameter of the Gaussian RBF kernel
             sKPs = np.array([sKP[s]])
-            formula_gauss = "Exp(-g * SqDist(ys,xs)) * a * sKPs"
-            variables_gauss = ["g = Pm(1)",   # First arg: scalar parameter
-                               "ys = Vi(" + str(D) + ")",  # Second arg:  i-variable of size D
+            formula_gauss = "Exp(- 0.5 * SqDist(ys,xs)) * a * sKPs"
+            # formula_gauss = "Exp(-g * SqDist(ys,xs)) * a * sKPs"
+            # variables_gauss = ["g = Pm(1)",   # First arg: scalar parameter
+            #                    "ys = Vi(" + str(D) + ")",  # Second arg:  i-variable of size D
+            #                    "xs = Vj(" + str(D) + ")",  # Third arg: j-variable of size D
+            #                    "a = Vj(" + str(Dv) + ")",  # Fourth arg:  j-variable of size Dv
+            #                    "sKPs = Pm(1)"
+            #                    ]  # Fifth arg: scalar parameter
+            variables_gauss = ["ys = Vi(" + str(D) + ")",  # Second arg:  i-variable of size D
                                "xs = Vj(" + str(D) + ")",  # Third arg: j-variable of size D
                                "a = Vj(" + str(Dv) + ")",  # Fourth arg:  j-variable of size Dv
                                "sKPs = Pm(1)"
                                ]  # Fifth arg: scalar parameter
             my_routine_gauss = Genred(formula_gauss, variables_gauss, reduction_op="Sum",dtype=dtype,dtype_acc=dtype,axis=1)
-            res = my_routine_gauss(g.astype(dtype), ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
+            #res = my_routine_gauss(g.astype(dtype), ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
+            res = my_routine_gauss(ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
         elif 'lap' in name:
             D = xs.shape[1]
             Dv = a.shape[1]
@@ -208,6 +221,19 @@ def applyK_pykeops(y, x, a, name, scale, order, dtype='float64'):
                                  np.array([c_[order, 2]]).astype(dtype), np.array([c_[order, 3]]).astype(dtype),
                                  np.array([c_[order, 4]]).astype(dtype),
                                  ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
+        elif 'euclidean' in name:
+            D = xs.shape[1]
+            Dv = a.shape[1]
+            g = np.array([0.5])  # Parameter of the Gaussian RBF kernel
+            sKPs = np.array([sKP[s]])
+            formula_euclidean = "(ys|xs) * a * sKPs"
+            variables_euclidean = ["ys = Vi(" + str(D) + ")",  # First arg:  i-variable of size D
+                               "xs = Vj(" + str(D) + ")",  # Second arg: j-variable of size D
+                               "a = Vj(" + str(Dv) + ")",  # Third arg:  j-variable of size Dv
+                               "sKPs = Pm(1)"
+                               ]  # Fifth arg: scalar parameter
+            my_routine_gauss = Genred(formula_euclidean, variables_euclidean, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
+            res = my_routine_gauss(g.astype(dtype), ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
     res /= wsig
     return res
 
