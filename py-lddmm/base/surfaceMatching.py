@@ -299,7 +299,8 @@ class SurfaceMatching(object):
 
     def initial_plot(self):
         fig = plt.figure(3)
-        ax = Axes3D(fig)
+        ax = Axes3D(fig, auto_add_to_figure=False)
+        fig.add_axes(ax)
         lim1 = self.addSurfaceToPlot(self.fv0, ax, ec='k', fc='r', setLim=False)
         if self.fv1:
             lim0 = self.addSurfaceToPlot(self.fv1, ax, ec='k', fc='b', setLim=False)
@@ -806,7 +807,8 @@ class SurfaceMatching(object):
             gg = np.squeeze(g1.diff[t, :, :])
             u = self.param.KparDiff.applyK(z, gg)
             #uu = np.multiply(g1.aff[t], self.affineWeight.reshape(g1.aff[t].shape))
-            uu = g1.aff[t]
+            if self.affineDim > 0:
+                uu = g1.aff[t]
             ll = 0
             for gr in g2:
                 ggOld = np.squeeze(gr.diff[t, :, :])
@@ -986,7 +988,8 @@ class SurfaceMatching(object):
     def plotAtIteration(self):
         fig = plt.figure(4)
         # fig.clf()
-        ax = Axes3D(fig)
+        ax = Axes3D(fig, auto_add_to_figure=False)
+        fig.add_axes(ax)
         lim0 = self.addSurfaceToPlot(self.fv1, ax, ec='k', fc='b')
         lim1 = self.addSurfaceToPlot(self.fvDef, ax, ec='k', fc='r')
         ax.set_xlim(min(lim0[0][0], lim1[0][0]), max(lim0[0][1], lim1[0][1]))
