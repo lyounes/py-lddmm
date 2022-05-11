@@ -71,24 +71,48 @@ def heaviside(u):
     return (np.sign(u - 1e-8) + np.sign(u + 1e-8) + 2) / 4
 
 @jit(nopython=True)
-def gauss_fun(u_, v_, order):
+def gauss_fun(u_, v_, a_, order):
     uv_ = ((u_ - v_) ** 2).sum() / 2
-    return np.exp(-uv_)
+    return np.exp(-uv_) * a_
+
 @jit(nopython=True)
-def lap_fun(u_, v_, order):
+def lap_fun(u_, v_, a_, order):
     uv_ = np.sqrt(((u_ - v_) ** 2).sum())
     u1 = lapPol(uv_, order)
-    return u1 * np.exp(-uv_)
+    return u1 * np.exp(-uv_) * a_
 
 @jit(nopython=True)
-def euclidean_fun(u_, v_, order):
-    return (u_*v_).sum()
+def euclidean_fun(u_, v_, a_, order):
+    return (u_*v_).sum() * a_
 
 @jit(nopython=True)
-def min_fun(u_,v_, order):
+def min_fun(u_,v_, a_, order):
     uv_ = np.minimum(u_, v_)
-    return ReLUK(uv_)
+    return ReLUK(uv_) * a_
 
+
+@jit(nopython=True)
+def gauss_fun_diff(u_, v_, a_, order):
+    d_ = u_ - v_
+    uv_ = (d_ ** 2).sum() / 2
+    return - d_ * np.exp(-uv_) * a_.sum()
+
+@jit(nopython=True)
+def lap_fun_diff(u_, v_, a_, order):
+    d_ = u_ - v_
+    uv_ = np.sqrt((d_ ** 2).sum())
+    u1 = lapPolDiff(uv_, order)
+    return  - d_ * (u1 * np.exp(-uv_) * a_.sum())
+
+@jit(nopython=True)
+def euclidean_fun_diff(u_, v_, a_, order):
+    return v_ * a_.sum()
+
+@jit(nopython=True)
+def min_fun_diff(u_,v_, a_, order):
+    uv_ = np.minimum(u_, v_)
+    # res[k, :] += (heaviside(x[k,:]-y[l,:])*a1[k,:]*a2[l,:])*logcoshKDiff(u)/s
+    return (heaviside(v_ - u_) * a_) * ReLUKDiff(uv_)
 
 @jit(nopython=True, parallel=True)
 def kernelmatrix(y, x, name, scale, ord):
@@ -129,20 +153,9 @@ def kernelmatrix(y, x, name, scale, ord):
                 f[k,l] = Kh
     return f
 
-def applyK(y, x, a, name, scale, order, cpu=False, dtype='float64'):
-    if not cpu and pykeops.config.gpu_available:
-        return applyK_pykeops(y, x, a, name, scale, order, dtype=dtype)
-    else:
-        return applyK_numba(y, x, a, name, scale, order)
 
-
-@jit(nopython=True, parallel=True)
-def applyK_numba(y, x, a, name, scale, order):
-    res = np.zeros((y.shape[0], a.shape[1]))
-    ns = len(scale)
-    sKP = scale**KP
-    wsig = sKP.sum()
-    def pick_fun(name):
+def pick_fun(name, diff = False):
+    if not diff:
         if 'gauss' in name:
             fun = gauss_fun
         elif 'lap' in name:
@@ -151,14 +164,39 @@ def applyK_numba(y, x, a, name, scale, order):
             fun = min_fun
         else:
             fun = euclidean_fun
-        return fun
-    fun = pick_fun(name)
+    else:
+        if 'gauss' in name:
+            fun = gauss_fun_diff
+        elif 'lap' in name:
+            fun = lap_fun_diff
+        elif 'min' in name:
+            fun = min_fun_diff
+        else:
+            fun = euclidean_fun_diff
+    return fun
+
+def applyK(y, x, a, name, scale, order, cpu=False, dtype='float64'):
+    if not cpu and pykeops.config.gpu_available:
+        return applyK_pykeops(y, x, a, name, scale, order, dtype=dtype)
+    else:
+        fun = pick_fun(name)
+        return applyK_numba(y, x, a, fun , scale, order)
+
+
+@jit(nopython=True, parallel=True)
+def applyK_numba(y, x, a, fun, scale, order):
+    res = np.zeros((y.shape[0], a.shape[1]))
+    ns = len(scale)
+    sKP = scale**KP
+    wsig = sKP.sum()
     for s in range(ns):
         ys = y/scale[s]
         xs = x/scale[s]
         for k in prange(y.shape[0]):
+            resk = np.zeros(a.shape[1])
             for l in range(x.shape[0]):
-                res[k, :] += fun(ys[k, :], xs[l, :]) * a[l, :] * sKP[s]
+                resk += fun(ys[k, :], xs[l, :], a[l, :], order) *  sKP[s]
+            res[k] += resk
         # if name == 'min':
         #     for k in prange(y.shape[0]):
         #         for l in range(x.shape[0]):
@@ -290,26 +328,18 @@ def applyK1K2(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, a,
         return applyK1K2_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, a,
                                  dtype=dtype)
     else:
-        return applyK1K2_numba(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, a)
+        fun1 = pick_fun(name1)
+        fun2 = pick_fun(name2)
+        return applyK1K2_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2, a)
 
 @jit(nopython=True, parallel=True)
-def applyK1K2_numba(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, a):
+def applyK1K2_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2, a):
     res = np.zeros((y1.shape[0], a.shape[1]))
     ns1 = len(scale1)
     s1KP = scale1**KP
     ns2 = len(scale2)
     s2KP = scale2**KP
     wsig = s1KP.sum() * s2KP.sum()
-    def pick_fun(name):
-        if 'gauss' in name:
-            fun = gauss_fun
-        elif 'lap' in name:
-            fun = lap_fun
-        else:
-            fun = euclidean_fun
-        return fun
-    fun1 = pick_fun(name1)
-    fun2 = pick_fun(name2)
     for s1 in range(ns1):
         ys1 = y1/scale1[s1]
         xs1 = x1/scale1[s1]
@@ -318,23 +348,58 @@ def applyK1K2_numba(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2
             xs2 = x2/scale1[s2]
             for k in prange(y1.shape[0]):
                 for l in range(x1.shape[0]):
-                    res[k, :] += fun1(ys1[k, :], xs1[l, :], order1) * fun2(ys2[k, :], xs2[l, :], order2) \
-                                 * a[l,:] * s1KP[s1] * s2KP[s2]
+                    u = fun2(ys2[k, :], xs2[l, :], a[l, :], order2)
+                    res[k, :] += fun1(ys1[k, :], xs1[l, :], u, order1) * s1KP[s1] * s2KP[s2]
     res /= wsig
     return res
 
 def applyK1K2_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, a,
                                  dtype='float64'):
-    pass
+    res = np.zeros(y1.shape)
+    ns1 = len(scale1)
+    s1KP = scale1**KP
+    ns2 = len(scale2)
+    s2KP = scale2**KP
+    wsig = s1KP.sum()
+    a_ = a.astype(dtype)
+    def makeKij(ys_, xs_, name, order):
+        if 'gauss' in name:
+            Dij = ((ys_ - xs_) ** 2).sum(-1)
+            Kij = (-0.5 * Dij).exp()
+        elif 'lap' in name:
+            Dij = ((ys_ - xs_) ** 2).sum(-1).sqrt()
+            polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij * Dij * Dij \
+                     + c_[order, 4] * Dij * Dij * Dij * Dij
+            Kij = polij * (-Dij).exp()
+        else: #Applying Euclidean kernel
+            Kij = (ys_*xs_).sum(-1)
+        return Kij
+
+    for s1 in range(ns1):
+        ys1 = y1/scale1[s1]
+        xs1 = x1/scale1[s1]
+        ys1_ = LazyTensor(ys1.astype(dtype)[:, None, :])
+        xs1_ = LazyTensor(xs1.astype(dtype)[None, :, :])
+        K1ij = makeKij(ys1_, xs1_, name1, order1)
+        for s2 in range(ns2):
+            ys2 = y2/scale2[s2]
+            xs2 = x2/scale2[s2]
+            ys2_ = LazyTensor(ys2.astype(dtype)[:, None, :])
+            xs2_ = LazyTensor(xs2.astype(dtype)[None, :, :])
+            K2ij = makeKij(ys2_, xs2_, name2, order2)
+            res += (K1ij * K2ij) @ a_ * s1KP[s1] * s2KP[s2]
+    res /= wsig
+    return res
 
 def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., lddmm=False, cpu=False, dtype='float64'):
     if not cpu and pykeops.config.gpu_available:
         return applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=regweight, lddmm=lddmm, dtype=dtype)
     else:
-        return applyDiffKT_numba(y, x, p, a, name, scale, order, regweight=regweight, lddmm=lddmm)
+        fun = pick_fun(name, diff=True)
+        return applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=regweight, lddmm=lddmm)
 
 @jit(nopython=True, parallel=True)
-def applyDiffKT_numba(y, x, p, a, name, scale, order, regweight=1., lddmm=False):
+def applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=1., lddmm=False):
     res = np.zeros(y.shape)
     ns = len(scale)
     sKP1 = scale**(KP-1)
@@ -343,35 +408,42 @@ def applyDiffKT_numba(y, x, p, a, name, scale, order, regweight=1., lddmm=False)
     for s in range(ns):
         ys = y/scale[s]
         xs = x/scale[s]
-        if name == 'min':
-            for k in prange(y.shape[0]):
-                for l in range(x.shape[0]):
-                    if lddmm:
-                        akl = p[k, :] * a[l, :] + a[k, :] * p[l, :] - 2 * regweight * a[k, :] * a[l, :]
-                    else:
-                        akl = p[k, :] * a[l, :]
-                    u = np.minimum(ys[k,:],xs[l,:])
-                    #res[k, :] += (heaviside(x[k,:]-y[l,:])*a1[k,:]*a2[l,:])*logcoshKDiff(u)/s
-                    res[k, :] += (heaviside(xs[l,:]-ys[k,:])*akl)*ReLUKDiff(u)*sKP1[s]
-        elif 'gauss' in name:
-            for k in prange(y.shape[0]):
-                for l in range(x.shape[0]):
-                    if lddmm:
-                        akl = p[k, :] * a[l, :] + a[k, :] * p[l, :] - 2 * regweight * a[k, :] * a[l, :]
-                    else:
-                        akl = p[k, :] * a[l, :]
-                    u = ((ys[k,:]-xs[l,:])**2).sum()/2
-                    res[k, :] += (ys[k,:]-xs[l,:]) * (-np.exp(- u) * akl.sum())*sKP1[s]
-        elif 'lap' in name:
-            for k in prange(y.shape[0]):
-                for l in range(x.shape[0]):
-                    if lddmm:
-                        akl = p[k, :] * a[l, :] + a[k, :] * p[l, :] - 2 * regweight * a[k, :] * a[l, :]
-                    else:
-                        akl = p[k, :] * a[l, :]
-                    u = np.sqrt(((ys[k,:] - xs[l,:]) ** 2).sum())
-                    res[k, :] += (ys[k,:]-xs[l,:]) * (-lapPolDiff(u, order) * np.exp(- u) *
-                                                    akl.sum())*sKP1[s]
+        for k in prange(y.shape[0]):
+            for l in range(x.shape[0]):
+                if lddmm:
+                    akl = p[k, :] * a[l, :] + a[k, :] * p[l, :] - 2 * regweight * a[k, :] * a[l, :]
+                else:
+                    akl = p[k, :] * a[l, :]
+                res[k, :] += fun(ys[k, :], xs[l, :], akl, order) * sKP1[s]
+        # if name == 'min':
+        #     for k in prange(y.shape[0]):
+        #         for l in range(x.shape[0]):
+        #             if lddmm:
+        #                 akl = p[k, :] * a[l, :] + a[k, :] * p[l, :] - 2 * regweight * a[k, :] * a[l, :]
+        #             else:
+        #                 akl = p[k, :] * a[l, :]
+        #             u = np.minimum(ys[k,:],xs[l,:])
+        #             #res[k, :] += (heaviside(x[k,:]-y[l,:])*a1[k,:]*a2[l,:])*logcoshKDiff(u)/s
+        #             res[k, :] += (heaviside(xs[l,:]-ys[k,:])*akl)*ReLUKDiff(u)*sKP1[s]
+        # elif 'gauss' in name:
+        #     for k in prange(y.shape[0]):
+        #         for l in range(x.shape[0]):
+        #             if lddmm:
+        #                 akl = p[k, :] * a[l, :] + a[k, :] * p[l, :] - 2 * regweight * a[k, :] * a[l, :]
+        #             else:
+        #                 akl = p[k, :] * a[l, :]
+        #             u = ((ys[k,:]-xs[l,:])**2).sum()/2
+        #             res[k, :] += (ys[k,:]-xs[l,:]) * (-np.exp(- u) * akl.sum())*sKP1[s]
+        # elif 'lap' in name:
+        #     for k in prange(y.shape[0]):
+        #         for l in range(x.shape[0]):
+        #             if lddmm:
+        #                 akl = p[k, :] * a[l, :] + a[k, :] * p[l, :] - 2 * regweight * a[k, :] * a[l, :]
+        #             else:
+        #                 akl = p[k, :] * a[l, :]
+        #             u = np.sqrt(((ys[k,:] - xs[l,:]) ** 2).sum())
+        #             res[k, :] += (ys[k,:]-xs[l,:]) * (-lapPolDiff(u, order) * np.exp(- u) *
+        #                                             akl.sum())*sKP1[s]
     res /= wsig
     return res
 
