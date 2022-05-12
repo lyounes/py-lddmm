@@ -212,7 +212,7 @@ class MeshMatching(object):
             logging.info('Warning: nan in updateTry')
             return 1e500
 
-        if (objRef == None) | (objTry < objRef):
+        if (objRef is None) or (objTry < objRef):
             self.atTry = atTry
             self.objTry = objTry
             self.AfftTry = AfftTry
@@ -298,7 +298,7 @@ class MeshMatching(object):
                 A = None
             xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
 
-            endPoint = PointSet(data=self.fv0)
+            endPoint = meshes.Mesh(mesh=self.fv0)
 
         dim2 = self.dim**2
         px1 = -self.endPointGradient(endPoint=endPoint)
