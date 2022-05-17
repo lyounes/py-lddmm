@@ -878,20 +878,8 @@ class Mesh:
     #     return res
 
 
-def buildMeshFromMerfishData(fileCounts, fileData, geneSet = None, resolution=100, radius = None,
-                             coordinate_columns = ('center_x', 'center_y')):
-    counts = pd.read_csv(fileCounts)
-    if geneSet is not None:
-        counts = counts.loc[:, geneSet]
-    data = pd.read_csv(fileData)
-    centers = np.zeros((data.shape[0], 2))
-    centers[:, 0] = data.loc[:, coordinate_columns[0]]
-    centers[:, 1] = data.loc[:, coordinate_columns[1]]
-    # minx = data.loc[:, 'min_x'].min()
-    # miny = data.loc[:, 'min_y'].min()
-    # maxx = data.loc[:, 'max_x'].max()
-    # maxy = data.loc[:, 'max_y'].max()
 
+def buildMeshFromCentersCounts(centers, cts, resolution=100, radius = None):
     minx = centers[:, 0].min() - 50
     maxx = centers[:, 0].max() + 50
     miny = centers[:, 1].min() - 50
@@ -924,7 +912,6 @@ def buildMeshFromMerfishData(fileCounts, fileData, geneSet = None, resolution=10
     vert = np.zeros((tri.points.shape[0], 3))
     vert[:,:2] = tri.points
 
-    cts = counts.to_numpy()
     g = np.zeros((tri.simplices.shape[0], cts.shape[1]))
     sp = tri.find_simplex(centers)
     for k in range(centers.shape[0]):
@@ -955,3 +942,34 @@ def buildMeshFromMerfishData(fileCounts, fileData, geneSet = None, resolution=10
     fv0 = Mesh(mesh=(newf, newv), image=g)
     fv0.image /= fv0.volumes[:, None]
     return fv0
+
+
+def buildMeshFromImageData(img, geneSet = None, resolution=100, radius = None,
+                           bounding_box = (0,1, 0, 1)):
+
+    (x, y) = meshgrid(img.shape[1], img.shape[2])
+    ng = img.shape[0]
+    cts = img.reshape((ng,centers.shape[0])
+    if geneSet is not None:
+        img = img[geneSet, :]
+    centers = np.zeros((x.shape[0], 2))
+    centers[:, 0] = bounding_box[0] + bounding_box[1]*x/img.shape[1]
+    centers[:, 1] = bounding_box[2] + bounding_box[3]*y/img.shape[2]
+    buildMeshFromCentersCounts(centers, cts, resolution=resolution, radius = radius)
+
+def buildMeshFromMerfishData(fileCounts, fileData, geneSet = None, resolution=100, radius = None,
+                             coordinate_columns = ('center_x', 'center_y')):
+    counts = pd.read_csv(fileCounts)
+    if geneSet is not None:
+        counts = counts.loc[:, geneSet]
+    data = pd.read_csv(fileData)
+    centers = np.zeros((data.shape[0], 2))
+    centers[:, 0] = data.loc[:, coordinate_columns[0]]
+    centers[:, 1] = data.loc[:, coordinate_columns[1]]
+    cts = counts.to_numpy()
+    # minx = data.loc[:, 'min_x'].min()
+    # miny = data.loc[:, 'min_y'].min()
+    # maxx = data.loc[:, 'max_x'].max()
+    # maxy = data.loc[:, 'max_y'].max()
+    buildMeshFromCentersCounts(centers, cts, resolution=resolution, radius = radius)
+

@@ -124,12 +124,12 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
     grdOld = None
     obj_old = None
     while it < maxIter:
-        if hasattr(opt, 'startOfIteration'):
-            opt.startOfIteration()
 
         try_BFGS = True
         stopBFGS = False
         while(try_BFGS):
+            if hasattr(opt, 'startOfIteration'):
+                opt.startOfIteration()
             if opt.reset:
                 opt.obj = None
                 obj = opt.objectiveFun()

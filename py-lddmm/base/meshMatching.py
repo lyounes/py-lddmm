@@ -19,9 +19,21 @@ import matplotlib
 #      typeKernel: 'gauss' or 'laplacian'
 class MeshMatchingParam(matchingParam.MatchingParam):
     def __init__(self, timeStep = .1, algorithm='cg', Wolfe=True, KparDiff = None, KparDist = None,
-                 sigmaError = 1.0):
+                 KparIm = None, sigmaError = 1.0):
         super().__init__(timeStep=timeStep, algorithm = algorithm, Wolfe=Wolfe,
                          KparDiff = KparDiff, KparDist = KparDist, sigmaError=sigmaError)
+        self.typeKIm = 'gauss'
+        self.sigmaKIm = 1.
+        self.orderKIm = 3
+        if type(KparIm) in (list,tuple):
+            self.typeKIm = KparIm[0]
+            self.sigmaKIm = KparIm[1]
+            if self.typeKIm == 'laplacian' and len(KparIm) > 2:
+                self.orderKIm = KparIm[2]
+            self.KparIm = kfun.Kernel(name = self.typeKIm, sigma = self.sigmaKIm,
+                                      order=self.orderKIm)
+        else:
+            self.KparIm = KparIm
         self.sigmaError = sigmaError
         self.fun_obj0 = msd.varifoldNorm0
         self.fun_obj = msd.varifoldNormDef
@@ -120,6 +132,11 @@ class MeshMatching(object):
         self.l1Cost = l1Cost
         self.cgBurnIn = 100
 
+        self.reset = False
+        self.Kdiff_dtype = self.param.KparDiff.pk_dtype
+        self.Kdist_dtype = self.param.KparDist.pk_dtype
+        self.Kim_dtype = self.param.KparIm.pk_dtype
+
 
     def setOutputDir(self, outputDir):
         self.outputDir = outputDir
@@ -136,7 +153,7 @@ class MeshMatching(object):
         #     obj = pointSets.LogisticScoreL2(_fvDef, self.fv1, self.u, w=self.wTr, intercept=self.intercept, l1Cost=self.l1Cost) \
         #           / (self.param.sigmaError**2)
         #     #obj = pointSets.LogisticScore(_fvDef, self.fv1, self.u) / (self.param.sigmaError**2)
-        obj = self.param.fun_obj(_fvDef, self.fv1, self.param.KparDist) / (self.param.sigmaError ** 2)
+        obj = self.param.fun_obj(_fvDef, self.fv1, self.param.KparDist, self.param.KparIm) / (self.param.sigmaError ** 2)
         return obj
 
     def  objectiveFunDef(self, at, Afft, kernel = None, withTrajectory = False, withJacobian=False, regWeight = None):
@@ -184,7 +201,7 @@ class MeshMatching(object):
 
     def objectiveFun(self):
         if self.obj == None:
-            self.obj0 = self.param.fun_obj0(self.fv1, self.param.KparDist) / (self.param.sigmaError ** 2)
+            self.obj0 = self.param.fun_obj0(self.fv1, self.param.KparDist, self.param.KparIm) / (self.param.sigmaError ** 2)
             (self.obj, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
             self.obj += self.obj0 + self.dataTerm(self.fvDef)
@@ -212,7 +229,7 @@ class MeshMatching(object):
             logging.info('Warning: nan in updateTry')
             return 1e500
 
-        if (objRef == None) | (objTry < objRef):
+        if (objRef is None) or (objTry < objRef):
             self.atTry = atTry
             self.objTry = objTry
             self.AfftTry = AfftTry
@@ -235,7 +252,7 @@ class MeshMatching(object):
     def endPointGradient(self, endPoint= None):
         if endPoint is None:
             endPoint = self.fvDef
-        px = self.param.fun_objGrad(endPoint, self.fv1, self.param.KparDist)
+        px = self.param.fun_objGrad(endPoint, self.fv1, self.param.KparDist, self.param.KparIm)
         return px / self.param.sigmaError**2
     
     def hamiltonianCovector(self, x0, at, px1, KparDiff, regWeight, affine = None):
@@ -298,7 +315,7 @@ class MeshMatching(object):
                 A = None
             xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
 
-            endPoint = PointSet(data=self.fv0)
+            endPoint = meshes.Mesh(mesh=self.fv0)
 
         dim2 = self.dim**2
         px1 = -self.endPointGradient(endPoint=endPoint)
@@ -397,6 +414,12 @@ class MeshMatching(object):
         self.x0 = np.copy(self.x0Try)
         #print self.at
 
+    def startOfIteration(self):
+        if self.reset:
+            logging.info('Switching to 64 bits')
+            self.param.KparDiff.pk_dtype = 'float64'
+            self.param.KparDist.pk_dtype = 'float64'
+
     def endOfIteration(self, endP=False):
         self.iter += 1
         if self.testGradient:
@@ -445,6 +468,8 @@ class MeshMatching(object):
                 fvDef.save(self.outputDir + '/' + self.saveFile + str(kk) + '.vtk')
         (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
         self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
+        self.param.KparDiff.pk_dtype = self.Kdiff_dtype
+        self.param.KparDist.pk_dtype = self.Kdist_dtype
 
     def endOfProcedure(self):
         self.endOfIteration(endP=True)

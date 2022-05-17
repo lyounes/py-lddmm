@@ -376,6 +376,9 @@ class KernelSpec:
         elif name == 'min':
             self.kernelMatrix = None
             self.par = []
+        elif name == 'euclidean':
+            self.name = 'euclidean'
+            self.par = [sigma]
         else:
             self.name = 'none'
             self.kernelMatrix = None

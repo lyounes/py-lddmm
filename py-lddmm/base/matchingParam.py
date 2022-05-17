@@ -37,7 +37,7 @@ class MatchingParam:
             self.typeKDist = KparDist[0]
             self.sigmaDist = KparDist[1]
             if self.typeKernel == 'laplacian' and len(KparDist) > 2:
-                self.orderKernel = KparDist[2]
+                self.orderKdist = KparDist[2]
             self.KparDist = kfun.Kernel(name = self.typeKDist, sigma = self.sigmaDist, order=self.orderKDist)
         else:
             self.KparDist = KparDist

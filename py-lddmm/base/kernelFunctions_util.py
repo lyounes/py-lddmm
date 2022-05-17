@@ -201,7 +201,7 @@ def applyK_numba(y, x, a, fun, scale, order):
     return res
 
 def applyK_pykeops(y, x, a, name, scale, order, dtype='float64'):
-    res = np.zeros(y.shape)
+    res = np.zeros((y.shape[0], a.shape[1]))
     ns = len(scale)
     sKP = scale**KP
     wsig = sKP.sum()
@@ -263,7 +263,7 @@ def applyK1K2_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2, 
 
 def applyK1K2_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, a,
                                  dtype='float64'):
-    res = np.zeros(y1.shape)
+    res = np.zeros((y1.shape[0], a.shape[1]))
     ns1 = len(scale1)
     s1KP = scale1**KP
     ns2 = len(scale2)
@@ -427,12 +427,12 @@ def applyDiffK1K2T_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2,
         if 'gauss' in name:
             diffij = ys_ - xs_
             Dij = (diffij ** 2).sum(-1)
-            Kij = diffij * (-0.5 * Dij).exp()
+            Kij = - diffij * (-0.5 * Dij).exp()
         elif 'lap' in name:
             # if lddmm:
             diffij = ys_ - xs_
             Dij = (diffij ** 2).sum(-1).sqrt()
-            Kij = diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
+            Kij = - diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
             + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
         else: # Euclidean kernel
             Kij = LazyTensor(np.ones(ys_.shape)) * xs_
