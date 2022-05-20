@@ -86,6 +86,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         self.npt = self.fv0.vertices.shape[0]
         self.dim = self.fv0.vertices.shape[1]
         self.saveRate = 1
+        self.match_landmarks = False
         self.iter = 0
         self.setOutputDir(outputDir)
         self.saveFile = saveFile
@@ -360,7 +361,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 
         objTry += self.dataTerm(_ff)
 
-        if (objRef is None) | (objTry < objRef):
+        if (objRef is None) or (objTry < objRef):
             self.atTry = atTry
             self.atAllTry = atAllTry
             self.AfftAllTry = AfftAllTry
@@ -517,6 +518,32 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             for gr in g2:
                 ggOld = np.squeeze(gr.prior[t, :, :])
                 res[ll]  += (ggOld*u).sum()*(self.tmplCoeff)
+                ll = ll + 1
+        return res
+
+    def dotProduct_euclidean(self, g1, g2):
+        res = np.zeros(len(g2))
+        for (kk, gg1) in enumerate(g1.all):
+            if self.select[kk]:
+                for t in range(self.Tsize):
+                    #print gg1[0].shape, gg1[1].shape
+                    gg = np.squeeze(gg1.diff[t, :, :])
+                    #uu = np.multiply(gg1.aff[t], self.affineWeight.reshape(gg1.aff[t].shape))
+                    uu = gg1.aff[t]
+                    #u = rzz*gg
+                    ll = 0
+                    for gr in g2:
+                        ggOld = np.squeeze(gr.all[kk].diff[t, :, :])
+                        res[ll]  += (ggOld*gg).sum()
+                        if self.affineDim > 0:
+                            res[ll] += (uu*gr.all[kk].aff[t]).sum() * self.coeffAff
+                        ll = ll + 1
+        for t in range(g1.prior.shape[0]):
+            gg = np.squeeze(g1.prior[t, :, :])
+            ll = 0
+            for gr in g2:
+                ggOld = np.squeeze(gr.prior[t, :, :])
+                res[ll]  += (ggOld*gg).sum()*(self.tmplCoeff)
                 ll = ll + 1
         return res
 
