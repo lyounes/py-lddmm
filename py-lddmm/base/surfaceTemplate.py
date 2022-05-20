@@ -630,7 +630,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                 logging.info('\nRandom step ' + str(k) + ' ' + s)
                 self.epsMax = 10./(self.sgd*(k+1))
                 self.reset = True
-                cg.cg(self, verb=self.verb, maxIter=10, TestGradient=False, epsInit=0.01)
+                cg.cg(self, verb=self.verb, maxIter=10, TestGradient=False, epsInit=0.01, Wolfe=False)
                 meanObj += self.objIni
                 logging.info('\nMean Objective {0:f}'.format(meanObj/(k+1)))
             nv0 = self.fv0.vertices.shape[0]
