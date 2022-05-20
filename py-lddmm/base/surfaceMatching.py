@@ -92,10 +92,6 @@ class SurfaceMatching(object):
 
         self.set_landmarks(Landmarks)
         self.set_fun(self.param.errorType, vfun=self.param.vfun)
-
-
-
-
         self.set_parameters(maxIter=maxIter, regWeight = regWeight, affineWeight = affineWeight,
                             internalWeight=internalWeight, verb=verb, affineOnly = affineOnly,
                             rotWeight = rotWeight, scaleWeight = scaleWeight, transWeight = transWeight,
@@ -442,7 +438,7 @@ class SurfaceMatching(object):
             ra = kernel.applyK(z, a)
             if hasattr(self, 'v'):  
                 self.v[t, :] = ra
-            obj += regWeight_[t]*timeStep*np.multiply(a, ra).sum()
+            obj += regWeight_[t]*timeStep*(a*ra).sum()
             if self.internalCost:
                 foo.updateVertices(z[:self.nvert, :])
                 obj1 += self.internalWeight*self.internalCost(foo, ra)*timeStep
@@ -632,10 +628,10 @@ class SurfaceMatching(object):
                 grd = self.internalCostGrad(foo, v)
                 Lv =  grd[0]
                 DLv = self.internalWeight*grd[1]
-                zpx = self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True,
+                zpx = KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True,
                                                       extra_term = -self.internalWeight*Lv) - DLv
             else:
-                zpx = self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
+                zpx = KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
 
             if not (affine is None):
                 pxt[M-t-1, :, :] = np.dot(px, A[M-t-1]) + timeStep * zpx

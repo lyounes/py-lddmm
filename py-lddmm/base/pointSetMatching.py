@@ -25,16 +25,6 @@ class PointSetMatchingParam(matchingParam.MatchingParam):
                          KparDiff = KparDiff, KparDist = KparDist, sigmaError=sigmaError,
                          errorType = errorType)
         self.sigmaError = sigmaError
-        if errorType == 'L2':
-            self.fun_obj0 = psd.L2Norm0
-            self.fun_obj = psd.L2NormDef
-            self.fun_objGrad = psd.L2NormGradient
-        elif errorType == 'measure':
-            self.fun_obj0 = psd.measureNorm0
-            self.fun_obj = psd.measureNormDef
-            self.fun_objGrad = psd.measureNormGradient
-        else:
-            logging.error('Unknown error Type: ' + self.errorType)
 
 
 class Direction:
@@ -60,12 +50,11 @@ class Direction:
 #        maxIter: max iterations in conjugate gradient
 class PointSetMatching(object):
 
-    def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, maxIter=1000,
-                 regWeight = 1.0, affineWeight = 1.0, verb=True, testSet = None, addDim = 0, intercept=True,
-                 u0 = None, normalizeInput = False, l1Cost = 0.0, relearnRate = 1,
-                 rotWeight = None, scaleWeight = None, transWeight = None, randomInit = 0.,
-                 testGradient=True, saveFile = 'evolution',
-                 saveTrajectories = False, affine = 'none', outputDir = '.',pplot=True):
+    def __init__(self, Template=None, Target=None, param=None, maxIter=1000,
+                 regWeight = 1.0, affineWeight = 1.0, verb=True,
+                 rotWeight = None, scaleWeight = None, transWeight = None,
+                 testGradient=True, saveFile = 'evolution', pplot = True,
+                 saveTrajectories = False, affine = 'none', outputDir = '.'):
         if param is None:
             self.param = PointSetMatchingParam()
         else:
@@ -76,78 +65,131 @@ class PointSetMatching(object):
         else:
             self.euclideanGradient = True
 
-        if Template is None:
-            if fileTempl is None:
-                logging.error('Please provide a template surface')
-                return
-            else:
-                self.fv0 = pointSets.loadlmk(fileTempl)[0]
-        else:
-            self.fv0 = deepcopy(Template)
-            
-        if Target is None:
-            if fileTarg is None:
-                logging.error('Please provide a target surface')
-                return
-            else:
-                self.fv1 = pointSets.loadlmk(fileTarg)[0]
-        else:
-            self.fv1 = deepcopy(Target)
+        self.fv0 = None
+        self.fv1 = None
+        self.fvInit = None
+        self.dim = 0
+        self.fun_obj = None
+        self.fun_obj0 = None
+        self.fun_objGrad = None
+        self.obj0 = 0
+        self.coeffAff = 1
+        self.obj = 0
+        self.xt = None
+        self.setOutputDir(outputDir)
+        self.set_template_and_target(Template, Target)
+        self.set_fun(self.param.errorType)
+
 
             #print np.fabs(self.fv1.surfel-self.fv0.surfel).max()
+        self.set_parameters(maxIter=maxIter, regWeight = regWeight, affineWeight = affineWeight,
+                            verb=verb, rotWeight = rotWeight, scaleWeight = scaleWeight,
+                            transWeight = transWeight, testGradient=testGradient, saveFile = saveFile,
+                            saveTrajectories = saveTrajectories, affine = affine)
+        self.initialize_variables()
+        self.gradCoeff = self.x0.shape[0]
+        self.pplot = pplot
 
 
-        self.saveRate = 10
-        self.iter = 0
-        self.setOutputDir(outputDir)
-        self.dim = self.fv0.points.shape[1]
-        self.maxIter = maxIter
-        self.verb = verb
-        self.saveTrajectories = saveTrajectories
-        self.testGradient = testGradient
-        self.regweight = regWeight
-        self.affine = affine
-        self.affB = AffineBasis(self.dim, affine)
-        self.affineDim = self.affB.affineDim
-        self.affineBasis = self.affB.basis
-        self.affineWeight = affineWeight * np.ones([self.affineDim, 1])
-        if (len(self.affB.rotComp) > 0) & (rotWeight != None):
-            self.affineWeight[self.affB.rotComp] = rotWeight
-        if (len(self.affB.simComp) > 0) & (scaleWeight != None):
-            self.affineWeight[self.affB.simComp] = scaleWeight
-        if (len(self.affB.transComp) > 0) & (transWeight != None):
-            self.affineWeight[self.affB.transComp] = transWeight
-
-
+    def initialize_variables(self):
         self.x0 = np.copy(self.fv0.points)
-        self.x0Try = np.copy(self.fv0.points)
         self.fvDef = deepcopy(self.fv0)
         self.npt = self.x0.shape[0]
         # self.u = np.zeros((self.dim, 1))
         # self.u[0:2] = 1/np.sqrt(2.)
 
         self.Tsize = int(round(1.0/self.param.timeStep))
-        self.at = np.random.normal(0, randomInit, [self.Tsize, self.x0.shape[0], self.x0.shape[1]])
+        self.at = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
         self.atTry = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
         self.Afft = np.zeros([self.Tsize, self.affineDim])
         self.AfftTry = np.zeros([self.Tsize, self.affineDim])
         self.xt = np.tile(self.x0, [self.Tsize+1, 1, 1])
         self.v = np.zeros([self.Tsize+1, self.npt, self.dim])
-        self.obj = None
-        self.objTry = None
-        self.gradCoeff = self.x0.shape[0]
-        self.saveFile = saveFile
+
+
+    def set_template_and_target(self, Template, Target):
+        if Template is None:
+            logging.error('Please provide a template surface')
+            return
+        else:
+            if isinstance(Template, PointSet):
+                self.fv0 = deepcopy(Template)
+            else:
+                self.fv0 = pointSets.loadlmk(Template)[0]
+
+        if Target is None:
+            logging.error('Please provide a target surface')
+            return
+        else:
+            if isinstance(Target, PointSet):
+                self.fv1 = deepcopy(Target)
+            else:
+                self.fv1 = pointSets.loadlmk(Template)[0]
+
         self.fv0.save(self.outputDir + '/Template.vtk')
         self.fv1.save(self.outputDir + '/Target.vtk')
+        self.dim = self.fv0.points.shape[1]
+
+    def set_fun(self, errorType):
+        self.param.errorType = errorType
+        if errorType == 'L2':
+            self.fun_obj0 = psd.L2Norm0
+            self.fun_obj = psd.L2NormDef
+            self.fun_objGrad = psd.L2NormGradient
+        elif errorType == 'measure':
+            self.fun_obj0 = psd.measureNorm0
+            self.fun_obj = psd.measureNormDef
+            self.fun_objGrad = psd.measureNormGradient
+        else:
+            logging.error('Unknown error Type: ' + self.param.errorType)
+
+    def set_parameters(self, maxIter=1000,
+                 regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
+                 affineOnly = False,
+                 rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
+                 testGradient=True, saveFile = 'evolution',
+                 saveTrajectories = False, affine = 'none'):
+        self.saveRate = 10
+        self.gradEps = -1
+        self.randomInit = False
+        self.iter = 0
+        self.maxIter = maxIter
+        self.verb = verb
+        self.saveTrajectories = saveTrajectories
+        self.symmetric = symmetric
+        self.testGradient = testGradient
+        self.internalWeight = internalWeight
+        self.regweight = regWeight
+
+        self.affineOnly = affineOnly
+        self.affine = affine
+        self.affB = AffineBasis(self.dim, affine)
+        self.affineDim = self.affB.affineDim
+        self.affineBasis = self.affB.basis
+        self.affineWeight = affineWeight * np.ones([self.affineDim, 1])
+        if (len(self.affB.rotComp) > 0) and (rotWeight is not None):
+            self.affineWeight[self.affB.rotComp] = rotWeight
+        if (len(self.affB.simComp) > 0) and (scaleWeight is not None):
+            self.affineWeight[self.affB.simComp] = scaleWeight
+        if (len(self.affB.transComp) > 0) and (transWeight is not None):
+            self.affineWeight[self.affB.transComp] = transWeight
+
+        self.obj = None
+        self.objTry = None
+        self.saveFile = saveFile
         self.coeffAff1 = 1.
-        self.coeffAff2 = 100.
+        if self.param.algorithm == 'cg':
+            self.coeffAff2 = 100.
+        else:
+            self.coeffAff2 = 1.
         self.coeffAff = self.coeffAff1
         self.coeffInitx = .1
-        self.affBurnIn = 100
-        self.pplot = pplot
-        self.testSet = testSet
-        self.l1Cost = l1Cost
-        self.cgBurnIn = 100
+        self.affBurnIn = 25
+        self.forceLineSearch = False
+        self.saveEPDiffTrajectories = False
+        self.varCounter = 0
+        self.trajCounter = 0
+
 
 
     def setOutputDir(self, outputDir):
@@ -166,9 +208,9 @@ class PointSetMatching(object):
         #           / (self.param.sigmaError**2)
         #     #obj = pointSets.LogisticScore(_fvDef, self.fv1, self.u) / (self.param.sigmaError**2)
         if self.param.errorType == 'measure':
-            obj = self.param.fun_obj(_fvDef, self.fv1, self.param.KparDist) / (self.param.sigmaError ** 2)
+            obj = self.fun_obj(_fvDef, self.fv1, self.param.KparDist) / (self.param.sigmaError ** 2)
         else:
-            obj = self.param.fun_obj(_fvDef, self.fv1) / (self.param.sigmaError**2)
+            obj = self.fun_obj(_fvDef, self.fv1) / (self.param.sigmaError**2)
         return obj
 
     def  objectiveFunDef(self, at, Afft, kernel = None, withTrajectory = False, withJacobian=False, x0 = None, regWeight = None):
@@ -200,10 +242,10 @@ class PointSetMatching(object):
             ra = kernel.applyK(z, a)
             if hasattr(self, 'v'):  
                 self.v[t, :] = ra
-            obj = obj + regWeight*timeStep*np.multiply(a, ra).sum()
+            obj = obj + regWeight*timeStep*(a*ra).sum()
 
             if self.affineDim > 0:
-                obj1 +=  timeStep * np.multiply(self.affineWeight.reshape(Afft[t].shape), Afft[t]**2).sum()
+                obj1 +=  timeStep * (self.affineWeight.reshape(Afft[t].shape) * Afft[t]**2).sum()
             #print xt.sum(), at.sum(), obj
         #print obj, obj+obj1
         obj += obj1
@@ -214,44 +256,45 @@ class PointSetMatching(object):
         else:
             return obj
 
+    def makeTryInstance(self, pts):
+        ff = PointSet(data=pts, weights=self.fv0.weights)
+        return ff
 
     def objectiveFun(self):
         if self.obj == None:
             if self.param.errorType == 'measure':
-                self.obj0 = self.param.fun_obj0(self.fv1, self.param.KparDist) / (self.param.sigmaError ** 2)
+                self.obj0 = self.fun_obj0(self.fv1, self.param.KparDist) / (self.param.sigmaError ** 2)
             else:
-                self.obj0 = self.param.fun_obj0(self.fv1) / (self.param.sigmaError**2)
+                self.obj0 = self.fun_obj0(self.fv1) / (self.param.sigmaError**2)
             (self.obj, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             self.fvDef.points = np.copy(np.squeeze(self.xt[-1, :, :]))
             self.obj += self.obj0 + self.dataTerm(self.fvDef)
         return self.obj
 
     def getVariable(self):
-        return [self.at, self.Afft, self.x0]
+        return [self.at, self.Afft]
 
-    def updateTry(self, dir, eps, objRef=None):
+    def updateTry(self, dr, eps, objRef=None):
         objTry = self.obj0
-        atTry = self.at - eps * dir.diff
+        atTry = self.at - eps * dr.diff
         if self.affineDim > 0:
-            AfftTry = self.Afft - eps * dir.aff
+            AfftTry = self.Afft - eps * dr.aff
         else:
             AfftTry = self.Afft
-        x0Try = self.x0
 
-        foo = self.objectiveFunDef(atTry, AfftTry, x0 = x0Try, withTrajectory=True)
+        foo = self.objectiveFunDef(atTry, AfftTry, withTrajectory=True)
         objTry += foo[0]
-        ff = PointSet(data=np.squeeze(foo[1][-1, :, :]), weights=self.fv0.weights)
+        ff = self.makeTryInstance(np.squeeze(foo[1][-1, :, :]))
         objTry += self.dataTerm(ff)
 
         if np.isnan(objTry):
             logging.info('Warning: nan in updateTry')
             return 1e500
 
-        if (objRef == None) | (objTry < objRef):
+        if (objRef is None) or (objTry < objRef):
             self.atTry = atTry
             self.objTry = objTry
             self.AfftTry = AfftTry
-            self.x0Try = x0Try
             #print 'objTry=',objTry, dir.diff.sum()
 
         return objTry
@@ -271,46 +314,46 @@ class PointSetMatching(object):
         if endPoint is None:
             endPoint = self.fvDef
         if self.param.errorType == 'measure':
-            px = self.param.fun_objGrad(endPoint, self.fv1, self.param.KparDist)
+            px = self.fun_objGrad(endPoint, self.fv1, self.param.KparDist)
         else:
-            px = self.param.fun_objGrad(endPoint, self.fv1)
+            px = self.fun_objGrad(endPoint, self.fv1)
         return px / self.param.sigmaError**2
 
     
-    def hamiltonianCovector(self, x0, at, px1, KparDiff, regWeight, affine = None):
-        N = x0.shape[0]
-        dim = x0.shape[1]
-        M = at.shape[0]
-        timeStep = 1.0/M
-        xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
-        if not(affine is None):
-            A0 = affine[0]
-            A = np.zeros([M,dim,dim])
-            for k in range(A0.shape[0]):
-                A[k,...] = getExponential(timeStep*A0[k]) 
-        else:
-            A = np.zeros([M,dim,dim])
-            for k in range(M):
-                A[k,...] = np.eye(dim) 
-                
-        pxt = np.zeros([M+1, N, dim])
-        pxt[M, :, :] = px1
-        foo = np.copy(self.fv0)
-        for t in range(M):
-            px = np.squeeze(pxt[M-t, :, :])
-            z = np.squeeze(xt[M-t-1, :, :])
-            a = np.squeeze(at[M-t-1, :, :])
-            foo = np.copy(z)
-            v = KparDiff.applyK(z,a)
-            a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*regWeight*a[np.newaxis,...]))
-            a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
-            zpx = KparDiff.applyDiffKT(z, a1, a2)
-                
-            if not (affine is None):
-                pxt[M-t-1, :, :] = np.dot(px, A[M-t-1]) + timeStep * zpx
-            else:
-                pxt[M-t-1, :, :] = px + timeStep * zpx
-        return pxt, xt
+    # def hamiltonianCovector(self, x0, at, px1, KparDiff, regWeight, affine = None):
+    #     N = x0.shape[0]
+    #     dim = x0.shape[1]
+    #     M = at.shape[0]
+    #     timeStep = 1.0/M
+    #     xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+    #     if not(affine is None):
+    #         A0 = affine[0]
+    #         A = np.zeros([M,dim,dim])
+    #         for k in range(A0.shape[0]):
+    #             A[k,...] = getExponential(timeStep*A0[k])
+    #     else:
+    #         A = np.zeros([M,dim,dim])
+    #         for k in range(M):
+    #             A[k,...] = np.eye(dim)
+    #
+    #     pxt = np.zeros([M+1, N, dim])
+    #     pxt[M, :, :] = px1
+    #     foo = np.copy(self.fv0)
+    #     for t in range(M):
+    #         px = np.squeeze(pxt[M-t, :, :])
+    #         z = np.squeeze(xt[M-t-1, :, :])
+    #         a = np.squeeze(at[M-t-1, :, :])
+    #         foo = np.copy(z)
+    #         v = KparDiff.applyK(z,a)
+    #         a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*regWeight*a[np.newaxis,...]))
+    #         a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
+    #         zpx = KparDiff.applyDiffKT(z, a1, a2)
+    #
+    #         if not (affine is None):
+    #             pxt[M-t-1, :, :] = np.dot(px, A[M-t-1]) + timeStep * zpx
+    #         else:
+    #             pxt[M-t-1, :, :] = px + timeStep * zpx
+    #     return pxt, xt
     
     def hamiltonianGradient(self, px1, kernel = None, affine=None, regWeight=None, x0=None, at=None):
         if regWeight is None:
@@ -340,8 +383,8 @@ class PointSetMatching(object):
             else:
                 A = None
             xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
-
             endPoint = PointSet(data=self.fv0)
+            endPoint.updatePoints(xt[-1, :, :])
 
         dim2 = self.dim**2
         px1 = -self.endPointGradient(endPoint=endPoint)
@@ -437,7 +480,6 @@ class PointSetMatching(object):
         self.obj = self.objTry
         self.at = np.copy(self.atTry)
         self.Afft = np.copy(self.AfftTry)
-        self.x0 = np.copy(self.x0Try)
         #print self.at
 
     def endOfIteration(self, endP=False):
@@ -488,8 +530,6 @@ class PointSetMatching(object):
         (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
         self.fvDef.points = np.copy(np.squeeze(self.xt[-1, :, :]))
 
-    def endOfProcedure(self):
-        self.endOfIteration(endP=True)
 
     def optimizeMatching(self):
         #print 'dataterm', self.dataTerm(self.fvDef)
@@ -510,25 +550,6 @@ class PointSetMatching(object):
         #bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
         #return self.at, self.xt
 
-
-# if __name__ == "__main__":
-#     outputDir0 = '/Users/younes/Development/Results/PointSets'
-#     loggingUtils.setup_default_logging(outputDir0, fileName='info', stdOutput=True)
-#     fv0 = np.random.multivariate_normal(-np.ones(2), np.eye(2), 150)
-#     fv1 = np.random.multivariate_normal(np.ones(2), np.array([[4, 1], [1, 2]]), 100)
-#     K1 = kfun.Kernel(name='laplacian', sigma=1, order=3)
-#     K2 = kfun.Kernel(name='laplacian', sigma=0.5, order=3)
-#     sm = PointSetMatchingParam(timeStep=0.1, KparDiff = K1, KparDist=K2, sigmaError=.01, errorType='measure')
-#
-#
-#     f = PointSetMatching(Template=fv0, Target=fv1, outputDir=outputDir0, param=sm, regWeight=1.,
-#                          saveTrajectories=True, pplot=True,
-#                          normalizeInput=False,
-#                          affine='none', testGradient=True, affineWeight=10.,
-#                          maxIter=1500)
-#     #f.sgd = (1,1)
-#     f.optimizeMatching()
-#
 
 
 

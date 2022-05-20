@@ -880,10 +880,12 @@ class Mesh:
 
 
 def buildMeshFromCentersCounts(centers, cts, resolution=100, radius = None):
-    minx = centers[:, 0].min() - 50
-    maxx = centers[:, 0].max() + 50
-    miny = centers[:, 1].min() - 50
-    maxy = centers[:, 1].max() + 50
+    dx =  (centers[:, 0].max()- centers[:, 0].min())/20
+    minx = centers[:, 0].min() - dx
+    maxx = centers[:, 0].max() + dx
+    dy =  (centers[:, 1].max()- centers[:, 1].min())/20
+    miny = centers[:, 1].min() - dy
+    maxy = centers[:, 1].max() + dy
     if radius is None:
         spacing = max(maxy - miny, maxx - minx) / resolution
     else:
@@ -947,15 +949,17 @@ def buildMeshFromCentersCounts(centers, cts, resolution=100, radius = None):
 def buildMeshFromImageData(img, geneSet = None, resolution=100, radius = None,
                            bounding_box = (0,1, 0, 1)):
 
-    (x, y) = meshgrid(img.shape[1], img.shape[2])
-    ng = img.shape[0]
-    cts = img.reshape((ng,centers.shape[0])
+    xi = np.linspace(bounding_box[0], bounding_box[1], img.shape[0])
+    yi = np.linspace(bounding_box[2], bounding_box[3], img.shape[1])
+    (x, y) = np.meshgrid(yi, xi)
+    ng = img.shape[2]
+    cts = img.reshape((x.size, ng))
     if geneSet is not None:
-        img = img[geneSet, :]
-    centers = np.zeros((x.shape[0], 2))
-    centers[:, 0] = bounding_box[0] + bounding_box[1]*x/img.shape[1]
-    centers[:, 1] = bounding_box[2] + bounding_box[3]*y/img.shape[2]
-    buildMeshFromCentersCounts(centers, cts, resolution=resolution, radius = radius)
+        img = img[:, geneSet]
+    centers = np.zeros((x.size, 2))
+    centers[:, 0] = np.ravel(x) # bounding_box[0] + bounding_box[1]*x/img.shape[0]
+    centers[:, 1] = np.ravel(y) #bounding_box[2] + bounding_box[3]*y/img.shape[1]
+    return buildMeshFromCentersCounts(centers, cts, resolution=resolution, radius = radius)
 
 def buildMeshFromMerfishData(fileCounts, fileData, geneSet = None, resolution=100, radius = None,
                              coordinate_columns = ('center_x', 'center_y')):
@@ -971,5 +975,5 @@ def buildMeshFromMerfishData(fileCounts, fileData, geneSet = None, resolution=10
     # miny = data.loc[:, 'min_y'].min()
     # maxx = data.loc[:, 'max_x'].max()
     # maxy = data.loc[:, 'max_y'].max()
-    buildMeshFromCentersCounts(centers, cts, resolution=resolution, radius = radius)
+    return buildMeshFromCentersCounts(centers, cts, resolution=resolution, radius = radius)
 

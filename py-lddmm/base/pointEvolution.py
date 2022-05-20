@@ -885,26 +885,36 @@ def landmarkHamiltonianCovector(x0, at, px1, Kpardiff, regweight, affine=None):
 
     N = x0.shape[0]
     dim = x0.shape[1]
-    T = at.shape[0]
-    timeStep = 1.0 / (T)
+    M = at.shape[0]
+    timeStep = 1.0 / (M)
 
     xt = landmarkDirectEvolutionEuler(x0, at, Kpardiff, affine=affine)
 
-    pxt = np.zeros((T + 1, N, dim))
-    pxt[T, :, :] = px1
+    pxt = np.zeros((M + 1, N, dim))
+    pxt[M, :, :] = px1
 
-    for t in range(T, 0, -1):
-        if withaff:
-            pxt[t - 1, :, :] = np.dot(pxt[t,:,:], affineBasis.getExponential(timeStep * A[t - 1, :, :]))
+    for t in range(M):
+        px = np.squeeze(pxt[M - t, :, :])
+        z = np.squeeze(xt[M - t - 1, :, :])
+        a = np.squeeze(at[M - t - 1, :, :])
+        zpx = Kpardiff.applyDiffKT(z, px, a, regweight=regweight, lddmm=True)
+        if not (affine is None):
+            pxt[M - t - 1, :, :] = np.dot(px, affineBasis.getExponential(timeStep * A[M - t - 1, :, :])) + timeStep * zpx
         else:
-            pxt[t - 1, ...] = pxt[t, : ,:]
-        pxt[t-1,...] += timeStep * Kpardiff.applyDiffKT(xt[t-1,:,:], pxt[t,:,:], at[t-1,:,:],
-                                                        regweight=regweight, lddmm=True)
-        #Kpardiff.testDiffKT(xt[t-1,:,:], xt[t-1,:,:], pxt[t,:,:], at[t-1,:,:])
-        # for k in prange(N):
-        #     for l in range(N):
-        #         a1a2 = pxt[t, k, :]*at[t-1, l, :] + at[t-1, k,:]*pxt[t, l,:] - 2 * regweight * at[t-1, k, :]*at[t-1, l, :]
-        #         pxt[t - 1, k, :] += timeStep * applyDiffKT_(xt[t-1, k, :], xt[t-1, l, :], a1a2, nameK, scaleK, orderK)
+            pxt[M - t - 1, :, :] = px + timeStep * zpx
+    #
+    # for t in range(T, 0, -1):
+    #     if withaff:
+    #         pxt[t - 1, :, :] = np.dot(pxt[t,:,:], affineBasis.getExponential(timeStep * A[t - 1, :, :]))
+    #     else:
+    #         pxt[t - 1, ...] = pxt[t, : ,:]
+    #     pxt[t-1,...] += timeStep * Kpardiff.applyDiffKT(xt[t-1,:,:], pxt[t,:,:], at[t-1,:,:],
+    #                                                     regweight=regweight, lddmm=True)
+    #     #Kpardiff.testDiffKT(xt[t-1,:,:], xt[t-1,:,:], pxt[t,:,:], at[t-1,:,:])
+    #     # for k in prange(N):
+    #     #     for l in range(N):
+    #     #         a1a2 = pxt[t, k, :]*at[t-1, l, :] + at[t-1, k,:]*pxt[t, l,:] - 2 * regweight * at[t-1, k, :]*at[t-1, l, :]
+    #     #         pxt[t - 1, k, :] += timeStep * applyDiffKT_(xt[t-1, k, :], xt[t-1, l, :], a1a2, nameK, scaleK, orderK)
 
     return pxt, xt
 

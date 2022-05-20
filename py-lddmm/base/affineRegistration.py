@@ -50,7 +50,7 @@ def saveRigid(filename, R, T):
             fn.write(str)
 
             
-@jit(nopython=True)
+@jit(nopython=True, parallel=True)
 def _flipMidPoint(Y,X):
     M = Y.shape[0]
     dim = Y.shape[1]
@@ -72,7 +72,7 @@ def _flipMidPoint(Y,X):
     return Z, S, T
 
 
-@jit(nopython=True)
+@jit(forceobj=True, parallel=True, debug=True)
 def rigidRegistration__(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotationOnly=False,
                       translationOnly=False, flipMidPoint=False,
                       annealing = True, verb=False, landmarks = None, normals = None):
@@ -90,8 +90,10 @@ def rigidRegistration__(surfaces = None, temperature = 1.0, rotWeight = 1.0, rot
     if (surfaces is None):
         surf = False
         norm = False
-        norm0 = np.empty((0,0))
-        norm1 = np.empty((0,0))
+        norm0 = np.zeros((0,0))
+        norm1 = np.zeros((0,0))
+        N=0
+        M=0
         Nsurf = 0
         Msurf = 0
         if landmarks is None:
@@ -181,7 +183,7 @@ def rigidRegistration__(surfaces = None, temperature = 1.0, rotWeight = 1.0, rot
             Rn = np.dot(norm0, R.T)
             for i in range(Nsurf):
                 for j in range(Msurf):
-                    d[i,j] += normWeight * ((Rn[i, :] - norm1[j,:])**2).sum(axis=1)
+                    d[i,j] += normWeight * ((Rn[i, :] - norm1[j,:])**2).sum()
             # u1 = np.reshape((Rn**2).sum(axis=1), [Nsurf,1])
             # u2 = np.reshape((norm1**2).sum(axis=1), [1,Msurf])
             # d[0:Nsurf, 0:Msurf] += normWeight*(np.reshape((Rn**2).sum(axis=1), [Nsurf,1]) - 2 * np.dot(Rn, norm1.T) +

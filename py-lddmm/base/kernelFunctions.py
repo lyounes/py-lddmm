@@ -375,7 +375,12 @@ class KernelSpec:
             self.kff = True
         elif name == 'min':
             self.kernelMatrix = None
+            self.name = 'min'
             self.par = []
+        elif 'poly' in name :
+            self.kernelMatrix = None
+            self.name = 'poly'
+            self.par = [sigma, self.order]
         elif name == 'euclidean':
             self.name = 'euclidean'
             self.par = [sigma]

@@ -86,6 +86,16 @@ def euclidean_fun(u_, v_, a_, order):
     return (u_*v_).sum() * a_
 
 @jit(nopython=True)
+def poly_fun(u_, v_, a_, order):
+    g = (u_*v_).sum()
+    gk = 1.
+    res = 1.
+    for i in range(order):
+        gk *= g
+        res += gk
+    return res * a_
+
+@jit(nopython=True)
 def min_fun(u_,v_, a_, order):
     uv_ = np.minimum(u_, v_)
     return ReLUK(uv_) * a_
@@ -107,6 +117,16 @@ def lap_fun_diff(u_, v_, a_, order):
 @jit(nopython=True)
 def euclidean_fun_diff(u_, v_, a_, order):
     return v_ * a_.sum()
+
+@jit(nopython=True)
+def poly_fun_diff(u_, v_, a_, order):
+    g = (u_*v_).sum()
+    gk = 1.
+    res = 1.
+    for i in range(1, order):
+        gk *= g
+        res += (i+1) * g
+    return res * v_ * a_.sum()
 
 @jit(nopython=True)
 def min_fun_diff(u_,v_, a_, order):
@@ -162,6 +182,8 @@ def pick_fun(name, diff = False):
             fun = lap_fun
         elif 'min' in name:
             fun = min_fun
+        elif 'poly' in name:
+            fun = poly_fun
         else:
             fun = euclidean_fun
     else:
@@ -171,6 +193,8 @@ def pick_fun(name, diff = False):
             fun = lap_fun_diff
         elif 'min' in name:
             fun = min_fun_diff
+        elif 'poly' in name:
+            fun = poly_fun_diff
         else:
             fun = euclidean_fun_diff
     return fun
@@ -221,6 +245,13 @@ def applyK_pykeops(y, x, a, name, scale, order, dtype='float64'):
             polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij*Dij*Dij\
             + c_[order, 4] *Dij*Dij*Dij*Dij
             Kij = polij * (-Dij).exp()
+        elif 'poly' in name:
+            g = (ys_*xs_).sum(-1)
+            gk = LazyTensor(np.ones(ys_.shape))
+            Kij = LazyTensor(np.ones(ys_.shape))
+            for i in range(order):
+                gk *= g
+                Kij += gk
         else: #Applying Euclidean kernel
             Kij = (ys_*xs_).sum(-1)
         if name == min:
@@ -253,7 +284,7 @@ def applyK1K2_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2, 
         xs1 = x1/scale1[s1]
         for s2 in range(ns2):
             ys2 = y2/scale2[s2]
-            xs2 = x2/scale1[s2]
+            xs2 = x2/scale2[s2]
             for k in prange(y1.shape[0]):
                 for l in range(x1.shape[0]):
                     u = fun2(ys2[k, :], xs2[l, :], a[l, :], order2)
@@ -279,6 +310,13 @@ def applyK1K2_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, orde
             polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij * Dij * Dij \
                      + c_[order, 4] * Dij * Dij * Dij * Dij
             Kij = polij * (-Dij).exp()
+        elif 'poly' in name:
+            g = (ys_*xs_).sum(-1)
+            gk = LazyTensor(np.ones(ys_.shape))
+            Kij = LazyTensor(np.ones(ys_.shape))
+            for i in range(order):
+                gk *= g
+                Kij += gk
         else: #Applying Euclidean kernel
             Kij = (ys_*xs_).sum(-1)
         return Kij
@@ -361,6 +399,13 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
             Dij = (diffij ** 2).sum(-1).sqrt()
             Kij = diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
             + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
+        elif 'poly' in name:
+            g = (ys_ * xs_).sum(-1)
+            gk = LazyTensor(np.ones(ys_.shape))
+            Kij = LazyTensor(np.ones(ys_.shape))
+            for i in range(1, order):
+                gk *= g
+                Kij += (i+1) * gk
         else: # Euclidean kernel
             Kij = LazyTensor(np.ones(ys_.shape)) * xs_
         res += (-sKP1[s]) * (Kij * ap_).sum(1)
@@ -381,18 +426,18 @@ def applyDiffK1K2T(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2,
 @jit(nopython=True, parallel=True)
 def applyDiffK1K2T_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2,
                          p, a, regweight=1., lddmm=False):
-    res = np.zeros((y1.shape[0], a.shape[1]))
+    res = np.zeros(y1.shape)
     ns1 = len(scale1)
     s1KP = scale1 ** (KP-1)
     ns2 = len(scale2)
-    s2KP = scale2 ** (KP-1)
+    s2KP = scale2 ** KP
     wsig = (scale1**KP).sum() * (scale2**KP).sum()
     for s1 in range(ns1):
         ys1 = y1 / scale1[s1]
         xs1 = x1 / scale1[s1]
         for s2 in range(ns2):
             ys2 = y2 / scale2[s2]
-            xs2 = x2 / scale1[s2]
+            xs2 = x2 / scale2[s2]
             for k in prange(y1.shape[0]):
                 for l in range(x1.shape[0]):
                     if lddmm:
@@ -410,7 +455,7 @@ def applyDiffK1K2T_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2,
     ns1 = len(scale1)
     s1KP = scale1 ** (KP-1)
     ns2 = len(scale2)
-    s2KP = scale2 ** (KP-1)
+    s2KP = scale2 ** KP
     wsig = (scale1**KP).sum() * (scale2**KP).sum()
     a_ = a.astype(dtype)
     p_ = p.astype(dtype)
@@ -434,6 +479,13 @@ def applyDiffK1K2T_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2,
             Dij = (diffij ** 2).sum(-1).sqrt()
             Kij = - diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
             + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
+        elif 'poly' in name:
+            g = (ys_ * xs_).sum(-1)
+            gk = LazyTensor(np.ones(ys_.shape))
+            Kij = LazyTensor(np.ones(ys_.shape))
+            for i in range(1, order):
+                gk *= g
+                Kij += (i+1) * gk
         else: # Euclidean kernel
             Kij = LazyTensor(np.ones(ys_.shape)) * xs_
         return Kij
@@ -447,6 +499,13 @@ def applyDiffK1K2T_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2,
             polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij * Dij * Dij \
                      + c_[order, 4] * Dij * Dij * Dij * Dij
             Kij = polij * (-Dij).exp()
+        elif 'poly' in name:
+            g = (ys_*xs_).sum(-1)
+            gk = LazyTensor(np.ones(ys_.shape))
+            Kij = LazyTensor(np.ones(ys_.shape))
+            for i in range(order):
+                gk *= g
+                Kij += gk
         else: #Applying Euclidean kernel
             Kij = (ys_*xs_).sum(-1)
         return Kij
