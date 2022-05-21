@@ -241,6 +241,17 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             self.AfftAll[kk] = np.copy(ff.AfftAll[kk])
             self.xtAll[kk] = np.copy(ff.xt[kk])
 
+    def createHypertemplate(self, fv):
+        m = np.zeros(self.dim)
+        I = np.zeros((self.dim, self.dim))
+        N = 0
+        for f in fv:
+            N += f.vertices.shape[0]
+            m += f.vertices.sum(axis=0)
+            I += (f.vertices[:, :, None] * f.vertices[:, None, :]).sum(axis=0)
+        m /= N
+        I = I/N - m[:, None] * m[None, :]
+
 
     def dataTerm(self, _fvDef):
         c = float(self.Ntarg)/self.select.sum()

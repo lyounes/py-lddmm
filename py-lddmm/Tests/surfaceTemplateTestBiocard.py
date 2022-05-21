@@ -22,7 +22,7 @@ files = glob.glob(project+'/2_qc_flipped_registered/*L_reg.byu')
 print(len(files))
 fv1 = []
 for k in range(len(files)):
-    if files[k].split('_')[4] == '1':
+    if files[k].split('_')[-5] == '1':
         fv1.append(Surface(surf = files[k]))
 print(len(fv1))
 K1 = Kernel(name='gauss', sigma = 6.5)
