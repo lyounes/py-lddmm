@@ -14,15 +14,15 @@ from base.kernelFunctions import Kernel
 from base.surfaceTemplate import SurfaceTemplateParam, SurfaceTemplate
 import glob
 
-# project = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus'
-# home = '/cis/home/younes'
-project = '/Users/younes/Development/Data/biocard'
-home = '/Users/younes'
+project = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus'
+home = '/cis/home/younes'
+#project = '/Users/younes/Development/Data/biocard'
+#home = '/Users/younes'
 files = glob.glob(project+'/2_qc_flipped_registered/*L_reg.byu')
 print(len(files))
 fv1 = []
 for k in range(len(files)):
-    if files[k].split('_')[4] == '1':
+    if files[k].split('_')[-5] == '1':
         fv1.append(Surface(surf = files[k]))
 print(len(fv1))
 K1 = Kernel(name='gauss', sigma = 6.5)
