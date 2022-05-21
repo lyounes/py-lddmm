@@ -9,6 +9,7 @@ from . import conjugateGradient as cg, kernelFunctions as kfun
 from .affineBasis import AffineBasis
 from . import loggingUtils
 from .surfaces import Surface
+from .surfaceExamples import Ellipse_pygal
 import glob
 # import matplotlib
 # matplotlib.use("TKAgg")
@@ -60,25 +61,18 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 
 
 
-        if HyperTmpl is None:
-            if fileHTempl is None:
-                print('Please provide A hyper-template surface')
-                return
-            else:
-                self.fv0 = surfaces.Surface(surf=fileHTempl)
-        else:
-            self.fv0 = surfaces.Surface(surf=HyperTmpl)
         if Targets is None:
-            if fileTarg is None:
-                print('Please provide Target surfaces')
-                return
-            else:
-                for ff in fileTarg:
-                    self.fv1.append(surfaces.Surface(surf=ff))
+            print('Please provide Target surfaces')
+            return
         else:
             self.fv1 = []
             for ff in Targets:
                 self.fv1.append(surfaces.Surface(surf=ff))
+
+        if HyperTmpl is None:
+            self.createHypertemplate(self.fv1)
+        else:
+            self.fv0 = surfaces.Surface(surf=HyperTmpl)
 
         self.Ntarg = len(self.fv1)
         self.affineOnly = False
@@ -241,9 +235,10 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             self.AfftAll[kk] = np.copy(ff.AfftAll[kk])
             self.xtAll[kk] = np.copy(ff.xt[kk])
 
-    def createHypertemplate(self, fv):
-        m = np.zeros(self.dim)
-        I = np.zeros((self.dim, self.dim))
+    def createHypertemplate(self, fv, targetSize=1000):
+        dim = fv[0].vertices.shape[1]
+        m = np.zeros(dim)
+        I = np.zeros((dim, dim))
         N = 0
         for f in fv:
             N += f.vertices.shape[0]
@@ -251,6 +246,8 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             I += (f.vertices[:, :, None] * f.vertices[:, None, :]).sum(axis=0)
         m /= N
         I = I/N - m[:, None] * m[None, :]
+        S = Ellipse_pygal(center = m, I=I, targetSize=targetSize)
+        return S
 
 
     def dataTerm(self, _fvDef):

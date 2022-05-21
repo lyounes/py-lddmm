@@ -31,7 +31,7 @@ Kdist = Kernel(name='gauss', sigma = 2.5)
 
 loggingUtils.setup_default_logging(home + '/Development/Results/surfaceTemplateBiocard', fileName='info.txt', stdOutput = True)
 sm = SurfaceTemplateParam(timeStep=0.1, KparDiff=K1, KparDiff0 = K0, KparDist=Kdist, sigmaError=1., errorType='varifold')# internalCost='h1')
-f = SurfaceTemplate(HyperTmpl=fv1[0], Targets=fv1, outputDir=home + '/Development/Results/surfaceTemplateBiocard',param=sm, testGradient=True,
+f = SurfaceTemplate(HyperTmpl=None, Targets=fv1, outputDir=home + '/Development/Results/surfaceTemplateBiocard',param=sm, testGradient=True,
                     lambdaPrior = 0.01, sgd = 5,
                     maxIter=1000, affine='none', rotWeight=1., transWeight = 1., scaleWeight=10., affineWeight=100.)
 f.computeTemplate()
