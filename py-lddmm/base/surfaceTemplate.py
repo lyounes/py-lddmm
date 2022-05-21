@@ -582,14 +582,14 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         return res
 
 
-    def endOfIteration(self):
+    def endOfIteration(self, forceSave=False):
         self.iter += 1
         #if self.testGradient:
         #    self.testEndpointGradient()
         if self.iter >= self.affBurnIn:
             self.updateAffine = False
             self.coeffAff = self.coeffAff2
-        if self.iter >= self.templateBurnIn:
+        if forceSave or self.iter >= self.templateBurnIn:
             self.updateAllTraj = True
         (obj1, self.xt, Jt) = self.objectiveFunDef(self.at, self.Afft, kernel = self.param.KparDiff0,
                                                    withTrajectory=True, withJacobian=True)

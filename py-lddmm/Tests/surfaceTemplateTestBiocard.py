@@ -14,10 +14,10 @@ from base.kernelFunctions import Kernel
 from base.surfaceTemplate import SurfaceTemplateParam, SurfaceTemplate
 import glob
 
-# project = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus'
-# home = '/cis/home/younes'
-project = '/Users/younes/Development/Data/biocard'
-home = '/Users/younes'
+project = '/cis/project/biocard/data/2mm_complete_set_surface_mapping_10212012/hippocampus'
+home = '/cis/home/younes'
+#project = '/Users/younes/Development/Data/biocard'
+#home = '/Users/younes'
 files = glob.glob(project+'/2_qc_flipped_registered/*L_reg.byu')
 print(len(files))
 fv1 = []
