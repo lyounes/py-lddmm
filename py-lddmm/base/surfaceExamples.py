@@ -1,5 +1,6 @@
 import numpy as np
 import pygalmesh
+from scipy.linalg import sqrtm
 from scipy.spatial import Delaunay
 from .surfaces import Surface
 
@@ -59,41 +60,35 @@ class Rectangle(Surface):
 
 
 class Ball_pygal_(pygalmesh.DomainBase):
-    def __init__(self, m=(0,0,0), r = 1.):
+    def __init__(self):
         super().__init__()
-        self.m = m
-        self.r = r
+        # self.m = m
+        # self.r = r
 
     def eval(self, x):
-        return self.r**2 - ((x[0]-self.m[0])**2 + (x[1]-self.m[1])**2 + (x[2]-self.m[2])**2)
+        return 1. - (x[0]**2 + x[1]**2 + x[2]**2)
 
     def get_bounding_sphere_squared_radius(self):
-        return 4.0 * self.r**2
+        return 4.0
 
-class Ellipse_pygal_(pygalmesh.DomainBase):
-    def __init__(self, m=(0,0,0), I = None):
-        super().__init__()
-        self.m = np.array(m)
-        if I is None:
-            self.I = np.eye(3)
-        else:
-            self.I = np.array(I)
-        self.invI = np.linalg.inv(self.I)
-
-    def eval(self, x):
-        return 1.0 - ((x-self.m) * (self.invI @ (x-self.m))).sum()
-
-    def get_bounding_sphere_squared_radius(self):
-        return 4.0 * np.trace(self.I)
-
+# class Ellipse_pygal_(pygalmesh.DomainBase):
+#     def __init__(self):
+#         super().__init__()
+#
+#     def eval(self, x):
+#         return 1.0 - ((x-self.m) * (self.invI @ (x-self.m))).sum()
+#
+#     def get_bounding_sphere_squared_radius(self):
+#         return 4.0 * np.trace(self.I)
+#
 
 class Sphere_pygal(Surface):
     def __init__(self, center=(0,0,0), radius=1, resolution = 100, targetSize = 1000):
         super().__init__()
-        d = Ball_pygal_(m=center, r=radius)
+        d = Ball_pygal_()
         mesh = pygalmesh.generate_surface_mesh(d, max_facet_distance=0.01, min_facet_angle=30.0,
                                                max_radius_surface_delaunay_ball=0.05)
-        self.vertices = np.copy(mesh.points)
+        self.vertices = np.array(center) + radius * np.copy(mesh.points)
         self.faces = np.int_(np.copy(mesh.cells[0].data))
         self.component = np.zeros(self.faces.shape[0], dtype=int)
         self.weights = np.ones(self.vertices.shape[0], dtype=int)
@@ -105,10 +100,10 @@ class Sphere_pygal(Surface):
 class Ellipse_pygal(Surface):
     def __init__(self, center=(0,0,0), I=None, resolution = 100, targetSize = 1000):
         super().__init__()
-        d = Ellipse_pygal_(m=center, I=I)
+        d = Ball_pygal_()
         mesh = pygalmesh.generate_surface_mesh(d, max_facet_distance=0.01, min_facet_angle=30.0,
                                                max_radius_surface_delaunay_ball=0.05)
-        self.vertices = np.copy(mesh.points)
+        self.vertices = np.array(center) + np.copy(mesh.points) @ sqrtm(I)
         self.faces = np.int_(np.copy(mesh.cells[0].data))
         self.component = np.zeros(self.faces.shape[0], dtype=int)
         self.weights = np.ones(self.vertices.shape[0], dtype=int)
