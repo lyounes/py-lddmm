@@ -25,14 +25,16 @@ for k in range(len(files)):
     if files[k].split('_')[-5] == '1':
         fv1.append(Surface(surf = files[k]))
 print(len(fv1))
+
 K1 = Kernel(name='gauss', sigma = 6.5)
-K0 = Kernel(name='gauss', sigma = 1.0)
+K0 = Kernel(name='laplacian', sigma = 2.5)
 Kdist = Kernel(name='gauss', sigma = 2.5)
 
 loggingUtils.setup_default_logging(home + '/Development/Results/surfaceTemplateBiocard', fileName='info.txt', stdOutput = True)
-sm = SurfaceTemplateParam(timeStep=0.1, KparDiff=K1, KparDiff0 = K0, KparDist=Kdist, sigmaError=1., errorType='varifold')# internalCost='h1')
+sm = SurfaceTemplateParam(timeStep=0.1, KparDiff=K1, KparDiff0 = K0, KparDist=Kdist, sigmaError=1., errorType='varifold',
+                          internalCost='elastic')
 f = SurfaceTemplate(HyperTmpl=None, Targets=fv1, outputDir=home + '/Development/Results/surfaceTemplateBiocard',param=sm, testGradient=True,
-                    lambdaPrior = 0.01, sgd = 5,
+                    lambdaPrior = 0.1, sgd = 5, internalWeight = 50, 
                     maxIter=1000, affine='none', rotWeight=1., transWeight = 1., scaleWeight=10., affineWeight=100.)
 f.computeTemplate()
 

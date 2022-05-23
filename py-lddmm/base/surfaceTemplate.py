@@ -62,7 +62,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 
 
         if Targets is None:
-            print('Please provide Target surfaces')
+            logging.error('Please provide Target surfaces')
             return
         else:
             self.fv1 = []
@@ -70,7 +70,8 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                 self.fv1.append(surfaces.Surface(surf=ff))
 
         if HyperTmpl is None:
-            self.createHypertemplate(self.fv1)
+            logging.info('Computing average hypertemplate')
+            self.fv0 = self.createHypertemplate(self.fv1)
         else:
             self.fv0 = surfaces.Surface(surf=HyperTmpl)
 
@@ -240,13 +241,20 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         m = np.zeros(dim)
         I = np.zeros((dim, dim))
         N = 0
+        v = 0
         for f in fv:
             N += f.vertices.shape[0]
             m += f.vertices.sum(axis=0)
             I += (f.vertices[:, :, None] * f.vertices[:, None, :]).sum(axis=0)
+            v += np.fabs(f.surfVolume())
+            #logging.info(f'{np.fabs(f.surfVolume()):.4f}')
         m /= N
+        v /= len(fv)
         I = I/N - m[:, None] * m[None, :]
         S = Ellipse_pygal(center = m, I=I, targetSize=targetSize)
+        w = np.fabs(S.surfVolume())
+        S.updateVertices(m[None, :] + (S.vertices - m[None, :])*(v/w)**(1/3))
+        logging.info(f'Volumes: {v:0.4f} {w:0.4f} {np.fabs(S.surfVolume()):0.4f}')
         return S
 
 
