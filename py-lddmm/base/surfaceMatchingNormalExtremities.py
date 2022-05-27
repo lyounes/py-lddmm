@@ -42,7 +42,7 @@ class SurfaceMatchingParam(surfaceMatching.SurfaceMatchingParam):
         else:
             self.KparDiffOut = KparDiffOut
 
-        if KparDiffOut == None:
+        if KparDiffOut is None:
             self.KparDiffOut = kfun.Kernel(name=self.typeKernel, sigma=self.sigmaKernelOut)
         else:
             self.KparDiffOut = KparDiffOut
@@ -137,7 +137,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
         lmb = np.zeros(self.cval.shape)
         dxcval = np.zeros(xt.shape)
         dacval = np.zeros(at.shape)
-        dAffcval = np.zeros(Afft.shape)
+        if Afft is not None:
+            dAffcval = np.zeros(Afft.shape)
+        else:
+            dAffcval = None
         # for t in (0, self.Tsize-1):
         for t in range(self.Tsize):
             a = at[t]
@@ -286,7 +289,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             logging.warning('Warning: nan in updateTry')
             return 1e500
 
-        if (objRef == None) | (objTry < objRef):
+        if (objRef is None) or (objTry < objRef):
             self.atTry = atTry
             self.AfftTry = AfftTry
             self.objTry = objTry
@@ -460,8 +463,12 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             Afft = self.Afft
             #A = self.affB.getTransforms(self.Afft)
         else:
-            Afft = self.Afft - update[1]*update[0].aff
-            A = self.affB.getTransforms(Afft)
+            if update[0].aff is not None:
+                Afft = self.Afft - update[1]*update[0].aff
+                A = self.affB.getTransforms(Afft)
+            else:
+                Afft = None
+                A = None
             at = self.at - update[1] *update[0].diff
             xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
             endPoint = surfaces.Surface(surf=self.fv0)

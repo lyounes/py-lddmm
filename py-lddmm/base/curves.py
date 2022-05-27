@@ -437,6 +437,10 @@ class Curve:
         ll = np.sqrt((self.linel ** 2).sum(axis=1))
         return ll.sum()
 
+    def weightedLength(self):
+        ll = np.sqrt((self.linel ** 2).sum(axis=1))
+        return (self.line_weights*ll).sum()
+
     def diffArcLength(self):
         return np.sqrt((self.linel ** 2).sum(axis=1))
 

@@ -277,7 +277,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
 
     def initial_plot(self):
         fig = plt.figure(3)
-        ax = Axes3D(fig, auto_add_to_figure=False)
+        ax = Axes3D(fig)#, auto_add_to_figure=False)
         fig.add_axes(ax)
         lim1 = self.addSurfaceToPlot(self.fv0, ax, ec='k', fc='r', al=0.2)
         for k,f in enumerate(self.fv1):
@@ -316,8 +316,9 @@ class SurfaceToSectionsMatching(SurfaceMatching):
             fv1 = self.fv1
         obj = 0
         for k,f in enumerate(fv1):
-            obj += Surf2SecDist(_fvDef, f, self.fun_obj, target_comp_info=self.component_structure[k])
+            #logging.info(f'     Target {k}')
                                 #target_label=np.where(self.componentMap[:,k])[0]) # curveDist0=self.fun_obj0) plot=101+k)
+            obj += Surf2SecDist(_fvDef, f, self.fun_obj, target_comp_info=self.component_structure[k])
         obj /= self.param.sigmaError**2
         #print('ending dt')
         return obj

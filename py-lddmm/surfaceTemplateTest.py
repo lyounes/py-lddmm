@@ -42,7 +42,7 @@ def main():
 
     sm = SurfaceTemplateParam(timeStep=0.1, KparDiff=K1, KparDist=K2, sigmaError=1., errorType='current')
     f = SurfaceTemplate(HyperTmpl=fv[0], Targets=fv, outputDir='/Users/younes/Results/surfaceTemplate2',param=sm, testGradient=False,
-                        lambdaPrior = .01, maxIter=1000, affine='euclidean', rotWeight=10.,
+                        lambdaPrior = .01, maxIter=1000, affine='euclidean', rotWeight=10., sgd=1,
                         transWeight = 1., scaleWeight=10., affineWeight=100.)
     f.computeTemplate()
 

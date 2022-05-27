@@ -1,4 +1,5 @@
 import os
+import time
 from copy import deepcopy
 import numpy as np
 import numpy.linalg as la
@@ -91,10 +92,6 @@ class SurfaceMatching(object):
 
         self.set_landmarks(Landmarks)
         self.set_fun(self.param.errorType, vfun=self.param.vfun)
-
-
-
-
         self.set_parameters(maxIter=maxIter, regWeight = regWeight, affineWeight = affineWeight,
                             internalWeight=internalWeight, verb=verb, affineOnly = affineOnly,
                             rotWeight = rotWeight, scaleWeight = scaleWeight, transWeight = transWeight,
@@ -153,7 +150,13 @@ class SurfaceMatching(object):
         if self.param.internalCost == 'h1':
             self.internalCost = sd.normGrad
             self.internalCostGrad = sd.diffNormGrad
+        elif self.param.internalCost == 'elastic':
+            self.internalCost = sd.elasticNorm
+            self.internalCostGrad = sd.diffElasticNorm
         else:
+            print(self.param.internalCost)
+            if self.param.internalCost is not None:
+                print('unknown ', self.internalCost)
             self.internalCost = None
 
 
@@ -292,7 +295,8 @@ class SurfaceMatching(object):
 
     def initial_plot(self):
         fig = plt.figure(3)
-        ax = Axes3D(fig)
+        ax = Axes3D(fig, auto_add_to_figure=False)
+        fig.add_axes(ax)
         lim1 = self.addSurfaceToPlot(self.fv0, ax, ec='k', fc='r', setLim=False)
         if self.fv1:
             lim0 = self.addSurfaceToPlot(self.fv1, ax, ec='k', fc='b', setLim=False)
@@ -434,7 +438,7 @@ class SurfaceMatching(object):
             ra = kernel.applyK(z, a)
             if hasattr(self, 'v'):  
                 self.v[t, :] = ra
-            obj += regWeight_[t]*timeStep*np.multiply(a, ra).sum()
+            obj += regWeight_[t]*timeStep*(a*ra).sum()
             if self.internalCost:
                 foo.updateVertices(z[:self.nvert, :])
                 obj1 += self.internalWeight*self.internalCost(foo, ra)*timeStep
@@ -624,10 +628,10 @@ class SurfaceMatching(object):
                 grd = self.internalCostGrad(foo, v)
                 Lv =  grd[0]
                 DLv = self.internalWeight*grd[1]
-                zpx = self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True,
+                zpx = KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True,
                                                       extra_term = -self.internalWeight*Lv) - DLv
             else:
-                zpx = self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
+                zpx = KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
 
             if not (affine is None):
                 pxt[M-t-1, :, :] = np.dot(px, A[M-t-1]) + timeStep * zpx
@@ -701,8 +705,8 @@ class SurfaceMatching(object):
             xt = self.xt
         else:
             at = self.at - update[1] * update[0].diff
-            Afft = self.Afft - update[1]*update[0].aff
-            if len(update[0].aff) > 0:
+            if update[0].aff is not None:
+                Afft = self.Afft - update[1]*update[0].aff
                 A = self.affB.getTransforms(Afft)
             else:
                 A = None
@@ -799,7 +803,8 @@ class SurfaceMatching(object):
             gg = np.squeeze(g1.diff[t, :, :])
             u = self.param.KparDiff.applyK(z, gg)
             #uu = np.multiply(g1.aff[t], self.affineWeight.reshape(g1.aff[t].shape))
-            uu = g1.aff[t]
+            if self.affineDim > 0:
+                uu = g1.aff[t]
             ll = 0
             for gr in g2:
                 ggOld = np.squeeze(gr.diff[t, :, :])
@@ -979,7 +984,8 @@ class SurfaceMatching(object):
     def plotAtIteration(self):
         fig = plt.figure(4)
         # fig.clf()
-        ax = Axes3D(fig)
+        ax = Axes3D(fig, auto_add_to_figure=False)
+        fig.add_axes(ax)
         lim0 = self.addSurfaceToPlot(self.fv1, ax, ec='k', fc='b')
         lim1 = self.addSurfaceToPlot(self.fvDef, ax, ec='k', fc='r')
         ax.set_xlim(min(lim0[0][0], lim1[0][0]), max(lim0[0][1], lim1[0][1]))
@@ -988,7 +994,9 @@ class SurfaceMatching(object):
         if self.match_landmarks:
             ax.scatter3D(self.def_lmk.points[:,0], self.def_lmk.points[:,1], self.def_lmk.points[:,2], color='r')
             ax.scatter3D(self.targ_lmk.points[:, 0], self.targ_lmk.points[:, 1], self.targ_lmk.points[:, 2], color='b')
+        fig.canvas.draw_idle()
         fig.canvas.flush_events()
+        time.sleep(0.5)
 
     def endOfIteration(self, forceSave=False):
         self.iter += 1
@@ -1098,7 +1106,7 @@ class SurfaceMatching(object):
         self.coeffAff = self.coeffAff1
         if self.param.algorithm == 'cg':
             cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=0.1,
-                  forceLineSearch=self.forceLineSearch)
+                  Wolfe=self.param.wolfe)
         elif self.param.algorithm == 'bfgs':
             bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=1.,
                       Wolfe=self.param.wolfe, memory=50)

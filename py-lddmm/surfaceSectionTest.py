@@ -92,7 +92,7 @@ for ti in range(1, 15):
 
     K1 = Kernel(name='laplacian', sigma=sigmaKernel)
 
-    sm = SurfaceMatchingParam(timeStep=0.1, algorithm='cg', KparDiff=K1, sigmaDist=sigmaDist, sigmaError=sigmaError,
+    sm = SurfaceMatchingParam(timeStep=0.1, algorithm='cg', KparDiff=K1, KparDist=('gauss', sigmaDist), sigmaError=sigmaError,
                               errorType=errorType, internalCost=internalCost)
     f = SurfaceToSectionsMatching(Template=fv0, Target= target,
                         outputDir=f'/Users/younes/Development/Results/Sections/MouseTime{ti:02d}_temp', param=sm,

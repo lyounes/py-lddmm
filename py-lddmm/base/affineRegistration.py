@@ -2,6 +2,7 @@ import numpy as np
 from numba import jit
 import numpy.linalg as linalg
 from scipy.linalg import expm
+from scipy.optimize import minimize
 
 def randomRotation(dim):
     A = np.random.normal(0,1, (dim, dim))
@@ -50,7 +51,7 @@ def saveRigid(filename, R, T):
             fn.write(str)
 
             
-@jit(nopython=True)
+@jit(nopython=True, parallel=True)
 def _flipMidPoint(Y,X):
     M = Y.shape[0]
     dim = Y.shape[1]
@@ -72,10 +73,119 @@ def _flipMidPoint(Y,X):
     return Z, S, T
 
 
-@jit(nopython=True)
+def rigidRegistration_varifold(surfaces, weights=None, sigma = 1.):
+    x = surfaces[0]
+    y = surfaces[1]
+    Nsurf = x.shape[0]
+    Msurf = y.shape[0]
+    dimn = x.shape[1]
+    if weights is None:
+        wxy = np.ones((Nsurf, Msurf))
+    else:
+        wxy = weights
+
+    ys = y/sigma
+
+    def getRotation(u):
+        if dimn == 3:
+            ur = u[:3]
+            t = np.sqrt((ur ** 2).sum())
+            A = np.array([[0, -ur[2], ur[1]], [ur[2], 0, -ur[0]], [ur[0], -ur[1], 0]])
+            R = np.eye(3) + ((1 - np.cos(t)) / (t ** 2)) * (np.dot(A, A)) + (np.sin(t) / t) * A
+            T = u[3:]
+        else:
+            ct = np.cos(u[0])
+            st = np.sin(u[0])
+            R = np.array([[ct, -st], [st, ct]])
+            T = u[1:]
+        return R, T
+
+    def objective_and_gradient(u):
+        grad = np.zeros(u.shape)
+        if dimn == 3:
+            ur = u[:3]
+            T = u[3:]
+            t = np.sqrt((ur ** 2).sum())
+            if t > 1e-10:
+                st = np.sin(t)
+                ct = np.cos(t)
+                a1 = st / t
+                a2 = (1 - ct) / (t ** 2)
+                ucx = np.cross(ur[None, :], x)
+                udx = (ur[None, :]*x).sum(axis=1)
+                unorm = ur / t
+                Rx = ct * x + a1 * ucx + a2 * udx[None, :] * u[:, None]
+                xx = (Rx + T)/sigma
+                xy = xx[:, None, :] - ys[None, :, :]
+                dxy = (xy ** 2).sum(axis=2)
+                Kxy = np.exp(-dxy / 2) * wxy
+                obj = -Kxy.sum()
+                dKxy = - Kxy[:,:,None] * xy
+                da1 = (t * ct - st) / (t ** 3)
+                da2 = (t * st - 2 * (1 - ct)) / (t ** 4)
+                dKxyx = (dKxy*x[:, None, :]).sum()
+                dKxyu = dKxy@u
+                dRx = da1 * (dKxy * ucx[:, None, :]).sum() * unorm \
+                      + a1 * np.cross(x[:, None, :], dKxy).sum(axis=[0,1]) \
+                      - st * dKxyx * unorm + da2 * (dKxyu * udx[:, None]).sum() * unorm \
+                      + a2 * ((dKxyu * x[:, None]).sum() + (dKxy*udx[:,None, None]).sum(axis=(0,1)))
+                dRx = -dRx/sigma
+                dT = -dKxy.sum(axis=(0,1))/sigma
+            else:
+                # st = 0
+                # ct = 1
+                # a1 = 1
+                # a2 = 0.5
+                # ucx = np.cross(ur[None, :], x)
+                # udx = (ur[None, :] * x).sum(axis=1)
+                # unorm = ur / t
+                xx = (x + T) / sigma
+                xy = xx[:, None, :] - ys[None, :, :]
+                dxy = (xy ** 2).sum(axis=2)
+                Kxy = np.exp(-dxy / 2) * wxy
+                obj = -Kxy.sum()
+                dKxy = - Kxy[:, :, None] * xy
+                # da1 = -1/3
+                # da2 = -1/12
+                # dKxyx = (dKxy * x[:, None, :]).sum()
+                # dKxyu = dKxy @ u
+                dRx = np.cross(x[:, None, :], dKxy).sum(axis=(0, 1))
+                dT = dKxy.sum(axis=(0, 1))
+            grad[:3] = -dRx/sigma
+            grad[3:] = -dT/sigma
+        else:
+            ct = np.cos(u[0])
+            st = np.sin(u[0])
+            R = np.array([[ct, -st], [st, ct]])
+            Rx = x @ R.T
+            T = u[1:]
+            xx = (Rx + T) / sigma
+            xy = xx[:, None, :] - ys[None, :, :]
+            dxy = (xy ** 2).sum(axis=2)
+            Kxy = np.exp(-dxy / 2) * wxy
+            obj = -Kxy.sum()
+            dKxy = - Kxy[:, :, None] * xy
+            dR = np.array([[-st, -ct], [ct, -st]])
+            dRx = (dKxy * (x @ dR.T)[:, None, :]).sum()
+            dT = dKxy.sum(axis=(0, 1))
+            grad[:1] = -dRx/sigma
+            grad[1:] = -dT/sigma
+        return obj, grad
+
+    if dimn == 2:
+        x0 = np.zeros(3)
+    else:
+        x0 = np.zeros(6)
+
+    res = minimize(objective_and_gradient, x0, method='BFGS', jac=True, options={'maxiter':10000})
+    R, T = getRotation(res.x)
+    return R, T
+
+
+@jit(forceobj=True, parallel=True, debug=True)
 def rigidRegistration__(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotationOnly=False,
                       translationOnly=False, flipMidPoint=False,
-                      annealing = True, verb=False, landmarks = None, normals = None):
+                      annealing = True, verb=False, landmarks = None, normals = None, image=None):
 #  [R, T] = rigidRegistrationSurface(X0, Y0, t)
 # compute rigid registration using soft-assign maps
 # computes R (orthogonal matrix) and T (translation so that Y0 ~ R*X0+T
@@ -90,8 +200,10 @@ def rigidRegistration__(surfaces = None, temperature = 1.0, rotWeight = 1.0, rot
     if (surfaces is None):
         surf = False
         norm = False
-        norm0 = np.empty((0,0))
-        norm1 = np.empty((0,0))
+        norm0 = np.zeros((0,0))
+        norm1 = np.zeros((0,0))
+        N=0
+        M=0
         Nsurf = 0
         Msurf = 0
         if landmarks is None:
@@ -108,6 +220,13 @@ def rigidRegistration__(surfaces = None, temperature = 1.0, rotWeight = 1.0, rot
         Y0 = surfaces[0]
         Nsurf = X0.shape[0]
         Msurf = Y0.shape[0]
+        if image is None:
+            wxx = np.ones((Nsurf, Nsurf))
+            wxy = np.ones((Nsurf, Msurf))
+        else:
+            wxx = image[0].T @ image[0]
+            wxy = image[0].T @ image[1]
+
         if landmarks is None:
             lmk = False
             N = Nsurf
@@ -181,7 +300,7 @@ def rigidRegistration__(surfaces = None, temperature = 1.0, rotWeight = 1.0, rot
             Rn = np.dot(norm0, R.T)
             for i in range(Nsurf):
                 for j in range(Msurf):
-                    d[i,j] += normWeight * ((Rn[i, :] - norm1[j,:])**2).sum(axis=1)
+                    d[i,j] += normWeight * ((Rn[i, :] - norm1[j,:])**2).sum()
             # u1 = np.reshape((Rn**2).sum(axis=1), [Nsurf,1])
             # u2 = np.reshape((norm1**2).sum(axis=1), [1,Msurf])
             # d[0:Nsurf, 0:Msurf] += normWeight*(np.reshape((Rn**2).sum(axis=1), [Nsurf,1]) - 2 * np.dot(Rn, norm1.T) +

@@ -1,7 +1,7 @@
 from numba import jit, prange, int64
 import numpy as np
 from math import pi
-from pykeops.numpy import Genred
+from pykeops.numpy import Genred, LazyTensor
 import pykeops
 
 KP = -1
@@ -70,7 +70,69 @@ def ReLUKDiff(u):
 def heaviside(u):
     return (np.sign(u - 1e-8) + np.sign(u + 1e-8) + 2) / 4
 
+@jit(nopython=True)
+def gauss_fun(u_, v_, a_, order):
+    uv_ = ((u_ - v_) ** 2).sum() / 2
+    return np.exp(-uv_) * a_
 
+@jit(nopython=True)
+def lap_fun(u_, v_, a_, order):
+    uv_ = np.sqrt(((u_ - v_) ** 2).sum())
+    u1 = lapPol(uv_, order)
+    return u1 * np.exp(-uv_) * a_
+
+@jit(nopython=True)
+def euclidean_fun(u_, v_, a_, order):
+    return (u_*v_).sum() * a_
+
+@jit(nopython=True)
+def poly_fun(u_, v_, a_, order):
+    g = (u_*v_).sum()
+    gk = 1.
+    res = 1.
+    for i in range(order):
+        gk *= g
+        res += gk
+    return res * a_
+
+@jit(nopython=True)
+def min_fun(u_,v_, a_, order):
+    uv_ = np.minimum(u_, v_)
+    return ReLUK(uv_) * a_
+
+
+@jit(nopython=True)
+def gauss_fun_diff(u_, v_, a_, order):
+    d_ = u_ - v_
+    uv_ = (d_ ** 2).sum() / 2
+    return - d_ * np.exp(-uv_) * a_.sum()
+
+@jit(nopython=True)
+def lap_fun_diff(u_, v_, a_, order):
+    d_ = u_ - v_
+    uv_ = np.sqrt((d_ ** 2).sum())
+    u1 = lapPolDiff(uv_, order)
+    return  - d_ * (u1 * np.exp(-uv_) * a_.sum())
+
+@jit(nopython=True)
+def euclidean_fun_diff(u_, v_, a_, order):
+    return v_ * a_.sum()
+
+@jit(nopython=True)
+def poly_fun_diff(u_, v_, a_, order):
+    g = (u_*v_).sum()
+    gk = 1.
+    res = 1.
+    for i in range(1, order):
+        gk *= g
+        res += (i+1) * g
+    return res * v_ * a_.sum()
+
+@jit(nopython=True)
+def min_fun_diff(u_,v_, a_, order):
+    uv_ = np.minimum(u_, v_)
+    # res[k, :] += (heaviside(x[k,:]-y[l,:])*a1[k,:]*a2[l,:])*logcoshKDiff(u)/s
+    return (heaviside(v_ - u_) * a_) * ReLUKDiff(uv_)
 
 @jit(nopython=True, parallel=True)
 def kernelmatrix(y, x, name, scale, ord):
@@ -111,15 +173,42 @@ def kernelmatrix(y, x, name, scale, ord):
                 f[k,l] = Kh
     return f
 
+
+def pick_fun(name, diff = False):
+    if not diff:
+        if 'gauss' in name:
+            fun = gauss_fun
+        elif 'lap' in name:
+            fun = lap_fun
+        elif 'min' in name:
+            fun = min_fun
+        elif 'poly' in name:
+            fun = poly_fun
+        else:
+            fun = euclidean_fun
+    else:
+        if 'gauss' in name:
+            fun = gauss_fun_diff
+        elif 'lap' in name:
+            fun = lap_fun_diff
+        elif 'min' in name:
+            fun = min_fun_diff
+        elif 'poly' in name:
+            fun = poly_fun_diff
+        else:
+            fun = euclidean_fun_diff
+    return fun
+
 def applyK(y, x, a, name, scale, order, cpu=False, dtype='float64'):
     if not cpu and pykeops.config.gpu_available:
         return applyK_pykeops(y, x, a, name, scale, order, dtype=dtype)
     else:
-        return applyK_numba(y, x, a, name, scale, order)
+        fun = pick_fun(name)
+        return applyK_numba(y, x, a, fun , scale, order)
 
 
 @jit(nopython=True, parallel=True)
-def applyK_numba(y, x, a, name, scale, order):
+def applyK_numba(y, x, a, fun, scale, order):
     res = np.zeros((y.shape[0], a.shape[1]))
     ns = len(scale)
     sKP = scale**KP
@@ -127,87 +216,124 @@ def applyK_numba(y, x, a, name, scale, order):
     for s in range(ns):
         ys = y/scale[s]
         xs = x/scale[s]
-        if name == 'min':
-            for k in prange(y.shape[0]):
-                for l in range(x.shape[0]):
-                    u = np.minimum(ys[k, :], xs[l, :])
-                    #res[k,:] += logcoshK(u)*a[l,:]
-                    res[k,:] += ReLUK(u)*a[l,:] *sKP[s]
-        elif 'gauss' in name:
-            for k in prange(y.shape[0]):
-                resk = np.zeros(a.shape[1])
-                for l in range(x.shape[0]):
-                    u = ((ys[k, :] - xs[l, :]) ** 2).sum() / 2
-                    resk += np.exp(- u) * a[l,:] * sKP[s]
-                res[k,:] += resk
-        elif 'lap' in name:
-            for k in prange(y.shape[0]):
-                resk = np.zeros(a.shape[1])
-                for l in range(x.shape[0]):
-                    u = np.sqrt(((ys[k,:] - xs[l,:]) ** 2).sum())
-                    u1 = lapPol(u, order)
-                    u1 *= np.exp(-u)
-                    u1 *= sKP[s]
-                    resk += u1 *a[l,:]
-                res[k,:] += resk
-                    #print('a', a[l,:])
+        for k in prange(y.shape[0]):
+            resk = np.zeros(a.shape[1])
+            for l in range(x.shape[0]):
+                resk += fun(ys[k, :], xs[l, :], a[l, :], order) *  sKP[s]
+            res[k] += resk
     res /= wsig
     return res
 
 def applyK_pykeops(y, x, a, name, scale, order, dtype='float64'):
-    res = np.zeros(y.shape)
+    res = np.zeros((y.shape[0], a.shape[1]))
     ns = len(scale)
     sKP = scale**KP
     wsig = sKP.sum()
+    a_ = a.astype(dtype)
     for s in range(ns):
         ys = y/scale[s]
         xs = x/scale[s]
+        ys_ = LazyTensor(ys.astype(dtype)[:, None, :])
+        xs_ = LazyTensor(xs.astype(dtype)[None, :, :])
         if name == 'min':
-            D = xs.shape[1]
-            Dv = a.shape[1]
-            sKPs = np.array([sKP[s]])
-            formula_min = "ReLU(Min(Concat(ys,xs))) * a * sKPs"
-            variables_min = ["ys = Vi(" + str(D) + ")",  # First arg:  i-variable of size D
-                             "xs = Vj(" + str(D) + ")",  # Second arg: j-variable of size D
-                             "a = Vj(" + str(Dv) + ")",  # Third arg:  j-variable of size Dv
-                             "sKPs = Pm(1)"
-                             ]  # Fourth arg: scalar parameter
-            my_routine_min = Genred(formula_min, variables_min, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
-            res = my_routine_min(ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
+            Kij = (ys_ - xs_).ifelse(ys_.relu(), xs_.relu())
         elif 'gauss' in name:
-            D = xs.shape[1]
-            Dv = a.shape[1]
-            g = np.array([0.5])  # Parameter of the Gaussian RBF kernel
-            sKPs = np.array([sKP[s]])
-            formula_gauss = "Exp(-g * SqDist(ys,xs)) * a * sKPs"
-            variables_gauss = ["g = Pm(1)",   # First arg: scalar parameter
-                               "ys = Vi(" + str(D) + ")",  # Second arg:  i-variable of size D
-                               "xs = Vj(" + str(D) + ")",  # Third arg: j-variable of size D
-                               "a = Vj(" + str(Dv) + ")",  # Fourth arg:  j-variable of size Dv
-                               "sKPs = Pm(1)"
-                               ]  # Fifth arg: scalar parameter
-            my_routine_gauss = Genred(formula_gauss, variables_gauss, reduction_op="Sum",dtype=dtype,dtype_acc=dtype,axis=1)
-            res = my_routine_gauss(g.astype(dtype), ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
+            Dij = ((ys_ - xs_)**2).sum(-1)
+            Kij = (-0.5*Dij).exp()
         elif 'lap' in name:
-            D = xs.shape[1]
-            Dv = a.shape[1]
-            sKPs = np.array([sKP[s]])
-            formula_lap = "(c_0 + c_1 * Norm2(ys-xs) + c_2 * Square(Norm2(ys-xs)) + c_3 * Norm2(ys-xs)*Square(Norm2(ys-xs)) + c_4 * Square(Norm2(ys-xs))*Square(Norm2(ys-xs))) * Exp(-Norm2(ys-xs)) * a * sKPs"
-            variables_lap = ["c_0 = Pm(1)",  # First arg: scalar parameter
-                             "c_1 = Pm(1)",  # Second arg: scalar parameter
-                             "c_2 = Pm(1)",  # Third arg: scalar parameter
-                             "c_3 = Pm(1)",  # Fourth arg: scalar parameter
-                             "c_4 = Pm(1)",  # Fifth arg: scalar parameter
-                             "ys = Vi(" + str(D) + ")",  # Sixth arg:  i-variable of size D
-                             "xs = Vj(" + str(D) + ")",  # Seventh arg: j-variable of size D
-                             "a = Vj(" + str(Dv) + ")",  # Eighth arg:  j-variable of size Dv
-                             "sKPs = Pm(1)"
-                             ]  # Ninth arg: scalar parameter
-            my_routine_lap = Genred(formula_lap, variables_lap, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
-            res = my_routine_lap(np.array([c_[order, 0]]).astype(dtype), np.array([c_[order, 1]]).astype(dtype),
-                                 np.array([c_[order, 2]]).astype(dtype), np.array([c_[order, 3]]).astype(dtype),
-                                 np.array([c_[order, 4]]).astype(dtype),
-                                 ys.astype(dtype), xs.astype(dtype), a.astype(dtype), sKPs.astype(dtype))
+            Dij = ((ys_ - xs_)**2).sum(-1).sqrt()
+            polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij*Dij*Dij\
+            + c_[order, 4] *Dij*Dij*Dij*Dij
+            Kij = polij * (-Dij).exp()
+        elif 'poly' in name:
+            g = (ys_*xs_).sum(-1)
+            gk = LazyTensor(np.ones(ys_.shape))
+            Kij = LazyTensor(np.ones(ys_.shape))
+            for i in range(order):
+                gk *= g
+                Kij += gk
+        else: #Applying Euclidean kernel
+            Kij = (ys_*xs_).sum(-1)
+        if name == min:
+            res = Kij * a_ * sKP[s]
+        else:
+            res = Kij @ a_ * sKP[s]
+    res /= wsig
+    return res
+
+def applyK1K2(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, a,
+              cpu=False, dtype='float64'):
+    if not cpu and pykeops.config.gpu_available:
+        return applyK1K2_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, a,
+                                 dtype=dtype)
+    else:
+        fun1 = pick_fun(name1)
+        fun2 = pick_fun(name2)
+        return applyK1K2_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2, a)
+
+@jit(nopython=True, parallel=True)
+def applyK1K2_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2, a):
+    res = np.zeros((y1.shape[0], a.shape[1]))
+    ns1 = len(scale1)
+    s1KP = scale1**KP
+    ns2 = len(scale2)
+    s2KP = scale2**KP
+    wsig = s1KP.sum() * s2KP.sum()
+    for s1 in range(ns1):
+        ys1 = y1/scale1[s1]
+        xs1 = x1/scale1[s1]
+        for s2 in range(ns2):
+            ys2 = y2/scale2[s2]
+            xs2 = x2/scale2[s2]
+            for k in prange(y1.shape[0]):
+                for l in range(x1.shape[0]):
+                    u = fun2(ys2[k, :], xs2[l, :], a[l, :], order2)
+                    res[k, :] += fun1(ys1[k, :], xs1[l, :], u, order1) * s1KP[s1] * s2KP[s2]
+    res /= wsig
+    return res
+
+def applyK1K2_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, a,
+                                 dtype='float64'):
+    res = np.zeros((y1.shape[0], a.shape[1]))
+    ns1 = len(scale1)
+    s1KP = scale1**KP
+    ns2 = len(scale2)
+    s2KP = scale2**KP
+    wsig = s1KP.sum()
+    a_ = a.astype(dtype)
+    def makeKij(ys_, xs_, name, order):
+        if 'gauss' in name:
+            Dij = ((ys_ - xs_) ** 2).sum(-1)
+            Kij = (-0.5 * Dij).exp()
+        elif 'lap' in name:
+            Dij = ((ys_ - xs_) ** 2).sum(-1).sqrt()
+            polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij * Dij * Dij \
+                     + c_[order, 4] * Dij * Dij * Dij * Dij
+            Kij = polij * (-Dij).exp()
+        elif 'poly' in name:
+            g = (ys_*xs_).sum(-1)
+            gk = LazyTensor(np.ones(ys_.shape))
+            Kij = LazyTensor(np.ones(ys_.shape))
+            for i in range(order):
+                gk *= g
+                Kij += gk
+        else: #Applying Euclidean kernel
+            Kij = (ys_*xs_).sum(-1)
+        return Kij
+
+    for s1 in range(ns1):
+        ys1 = y1/scale1[s1]
+        xs1 = x1/scale1[s1]
+        ys1_ = LazyTensor(ys1.astype(dtype)[:, None, :])
+        xs1_ = LazyTensor(xs1.astype(dtype)[None, :, :])
+        K1ij = makeKij(ys1_, xs1_, name1, order1)
+        for s2 in range(ns2):
+            ys2 = y2/scale2[s2]
+            xs2 = x2/scale2[s2]
+            ys2_ = LazyTensor(ys2.astype(dtype)[:, None, :])
+            xs2_ = LazyTensor(xs2.astype(dtype)[None, :, :])
+            K2ij = makeKij(ys2_, xs2_, name2, order2)
+            res += (K1ij * K2ij) @ a_ * s1KP[s1] * s2KP[s2]
     res /= wsig
     return res
 
@@ -215,10 +341,11 @@ def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., lddmm=False, cpu=F
     if not cpu and pykeops.config.gpu_available:
         return applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=regweight, lddmm=lddmm, dtype=dtype)
     else:
-        return applyDiffKT_numba(y, x, p, a, name, scale, order, regweight=regweight, lddmm=lddmm)
+        fun = pick_fun(name, diff=True)
+        return applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=regweight, lddmm=lddmm)
 
 @jit(nopython=True, parallel=True)
-def applyDiffKT_numba(y, x, p, a, name, scale, order, regweight=1., lddmm=False):
+def applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=1., lddmm=False):
     res = np.zeros(y.shape)
     ns = len(scale)
     sKP1 = scale**(KP-1)
@@ -227,35 +354,13 @@ def applyDiffKT_numba(y, x, p, a, name, scale, order, regweight=1., lddmm=False)
     for s in range(ns):
         ys = y/scale[s]
         xs = x/scale[s]
-        if name == 'min':
-            for k in prange(y.shape[0]):
-                for l in range(x.shape[0]):
-                    if lddmm:
-                        akl = p[k, :] * a[l, :] + a[k, :] * p[l, :] - 2 * regweight * a[k, :] * a[l, :]
-                    else:
-                        akl = p[k, :] * a[l, :]
-                    u = np.minimum(ys[k,:],xs[l,:])
-                    #res[k, :] += (heaviside(x[k,:]-y[l,:])*a1[k,:]*a2[l,:])*logcoshKDiff(u)/s
-                    res[k, :] += (heaviside(xs[l,:]-ys[k,:])*akl)*ReLUKDiff(u)*sKP1[s]
-        elif 'gauss' in name:
-            for k in prange(y.shape[0]):
-                for l in range(x.shape[0]):
-                    if lddmm:
-                        akl = p[k, :] * a[l, :] + a[k, :] * p[l, :] - 2 * regweight * a[k, :] * a[l, :]
-                    else:
-                        akl = p[k, :] * a[l, :]
-                    u = ((ys[k,:]-xs[l,:])**2).sum()/2
-                    res[k, :] += (ys[k,:]-xs[l,:]) * (-np.exp(- u) * akl.sum())*sKP1[s]
-        elif 'lap' in name:
-            for k in prange(y.shape[0]):
-                for l in range(x.shape[0]):
-                    if lddmm:
-                        akl = p[k, :] * a[l, :] + a[k, :] * p[l, :] - 2 * regweight * a[k, :] * a[l, :]
-                    else:
-                        akl = p[k, :] * a[l, :]
-                    u = np.sqrt(((ys[k,:] - xs[l,:]) ** 2).sum())
-                    res[k, :] += (ys[k,:]-xs[l,:]) * (-lapPolDiff(u, order) * np.exp(- u) *
-                                                    akl.sum())*sKP1[s]
+        for k in prange(y.shape[0]):
+            for l in range(x.shape[0]):
+                if lddmm:
+                    akl = p[k, :] * a[l, :] + a[k, :] * p[l, :] - 2 * regweight * a[k, :] * a[l, :]
+                else:
+                    akl = p[k, :] * a[l, :]
+                res[k, :] += fun(ys[k, :], xs[l, :], akl, order) * sKP1[s]
     res /= wsig
     return res
 
@@ -265,114 +370,162 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
     sKP1 = scale**(KP-1)
     sKP = scale**(KP)
     wsig = sKP.sum()
-    D = x.shape[1]
-    Da = a.shape[1]
+    # D = x.shape[1]
+    # Da = a.shape[1]
+    p_ = p.astype(dtype)
+    a_ = a.astype(dtype)
+    pi_ = LazyTensor(p_[:, None, :])
+    aj_ = LazyTensor(a_[None, :, :])
+    if lddmm:
+        pj_ = LazyTensor(p_[None, :, :])
+        ai_ = LazyTensor(a_[:, None, :])
+        ap_ = (pi_ * aj_ + ai_ * pj_ - 2 * regweight * ai_ * aj_).sum(-1)
+    else:
+        ap_ = (pi_*aj_).sum(-1)
+
     for s in range(ns):
         ys = y/scale[s]
         xs = x/scale[s]
+        ys_ = LazyTensor(ys.astype(dtype)[:, None, :])
+        xs_ = LazyTensor(xs.astype(dtype)[None, :, :])
         if name == 'min':
-            sKP1s = np.array([sKP1[s]])
-            if lddmm:
-                h = np.array([2. * regweight])
-                formula2_min = "(Step(xs-ys) * Sum(p_i * a_j + a_i * p_j - h * a_i * a_j)) * Step(Min(Concat(ys,xs))) * sKP1s"
-                variables2_min = ["ys = Vi(" + str(D) + ")",  # First arg:  i-variable of size D
-                                  "xs = Vj(" + str(D) + ")",  # Second arg: j-variable of size D
-                                  "a_j = Vj(" + str(Da) + ")",  # Third arg:  j-variable of size D
-                                  "a_i = Vi(" + str(Da) + ")",  # Fourth arg:  i-variable of size D
-                                  "p_j = Vj(" + str(Da) + ")",  # Fifth arg: j-variable of size D
-                                  "p_i = Vi(" + str(Da) + ")",  # Sixth arg: i-variable of size D
-                                  "h = Pm(1)",
-                                  "sKP1s = Pm(1)",
-                                  ]  # Seventh and eighth args: scalar parameters
-                my_routine2_min = Genred(formula2_min, variables2_min, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
-                res = my_routine2_min(ys.astype(dtype), xs.astype(dtype), a.astype(dtype), a.astype(dtype),
-                                      p.astype(dtype), p.astype(dtype), h.astype(dtype), sKP1s.astype(dtype))
-            else:
-                formula2_min = "(Step(xs-ys) * Sum(p_i * a_j)) * Step(Min(Concat(ys,xs))) * sKP1s"
-                variables2_min = ["ys = Vi(" + str(D) + ")",  # First arg:  i-variable of size D
-                                  "xs = Vj(" + str(D) + ")",  # Second arg: j-variable of size D
-                                  "a_j = Vj(" + str(Da) + ")",  # Third arg:  j-variable of size D
-                                  "p_i = Vi(" + str(Da) + ")",  # Fourth arg: i-variable of size D
-                                  "sKP1s = Pm(1)",
-                                  ]  # Fifth arg: scalar parameter
-                my_routine2_min = Genred(formula2_min, variables2_min, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
-                res = my_routine2_min(ys.astype(dtype), xs.astype(dtype), a.astype(dtype), p.astype(dtype), sKP1s.astype(dtype))
+            Kij = (ys_-xs_).ifelse(ys_.ifelse(1,0), 0)
         elif 'gauss' in name:
-            g = np.array([0.5])   # Parameter of the Gaussian RBF kernel
-            sKP1s = np.array([sKP1[s]])
-            if lddmm:
-                h = np.array([2. * regweight])
-                formula2_gauss = "(ys-xs) * (-Exp(-g * SqDist(ys,xs)) * Sum(p_i * a_j + a_i * p_j - h * a_i * a_j)) * sKP1s"
-                # formula2_gauss = "(ys-xs) * (-Exp(-g * SqDist(ys,xs)) * ((p_i | a_j)+(a_i | p_j) - h * (a_i | a_j))) * sKP1s"
-                variables2_gauss = ["ys = Vi(" + str(D) + ")",  # First arg:  i-variable of size D
-                                    "xs = Vj(" + str(D) + ")",  # Second arg: j-variable of size D
-                                    "a_j = Vj(" + str(Da) + ")",  # Third arg:  j-variable of size D
-                                    "a_i = Vi(" + str(Da) + ")",  # Fourth arg:  i-variable of size D
-                                    "p_j = Vj(" + str(Da) + ")",  # Fifth arg: j-variable of size D
-                                    "p_i = Vi(" + str(Da) + ")",  # Sixth arg: i-variable of size D
-                                    "g = Pm(1)",
-                                    "h = Pm(1)",
-                                    "sKP1s = Pm(1)",
-                                    ]  # Seventh, eighth, and ninth args: scalar parameters
-                my_routine2_gauss = Genred(formula2_gauss, variables2_gauss, reduction_op="Sum",dtype=dtype,dtype_acc=dtype,axis=1)
-                res = my_routine2_gauss(ys.astype(dtype), xs.astype(dtype), a.astype(dtype), a.astype(dtype),
-                                        p.astype(dtype), p.astype(dtype), g.astype(dtype), h.astype(dtype),
-                                        sKP1s.astype(dtype))
-            else:
-                formula2_gauss = "(ys-xs) * (-Exp(-g * SqDist(ys,xs)) * Sum(p_i * a_j)) * sKP1s"
-                variables2_gauss = ["ys = Vi(" + str(D) + ")",  # First arg:  i-variable of size D
-                                    "xs = Vj(" + str(D) + ")",  # Second arg: j-variable of size D
-                                    "a_j = Vj(" + str(Da) + ")",  # Third arg:  j-variable of size D
-                                    "p_i = Vi(" + str(Da) + ")",  # Fourth arg: i-variable of size D
-                                    "g = Pm(1)",
-                                    "sKP1s = Pm(1)",
-                                    ]  # Fifth and sixth args: scalar parameters
-                my_routine2_gauss = Genred(formula2_gauss, variables2_gauss, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
-                res = my_routine2_gauss(ys.astype(dtype), xs.astype(dtype), a.astype(dtype),
-                                        p.astype(dtype), g.astype(dtype), sKP1s.astype(dtype))
+            diffij = ys_ - xs_
+            Dij = (diffij ** 2).sum(-1)
+            Kij = diffij * (-0.5 * Dij).exp()
         elif 'lap' in name:
-            sKP1s = np.array([sKP1[s]])
-            if lddmm:
-                h = np.array([2. * regweight])
-                formula2_lap = "(ys-xs) * (-(c_0 + c_1 * Norm2(ys-xs) + c_2 * Square(Norm2(ys-xs)) +"\
-                        + "c_3 * Norm2(ys-xs)*Square(Norm2(ys-xs))) * Exp(-Norm2(ys-xs)) * "\
-                        + "Sum(p_i * a_j + a_i * p_j - h * a_i * a_j)) * sKP1s"
-                variables2_lap = ["c_0 = Pm(1)",  # First arg: scalar parameter
-                                  "c_1 = Pm(1)",  # Second arg: scalar parameter
-                                  "c_2 = Pm(1)",  # Third arg: scalar parameter
-                                  "c_3 = Pm(1)",  # Fourth arg: scalar parameter
-                                  "ys = Vi(" + str(D) + ")",  # Fifth arg:  i-variable of size D
-                                  "xs = Vj(" + str(D) + ")",  # Sixth arg: j-variable of size D
-                                  "a_j = Vj(" + str(Da) + ")",  # Seventh arg:  j-variable of size D
-                                  "a_i = Vi(" + str(Da) + ")",  # Eighth arg:  i-variable of size D
-                                  "p_j = Vj(" + str(Da) + ")",  # Ninth arg: j-variable of size D
-                                  "p_i = Vi(" + str(Da) + ")",  # Tenth arg: i-variable of size D
-                                  "h = Pm(1)",
-                                  "sKP1s = Pm(1)",
-                                  ]  # Eleventh and twelfth args: scalar parameters
-                my_routine2_lap = Genred(formula2_lap, variables2_lap, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
-                res += my_routine2_lap(np.array([c1_[order, 0]]).astype(dtype), np.array([c1_[order, 1]]).astype(dtype),
-                                      np.array([c1_[order, 2]]).astype(dtype), np.array([c1_[order, 3]]).astype(dtype),
-                                      ys.astype(dtype), xs.astype(dtype), a.astype(dtype), a.astype(dtype),
-                                      p.astype(dtype), p.astype(dtype), h.astype(dtype), sKP1s.astype(dtype))
-            else:
-                formula2_lap = "(ys-xs) * (-(c_0 + c_1 * Norm2(ys-xs) + c_2 * Square(Norm2(ys-xs)) + c_3 * Norm2(ys-xs)*Square(Norm2(ys-xs))) * Exp(-Norm2(ys-xs)) * Sum(p_i * a_j)) * sKP1s"
-                variables2_lap = ["c_0 = Pm(1)",  # First arg: scalar parameter
-                                  "c_1 = Pm(1)",  # Second arg: scalar parameter
-                                  "c_2 = Pm(1)",  # Third arg: scalar parameter
-                                  "c_3 = Pm(1)",  # Fourth arg: scalar parameter
-                                  "ys = Vi(" + str(D) + ")",  # Fifth arg:  i-variable of size D
-                                  "xs = Vj(" + str(D) + ")",  # Sixth arg: j-variable of size D
-                                  "a_j = Vj(" + str(Da) + ")",  # Seventh arg:  j-variable of size D
-                                  "p_i = Vi(" + str(Da) + ")",  # Eighth arg: i-variable of size D
-                                  "sKP1s = Pm(1)",
-                                  ]  # Ninth arg: scalar parameter
-                my_routine2_lap = Genred(formula2_lap, variables2_lap, reduction_op="Sum", dtype=dtype, dtype_acc=dtype, axis=1)
-                res += my_routine2_lap(np.array([c1_[order, 0]]).astype(dtype), np.array([c1_[order, 1]]).astype(dtype),
-                                      np.array([c1_[order, 2]]).astype(dtype), np.array([c1_[order, 3]]).astype(dtype),
-                                      ys.astype(dtype), xs.astype(dtype), a.astype(dtype), p.astype(dtype), sKP1s.astype(dtype))
+            diffij = ys_ - xs_
+            Dij = (diffij ** 2).sum(-1).sqrt()
+            Kij = diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
+            + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
+        elif 'poly' in name:
+            g = (ys_ * xs_).sum(-1)
+            gk = LazyTensor(np.ones(ys_.shape))
+            Kij = LazyTensor(np.ones(ys_.shape))
+            for i in range(1, order):
+                gk *= g
+                Kij += (i+1) * gk
+        else: # Euclidean kernel
+            Kij = LazyTensor(np.ones(ys_.shape)) * xs_
+        res += (-sKP1[s]) * (Kij * ap_).sum(1)
     res /= wsig
     return res
+
+def applyDiffK1K2T(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, p, a,
+              regweight=1., lddmm=False, cpu=False, dtype='float64'):
+    if not cpu and pykeops.config.gpu_available:
+        return applyDiffK1K2T_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, p, a,
+                                 regweight=regweight, lddmm=lddmm, dtype=dtype)
+    else:
+        fun1 = pick_fun(name1, diff=True)
+        fun2 = pick_fun(name2)
+        return applyDiffK1K2T_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2, p, a,
+                                    regweight=regweight, lddmm=lddmm)
+
+@jit(nopython=True, parallel=True)
+def applyDiffK1K2T_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2,
+                         p, a, regweight=1., lddmm=False):
+    res = np.zeros(y1.shape)
+    ns1 = len(scale1)
+    s1KP = scale1 ** (KP-1)
+    ns2 = len(scale2)
+    s2KP = scale2 ** KP
+    wsig = (scale1**KP).sum() * (scale2**KP).sum()
+    for s1 in range(ns1):
+        ys1 = y1 / scale1[s1]
+        xs1 = x1 / scale1[s1]
+        for s2 in range(ns2):
+            ys2 = y2 / scale2[s2]
+            xs2 = x2 / scale2[s2]
+            for k in prange(y1.shape[0]):
+                for l in range(x1.shape[0]):
+                    if lddmm:
+                        akl = p[k, :] * a[l, :] + a[k, :] * p[l, :] - 2 * regweight * a[k, :] * a[l, :]
+                    else:
+                        akl = p[k, :] * a[l, :]
+                    u = fun2(ys2[k, :], xs2[l, :], akl, order2)
+                    res[k, :] += fun1(ys1[k, :], xs1[l, :], u, order1) * s1KP[s1] * s2KP[s2]
+    res /= wsig
+    return res
+
+def applyDiffK1K2T_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, p, a,
+                                 regweight=1., lddmm=False, dtype='float64'):
+    res = np.zeros(y1.shape)
+    ns1 = len(scale1)
+    s1KP = scale1 ** (KP-1)
+    ns2 = len(scale2)
+    s2KP = scale2 ** KP
+    wsig = (scale1**KP).sum() * (scale2**KP).sum()
+    a_ = a.astype(dtype)
+    p_ = p.astype(dtype)
+    pi_ = LazyTensor(p_[:, None, :])
+    aj_ = LazyTensor(a_[None, :, :])
+    if lddmm:
+        pj_ = LazyTensor(p_[None, :, :])
+        ai_ = LazyTensor(a_[:, None, :])
+        ap_ = (pi_ * aj_ + ai_ * pj_ - 2 * regweight * ai_ * aj_).sum(-1)
+    else:
+        ap_ = (pi_*aj_).sum(-1)
+
+    def makeDiffKij(ys_, xs_, name, order):
+        if 'gauss' in name:
+            diffij = ys_ - xs_
+            Dij = (diffij ** 2).sum(-1)
+            Kij = - diffij * (-0.5 * Dij).exp()
+        elif 'lap' in name:
+            # if lddmm:
+            diffij = ys_ - xs_
+            Dij = (diffij ** 2).sum(-1).sqrt()
+            Kij = - diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
+            + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
+        elif 'poly' in name:
+            g = (ys_ * xs_).sum(-1)
+            gk = LazyTensor(np.ones(ys_.shape))
+            Kij = LazyTensor(np.ones(ys_.shape))
+            for i in range(1, order):
+                gk *= g
+                Kij += (i+1) * gk
+        else: # Euclidean kernel
+            Kij = LazyTensor(np.ones(ys_.shape)) * xs_
+        return Kij
+
+    def makeKij(ys_, xs_, name, order):
+        if 'gauss' in name:
+            Dij = ((ys_ - xs_) ** 2).sum(-1)
+            Kij = (-0.5 * Dij).exp()
+        elif 'lap' in name:
+            Dij = ((ys_ - xs_) ** 2).sum(-1).sqrt()
+            polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij * Dij * Dij \
+                     + c_[order, 4] * Dij * Dij * Dij * Dij
+            Kij = polij * (-Dij).exp()
+        elif 'poly' in name:
+            g = (ys_*xs_).sum(-1)
+            gk = LazyTensor(np.ones(ys_.shape))
+            Kij = LazyTensor(np.ones(ys_.shape))
+            for i in range(order):
+                gk *= g
+                Kij += gk
+        else: #Applying Euclidean kernel
+            Kij = (ys_*xs_).sum(-1)
+        return Kij
+
+    for s1 in range(ns1):
+        ys1 = y1/scale1[s1]
+        xs1 = x1/scale1[s1]
+        ys1_ = LazyTensor(ys1.astype(dtype)[:, None, :])
+        xs1_ = LazyTensor(xs1.astype(dtype)[None, :, :])
+        K1ij = makeDiffKij(ys1_, xs1_, name1, order1)
+        for s2 in range(ns2):
+            ys2 = y2/scale2[s2]
+            xs2 = x2/scale2[s2]
+            ys2_ = LazyTensor(ys2.astype(dtype)[:, None, :])
+            xs2_ = LazyTensor(xs2.astype(dtype)[None, :, :])
+            K2ij = makeKij(ys2_, xs2_, name2, order2)
+            res += ((K1ij * K2ij) * ap_).sum(1) * s1KP[s1] * s2KP[s2]
+    res /= wsig
+    return res
+
 
 @jit(nopython=True, parallel=True)
 def applyDiv(y, x, a, name, scale, order):

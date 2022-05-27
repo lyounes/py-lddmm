@@ -9,6 +9,7 @@ from . import conjugateGradient as cg, kernelFunctions as kfun
 from .affineBasis import AffineBasis
 from . import loggingUtils
 from .surfaces import Surface
+from .surfaceExamples import Ellipse_pygal
 import glob
 # import matplotlib
 # matplotlib.use("TKAgg")
@@ -60,25 +61,19 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 
 
 
-        if HyperTmpl is None:
-            if fileHTempl is None:
-                print('Please provide A hyper-template surface')
-                return
-            else:
-                self.fv0 = surfaces.Surface(surf=fileHTempl)
-        else:
-            self.fv0 = surfaces.Surface(surf=HyperTmpl)
         if Targets is None:
-            if fileTarg is None:
-                print('Please provide Target surfaces')
-                return
-            else:
-                for ff in fileTarg:
-                    self.fv1.append(surfaces.Surface(surf=ff))
+            logging.error('Please provide Target surfaces')
+            return
         else:
             self.fv1 = []
             for ff in Targets:
                 self.fv1.append(surfaces.Surface(surf=ff))
+
+        if HyperTmpl is None:
+            logging.info('Computing average hypertemplate')
+            self.fv0 = self.createHypertemplate(self.fv1)
+        else:
+            self.fv0 = surfaces.Surface(surf=HyperTmpl)
 
         self.Ntarg = len(self.fv1)
         self.affineOnly = False
@@ -86,6 +81,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         self.npt = self.fv0.vertices.shape[0]
         self.dim = self.fv0.vertices.shape[1]
         self.saveRate = 1
+        self.match_landmarks = False
         self.iter = 0
         self.setOutputDir(outputDir)
         self.saveFile = saveFile
@@ -240,6 +236,27 @@ class SurfaceTemplate(smatch.SurfaceMatching):
             self.AfftAll[kk] = np.copy(ff.AfftAll[kk])
             self.xtAll[kk] = np.copy(ff.xt[kk])
 
+    def createHypertemplate(self, fv, targetSize=1000):
+        dim = fv[0].vertices.shape[1]
+        m = np.zeros(dim)
+        I = np.zeros((dim, dim))
+        N = 0
+        v = 0
+        for f in fv:
+            N += f.vertices.shape[0]
+            m += f.vertices.sum(axis=0)
+            I += (f.vertices[:, :, None] * f.vertices[:, None, :]).sum(axis=0)
+            v += np.fabs(f.surfVolume())
+            #logging.info(f'{np.fabs(f.surfVolume()):.4f}')
+        m /= N
+        v /= len(fv)
+        I = I/N - m[:, None] * m[None, :]
+        S = Ellipse_pygal(center = m, I=I, targetSize=targetSize)
+        w = np.fabs(S.surfVolume())
+        S.updateVertices(m[None, :] + (S.vertices - m[None, :])*(v/w)**(1/3))
+        logging.info(f'Volumes: {v:0.4f} {w:0.4f} {np.fabs(S.surfVolume()):0.4f}')
+        return S
+
 
     def dataTerm(self, _fvDef):
         c = float(self.Ntarg)/self.select.sum()
@@ -360,7 +377,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
 
         objTry += self.dataTerm(_ff)
 
-        if (objRef is None) | (objTry < objRef):
+        if (objRef is None) or (objTry < objRef):
             self.atTry = atTry
             self.atAllTry = atAllTry
             self.AfftAllTry = AfftAllTry
@@ -520,6 +537,32 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                 ll = ll + 1
         return res
 
+    def dotProduct_euclidean(self, g1, g2):
+        res = np.zeros(len(g2))
+        for (kk, gg1) in enumerate(g1.all):
+            if self.select[kk]:
+                for t in range(self.Tsize):
+                    #print gg1[0].shape, gg1[1].shape
+                    gg = np.squeeze(gg1.diff[t, :, :])
+                    #uu = np.multiply(gg1.aff[t], self.affineWeight.reshape(gg1.aff[t].shape))
+                    uu = gg1.aff[t]
+                    #u = rzz*gg
+                    ll = 0
+                    for gr in g2:
+                        ggOld = np.squeeze(gr.all[kk].diff[t, :, :])
+                        res[ll]  += (ggOld*gg).sum()
+                        if self.affineDim > 0:
+                            res[ll] += (uu*gr.all[kk].aff[t]).sum() * self.coeffAff
+                        ll = ll + 1
+        for t in range(g1.prior.shape[0]):
+            gg = np.squeeze(g1.prior[t, :, :])
+            ll = 0
+            for gr in g2:
+                ggOld = np.squeeze(gr.prior[t, :, :])
+                res[ll]  += (ggOld*gg).sum()*(self.tmplCoeff)
+                ll = ll + 1
+        return res
+
     def acceptVarTry(self):
         self.obj = self.objTry
         self.at = np.copy(self.atTry)
@@ -544,14 +587,14 @@ class SurfaceTemplate(smatch.SurfaceMatching):
         return res
 
 
-    def endOfIteration(self):
+    def endOfIteration(self, forceSave=False):
         self.iter += 1
         #if self.testGradient:
         #    self.testEndpointGradient()
         if self.iter >= self.affBurnIn:
             self.updateAffine = False
             self.coeffAff = self.coeffAff2
-        if self.iter >= self.templateBurnIn:
+        if forceSave or self.iter >= self.templateBurnIn:
             self.updateAllTraj = True
         (obj1, self.xt, Jt) = self.objectiveFunDef(self.at, self.Afft, kernel = self.param.KparDiff0,
                                                    withTrajectory=True, withJacobian=True)
@@ -603,7 +646,7 @@ class SurfaceTemplate(smatch.SurfaceMatching):
                 logging.info('\nRandom step ' + str(k) + ' ' + s)
                 self.epsMax = 10./(self.sgd*(k+1))
                 self.reset = True
-                cg.cg(self, verb=self.verb, maxIter=10, TestGradient=False, epsInit=0.01)
+                cg.cg(self, verb=self.verb, maxIter=10, TestGradient=False, epsInit=0.01, Wolfe=False)
                 meanObj += self.objIni
                 logging.info('\nMean Objective {0:f}'.format(meanObj/(k+1)))
             nv0 = self.fv0.vertices.shape[0]

@@ -2,6 +2,9 @@ import matplotlib
 import os
 import numpy as np
 from numba import jit, int64
+import pandas as pd
+from scipy.interpolate import LinearNDInterpolator
+from scipy.spatial import Delaunay
 import scipy as sp
 import scipy.linalg as LA
 from scipy.sparse import csr_matrix
@@ -11,6 +14,7 @@ from .vtk_fields import vtkFields
 from meshpy.geometry import GeometryBuilder
 import meshpy.tet as tet
 import meshpy.triangle as tri
+from pyclustering.cluster import dbscan
 from scipy.sparse.csgraph import connected_components
 from skimage import measure
 from copy import deepcopy
@@ -29,23 +33,123 @@ except ImportError:
     print('could not import VTK functions')
     gotVTK = False
 
-from mpl_toolkits.mplot3d import Axes3D
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-from matplotlib.colors import LightSource
-from matplotlib import colors
-from matplotlib import pyplot as plt
-
-from . import diffeo
-import scipy.linalg as spLA
-from scipy.sparse import coo_matrix
-import glob
+# from mpl_toolkits.mplot3d import Axes3D
+# from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+# from matplotlib.colors import LightSource
+# from matplotlib import colors
+# from matplotlib import pyplot as plt
+#
+# from . import diffeo
+# import scipy.linalg as spLA
+# from scipy.sparse import coo_matrix
+# import glob
 import logging
 
-
+@jit(nopython=True)
 def det3D(x1, x2, x3):
     return (x1 * np.cross(x2, x3)).sum(axis = 1)
 
 
+def twelve_vertexes(dimension=3):
+    if dimension == 2:
+        t = np.linspace(0, 2*np.pi, 12)
+        ico = np.zeros((12,2))
+        ico[:,0] = np.cos(t)
+        ico[:,1] = np.sin(t)
+    else:
+        phi = (1+np.sqrt(5))/2
+
+        ico = np.array([
+            [phi, 1, 0],
+            [phi,-1, 0],
+            [-phi, -1, 0],
+            [-phi, 1, 0],
+            [1, 0, phi],
+            [-1, 0, phi],
+            [-1, 0, -phi],
+            [1, 0,-phi],
+            [0, phi, 1],
+            [0, phi,-1],
+            [0,-phi, -1],
+            [0,-phi, 1]]
+        )
+
+    return ico
+
+@jit(nopython=True)
+def computeCentersVolumesNormals__(faces, vertices, weights, checkOrientation= False):
+    dim = vertices.shape[1]
+    if dim == 2:
+        xDef1 = vertices[faces[:, 0], :]
+        xDef2 = vertices[faces[:, 1], :]
+        xDef3 = vertices[faces[:, 2], :]
+        centers = (xDef1 + xDef2 + xDef3) / 3 ##
+        x12 = xDef2-xDef1
+        x13 = xDef3-xDef1
+        volumes =  (x12[:,0] * x13[:,1] - x12[:,1]*x13[:,0])/2
+        if checkOrientation:
+            if volumes.min() < -1e-12:
+                if volumes.max() > 1e-12:
+                    print('Warning: mesh has inconsistent orientation')
+                else:
+                    f_ = np.copy(faces[:,1])
+                    faces[:, 1] = np.copy(faces[:,2])
+                    faces[:,2] = f_
+                    xDef2 = vertices[faces[:, 1], :]
+                    xDef3 = vertices[faces[:, 2], :]
+                    x12 = xDef2-xDef1
+                    x13 = xDef3-xDef1
+                    volumes =  (x12[:,0] * x13[:,1] - x12[:,1]*x13[:,0])/2
+        J = np.array([[0., -1.], [1.,0.]])
+        normals = np.zeros((3, faces.shape[0], 2))
+        normals[0, :, :] = (xDef3 - xDef2) @ J.T
+        normals[1, :, :] = (xDef1 - xDef3) @ J.T
+        normals[2, :, :] = (xDef2 - xDef1) @ J.T
+    elif dim == 3:
+        xDef1 = vertices[faces[:, 0], :]
+        xDef2 = vertices[faces[:, 1], :]
+        xDef3 = vertices[faces[:, 2], :]
+        xDef4 = vertices[faces[:, 3], :]
+        centers = (xDef1 + xDef2 + xDef3 + xDef4) / 4
+        x12 = xDef2-xDef1
+        x13 = xDef3-xDef1
+        x14 = xDef4-xDef1
+        volumes =  det3D(x12, x13, x14)/6
+        if checkOrientation:
+            if volumes.min() < -1e-12:
+                if volumes.max() > 1e-12:
+                    print('Warning: mesh has inconsistent orientation')
+                else:
+                    f_ = np.copy(faces[:,2])
+                    faces[:, 2] = np.copy(faces[:,3])
+                    faces[:,3] = f_
+                    #faces = faces[:, [0,1,3,2]]
+                    xDef3 = vertices[faces[:, 2], :]
+                    xDef4 = vertices[faces[:, 3], :]
+                    x13 = xDef3 - xDef1
+                    x14 = xDef4 - xDef1
+                    volumes = det3D(x12, x13, x14) / 6
+        normals = np.zeros((4, faces.shape[0], 3))
+        normals[0, :, :] = np.cross(xDef4 - xDef2, xDef3 - xDef2)
+        normals[1, :, :] = np.cross(xDef2 - xDef1, xDef4 - xDef1)
+        normals[2, :, :] = np.cross(xDef4 - xDef1, xDef2 - xDef1)
+        normals[3, :, :] = np.cross(xDef2 - xDef1, xDef3 - xDef1)
+    # else:
+    #     return np.zeros(0), np.zeros(0),np.zeros(0),np.zeros(0)
+
+    vertex_weights = np.zeros(vertices.shape[0])
+    face_per_vertex = np.zeros(vertices.shape[0])
+    for k in range(faces.shape[0]):
+        for j in range(faces.shape[1]):
+            vertex_weights[faces[k, j]] += weights[k]
+            face_per_vertex[faces[k, j]] += 1
+    for k in range(face_per_vertex.shape[0]):
+        if face_per_vertex[k] > 0:
+            vertex_weights[k] /= face_per_vertex[k]
+        else:
+            print('Isolated vertex', k)
+
+    return centers, volumes, normals, vertex_weights
 
 
 class Mesh:
@@ -172,63 +276,65 @@ class Mesh:
 
     # face centers and area weighted normal
     def computeCentersVolumesNormals(self, checkOrientation= False):
-        if self.dim == 2:
-            xDef1 = self.vertices[self.faces[:, 0], :]
-            xDef2 = self.vertices[self.faces[:, 1], :]
-            xDef3 = self.vertices[self.faces[:, 2], :]
-            self.centers = (xDef1 + xDef2 + xDef3) / 3
-            x12 = xDef2-xDef1
-            x13 = xDef3-xDef1
-            self.volumes =  np.cross(x12, x13)/2
-            if checkOrientation:
-                if self.volumes.min() < -1e-12:
-                    if self.volumes.max() > 1e-12:
-                        print('Warning: mesh has inconsistent orientation')
-                    else:
-                        self.faces = self.faces[:, [0,2,1]]
-                        xDef2 = self.vertices[self.faces[:, 1], :]
-                        xDef3 = self.vertices[self.faces[:, 2], :]
-                        x12 = xDef2-xDef1
-                        x13 = xDef3-xDef1
-                        self.volumes =  np.cross(x12, x13)/2
-            J = np.array([[0, -1], [1,0]])
-            self.normals = np.zeros((3, self.faces.shape[0], 2))
-            self.normals[0, :, :] = (xDef3 - xDef2) @ J.T
-            self.normals[1, :, :] = (xDef1 - xDef3) @ J.T
-            self.normals[2, :, :] = (xDef2 - xDef1) @ J.T
-        elif self.dim == 3:
-            xDef1 = self.vertices[self.faces[:, 0], :]
-            xDef2 = self.vertices[self.faces[:, 1], :]
-            xDef3 = self.vertices[self.faces[:, 2], :]
-            xDef4 = self.vertices[self.faces[:, 3], :]
-            self.centers = (xDef1 + xDef2 + xDef3 + xDef4) / 4
-            x12 = xDef2-xDef1
-            x13 = xDef3-xDef1
-            x14 = xDef4-xDef1
-            self.volumes =  det3D(x12, x13, x14)/6
-            if checkOrientation:
-                if self.volumes.min() < -1e-12:
-                    if self.volumes.max() > 1e-12:
-                        print('Warning: mesh has inconsistent orientation')
-                    else:
-                        self.faces = self.faces[:, [0,1,3,2]]
-                        xDef3 = self.vertices[self.faces[:, 2], :]
-                        xDef4 = self.vertices[self.faces[:, 3], :]
-                        x13 = xDef3 - xDef1
-                        x14 = xDef4 - xDef1
-                        self.volumes = det3D(x12, x13, x14) / 6
-            self.normals = np.zeros((4, self.faces.shape[0], 3))
-            self.normals[0, :, :] = np.cross(xDef4 - xDef2, xDef3 - xDef2)
-            self.normals[1, :, :] = np.cross(xDef2 - xDef1, xDef4 - xDef1)
-            self.normals[2, :, :] = np.cross(xDef4 - xDef1, xDef2 - xDef1)
-            self.normals[3, :, :] = np.cross(xDef2 - xDef1, xDef3 - xDef1)
-
-        self.vertex_weights = np.zeros(self.vertices.shape[0])
-        face_per_vertex = np.zeros(self.vertices.shape[0], dtype=int)
-        for k in range(self.faces.shape[0]):
-            self.vertex_weights[self.faces[k, :]] += self.weights[k]
-            face_per_vertex[self.faces[k, :]] += 1
-        self.vertex_weights /= face_per_vertex
+        self.centers, self.volumes, self.normals, self.vertex_weights =\
+            computeCentersVolumesNormals__(self.faces, self.vertices, self.weights, checkOrientation=checkOrientation)
+        # if self.dim == 2:
+        #     xDef1 = self.vertices[self.faces[:, 0], :]
+        #     xDef2 = self.vertices[self.faces[:, 1], :]
+        #     xDef3 = self.vertices[self.faces[:, 2], :]
+        #     self.centers = (xDef1 + xDef2 + xDef3) / 3
+        #     x12 = xDef2-xDef1
+        #     x13 = xDef3-xDef1
+        #     self.volumes =  np.cross(x12, x13)/2
+        #     if checkOrientation:
+        #         if self.volumes.min() < -1e-12:
+        #             if self.volumes.max() > 1e-12:
+        #                 print('Warning: mesh has inconsistent orientation')
+        #             else:
+        #                 self.faces = self.faces[:, [0,2,1]]
+        #                 xDef2 = self.vertices[self.faces[:, 1], :]
+        #                 xDef3 = self.vertices[self.faces[:, 2], :]
+        #                 x12 = xDef2-xDef1
+        #                 x13 = xDef3-xDef1
+        #                 self.volumes =  np.cross(x12, x13)/2
+        #     J = np.array([[0, -1], [1,0]])
+        #     self.normals = np.zeros((3, self.faces.shape[0], 2))
+        #     self.normals[0, :, :] = (xDef3 - xDef2) @ J.T
+        #     self.normals[1, :, :] = (xDef1 - xDef3) @ J.T
+        #     self.normals[2, :, :] = (xDef2 - xDef1) @ J.T
+        # elif self.dim == 3:
+        #     xDef1 = self.vertices[self.faces[:, 0], :]
+        #     xDef2 = self.vertices[self.faces[:, 1], :]
+        #     xDef3 = self.vertices[self.faces[:, 2], :]
+        #     xDef4 = self.vertices[self.faces[:, 3], :]
+        #     self.centers = (xDef1 + xDef2 + xDef3 + xDef4) / 4
+        #     x12 = xDef2-xDef1
+        #     x13 = xDef3-xDef1
+        #     x14 = xDef4-xDef1
+        #     self.volumes =  det3D(x12, x13, x14)/6
+        #     if checkOrientation:
+        #         if self.volumes.min() < -1e-12:
+        #             if self.volumes.max() > 1e-12:
+        #                 print('Warning: mesh has inconsistent orientation')
+        #             else:
+        #                 self.faces = self.faces[:, [0,1,3,2]]
+        #                 xDef3 = self.vertices[self.faces[:, 2], :]
+        #                 xDef4 = self.vertices[self.faces[:, 3], :]
+        #                 x13 = xDef3 - xDef1
+        #                 x14 = xDef4 - xDef1
+        #                 self.volumes = det3D(x12, x13, x14) / 6
+        #     self.normals = np.zeros((4, self.faces.shape[0], 3))
+        #     self.normals[0, :, :] = np.cross(xDef4 - xDef2, xDef3 - xDef2)
+        #     self.normals[1, :, :] = np.cross(xDef2 - xDef1, xDef4 - xDef1)
+        #     self.normals[2, :, :] = np.cross(xDef4 - xDef1, xDef2 - xDef1)
+        #     self.normals[3, :, :] = np.cross(xDef2 - xDef1, xDef3 - xDef1)
+        #
+        # self.vertex_weights = np.zeros(self.vertices.shape[0])
+        # face_per_vertex = np.zeros(self.vertices.shape[0], dtype=int)
+        # for k in range(self.faces.shape[0]):
+        #     self.vertex_weights[self.faces[k, :]] += self.weights[k]
+        #     face_per_vertex[self.faces[k, :]] += 1
+        # self.vertex_weights /= face_per_vertex
 
     def updateWeights(self, w0):
         self.weights = np.copy(w0)
@@ -243,6 +349,10 @@ class Mesh:
     def updateVertices(self, x0):
         self.vertices = np.copy(x0)
         self.computeCentersVolumesNormals()
+
+    def updateImage(self, img):
+        self.image = np.copy(img)
+        self.imageDim = img.shape[1]
 
     def computeSparseMatrices(self):
         self.v2f0 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]),
@@ -849,4 +959,233 @@ class Mesh:
     #         res[f[2],:] += r3[k,:]
     #     return res
 
+@jit(nopython=True)
+def count__(g, sp, inv):
+    g_ = g
+    for k in range(sp.shape[0]):
+        g_[sp[k], inv[k]] += 1
+    return g_
+
+@jit(nopython=True)
+def select_faces__(g, points, simplices, threshold = 1e-10):
+    keepface = np.nonzero((g ** 2).sum(axis=1) > threshold)[0]
+    newf_ = np.zeros((keepface.shape[0], simplices.shape[1]), dtype=int64)
+    for k in range(keepface.shape[0]):
+        for j in range(simplices.shape[1]):
+            newf_[k,j] = simplices[keepface[k], j]
+    keepvert = np.zeros(points.shape[0], dtype=int64)
+    for k in range(newf_.shape[0]):
+        for j in range(simplices.shape[1]):
+            keepvert[newf_[k, j]] = 1
+    keepvert = np.nonzero(keepvert)[0]
+    newv = np.zeros((keepvert.shape[0], points.shape[1]))
+    for k in range(keepvert.shape[0]):
+        for j in range(points.shape[1]):
+            newv[k,j] = points[keepvert[k], j]
+    newI = - np.ones(points.shape[0], dtype=int64)
+    for k in range(keepvert.shape[0]):
+        newI[keepvert[k]] = k
+    newf = np.zeros(newf_.shape, dtype=int64)
+    for k in range(newf_.shape[0]):
+        for j in range(newf_.shape[1]):
+            newf[k, j] = newI[newf_[k,j]]
+    # newf = newI[newf]
+    g = np.copy(g[keepface, :])
+    return newv, newf, g, keepface
+
+def buildMeshFromFullListHR(x0, y0, genes, radius = 20, threshold = 1e-10):
+    dx =  (x0.max()- x0.min())/20
+    minx = x0.min() - dx
+    maxx = x0.max() + dx
+    dy =  (y0.max()- y0.min())/20
+    miny = y0.min() - dy
+    maxy = y0.max() + dy
+    ugenes, inv = np.unique(genes, return_inverse=True)
+    logging.info(f'{x0.shape[0]} input points, {ugenes.shape[0]} unique genes')
+
+    spacing = radius/2
+
+    ul = np.array((minx, miny))
+    ur = np.array((maxx, miny))
+    ll = np.array((minx, maxy))
+    v0 = ur - ul
+    v1 = ll - ul
+
+    nv0 = np.sqrt((v0 ** 2).sum())
+    nv1 = np.sqrt((v1 ** 2).sum())
+    npt0 = int(np.ceil(nv0 / spacing))
+    npt1 = int(np.ceil(nv1 / spacing))
+
+    t0 = np.linspace(0, 1, npt0)
+
+    t1 = np.linspace(0, 1, npt1)
+    x, y = np.meshgrid(t0, t1)
+    x = np.ravel(x)
+    y = np.ravel(y)
+    pts = ul[None, :] + x[:, None] * v0[None, :] + y[:, None] * v1[None, :]
+
+    tri = Delaunay(pts)
+    vert = np.zeros((tri.points.shape[0], 3))
+    vert[:,:2] = tri.points
+    centers = np.zeros((x0.shape[0], 2))
+    centers[:,0] = x0
+    centers[:,1] = y0
+
+    g = np.zeros((tri.simplices.shape[0], ugenes.shape[0]))
+    #logging.info('find')
+    sp = tri.find_simplex(centers)
+    #logging.info('count')
+    g = count__(g, sp, inv)
+    # for k in range(centers.shape[0]):
+    #     g[sp[k], inv[k]] += 1
+    logging.info(f'Creating {centers.shape[0]} faces')
+    # if radius is not None:
+    #     ico = twelve_vertexes(dimension=2)
+    #     for j in range(12):
+    #         logging.info(f'radius {j}')
+    #         sp = tri.find_simplex(centers + 0.5*radius*ico[j,:])
+    #         g = count__(g, sp, inv)
+    #         # for k in range(centers.shape[0]):
+    #         #     g[sp[k], inv[k]] += 1
+    #         sp = tri.find_simplex(centers + radius * ico[j, :])
+    #         g = count__(g, sp, inv)
+    #         # for k in range(centers.shape[0]):
+    #         #     g[sp[k], inv[k]] += 1
+    #     g /= 25
+
+    logging.info('face selection')
+    newv, newf, newg, foo = select_faces__(g, tri.points, tri.simplices, threshold=threshold)
+    # keepface = np.nonzero((g ** 2).sum(axis=1) > 1e-10)[0]
+    # newf = tri.simplices[keepface, :]
+    # keepvert = np.zeros(tri.points.shape[0], dtype=bool)
+    # for j in range(tri.simplices.shape[1]):
+    #     keepvert[newf[:, j]] = True
+    # keepvert = np.nonzero(keepvert)[0]
+    # newv = tri.points[keepvert, :]
+    # newI = - np.ones(tri.points.shape[0], dtype=int)
+    # newI[keepvert] = np.arange(newv.shape[0])
+    # newf = newI[newf]
+    # g = g[keepface, :]
+
+    logging.info(f'mesh construction: {newv.shape[0]} vertices {newf.shape[0]} faces')
+    fv0 = Mesh(mesh=(newf, newv), image=newg)
+    # fv0.saveVTK('essaiHR.vtk')
+    #fv0.image /= fv0.volumes[:, None]
+    return fv0
+
+def buildMeshFromFullList(x0, y0, genes, resolution=100, HRradius=20, HRthreshold=0.5):
+    logging.info('Building High-resolution mesh')
+    fvHR = buildMeshFromFullListHR(x0, y0, genes, radius=HRradius, threshold=HRthreshold)
+    if np.isscalar(resolution):
+        resolution = (resolution,)
+    fv0 = [fvHR]
+    for r in resolution:
+        logging.info(f'Buiding meshes at resolution {r:.0f}')
+        fv0.append(buildMeshFromCentersCounts(fvHR.centers, fvHR.image, resolution=r, weights=fvHR.volumes))
+    return fv0
+
+def buildMeshFromCentersCounts(centers, cts, resolution=100, radius = None, weights=None, threshold = 1e-10):
+    dx =  (centers[:, 0].max()- centers[:, 0].min())/20
+    minx = centers[:, 0].min() - dx
+    maxx = centers[:, 0].max() + dx
+    dy =  (centers[:, 1].max()- centers[:, 1].min())/20
+    miny = centers[:, 1].min() - dy
+    maxy = centers[:, 1].max() + dy
+    if radius is None:
+        #spacing = max(maxy - miny, maxx - minx) / resolution
+        spacing = resolution #max(maxy - miny, maxx - minx) / resolution
+    else:
+        spacing = radius/2
+
+    if weights is None:
+        weights = np.ones(centers.shape[0])
+
+    ul = np.array((minx, miny))
+    ur = np.array((maxx, miny))
+    ll = np.array((minx, maxy))
+    v0 = ur - ul
+    v1 = ll - ul
+
+    nv0 = np.sqrt((v0 ** 2).sum())
+    nv1 = np.sqrt((v1 ** 2).sum())
+    npt0 = int(np.ceil(nv0 / spacing))
+    npt1 = int(np.ceil(nv1 / spacing))
+
+    t0 = np.linspace(0, 1, npt0)
+
+    t1 = np.linspace(0, 1, npt1)
+    x, y = np.meshgrid(t0, t1)
+    x = np.ravel(x)
+    y = np.ravel(y)
+    pts = ul[None, :] + x[:, None] * v0[None, :] + y[:, None] * v1[None, :]
+
+    tri = Delaunay(pts)
+    vert = np.zeros((tri.points.shape[0], 3))
+    vert[:,:2] = tri.points
+
+    g = np.zeros((tri.simplices.shape[0], cts.shape[1]))
+    sp = tri.find_simplex(centers)
+    wgts = np.zeros(tri.simplices.shape[0])
+    nc = np.zeros(tri.simplices.shape[0], dtype=int)
+    for k in range(centers.shape[0]):
+        g[sp[k], :] += cts[k, :]
+        nc[sp[k]] += 1
+        wgts[sp[k]] += weights[k]
+    if radius is not None:
+        ico = twelve_vertexes(dimension=2)
+        for j in range(12):
+            sp = tri.find_simplex(centers + 0.5*radius*ico[j,:])
+            for k in range(centers.shape[0]):
+                g[sp[k], :] += cts[k, :]
+                nc[sp[k]] += 1
+                wgts[sp[k]] += weights[k]
+            sp = tri.find_simplex(centers + radius * ico[j, :])
+            for k in range(centers.shape[0]):
+                g[sp[k], :] += cts[k, :]
+                nc[sp[k]] += 1
+                wgts[sp[k]] += weights[k]
+
+    g /= np.maximum(1e-10, nc[:, None])
+
+        #weights /= 25
+
+    newv, newf, newg, keepface = select_faces__(g, tri.points, tri.simplices, threshold=threshold)
+    wgts = wgts[keepface]
+
+    logging.info(f'Mesh with {newv.shape[0]} vertices and {newf.shape[0]} faces')
+    fv0 = Mesh(mesh=(newf, newv), image=newg, weights=wgts)
+    fv0.updateWeights(wgts/fv0.volumes)
+    return fv0
+
+
+def buildMeshFromImageData(img, geneSet = None, resolution=100, radius = None,
+                           bounding_box = (0,1, 0, 1)):
+
+    xi = np.linspace(bounding_box[0], bounding_box[1], img.shape[0])
+    yi = np.linspace(bounding_box[2], bounding_box[3], img.shape[1])
+    (x, y) = np.meshgrid(yi, xi)
+    ng = img.shape[2]
+    cts = img.reshape((x.size, ng))
+    if geneSet is not None:
+        img = img[:, geneSet]
+    centers = np.zeros((x.size, 2))
+    centers[:, 0] = np.ravel(x) # bounding_box[0] + bounding_box[1]*x/img.shape[0]
+    centers[:, 1] = np.ravel(y) #bounding_box[2] + bounding_box[3]*y/img.shape[1]
+    return buildMeshFromCentersCounts(centers, cts, resolution=resolution, radius = radius)
+
+def buildMeshFromMerfishData(fileCounts, fileData, geneSet = None, resolution=100, radius = None,
+                             coordinate_columns = ('center_x', 'center_y')):
+    counts = pd.read_csv(fileCounts)
+    if geneSet is not None:
+        counts = counts.loc[:, geneSet]
+    data = pd.read_csv(fileData)
+    centers = np.zeros((data.shape[0], 2))
+    centers[:, 0] = data.loc[:, coordinate_columns[0]]
+    centers[:, 1] = data.loc[:, coordinate_columns[1]]
+    cts = counts.to_numpy()
+    # minx = data.loc[:, 'min_x'].min()
+    # miny = data.loc[:, 'min_y'].min()
+    # maxx = data.loc[:, 'max_x'].max()
+    # maxy = data.loc[:, 'max_y'].max()
+    return buildMeshFromCentersCounts(centers, cts, resolution=resolution, radius = radius)
 

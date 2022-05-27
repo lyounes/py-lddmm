@@ -1,5 +1,6 @@
 import numpy as np
 import logging
+from .linesearch import line_search_wolfe
 
 # Class running nonlinear conjugate gradient
 # opt is an optimizable class that must provide the following functions:
@@ -29,11 +30,44 @@ import logging
 # TestGradient evaluate accracy of first order approximation (debugging)
 # epsInit: initial gradient step
 
-def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPar=None, forceLineSearch = False):
+def __dotProduct(x,y):
+    res = []
+    for yy in y:
+        res.append((x*yy).sum())
+    return res
+
+def __addProd(x,y,a):
+    return x + a*y
+
+def __prod(x, a):
+    return a*x
+
+def __copyDir(x):
+    return np.copy(x)
+
+def __stopCondition():
+    return True
+
+
+
+def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPar=None, Wolfe=True):
 
     if (hasattr(opt, 'getVariable')==False | hasattr(opt, 'objectiveFun')==False | hasattr(opt, 'updateTry')==False | hasattr(opt, 'acceptVarTry')==False | hasattr(opt, 'getGradient')==False):
         logging.error('Error: required functions are not provided')
         return
+
+    # if Wolfe and hasattr(opt, 'dotProduct_euclidean'):
+    #     dotProduct = opt.dotProduct_euclidean   #
+    # elif not Wolfe and hasattr(opt, 'dotProduct'):
+    #     dotProduct = opt.dotProduct
+    # else:
+    #     dotProduct = __dotProduct
+
+    elif hasattr(opt, 'dotProduct'):
+        dotProduct = opt.dotProduct
+    else:
+        dotProduct = __dotProduct
+
 
     if hasattr(opt, 'startOptim'):
         opt.startOptim()
@@ -74,9 +108,8 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
         restartRate = 1
         TestGradient = False
 
-
     eps = epsInit
-    epsMin = 1e-8
+    epsMin = 1e-10
     opt.converged = False
 
     if hasattr(opt, 'reset') and opt.reset:
@@ -86,16 +119,16 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
     opt.objIni = obj
     opt.reset = False
     #obj = opt.objectiveFun()
-    logging.info('iteration 0: obj = {0: .5f}'.format( obj))
+    logging.info('iteration 0: obj = {0: .5f}'.format(obj))
     # if (obj < 1e-10):
     #     return opt.getVariable()
 
 
+    obj_old = None
     skipCG = 0
     noUpdate = 0
     it = 0
     while it < maxIter:
-
         if it % restartRate == 0:
             skipCG = 1
 
@@ -105,26 +138,21 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
         if opt.reset:
             opt.obj = None
             obj = opt.objectiveFun()
+            obj_old = None
 
         if noUpdate==0:
             grd = opt.getGradient(gradCoeff)
-
 
         if TestGradient:
             if hasattr(opt, 'randomDir'):
                 dirfoo = opt.randomDir()
             else:
                 dirfoo = np.random.normal(size=grd.shape)
-            dirfoo = grd
             epsfoo = 1e-8
             objfoo = opt.updateTry(dirfoo, epsfoo, obj-1e10)
-            if hasattr(opt, 'dotProduct'):
-                [grdfoo] = opt.dotProduct(grd, [dirfoo])
-            else:
-                grdfoo = np.multiply(grd, dirfoo).sum()
-            g1 = (objfoo - obj)/epsfoo
-            g2 = -grdfoo * gradCoeff
-            logging.info(f'Test Gradient: Diff: {g1:.4f} Grad: {g2:.4f} Ratio: {g2/g1:.4f}')
+            objfoo2 = opt.updateTry(dirfoo, 0, obj-1e10)
+            [grdfoo] = opt.dotProduct(grd, [dirfoo])
+            logging.info('Test Gradient: %.6f %.6f' %((objfoo - obj)/epsfoo, -grdfoo * gradCoeff ))
         if sgd:
             eps = epsInit / (1 + sgdRate*max(0, it - sgdBurnIn))
             objTry = opt.updateTry(grd, eps, obj+1e10)
@@ -138,10 +166,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
             it += 1
         else:
             if it == 0 or it == cgBurnIn:
-                if hasattr(opt, 'dotProduct'):
-                    [grdOld2] = opt.dotProduct(grd, [grd])
-                else:
-                    grdOld2 = np.multiply(grd, grd).sum()
+                [grdOld2] = opt.dotProduct(grd, [grd])
                 grd2= grdOld2
                 grdTry = np.sqrt(max(1e-20, grdOld2))
                 if hasattr(opt, 'copyDir'):
@@ -154,11 +179,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
                     dir0 = np.copy(grd)
                 beta = 0
             else:
-                if hasattr(opt, 'dotProduct'):
-                    [grd2, grd12] = opt.dotProduct(grd, [grd, grdOld])
-                else:
-                    grd2 = np.multiply(grd, grd).sum()
-                    grd12 = np.multiply(grd, grdOld).sum()
+                [grd2, grd12] = opt.dotProduct(grd, [grd, grdOld])
 
                 if skipCG == 0:
                     beta = max(0, (grd2 - grd12)/grdOld2)
@@ -184,119 +205,123 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
                 if gradEps is None:
                     gradEps = max(0.001 * np.sqrt(grd2), 0.0001)
                 else:
-                    gradEps = max(min(gradEps, 0.001 * np.sqrt(grd2)), 0.0001)
-
-            objTry = opt.updateTry(dir0, eps, obj)
+                    # gradEps = max(min(gradEps, 0.0001 * np.sqrt(grd2)), 0.00001)
+                    gradEps = max(min(gradEps, 0.001 * np.sqrt(grd2)), 0.0001)  # original
 
             noUpdate = 0
-            if hasattr(opt, 'epsBig'):
-                epsBig = opt.epsBig
-            else:
-                epsBig = epsMax / (grdTry)
-
+            epsBig = epsMax / (grdTry)
             if eps > epsBig:
                 eps = epsBig
-            if objTry > obj:
-                #fprintf(1, 'iteration %d: obj = %.5f, eps = %.5f\n', it, objTry, eps) ;
-                if not forceLineSearch:
+            _eps = eps
+            __Wolfe = True
+            if Wolfe:
+                objTry = opt.updateTry(dir0, eps, obj)
+                eps, fc, gc, phi_star, old_fval = line_search_wolfe(opt, dir0, gfk=grd, old_fval=obj,
+                                   old_old_fval=obj_old, c1=1e-4, c2=0.9, amax=None,
+                                   maxiter=10)
+                if eps is not None:
+                    obj_old = obj
+                    opt.acceptVarTry()
+                    obj = phi_star
+                else:
+                    eps = _eps
+                    logging.info('Wolfe search unsuccessful')
+                    __Wolfe = False
+
+            if not Wolfe or not __Wolfe:
+                eps = _eps
+                objTry = opt.updateTry(dir0, eps, obj)
+                badGradient = 0
+                if objTry > obj:
+                    #fprintf(1, 'iteration %d: obj = %.5f, eps = %.5f\n', it, objTry, eps) ;
                     epsSmall = np.maximum(1e-6/(grdTry), epsMin)
                     #print 'Testing small variation, eps = {0: .10f}'.format(epsSmall)
                     objTry0 = opt.updateTry(dir0, epsSmall, obj)
-                else:
-                    objTry0 = 0
-                if not forceLineSearch and objTry0 > obj :
-                    if (skipCG == 1) | (beta < 1e-10):
-                        logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, beta = {3:.5f}, gradient: {4:.5f}'.format(it+1, obj, eps, beta, np.sqrt(grd2)))
-                        logging.info('Stopping Gradient Descent: bad direction')
-                        if hasattr(opt, 'endOfProcedure'):
-                            opt.endOfProcedure()
-                        break
-                    else:
-                        if verb:
-                            logging.info('Disabling CG: bad direction')
-                            skipCG = 1
-                            noUpdate = 1
-                else:
-                    while (objTry > obj) and (eps > epsMin):
-                        eps = eps / 2
-                        objTry = opt.updateTry(dir0, eps, obj)
-                    if eps < epsMin:
+                    if objTry0 > obj:
                         if (skipCG == 1) | (beta < 1e-10):
-                            logging.info(
-                                'iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, beta = {3:.5f}, gradient: {4:.5f}'.format(
-                                    it + 1, obj, eps, beta, np.sqrt(grd2)))
-                            logging.info('Stopping Gradient Descent: bad direction after line search')
-                            if hasattr(opt, 'endOfProcedure'):
-                                opt.endOfProcedure()
+                            logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, beta = {3:.5f}, gradient: {4:.5f}'.format(it+1, obj, eps, beta, np.sqrt(grd2)))
+                            logging.info('Stopping Gradient Descent: bad direction')
                             break
                         else:
                             if verb:
-                                logging.info('Disabling CG: bad direction after line search')
-                                skipCG = 1
+                                logging.info('Disabling CG: bad direction')
+                                badGradient = 1
                                 noUpdate = 1
-                        #opt.acceptVarTry()
-
-                        #print 'improve'
-            ## reducing step if improves
-            if noUpdate == 0:
-                contt = 1
-                while contt==1:
-                    objTry2 = opt.updateTry(dir0, .5*eps, objTry)
-                    if objTry > objTry2:
-                        eps = eps / 2
-                        objTry=objTry2
                     else:
-                        contt=0
+                        while (objTry > obj) and (eps > epsMin):
+                            eps = eps / 2
+                            objTry = opt.updateTry(dir0, eps, obj)
+                            #opt.acceptVarTry()
+
+                            #print 'improve'
+                ## reducing step if improves
+                if noUpdate == 0:
+                    contt = 1
+                    while contt==1:
+                        objTry2 = opt.updateTry(dir0, .5*eps, objTry)
+                        if objTry > objTry2:
+                            eps = eps / 2
+                            objTry=objTry2
+                        else:
+                            contt=0
 
 
-            # increasing step if improves
-                contt = 5
-                #eps0 = eps / 4
-                while contt>=1 and eps<epsBig:
-                    objTry2 = opt.updateTry(dir0, 1.25*eps, objTry)
-                    if objTry > objTry2:
-                        eps *= 1.25
-                        objTry=objTry2
-                        #contt -= 1
-                    else:
-                        contt=0
+                # increasing step if improves
+                    contt = 10
+                    #eps0 = eps / 4
+                    while contt>=1 and eps<epsBig:
+                        objTry2 = opt.updateTry(dir0, 1.25*eps, objTry)
+                        if objTry > objTry2:
+                            eps *= 1.25
+                            objTry=objTry2
+                            contt -= 1
+                        else:
+                            contt=0
+                    obj_old = obj
+                    opt.acceptVarTry()
+                    obj = objTry
 
                 #print obj+obj0, objTry+obj0
-                if (np.fabs(obj-objTry) < 1e-10):
+                smallVariation = 0
+                if (np.fabs(obj-obj_old) < 1e-7):
+                # if (np.fabs(obj-objTry) < 1e-6): # original
                     if (skipCG==1): # or (beta < 1e-10) :
-                        logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, eps/epsMax = {5:.5f}, beta = {3:.5f}, gradient: {4:.5f}'.format(it+1, obj, eps, beta, np.sqrt(grd2), eps/epsBig))
                         if it > cgBurnIn:
+                            logging.info(
+                                'iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, eps/epsMax = {5:.5f}, beta = {3:.5f}, gradient: {4:.5f}'.format(
+                                    it + 1 ,obj ,eps ,beta ,np.sqrt(grd2) ,eps / epsBig))
                             logging.info('Stopping Gradient Descent: small variation')
                             opt.converged = True
                             break
-                        if hasattr(opt, 'endOfProcedure'):
-                            opt.endOfProcedure()
+                        else:
+                            skipCG = 0
+                        if hasattr(opt, 'endOfIteration'):
+                            opt.endOfIteration()
                     else:
                         if verb:
                             logging.info('Disabling CG: small variation')
-                        skipCG = 1
+                        smallVariation = 1
                         eps = 1.0
-                else:
-                    skipCG = 0
 
-                opt.acceptVarTry()
-                obj = objTry
-                #logging.info('Obj Fun CG: ' + str(opt.objectiveFun(force=True)))
-                if verb | (it == maxIter):
-                    logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, eps/epsMax = {5:.5f},  beta = {3:.5f}, gradient: {4:.5f}'.format(it+1, obj, eps, beta, np.sqrt(grd2), eps/epsBig))
+                skipCG = badGradient or smallVariation
+            #logging.info('Obj Fun CG: ' + str(opt.objectiveFun(force=True)))
+            if verb | (it == maxIter):
+                logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, eps/epsMax = {5:.5f},  beta = {3:.5f}, gradient: {4:.5f}'.format(it+1, obj, eps, beta, np.sqrt(grd2), eps/epsBig))
 
-                if np.sqrt(grd2) <gradEps and it>cgBurnIn:
-                    logging.info('Stopping Gradient Descent: small gradient')
-                    opt.converged = True
-                    if hasattr(opt, 'endOfProcedure'):
-                        opt.endOfProcedure()
-                    break
-                eps = np.minimum(100*eps, epsMax)
+            if np.sqrt(grd2) <gradEps and it>cgBurnIn:
+                logging.info('Stopping Gradient Descent: small gradient')
+                opt.converged = True
+                if hasattr(opt, 'endOfProcedure'):
+                    opt.endOfProcedure()
+                break
+            eps = np.minimum(100*eps, epsMax)
 
-                if noUpdate==0 and hasattr(opt, 'endOfIteration'):
-                    opt.endOfIteration()
-                if noUpdate==0:
-                    it += 1
+            if noUpdate==0 and hasattr(opt, 'endOfIteration'):
+                opt.endOfIteration()
+                if hasattr(opt ,'cgBurnIn'):
+                    cgBurnIn = opt.cgBurnIn
+            if noUpdate==0:
+                it += 1
 
     if it == maxIter and hasattr(opt, 'endOfProcedure'):
         opt.endOfProcedure()
@@ -364,3 +389,4 @@ def linearcg(op, b, iterMax=100, x0=None, param = None, verb=False):
     if verb:
         logging.info('iter {0:d} ener = {1:.6f} error = {2:.15f}'.format(i2+1, ener, error))
     return x
+
