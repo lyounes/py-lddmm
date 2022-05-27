@@ -181,7 +181,6 @@ class Mesh:
                 else:
                     self.image = np.copy(image)
                     self.imageDim = self.image.shape[1]
-                logging.info('computing centers')
                 self.computeCentersVolumesNormals(checkOrientation=True)
         elif type(mesh) is str:
             self.read(mesh)
@@ -1077,11 +1076,11 @@ def buildMeshFromFullListHR(x0, y0, genes, radius = 20, threshold = 1e-10):
 def buildMeshFromFullList(x0, y0, genes, resolution=100, HRradius=20, HRthreshold=0.5):
     logging.info('Building High-resolution mesh')
     fvHR = buildMeshFromFullListHR(x0, y0, genes, radius=HRradius, threshold=HRthreshold)
-    logging.info('Buiding final mesh')
     if np.isscalar(resolution):
         resolution = (resolution,)
     fv0 = [fvHR]
     for r in resolution:
+        logging.info(f'Buiding meshes at resolution {r:.0f}')
         fv0.append(buildMeshFromCentersCounts(fvHR.centers, fvHR.image, resolution=r, weights=fvHR.volumes))
     return fv0
 
@@ -1153,6 +1152,7 @@ def buildMeshFromCentersCounts(centers, cts, resolution=100, radius = None, weig
     newv, newf, newg, keepface = select_faces__(g, tri.points, tri.simplices, threshold=threshold)
     wgts = wgts[keepface]
 
+    logging.info(f'Mesh with {newv.shape[0]} vertices and {newf.shape[0]} faces')
     fv0 = Mesh(mesh=(newf, newv), image=newg, weights=wgts)
     fv0.updateWeights(wgts/fv0.volumes)
     return fv0
