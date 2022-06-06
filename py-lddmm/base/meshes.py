@@ -14,7 +14,7 @@ from .vtk_fields import vtkFields
 from meshpy.geometry import GeometryBuilder
 import meshpy.tet as tet
 import meshpy.triangle as tri
-from pyclustering.cluster import dbscan
+#from pyclustering.cluster import dbscan
 from scipy.sparse.csgraph import connected_components
 from skimage import measure
 from copy import deepcopy
