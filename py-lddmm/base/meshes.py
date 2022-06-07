@@ -968,7 +968,7 @@ def count__(g, sp, inv):
 
 @jit(nopython=True)
 def select_faces__(g, points, simplices, threshold = 1e-10):
-    keepface = np.nonzero((g ** 2).sum(axis=1) > threshold)[0]
+    keepface = np.nonzero(np.fabs(g).sum(axis=1) > threshold)[0]
     newf_ = np.zeros((keepface.shape[0], simplices.shape[1]), dtype=int64)
     for k in range(keepface.shape[0]):
         for j in range(simplices.shape[1]):
@@ -1194,7 +1194,7 @@ def buildMeshFromCentersCounts(centers, cts, resolution=100, radius = None, weig
     return fv0
 
 
-def buildMeshFromImageData(img, geneSet = None, resolution=100, radius = None,
+def buildMeshFromImageData(img, geneSet = None, resolution=25, radius = None,
                            bounding_box = (0,1, 0, 1)):
 
     xi = np.linspace(bounding_box[0], bounding_box[1], img.shape[0])

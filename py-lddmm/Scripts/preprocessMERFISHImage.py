@@ -16,7 +16,7 @@ from base.meshes import buildImageFromFullListHR, buildMeshFromCentersCounts
 
 
 testRun = False
-homedir = '/Users/younes/Development/Data/Merfish'
+homedir = '/Users/younes/Development/Data/Merfish/allen_data2'
 if not os.path.exists(homedir + '/1_meshdata'):
     os.mkdir(homedir + '/1_meshdata')
 mouses = glob(homedir + '/0_origdata/mouse2')
@@ -38,7 +38,8 @@ def f(file1, radius=30.):
     return img1
 
 if __name__ == '__main__':
-    file1 = homedir + '/202202170851_60988201_VMSC01001/detected_transcripts.csv'
+    #file1 = homedir + '/202202170851_60988201_VMSC01001/detected_transcripts.csv'
+    file1 = homedir + '/202202170915_60988203_VMSC00401/detected_transcripts.csv'
     print('building image')
     img, info = f(file1, 15.)
     img2 = img.sum(axis=2)
@@ -54,7 +55,8 @@ if __name__ == '__main__':
     print(seg.shape)
     segout = np.zeros((seg.shape[0], seg.shape[1], 3), dtype=np.uint8)
     for j in range(3):
-        col = np.random.choice(256, nlab)
+        col = np.zeros(nlab, dtype=int)
+        col[1:] = 1+np.random.choice(255, nlab-1)
         print(col.shape, col[seg].shape)
         segout[:, :, j] = col[seg]
     iio.imwrite(homedir + "/img.png", imgout)
@@ -62,7 +64,7 @@ if __name__ == '__main__':
     cv2.imwrite(homedir + "/seg.png", segout.astype(np.int8))
 
 
-
+    threshold = 50
     centers = np.zeros((nlab, 2))
     cts = np.zeros((nlab, img.shape[2]), dtype=int)
     nb = np.zeros(nlab, dtype=int)
@@ -74,16 +76,21 @@ if __name__ == '__main__':
             centers[seg[i,j], 1] += y0[j]
             nb[seg[i,j]] += 1
             cts[seg[i,j],:] += img[i,j,:].astype(int)
-    centers = centers[nb>0, :]
-    cts = cts[nb > 0, :]
-    centers /= nb[nb>0, None]
+    nbc = cts.sum(axis=1)
+    centers = centers[nbc>=threshold, :]
+    cts = cts[nbc >=threshold, :]
+    centers /= nb[nbc>=threshold, None]
     print(f'number of cells: {centers.shape[0]}')
     df = pd.DataFrame(data = {'centers_x':centers[:,0], 'centers_y':centers[:,1]})
     df.to_csv(homedir + '/centers.csv')
     df = pd.DataFrame(data=cts)
     df.to_csv(homedir + '/counts.csv')
+    fv = buildMeshFromCentersCounts(centers, cts, resolution=50, radius = None, weights=None, threshold = 10)
+    fv.saveVTK(homedir + '/mesh50.vtk')
     fv = buildMeshFromCentersCounts(centers, cts, resolution=100, radius = None, weights=None, threshold = 10)
-    fv.saveVTK(homedir + '/mesh.vtk')
+    fv.saveVTK(homedir + '/mesh100.vtk')
+    fv = buildMeshFromCentersCounts(centers, cts, resolution=200, radius = None, weights=None, threshold = 10)
+    fv.saveVTK(homedir + '/mesh200.vtk')
 
     #plt.imshow(imgout)
     #plt.show()
