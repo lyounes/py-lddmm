@@ -967,7 +967,7 @@ def count__(g, sp, inv):
 
 @jit(nopython=True)
 def select_faces__(g, points, simplices, threshold = 1e-10):
-    keepface = np.nonzero((g ** 2).sum(axis=1) > threshold)[0]
+    keepface = np.nonzero(np.fabs(g).sum(axis=1) > threshold)[0]
     newf_ = np.zeros((keepface.shape[0], simplices.shape[1]), dtype=int64)
     for k in range(keepface.shape[0]):
         for j in range(simplices.shape[1]):
@@ -1072,6 +1072,42 @@ def buildMeshFromFullListHR(x0, y0, genes, radius = 20, threshold = 1e-10):
     #fv0.image /= fv0.volumes[:, None]
     return fv0
 
+@jit(nopython=True)
+def buildImageFromFullListHR(x0, y0, genes, radius = 20.):
+    dx =  (x0.max()- x0.min())/20
+    minx = x0.min() - dx
+    maxx = x0.max() + dx
+    dy =  (y0.max()- y0.min())/20
+    miny = y0.min() - dy
+    maxy = y0.max() + dy
+    #ugenes, inv = np.unique(genes, return_inverse=True)
+    #ng = ugenes.shape[0]
+    ng = genes.max() + 1
+
+    spacing = radius/2
+
+    ul = np.array((minx, miny))
+    ur = np.array((maxx, miny))
+    ll = np.array((minx, maxy))
+    v0 = ur - ul
+    v1 = ll - ul
+
+    nv0 = np.sqrt((v0 ** 2).sum())
+    nv1 = np.sqrt((v1 ** 2).sum())
+    npt0 = int(np.ceil(nv0 / spacing))
+    npt1 = int(np.ceil(nv1 / spacing))
+
+    # t0 = np.linspace(0, 1, npt0)
+    # t1 = np.linspace(0, 1, npt1)
+    img = np.zeros((npt0, npt1, ng))
+    ik = np.floor((x0 - minx)/spacing).astype(int64)
+    jk = np.floor((y0 - miny)/spacing).astype(int64)
+
+    for k in range(x0.shape[0]):
+        img[ik[k], jk[k], genes[k]] += 1
+
+    return img, (minx, miny, spacing)
+
 def buildMeshFromFullList(x0, y0, genes, resolution=100, HRradius=20, HRthreshold=0.5):
     logging.info('Building High-resolution mesh')
     fvHR = buildMeshFromFullListHR(x0, y0, genes, radius=HRradius, threshold=HRthreshold)
@@ -1157,7 +1193,7 @@ def buildMeshFromCentersCounts(centers, cts, resolution=100, radius = None, weig
     return fv0
 
 
-def buildMeshFromImageData(img, geneSet = None, resolution=100, radius = None,
+def buildMeshFromImageData(img, geneSet = None, resolution=25, radius = None,
                            bounding_box = (0,1, 0, 1)):
 
     xi = np.linspace(bounding_box[0], bounding_box[1], img.shape[0])
