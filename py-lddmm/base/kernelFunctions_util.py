@@ -299,7 +299,7 @@ def applyK1K2_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, orde
     s1KP = scale1**KP
     ns2 = len(scale2)
     s2KP = scale2**KP
-    wsig = s1KP.sum()
+    wsig = s1KP.sum() * s2KP.sum()
     a_ = a.astype(dtype)
     def makeKij(ys_, xs_, name, order):
         if 'gauss' in name:

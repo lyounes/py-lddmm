@@ -100,12 +100,12 @@ def line_search_wolfe(opt, pk, gfk=None, old_fval=None,
 
 
 
-    alpha_star, phi_star, old_fval = scalar_search_wolfe1(
-        phi, derphi, old_fval, old_old_fval, derphi0, c1, c2)
-    # if alpha_star is None:
-    #     alpha_star, phi_star, old_fval, derphi_star = scalar_search_wolfe2(
-    #         phi, derphi, old_fval, old_old_fval, derphi0, c1, c2, amax,
-    #         None, maxiter=maxiter)
+    # alpha_star, phi_star, old_fval = scalar_search_wolfe1(
+    #     phi, derphi, old_fval, old_old_fval, derphi0, c1, c2)
+    # # if alpha_star is None:
+    alpha_star, phi_star, old_fval, derphi_star = scalar_search_wolfe2(
+        phi, derphi, old_fval, old_old_fval, derphi0, c1, c2, amax,
+        None, maxiter=maxiter)
 
     # if derphi_star is None:
     #     warn('The line search algorithm did not converge', LineSearchWarning)

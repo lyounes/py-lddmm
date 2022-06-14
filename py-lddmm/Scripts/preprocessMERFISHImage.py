@@ -16,10 +16,11 @@ from base.meshes import buildImageFromFullListHR, buildMeshFromCentersCounts
 
 
 testRun = False
-homedir = '/Users/younes/Development/Data/Merfish/allen_data2'
+homedir = '/cis/home/younes/Development/Data/Merfish/allen_data2'
 if not os.path.exists(homedir + '/1_meshdata'):
     os.mkdir(homedir + '/1_meshdata')
 mouses = glob(homedir + '/0_origdata/mouse2')
+datadir = '/cis/project/merfish'
 
 def f(file1, radius=30.):
     # file1 = arg[0]
@@ -39,7 +40,7 @@ def f(file1, radius=30.):
 
 if __name__ == '__main__':
     #file1 = homedir + '/202202170851_60988201_VMSC01001/detected_transcripts.csv'
-    file1 = homedir + '/202202170915_60988203_VMSC00401/detected_transcripts.csv'
+    file1 = datadir + '/0_origdata/mouse2/202204121618_60988928_VMSC01001/detected_transcripts.csv'
     print('building image')
     img, info = f(file1, 15.)
     img2 = img.sum(axis=2)
@@ -47,7 +48,8 @@ if __name__ == '__main__':
     miny = info[1]
     spacing = info[2]
     cm = img2.max()
-    imgout = ((255 / cm) * img2).astype(np.uint8)
+    print(f'maximum counts {cm:.0f}')
+    imgout = ((255 / np.log(1+cm)) * np.log(1+img2)).astype(np.uint8)
     print('running watershed')
     seg = (1+watershed(-img2)) * (img2>0)
     nlab = seg.max() + 1
