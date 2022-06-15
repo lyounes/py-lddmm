@@ -306,23 +306,37 @@ def makeDiffKij(ys_, xs_, name, order):
                           + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
     elif 'polyCauchy' in name:
         diffij = ys_ - xs_
-        Dij = (diffij ** 2).sum(-1)
+        Dij = (diffij ** 2).sum(-1).sqrt()
         g = (ys_ * xs_).sum(-1)
-        gk = LazyTensor(np.ones(ys_.shape))
-        Kij = LazyTensor(np.ones(ys_.shape))
-        dKij = LazyTensor(np.ones(ys_.shape))*xs_
-        for i in range(order):
-            gk *= g
-            Kij += gk
-            dKij += (i + 1) * gk
-        Kij = dKij/(1 + Dij) - 2 * diffij * Kij / (1+Dij)**2
+        if order == 1:
+            Kij = 1 + g
+            dKij = 1
+        elif order == 2:
+            Kij = 1 + g + g*g
+            dKij = 1 + 2*g
+        elif order == 3:
+            Kij = 1 + g + g*g + g*g*g
+            Kij = 1 + 2*g + 3*g*g
+        elif order == 4:
+            Kij = 1 + g + g*g + g*g*g + g*g*g*g
+            dKij = 1 + 2*g + 3*g*g + 4*g*g*g 
+        else:
+            Kij = 1 + g + g*g + g*g*g + g*g*g*g + g*g*g*g*g
+            dKij = 1 + 2*g + 3*g*g + 4*g*g*g + 5*g*g*g*g
+        Kij = LazyTensor(np.ones(ys_.shape)) * xs_*  dKij/(1 + Dij) - 2 * diffij * Kij / (1+Dij)**2
     elif 'poly' in name:
         g = (ys_ * xs_).sum(-1)
-        gk = LazyTensor(np.ones(ys_.shape))
-        Kij = LazyTensor(np.ones(ys_.shape))*xs_
-        for i in range(1, order):
-            gk *= g
-            Kij += (i + 1) * gk
+        if order == 1:
+            dKij = 1
+        elif order == 2:
+            dKij = 1 + 2*g
+        elif order == 3:
+            dKij = 1 + 2*g + 3*g*g
+        elif order == 4:
+            dKij = 1 + 2*g + 3*g*g + 4*g*g*g 
+        else:
+            dKij = 1 + 2*g + 3*g*g + 4*g*g*g + 5*g*g*g*g
+        Kij = LazyTensor(np.ones(ys_.shape)) * xs_ * dKij
     else:  # Euclidean kernel
         Kij = LazyTensor(np.ones(ys_.shape)) * xs_
     return Kij
@@ -340,19 +354,29 @@ def makeKij(ys_, xs_, name, order):
     elif 'polyCauchy' in name:
         Dij = ((ys_ - xs_) ** 2).sum(-1)
         g = (ys_ * xs_).sum(-1)
-        gk = LazyTensor(np.ones(ys_.shape))
-        Kij = LazyTensor(np.ones(ys_.shape))
-        for i in range(order):
-            gk *= g
-            Kij += gk
+        if order == 1:
+            Kij = 1 + g
+        elif order == 2:
+            Kij = 1 + g + g*g
+        elif order == 3:
+            Kij = 1 + g + g*g + g*g*g
+        elif order == 4:
+            Kij = 1 + g + g*g + g*g*g + g*g*g*g
+        else:
+            Kij = 1 + g + g*g + g*g*g + g*g*g*g + g*g*g*g*g
         Kij /= (1 + Dij)
     elif 'poly' in name:
         g = (ys_ * xs_).sum(-1)
-        gk = LazyTensor(np.ones(ys_.shape))
-        Kij = LazyTensor(np.ones(ys_.shape))
-        for i in range(order):
-            gk *= g
-            Kij += gk
+        if order == 1:
+            Kij = 1 + g
+        elif order == 2:
+            Kij = 1 + g + g*g
+        elif order == 3:
+            Kij = 1 + g + g*g + g*g*g
+        elif order == 4:
+            Kij = 1 + g + g*g + g*g*g + g*g*g*g
+        else:
+            Kij = 1 + g + g*g + g*g*g + g*g*g*g + g*g*g*g*g
     else:  # Applying Euclidean kernel
         Kij = (ys_ * xs_).sum(-1)
     return Kij
