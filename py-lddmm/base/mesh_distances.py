@@ -12,7 +12,7 @@ def varifoldNorm0(fv1, KparDist, KparIm, imKernel = None):
         A1 = np.dot(fv1.image, imKernel)
 
     return ((applyK1K2(c2, c2, KparDist.name, KparDist.sigma, KparDist.order,
-                     A1, fv1.image, KparIm.name, KparIm.sigma, KparIm.order, a2[:, None]))*a2[:, None]).sum()
+                     A1, fv1.image, KparIm.name, KparIm.sigma, KparIm.order, a2[:, None], cpu=False))*a2[:, None]).sum()
 
 # def varifoldNorm0_old(fv1, KparDist, imKernel = None):
 #     c2 = fv1.centers
@@ -50,9 +50,9 @@ def varifoldNormDef(fvDef, fv1, KparDist, KparIm, imKernel = None):
         A1 = np.dot(fvDef.image, imKernel)
 
     obj = ((applyK1K2(c1, c1, KparDist.name, KparDist.sigma, KparDist.order,
-                     A1, fvDef.image, KparIm.name, KparIm.sigma, KparIm.order, a1[:, None]) -
+                     A1, fvDef.image, KparIm.name, KparIm.sigma, KparIm.order, a1[:, None], cpu=False) -
            2*applyK1K2(c1, c2, KparDist.name, KparDist.sigma, KparDist.order,
-                     A1, fv1.image, KparIm.name, KparIm.sigma, KparIm.order, a2[:, None])) * a1[:, None]).sum()
+                     A1, fv1.image, KparIm.name, KparIm.sigma, KparIm.order, a2[:, None], cpu=False)) * a1[:, None]).sum()
 
     return obj
 

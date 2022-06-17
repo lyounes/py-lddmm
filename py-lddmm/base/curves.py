@@ -595,8 +595,11 @@ class Curve:
                 fvtkout.write('\nNORMALS normals float')
                 for ll in range(V.shape[0]):
                     fvtkout.write('\n {0: .5f} {1: .5f} {2: .5f}'.format(normals[ll, 0], normals[ll, 1], 0))
+            fvtkout.write(('\nCELL_DATA {0: d}').format(F.shape[0]))
+            fvtkout.write('\nSCALARS labels int 1\nLOOKUP_TABLE default')
+            for ll in range(F.shape[0]):
+                fvtkout.write('\n {0:d}'.format(self.component[ll]))
             if cell_normals is not None:
-                fvtkout.write(('\nCELL_DATA {0: d}').format(F.shape[0]))
                 fvtkout.write('\nNORMALS normals float')
                 if cell_normals.shape[1] == 2:
                     for ll in range(F.shape[0]):
@@ -748,17 +751,20 @@ class Curve:
         return res
 
     def connected_components(self, split=False):
-        A = csr_matrix((np.ones(self.faces.shape[0]), (self.faces[:,0], self.faces[:,1])))
+        A = csr_matrix((np.ones(self.faces.shape[0]), (self.faces[:,0], self.faces[:,1])),
+                       shape=(self.vertices.shape[0], self.vertices.shape[0]))
         nc, labels = connected_components(A, directed=False)
-        self.component = labels
+        self.component = labels[self.faces[:, 0]]
         if split:
-            return self.split_components()
+            return self.split_components(labels)
 
-    def split_components(self):
-        nc = self.component.max() + 1
+    def split_components(self, labels= None):
+        if labels is None:
+            labels = self.component
+        nc = labels.max() + 1
         res = []
         for i in range(nc):
-            J = np.nonzero(self.component == i)[0]
+            J = np.nonzero(labels == i)[0]
             V = self.vertices[J,:]
             # w = self.weights[J]
             newI = -np.ones(self.vertices.shape[0], dtype=int)
