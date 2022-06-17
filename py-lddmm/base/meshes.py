@@ -348,6 +348,8 @@ class Mesh:
         self.edges = None
         self.edgeFaces = None
         self.faceEdges = None
+        self.bdry_indices = None
+        self.bdry = None
 
     def read(self, filename):
         (mainPart, ext) = os.path.splitext(filename)
@@ -382,6 +384,8 @@ class Mesh:
     # modify vertices without toplogical change
     def updateVertices(self, x0):
         self.vertices = np.copy(x0)
+        if self.bdry is not None:
+            self.bdry.updateVertices(x0[self.bdry_indices])
         self.computeCentersVolumesNormals()
 
     def updateImage(self, img):
@@ -449,6 +453,7 @@ class Mesh:
                 J[self.edges[k,j]] = 1
 
         J = np.nonzero(J)[0]
+        self.bdry_indices = J
         newindx = np.zeros(self.vertices.shape[0], dtype=int)
         newindx[J] = np.arange(len(J))
         V = self.vertices[J,:]

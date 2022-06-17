@@ -72,7 +72,7 @@ def _flipMidPoint(Y,X):
 
     return Z, S, T
 
-@jit(nopython=True)
+#@jit(nopython=False)
 def objective_and_gradient_varifold(u, x, ys, wxy, sigma):
     grad = np.zeros(u.shape)
     dimn = x.shape[1]
@@ -136,6 +136,7 @@ def objective_and_gradient_varifold(u, x, ys, wxy, sigma):
         dT = np.sum(np.sum(dKxy, axis=0), axis=0)
         grad[:1] = -dRx / sigma
         grad[1:] = -dT / sigma
+        #print(f'theta = {u[0]:.4f}, obj={obj:.4f}; grad = {np.fabs(grad).max():.4f}')
     return obj, grad
 
 
@@ -166,84 +167,11 @@ def rigidRegistration_varifold(surfaces, weights=None, sigma = 1., ninit=5):
             T = u[1:]
         return R, T
 
-    def objective_and_gradient(u):
-        grad = np.zeros(u.shape)
-        if dimn == 3:
-            ur = u[:3]
-            T = u[3:]
-            t = np.sqrt((ur ** 2).sum())
-            if t > 1e-10:
-                st = np.sin(t)
-                ct = np.cos(t)
-                a1 = st / t
-                a2 = (1 - ct) / (t ** 2)
-                ucx = np.cross(ur[None, :], x)
-                udx = (ur[None, :]*x).sum(axis=1)
-                unorm = ur / t
-                Rx = ct * x + a1 * ucx + a2 * udx[None, :] * u[:, None]
-                xx = (Rx + T)/sigma
-                xy = xx[:, None, :] - ys[None, :, :]
-                dxy = (xy ** 2).sum(axis=2)
-                Kxy = np.exp(-dxy / 2) * wxy
-                obj = -Kxy.sum()
-                dKxy = - Kxy[:,:,None] * xy
-                da1 = (t * ct - st) / (t ** 3)
-                da2 = (t * st - 2 * (1 - ct)) / (t ** 4)
-                dKxyx = (dKxy*x[:, None, :]).sum()
-                dKxyu = dKxy@u
-                dRx = da1 * (dKxy * ucx[:, None, :]).sum() * unorm \
-                      + a1 * np.cross(x[:, None, :], dKxy).sum(axis=[0,1]) \
-                      - st * dKxyx * unorm + da2 * (dKxyu * udx[:, None]).sum() * unorm \
-                      + a2 * ((dKxyu * x[:, None]).sum() + (dKxy*udx[:,None, None]).sum(axis=(0,1)))
-                dRx = -dRx/sigma
-                dT = -dKxy.sum(axis=(0,1))/sigma
-            else:
-                # st = 0
-                # ct = 1
-                # a1 = 1
-                # a2 = 0.5
-                # ucx = np.cross(ur[None, :], x)
-                # udx = (ur[None, :] * x).sum(axis=1)
-                # unorm = ur / t
-                xx = (x + T) / sigma
-                xy = xx[:, None, :] - ys[None, :, :]
-                dxy = (xy ** 2).sum(axis=2)
-                Kxy = np.exp(-dxy / 2) * wxy
-                obj = -Kxy.sum()
-                dKxy = - Kxy[:, :, None] * xy
-                # da1 = -1/3
-                # da2 = -1/12
-                # dKxyx = (dKxy * x[:, None, :]).sum()
-                # dKxyu = dKxy @ u
-                dRx = np.cross(x[:, None, :], dKxy).sum(axis=(0, 1))
-                dT = dKxy.sum(axis=(0, 1))
-            grad[:3] = -dRx/sigma
-            grad[3:] = -dT/sigma
-        else:
-            ct = np.cos(u[0])
-            st = np.sin(u[0])
-            R = np.array([[ct, -st], [st, ct]])
-            Rx = x @ R.T
-            T = u[1:]
-            xx = (Rx + T) / sigma
-            xy = xx[:, None, :] - ys[None, :, :]
-            dxy = (xy ** 2).sum(axis=2)
-            Kxy = np.exp(-dxy / 2) * wxy
-            obj = -Kxy.sum()
-            dKxy = - Kxy[:, :, None] * xy
-            dR = np.array([[-st, -ct], [ct, -st]])
-            dRx = (dKxy * (x @ dR.T)[:, None, :]).sum()
-            dT = dKxy.sum(axis=(0, 1))
-            grad[:1] = -dRx/sigma
-            grad[1:] = -dT/sigma
-        #print(f'obj={obj:.4f}; grad = {np.fabs(grad).max():.4f}')
-        return obj, grad
-
     if dimn == 2:
         bestx = np.zeros(3)
     else:
         bestx = np.zeros(6)
-    bestobj, foo = objective_and_gradient(bestx)
+    bestobj, foo = objective_and_gradient_varifold(bestx, x, ys, wxy, sigma)
 
     mx = np.mean(x,axis=0)
     my = np.mean(y,axis=0)
@@ -265,13 +193,16 @@ def rigidRegistration_varifold(surfaces, weights=None, sigma = 1., ninit=5):
                        method='BFGS', jac=True, options={'maxiter':10000})
         if res.fun < bestobj:
             bestx = np.copy(res.x)
+            bestobj = res.fun
+            #print(f'Current optimal: theta = {bestx[0]:.4f}, obj={bestobj:.4f}')
+    #print(f'Final Optimal: theta = {bestx[0]:.4f}, obj={bestobj:.4f}')
     R, T = getRotation(bestx)
     return R, T
 
 
 @jit(forceobj=True, parallel=True, debug=True)
 def rigidRegistration__(surfaces = None, temperature = 1.0, rotWeight = 1.0, rotationOnly=False,
-                      translationOnly=False, flipMidPoint=False,
+                      translationOnly=False, flipMidPoint=False, init = None,
                       annealing = True, verb=False, landmarks = None, normals = None, image=None):
 #  [R, T] = rigidRegistrationSurface(X0, Y0, t)
 # compute rigid registration using soft-assign maps
@@ -298,13 +229,13 @@ def rigidRegistration__(surfaces = None, temperature = 1.0, rotWeight = 1.0, rot
             return
         else:
             lmk = True
-            Nlmk = landmarks[1].shape[0]
-            X0 = landmarks[1]
-            Y0 = landmarks[0]
+            Nlmk = landmarks[0].shape[0]
+            X0 = landmarks[0]
+            Y0 = landmarks[1]
     else:
         surf = True
-        X0 = surfaces[1]
-        Y0 = surfaces[0]
+        X0 = surfaces[0]
+        Y0 = surfaces[1]
         Nsurf = X0.shape[0]
         Msurf = Y0.shape[0]
         if image is None:
@@ -321,11 +252,11 @@ def rigidRegistration__(surfaces = None, temperature = 1.0, rotWeight = 1.0, rot
             Nlmk = 0
         else:
             lmk = True
-            Nlmk = landmarks[1].shape[0]
+            Nlmk = landmarks[0].shape[0]
             N = Nsurf + Nlmk
             M = Msurf + Nlmk
-            X0 = np.concatenate((X0, landmarks[1]))
-            Y0 = np.concatenate((Y0, landmarks[0]))
+            X0 = np.concatenate((X0, landmarks[0]))
+            Y0 = np.concatenate((Y0, landmarks[1]))
         if normals is None:
             norm = False
             norm0 = np.zeros(X0.shape)
@@ -367,14 +298,23 @@ def rigidRegistration__(surfaces = None, temperature = 1.0, rotWeight = 1.0, rot
         #print S1, T1
         Y1 = Y0
 
-    R = np.eye(dimn)
-    T = np.zeros(((1, dimn)))
+    if init is None:
+        R = np.eye(dimn)
+        T = np.zeros(((1, dimn)))
+    else:
+        R = init[0]
+        T = init[1]
 
 
     if surf:
         # Alternate minimization for surfaces with or without landmarks
-        R = np.eye(dimn)
-        T = np.zeros((1, dimn)) #np.random.normal(0,1, size=[1, dimn])
+        if init is None:
+            R = np.eye(dimn)
+            T = np.zeros(((1, dimn)))
+        else:
+            R = init[0]
+            T = init[1]
+
         RX = np.dot(X0,  R.T) + T
         RX2 = (RX**2).sum(axis=1)
         Y12 = (Y1**2).sum(axis=1)
@@ -467,6 +407,7 @@ def rigidRegistration__(surfaces = None, temperature = 1.0, rotWeight = 1.0, rot
             if verb:
                 #str_ = 'ener ' + str(ener)
                 print(ener, np.fabs((R-Rold)).sum(), np.fabs((T-Told)).sum())
+                print(R)
                 # print('ener = {0:.3f} var = {0:.3f} {0:.3f}'.format(ener, np.fabs((R-Rold)).sum(), np.fabs((T-Told)).sum()))
 
             if (k > 21) and (np.fabs((R-Rold)).sum() < 1e-3) and (np.fabs((T-Told)).sum() < 1e-2):
@@ -517,8 +458,8 @@ def rigidRegistration(surfaces=None, temperature=1.0, rotWeight=1.0, rotationOnl
                           translationOnly=translationOnly, flipMidPoint=flipMidPoint,
                           annealing=annealing, verb=verb, landmarks=landmarks, normals=normals)
 
-    R = linalg.inv(R)
-    T = - np.dot(T, R.T)
+    # R = linalg.inv(R)
+    # T = - np.dot(T, R.T)
     # T = T.reshape((1, T.shape[0]))
     #
     # #print R,T

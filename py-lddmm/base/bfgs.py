@@ -143,9 +143,10 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
                 else:
                     dirfoo = np.random.normal(size=grd.shape)
                 epsfoo = 1e-8
-                objfoo = opt.updateTry(dirfoo, epsfoo, obj-1e8)
+                objfoo1 = opt.updateTry(dirfoo, epsfoo, obj-1e8)
+                objfoo2 = opt.updateTry(dirfoo, -epsfoo, obj-1e8)
                 [grdfoo] = dotProduct(grd, [dirfoo])
-                logging.info('Test Gradient: %.4f %.4f' %((objfoo - obj)/epsfoo, -grdfoo * gradCoeff ))
+                logging.info('Test Gradient: %.4f %.4f' %((objfoo1 - objfoo2)/(2*epsfoo), -grdfoo * gradCoeff ))
 
             if (not opt.reset)  and it > 0:
                 storedGrad.append([diffVar, addProd(grd, grdOld, -1)])
