@@ -13,3 +13,5 @@ tqdm
 pandas
 setuptools
 pykeops
+pygalmesh
+meshpy
