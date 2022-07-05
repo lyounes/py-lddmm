@@ -1118,6 +1118,21 @@ class Surface:
         res.computeCentersAreas()
         return res
 
+    def cut_faces(self, select):
+        res = Surface()
+        res.faces = self.faces[select, :]
+        res.component = self.component[select]
+        selectv = np.zeros(self.vertices.shape[0], dtype=bool)
+        for j in range(res.faces.shape[0]):
+            selectv[res.faces[j,:]] = True
+        res.vertices = self.vertices[selectv, :]
+        newindx = - np.ones(self.vertices.shape[0], dtype=int)
+        newindx[selectv] = np.arange(selectv.sum(), dtype=int)
+        res.faces = newindx[res.faces]
+        res.updateWeights(self.weights[selectv])
+        res.computeCentersAreas()
+        return res, np.nonzero(selectv)[0]
+
     def createFlatApproximation(self, thickness=None, M=50):
         # Compute center
         a = self.computeVertexArea()[0]

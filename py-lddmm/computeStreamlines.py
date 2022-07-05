@@ -12,8 +12,8 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 if __name__ == "__main__":
     plt.ion()
     loggingUtils.setup_default_logging('', stdOutput = True)
-    fv1 = surfaces.Surface(filename='/Users/younes/Development/Data/fromSue/Template.vtk')
-    fv2 = surfaces.Surface(filename='/Users/younes/Development/Data/fromSue/Target.vtk')
+    fv1 = surfaces.Surface(surf='/Users/younes/Development/Data/fromSue/Template.vtk')
+    fv2 = surfaces.Surface(surf='/Users/younes/Development/Data/fromSue/Target.vtk')
     #fv1, fv2 = examples.split_ellipsoid(a=0.5, b=0.5, c=0.25)
     # sigmaKernel = 1.
     # sigmaDist = 1.

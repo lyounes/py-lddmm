@@ -1,3 +1,6 @@
+from sys import path as sys_path
+sys_path.append('..')
+sys_path.append('../base')
 import matplotlib
 matplotlib.use("QT5Agg")
 import numpy as np
@@ -116,7 +119,7 @@ def BuildLaminar(target0, outputDir, pancakeThickness=None, runRegistration=True
 
     f = SMN(Template=fv1, Target=fv2, outputDir=outputDir, param=sm, regWeight=1.,
             saveTrajectories=True, symmetric=False, pplot=True,
-            affine='none', testGradient=True, internalWeight=internalWeight, affineWeight=1e3, maxIter_cg=100,
+            affine='none', testGradient=False, internalWeight=internalWeight, affineWeight=1e3, maxIter_cg=100,
             maxIter_al=5, mu=1e-5)
     f.optimizeMatching()
 
@@ -128,14 +131,11 @@ if __name__ == "__main__":
     loggingUtils.setup_default_logging('', stdOutput = True)
 
     # Read target surface file.
-    #hf = './TestData/ERC.vtk'
-    hf = '/USERS/younes/Development/Data/labeledTarget.vtk'
-    #hf = '/USERS/younes/Development/results/testERC2/template.vtk'
+    hf = '../TestData/BuildLaminar/labeledTarget.vtk'
 
     fv = surfaces.Surface(surf = hf)
-    #fv = examples.ellipsoid(a=0.5, b=0.5, c=0.25, d=100)
 
-    BuildLaminar(fv, outputDir = '/Users/younes/Development/results/laminarExample',
+    BuildLaminar(fv, outputDir = '../Output/laminarExample',
                  pancakeThickness = None, runRegistration=False)
 
     plt.ioff()
