@@ -44,7 +44,7 @@ def sgd(opt, verb = True, maxIter=1000, burnIn = 100, epsInit=1., rate = 0.01, a
             for k in grd.keys():
                 # logging.info(k)
                 if grd[k] is not None:
-                    varGrd[k] = grd[k]**2
+                    varGrd[k] = 1 + grd[k]**2
         else:
             for k in grd.keys():
                 # logging.info(k)
@@ -55,19 +55,20 @@ def sgd(opt, verb = True, maxIter=1000, burnIn = 100, epsInit=1., rate = 0.01, a
         grd_ = deepcopy(grd)
         for k in grd.keys():
             if grd[k] is not None:
-                grd_[k] /= 1 + np.sqrt(varGrd[k] - meanGrd[k]**2 + 1e-10)
+                grd_[k] /= epsInit + np.sqrt(varGrd[k] - meanGrd[k]**2 + 1e-10)
         eps = epsInit / (1 + rate*max(0, it - burnIn))
         opt.update(grd_, eps)
         if verb:
             gabs = 0
             mgabs = 0
+            message = f'iteration {it}: '
             for k in grd.keys():
                 if grd[k] is not None:
                     # logging.info(k)
                     gabs += np.fabs(grd[k]).max()
                     mgabs += np.fabs(meanGrd[k]).max()
-            logging.info(f'iteration {it}: grd = {gabs:.5f}, mean grd = {mgabs:.5f},'+
-                         f' eps = {eps:.5f}')
+                    message += k + f': {np.fabs(grd_[k]).max():.5f} {np.sqrt(varGrd[k] - meanGrd[k]**2 + 1e-10).max():.5f} '
+            logging.info(message + f' eps = {eps:.5f}')
         if hasattr(opt, 'endOfIteration'):
             opt.endOfIteration()
         it += 1

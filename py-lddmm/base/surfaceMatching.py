@@ -193,6 +193,7 @@ class SurfaceMatching(object):
         self.varCounter = 0
         self.trajCounter = 0
         self.sgdMeanSelect = 100
+        self.sgdMeanSelectCost = 10000
 
 
     def set_template_and_target(self, Template, Target, subsampleTargetSize=-1):
@@ -651,31 +652,30 @@ class SurfaceMatching(object):
 
 
     def endPointGradientSGD(self):
-        if self.sgdMeanSelect > self.fv0.faces.shape[0]:
+        if self.sgdMeanSelectCost > self.fv0.faces.shape[0]:
             I0_ = np.arange(self.fv0.faces.shape[0])
             prob0 = 1.
         else:
-            I0_ = rng.choice(self.fv0.faces.shape[0], self.sgdMeanSelect, replace=False)
-            prob0 = self.sgdMeanSelect / self.fv0.faces.shape[0]
-        if self.sgdMeanSelect > self.fv1.faces.shape[0]:
+            I0_ = rng.choice(self.fv0.faces.shape[0], self.sgdMeanSelectCost, replace=False)
+            prob0 = self.sgdMeanSelectCost / self.fv0.faces.shape[0]
+        if self.sgdMeanSelectCost > self.fv1.faces.shape[0]:
             I1_ = np.arange(self.fv1.faces.shape[0])
             prob1 = 1.
         else:
-            I1_ = rng.choice(self.fv1.faces.shape[0], self.sgdMeanSelect, replace=False)
-            prob1 = self.sgdMeanSelect / self.fv1.faces.shape[0]
+            I1_ = rng.choice(self.fv1.faces.shape[0], self.sgdMeanSelectCost, replace=False)
+            prob1 = self.sgdMeanSelectCost / self.fv1.faces.shape[0]
 
         select0 = np.zeros(self.fvDef.faces.shape[0], dtype=bool)
         select0[I0_] = True
-        endPoint, I0 = self.fvDef.cut_faces(select0)
+        endPoint, I0 = self.fvDef.select_faces(select0)
         select1 = np.zeros(self.fv1.faces.shape[0], dtype=bool)
         select1[I1_] = True
-        fv1, I1 = self.fv1.cut_faces(select1)
+        fv1, I1 = self.fv1.select_faces(select1)
         endPoint.updateWeights(endPoint.weights / prob0)
         fv1.updateWeights(fv1.weights/ prob1)
         self.SGDSelectionCost = [I0, I1]
         if self.param.errorType == 'L2Norm':
             px_ = sd.L2NormGradient(endPoint, self.fv1.vfld)
-
         else:
             px_ = self.fun_objGrad(endPoint, fv1)
         # if self.match_landmarks:
@@ -1195,6 +1195,11 @@ class SurfaceMatching(object):
                 fn.append(fileName + f'{kk:03d}')
         else:
             fn = fileName
+
+        if self.unreduced:
+            pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curvesSGDState.vtk', self.xt)
+            pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curvesSGDControl.vtk', self.ct)
+
         fvDef = surfaces.Surface(surf=fv0)
         AV0 = fvDef.computeVertexArea()
         nu = orientation * fv0.computeVertexNormals()
@@ -1284,6 +1289,8 @@ class SurfaceMatching(object):
             pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curvesSGDControl.vtk', self.ct)
             self.updateEndPoint(self.xt)
             self.saveEvolution(self.fv0, self.xt)
+        else:
+            self.updateEndPoint(self.xt)
 
     def endOfIteration(self, forceSave=False):
         self.iter += 1
@@ -1421,6 +1428,7 @@ class SurfaceMatching(object):
                           Wolfe=self.param.wolfe, memory=50)
         elif self.param.algorithm == 'sgd':
             logging.info('Running stochastic gradient descent')
+            self.saveRate = 100
             sgd.sgd(self, verb=self.verb, maxIter=100*self.maxIter, burnIn=10000, epsInit=.01)
 
         #return self.at, self.xt

@@ -1118,7 +1118,7 @@ class Surface:
         res.computeCentersAreas()
         return res
 
-    def cut_faces(self, select):
+    def select_faces(self, select):
         res = Surface()
         res.faces = self.faces[select, :]
         res.component = self.component[select]
