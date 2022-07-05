@@ -1,0 +1,75 @@
+import numpy as np
+import logging
+from copy import deepcopy
+
+# Class running stochastic gradient descent
+# opt is an optimizable class that must provide the following functions:
+#   addProd(g0, step, g1): returns g0 + step * g1 for directions g0, g1
+#   getGradientSGD(coeff) returns coeff * gradient; the result can be used as 'direction' in updateTry
+#
+# optional functions:
+#   startOptim(): called before starting the optimization
+#   startOfIteration(): called before each iteration
+#   endOfIteration() called after each iteration
+#   endOptim(): called once optimization is completed
+#   gradCoeff: normalizaing coefficient for gradient.
+#
+# verb: for verbose printing
+# epsInit: initial gradient step
+# rate: SGD rate
+
+def sgd(opt, verb = True, maxIter=1000, burnIn = 100, epsInit=1., rate = 0.01, adam = True):
+    if not hasattr(opt, 'addProd') or not hasattr(opt, 'getGradientSGD'):
+        logging.error('Error: required functions for SGD are not provided')
+        return
+
+    if hasattr(opt, 'startOptim'):
+        opt.startOptim()
+
+    if hasattr(opt, 'gradCoeff'):
+        gradCoeff = opt.gradCoeff
+    else:
+        gradCoeff = 1.0
+
+    logging.info('iteration 0')
+    it = 0
+    while it < maxIter:
+        if hasattr(opt, 'startOfIterationSGD'):
+            opt.startOfIterationSGD()
+
+        grd = opt.getGradientSGD(gradCoeff)
+        if it == 0:
+            meanGrd = deepcopy(grd)
+            varGrd = dict()
+            for k in grd.keys():
+                # logging.info(k)
+                if grd[k] is not None:
+                    varGrd[k] = grd[k]**2
+        else:
+            for k in grd.keys():
+                # logging.info(k)
+                if grd[k] is not None:
+                    meanGrd[k] += (grd[k] - meanGrd[k])/(it+1)
+                    varGrd[k] += (grd[k]**2 - varGrd[k])/(it+1)
+
+        grd_ = deepcopy(grd)
+        for k in grd.keys():
+            if grd[k] is not None:
+                grd_[k] /= 1 + np.sqrt(varGrd[k] - meanGrd[k]**2 + 1e-10)
+        eps = epsInit / (1 + rate*max(0, it - burnIn))
+        opt.update(grd_, eps)
+        if verb:
+            gabs = 0
+            mgabs = 0
+            for k in grd.keys():
+                if grd[k] is not None:
+                    # logging.info(k)
+                    gabs += np.fabs(grd[k]).max()
+                    mgabs += np.fabs(meanGrd[k]).max()
+            logging.info(f'iteration {it}: grd = {gabs:.5f}, mean grd = {mgabs:.5f},'+
+                         f' eps = {eps:.5f}')
+        if hasattr(opt, 'endOfIteration'):
+            opt.endOfIteration()
+        it += 1
+
+    return opt
