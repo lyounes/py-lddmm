@@ -193,7 +193,8 @@ class SurfaceMatching(object):
         self.varCounter = 0
         self.trajCounter = 0
         self.sgdMeanSelect = 100
-        self.sgdMeanSelectCost = 100
+        self.sgdMeanSelectTemplate = 100
+        self.sgdMeanSelectTarget = 500
 
 
     def set_template_and_target(self, Template, Target, subsampleTargetSize=-1):
@@ -652,19 +653,19 @@ class SurfaceMatching(object):
 
 
     def endPointGradientSGD(self):
-        if self.sgdMeanSelectCost > self.fv0.faces.shape[0]:
+        if self.sgdMeanSelectTemplate > self.fv0.faces.shape[0]:
             I0_ = np.arange(self.fv0.faces.shape[0])
             prob0 = 1.
         else:
-            I0_ = rng.choice(self.fv0.faces.shape[0], self.sgdMeanSelectCost, replace=False)
-            prob0 = self.sgdMeanSelectCost / self.fv0.faces.shape[0]
+            I0_ = rng.choice(self.fv0.faces.shape[0], self.sgdMeanSelectTemplate, replace=False)
+            prob0 = self.sgdMeanSelectTemplate / self.fv0.faces.shape[0]
 
-        if self.sgdMeanSelectCost > self.fv1.faces.shape[0]:
+        if self.sgdMeanSelectTarget > self.fv1.faces.shape[0]:
             I1_ = np.arange(self.fv1.faces.shape[0])
             prob1 = 1.
         else:
-            I1_ = rng.choice(self.fv1.faces.shape[0], self.sgdMeanSelectCost, replace=False)
-            prob1 = self.sgdMeanSelectCost / self.fv1.faces.shape[0]
+            I1_ = rng.choice(self.fv1.faces.shape[0], self.sgdMeanSelectTarget, replace=False)
+            prob1 = self.sgdMeanSelectTarget / self.fv1.faces.shape[0]
 
         select0 = np.zeros(self.fv0.faces.shape[0], dtype=bool)
         select0[I0_] = True
