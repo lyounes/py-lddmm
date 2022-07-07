@@ -32,13 +32,13 @@ def sgd(opt, verb = True, maxIter=1000, burnIn = 100, epsInit=1., rate = 0.01, a
         gradCoeff = 1.0
 
     logging.info('iteration 0')
-    it = 0
-    while it < maxIter:
+    it = 1
+    while it <= maxIter:
         if hasattr(opt, 'startOfIterationSGD'):
             opt.startOfIterationSGD()
 
         grd = opt.getGradientSGD(gradCoeff)
-        if it == 0:
+        if it == 1:
             meanGrd = deepcopy(grd)
             varGrd = dict()
             for k in grd.keys():

@@ -297,7 +297,7 @@ def landmarkSemiReducedEvolutionEuler(x0, ct, at, KparDiff, affine=None,
         return output
 
 
-def landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, Kpardiff, regweight, affine=None):
+def landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, Kpardiff, regweight, affine=None, forwardTraj = None):
     if not (affine is None or len(affine[0]) == 0):
         A = affine[0]
     else:
@@ -308,7 +308,10 @@ def landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, Kpardiff, regweight,
     M = at.shape[0]
     timeStep = 1.0 / (M)
 
-    xt = landmarkSemiReducedEvolutionEuler(x0, ct, at, Kpardiff, affine=affine)
+    if forwardTraj is None:
+        xt = landmarkSemiReducedEvolutionEuler(x0, ct, at, Kpardiff, affine=affine)
+    else:
+        xt = forwardTraj
 
     pxt = np.zeros((M + 1, N, dim))
     pxt[M, :, :] = px1
@@ -329,8 +332,9 @@ def landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, Kpardiff, regweight,
 
 # Computes gradient after covariant evolution for deformation cost a^TK(x,x) a
 def landmarkSemiReducedHamiltonianGradient(x0, ct, at, px1, KparDiff, regweight, getCovector = False, affine = None,
-                                           SGDSelection = None, SGDProb = None):
-    (pxt, xt) = landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, KparDiff, regweight, affine=affine)
+                                           SGDSelection = None, SGDProb = None, forwardTraj = None):
+    (pxt, xt) = landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, KparDiff, regweight, affine=affine,
+                                                       forwardTraj=forwardTraj)
     if SGDSelection is None:
         SGDSelection = [np.arange(at.shape[1]), np.arange(at.shape[1])]
     if SGDProb is None:
