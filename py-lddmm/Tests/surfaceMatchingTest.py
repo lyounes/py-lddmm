@@ -36,7 +36,7 @@ def compute(model):
         regweight = 0.1
         internalCost = 'elastic'
 
-    sigmaDist = 5.
+    sigmaDist = 10.
     sigmaError = 1.
     #internalCost = 'h1'
     landmarks = None

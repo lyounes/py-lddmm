@@ -21,7 +21,7 @@ import pykeops
 pykeops.clean_pykeops()
 plt.ion()
 
-model = 'Circles'
+model = 'Spheres'
 
 def compute(model):
     loggingUtils.setup_default_logging('../Output', stdOutput = True)
@@ -30,16 +30,16 @@ def compute(model):
     sigmaError = 1.
     regweight = 0.1
     if model=='Circles':
-        f = Circle(radius = 10.)
-        fv0 = Mesh(f)
+        f = Circle(radius = 10., targetSize=250)
+        fv0 = Mesh(f, volumeRatio=5000)
         # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
         imagev = np.array(((fv0.vertices - np.array(f.center)[None, :]) ** 2).sum(axis=1) < 20, dtype=float)
         fv0.image = np.zeros((fv0.faces.shape[0], 2))
         fv0.image[:, 0] = (imagev[fv0.faces[:, 0]] + imagev[fv0.faces[:, 1]] + imagev[fv0.faces[:, 2]]) / 3
         fv0.image[:, 1] = 1 - fv0.image[:, 0]
 
-        f = Circle(radius = 12)
-        fv1 = Mesh(f)
+        f = Circle(radius = 12, targetSize=250)
+        fv1 = Mesh(f, volumeRatio=5000)
         # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
         imagev = np.array(((fv1.vertices - np.array(f.center)[None, :]) ** 2).sum(axis=1) < 10, dtype=float)
         fv1.image = np.zeros((fv1.faces.shape[0], 2))

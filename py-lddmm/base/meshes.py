@@ -244,7 +244,7 @@ def get_edges_(faces):
 
 
 class Mesh:
-    def __init__(self, mesh=None, weights=None, image=None):
+    def __init__(self, mesh=None, weights=None, image=None, volumeRatio=1000.):
         if type(mesh) in (list, tuple):
             if isinstance(mesh[0], Mesh):
                 self.concatenate(mesh)
@@ -296,7 +296,7 @@ class Mesh:
             mesh_info = tri.MeshInfo()
             g.set(mesh_info)
             vol = mesh.enclosedArea()
-            f = tri.build(mesh_info, verbose=False, max_volume=vol/1000)
+            f = tri.build(mesh_info, verbose=False, max_volume=vol/volumeRatio)
             self.vertices = np.array(f.points)
             self.faces = np.array(f.elements, dtype=int)
             self.dim = 2
@@ -316,7 +316,7 @@ class Mesh:
             mesh_info = tet.MeshInfo()
             g.set(mesh_info)
             vol = mesh.surfVolume()
-            f = tet.build(mesh_info, options= tet.Options(switches='q1.2/10'), verbose=True, max_volume=vol/1000)
+            f = tet.build(mesh_info, options= tet.Options(switches='q1.2/10'), verbose=True, max_volume=vol/volumeRatio)
             self.vertices = np.array(f.points)
             self.faces = np.array(f.elements, dtype=int)
             self.dim = 3
