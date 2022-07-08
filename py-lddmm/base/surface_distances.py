@@ -283,10 +283,12 @@ def varifoldNorm0(fv1, KparDist, fun = None):
     a2 *= fv1.face_weights
     f0 = fun[0]
 
+    cr2_ = cr2 * np.sqrt(a2[:, None])
     cr2cr2 = (cr2[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
     a2a2 = a2[:, np.newaxis] * a2[np.newaxis, :]
     beta2 = f0(cr2cr2) * a2a2
-    return KparDist.applyK(c2, beta2[..., np.newaxis], matrixWeights=True).sum()
+    return KparDist.applyKTensor(c2, a2, a2, cr2_, cr2_).sum()
+    # return KparDist.applyK(c2, beta2[..., np.newaxis], matrixWeights=True).sum()
 
 
 # Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct
@@ -303,16 +305,20 @@ def varifoldNormDef(fvDef, fv1, KparDist, fun = None):
     a2 *= fv1.face_weights
     f0 = fun[0]
 
-    cr1cr1 = (cr1[:, np.newaxis, :] * cr1[np.newaxis, :, :]).sum(axis=2)
-    a1a1 = a1[:, np.newaxis] * a1[np.newaxis, :]
-    cr1cr2 = (cr1[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
-    a1a2 = a1[:, np.newaxis] * a2[np.newaxis, :]
+    # cr1cr1 = (cr1[:, np.newaxis, :] * cr1[np.newaxis, :, :]).sum(axis=2)
+    # a1a1 = a1[:, np.newaxis] * a1[np.newaxis, :]
+    # cr1cr2 = (cr1[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
+    # a1a2 = a1[:, np.newaxis] * a2[np.newaxis, :]
 
-    beta1 = f0(cr1cr1) * a1a1
-    beta2 = f0(cr1cr2) * a1a2
+    # beta1 = f0(cr1cr1) * a1a1
+    # beta2 = f0(cr1cr2) * a1a2
 
-    obj = (KparDist.applyK(c1, beta1[..., np.newaxis], matrixWeights=True).sum()
-           - 2 * KparDist.applyK(c2, beta2[..., np.newaxis], firstVar=c1, matrixWeights=True).sum())
+    cr1_ = cr1 * np.sqrt(a1[:, None])
+    cr2_ = cr2 * np.sqrt(a2[:, None])
+    obj = KparDist.applyKTensor(c1, a1, a1, cr1_, cr1_).sum() - 2 * KparDist.applyKTensor(c2, a1, a2, cr1_, cr2_,
+                                                                                          firstVar=c1).sum()
+    # obj2 = KparDist.applyK(c1, beta1[..., np.newaxis], matrixWeights=True).sum()
+    # obj2 -= 2 * KparDist.applyK(c2, beta2[..., np.newaxis], firstVar=c1, matrixWeights=True).sum()
     return obj
 
 
