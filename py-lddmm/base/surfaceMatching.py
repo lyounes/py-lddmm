@@ -64,7 +64,7 @@ class SurfaceMatching(object):
     def __init__(self, Template=None, Target=None, Landmarks = None,
                  param=None, maxIter=1000, passenger = None,
                  regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
-                 unreduced=False,
+                 unreduced=False, unreducedWeight = 1.0,
                  subsampleTargetSize=-1, affineOnly = False,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
                  testGradient=True, saveFile = 'evolution',
@@ -99,6 +99,7 @@ class SurfaceMatching(object):
             self.unreduced = True
         else:
             self.unreduced = unreduced
+        self.unreducedWeight = unreducedWeight
         if Target is not None and (issubclass(type(Target), pointSets.PointSet) or
                                    (type(Target) in (tuple, list) and issubclass(type(Target[0]), pointSets.PointSet))):
             self.param.errorType = 'PointSet'
@@ -138,7 +139,7 @@ class SurfaceMatching(object):
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
                  testGradient=True, saveFile = 'evolution',
                  saveTrajectories = False, affine = 'none'):
-        self.saveRate = 10
+        self.saveRate = 1
         self.gradEps = -1
         self.randomInit = False
         self.iter = 0
@@ -170,9 +171,8 @@ class SurfaceMatching(object):
             self.internalCost = sd.elasticNorm
             self.internalCostGrad = sd.diffElasticNorm
         else:
-            print(self.param.internalCost)
             if self.param.internalCost is not None:
-                print('unknown ', self.internalCost)
+                logging.info(f'unknown {self.internalCost:.04f}')
             self.internalCost = None
 
 
@@ -192,9 +192,16 @@ class SurfaceMatching(object):
         self.saveEPDiffTrajectories = False
         self.varCounter = 0
         self.trajCounter = 0
-        self.sgdMeanSelect = 100
+        self.sgdMeanSelectControl = 100
         self.sgdMeanSelectTemplate = 100
         self.sgdMeanSelectTarget = 500
+        self.probSelectControl = min(1.0, self.sgdMeanSelectControl / self.fv0.vertices.shape[0])
+        self.probSelectFaceTemplate = min(1.0, self.sgdMeanSelectTemplate / self.fv0.faces.shape[0])
+        self.probSelectFaceTarget = min(1.0, self.sgdMeanSelectTarget / self.fv1.faces.shape[0])
+        self.probSelectVertexTemplate = np.ones(self.fv0.vertices.shape[0])
+        for j in range(3):
+            self.probSelectVertexTemplate[self.fv0.faces[:,j]] *= 1 - self.probSelectFaceTemplate
+        self.probSelectVertexTemplate = 1 - self.probSelectVertexTemplate
 
 
     def set_template_and_target(self, Template, Target, subsampleTargetSize=-1):
@@ -382,7 +389,7 @@ class SurfaceMatching(object):
             self.fun_obj = partial(sd.measureNormPSDef, KparDist=self.param.KparDist)
             self.fun_objGrad = partial(sd.measureNormPSGradient, KparDist=self.param.KparDist)
         else:
-            print('Unknown error Type: ', self.param.errorType)
+            logging.info(f'Unknown error Type:  {self.param.errorType}')
 
         if self.match_landmarks:
             self.lmk_obj0 = psd.L2Norm0
@@ -497,6 +504,7 @@ class SurfaceMatching(object):
                 ca = kernel.applyK(c,a)
                 ra = kernel.applyK(c, a, firstVar=z)
                 obj += regWeight_[t] * timeStep * (a * ca).sum()
+                obj += self.unreducedWeight * timeStep * ((c - z)**2).sum()
             else:
                 ra = kernel.applyK(z, a)
                 obj += regWeight_[t]*timeStep*(a*ra).sum()
@@ -655,32 +663,29 @@ class SurfaceMatching(object):
     def endPointGradientSGD(self):
         if self.sgdMeanSelectTemplate > self.fv0.faces.shape[0]:
             I0_ = np.arange(self.fv0.faces.shape[0])
-            prob0 = 1.
         else:
             I0_ = rng.choice(self.fv0.faces.shape[0], self.sgdMeanSelectTemplate, replace=False)
-            prob0 = self.sgdMeanSelectTemplate / self.fv0.faces.shape[0]
 
         if self.sgdMeanSelectTarget > self.fv1.faces.shape[0]:
             I1_ = np.arange(self.fv1.faces.shape[0])
-            prob1 = 1.
         else:
             I1_ = rng.choice(self.fv1.faces.shape[0], self.sgdMeanSelectTarget, replace=False)
-            prob1 = self.sgdMeanSelectTarget / self.fv1.faces.shape[0]
 
         select0 = np.zeros(self.fv0.faces.shape[0], dtype=bool)
         select0[I0_] = True
         fv0, I0 = self.fv0.select_faces(select0)
+        self.stateSubset = I0
         xt = evol.landmarkSemiReducedEvolutionEuler(fv0.vertices, self.ct, self.at, self.param.KparDiff,
                                                     affine=self.Afft)
         endPoint = surfaces.Surface(surf=fv0)
         endPoint.updateVertices(xt[-1, :, :])
-        endPoint.updateWeights(endPoint.weights / prob0)
+        endPoint.updateWeights(endPoint.weights / self.probSelectFaceTemplate)
 
         select1 = np.zeros(self.fv1.faces.shape[0], dtype=bool)
         select1[I1_] = True
         fv1, I1 = self.fv1.select_faces(select1)
         #endPoint.saveVTK('foo.vtk')
-        fv1.updateWeights(fv1.weights / prob1)
+        fv1.updateWeights(fv1.weights / self.probSelectFaceTarget)
         # self.SGDSelectionCost = [I0, I1]
 
         if self.param.errorType == 'L2Norm':
@@ -793,13 +798,14 @@ class SurfaceMatching(object):
                 DLv = self.internalWeight*grd[1]
                 if self.unreduced:
                     zpx = KparDiff.applyDiffKT(c, px - self.internalWeight*Lv, a, regweight=self.regweight,
-                                               lddmm=False, firstVar=z) - DLv
+                                               lddmm=False, firstVar=z) - DLv - 2*self.unreducedWeight * (z-c)
                 else:
                     zpx = KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True,
                                                extra_term=-self.internalWeight * Lv) - DLv
             else:
                 if self.unreduced:
-                    zpx = KparDiff.applyDiffKT(c, px, a, regweight=self.regweight, lddmm=False, firstVar=z)
+                    zpx = KparDiff.applyDiffKT(c, px, a, regweight=self.regweight, lddmm=False, firstVar=z) \
+                        - 2*self.unreducedWeight * (z-c)
                 else:
                     zpx = KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
 
@@ -900,7 +906,8 @@ class SurfaceMatching(object):
             if not self.affineOnly:
                 if self.unreduced:
                     dat[k, :, :] = 2 * regWeight * kernel.applyK(c, a) - kernel.applyK(z, px, firstVar=c)
-                    dct[k, :, :] = 2 * regWeight * kernel.applyDiffKT(c, a, a) - kernel.applyDiffKT(z, a, px, firstVar=c)
+                    dct[k, :, :] = 2 * regWeight * kernel.applyDiffKT(c, a, a) - kernel.applyDiffKT(z, a, px, firstVar=c) \
+                    + 2 * self.unreducedWeight * (c-z)
                     v = kernel.applyK(c, a, firstVar=z)
                 else:
                     dat[k, :, :] = 2 * regWeight * a - px
@@ -938,13 +945,13 @@ class SurfaceMatching(object):
         A = self.affB.getTransforms(self.Afft)
         px1, xt = self.endPointGradientSGD()
         # I0 = self.SGDSelectionCost[0]
-        x0 = xt[-1, :, :]
-        J0 = rng.choice(self.ct.shape[1], self.sgdMeanSelect, replace=False)
-        J1 = rng.choice(self.ct.shape[1], self.sgdMeanSelect, replace=False)
-        prob = self.sgdMeanSelect / self.fv0.vertices.shape[0]
-        foo = evol.landmarkSemiReducedHamiltonianGradient(x0, self.ct, self.at, -px1, self.param.KparDiff,
+        #x0[self.stateSubset, :] = xt[-1, :, :]
+        J0 = rng.choice(self.ct.shape[1], self.sgdMeanSelectControl, replace=False)
+        J1 = rng.choice(self.ct.shape[1], self.sgdMeanSelectControl, replace=False)
+        foo = evol.landmarkSemiReducedHamiltonianGradient(self.x0, self.ct, self.at, -px1, self.param.KparDiff,
                                                           self.regweight, getCovector = True, affine = A,
-                                                          SGDSelection = [J0, J1], SGDProb= [prob, prob],
+                                                          controlSubset = [J0, J1], stateSubset=self.stateSubset,
+                                                          controlProb=self.probSelectControl, stateProb=self.probSelectVertexTemplate,
                                                           forwardTraj=xt)
         dim2 = self.dim**2
         grd = Direction()
@@ -1362,6 +1369,7 @@ class SurfaceMatching(object):
                                             Jacobian=Jt)
             self.saveEvolution(self.fvInit, self.xt, Jacobian=Jt, fileName=self.saveFileList,
                                passenger = (self.passenger, yt))
+            self.saveHdf5(fileName=self.outputDir + '/output.h5')
         else:
             if self.varCounter != self.trajCounter:
                 if self.unreduced:
@@ -1378,21 +1386,31 @@ class SurfaceMatching(object):
 
 
 
-    def saveHD5(self, fileName):
+    def saveHdf5(self, fileName):
         fout = h5py.File(fileName, 'w')
         LDDMMResult = fout.create_group('LDDMM Results')
+        parameters = LDDMMResult.create_group('parameters')
+        parameters.create_dataset('Time steps', data=self.Tsize)
+        parameters.create_dataset('Deformation Kernel type', data = self.param.KparDiff.name)
+        parameters.create_dataset('Deformation Kernel width', data = self.param.KparDiff.sigma)
+        parameters.create_dataset('Deformation Kernel order', data = self.param.KparDiff.order)
+        parameters.create_dataset('Spatial Varifold Kernel type', data = self.param.KparDist.name)
+        parameters.create_dataset('Spatial Varifold width', data = self.param.KparDist.sigma)
+        parameters.create_dataset('Spatial Varifold order', data = self.param.KparDist.order)
         template = LDDMMResult.create_group('template')
         template.create_dataset('vertices', data=self.fv0.vertices)
-        template.create_dataset('faces', data=self.fv0.vertices)
+        template.create_dataset('faces', data=self.fv0.faces)
         target = LDDMMResult.create_group('target')
         target.create_dataset('vertices', data=self.fv1.vertices)
-        target.create_dataset('faces', data=self.fv1.vertices)
+        target.create_dataset('faces', data=self.fv1.faces)
         deformedTemplate = LDDMMResult.create_group('deformedTemplate')
-        deformedTemplate.create_dataset('vertices', data=self.fv1.vertices)
-        deformedTemplate.create_dataset('faces', data=self.fv1.vertices)
+        deformedTemplate.create_dataset('vertices', data=self.fvDef.vertices)
         variables = LDDMMResult.create_group('variables')
         variables.create_dataset('alpha', data=self.at)
-        variables.create_dataset('affine', data=self.Afft)
+        if self.Afft is not None:
+            variables.create_dataset('affine', data=self.Afft)
+        else:
+            variables.create_dataset('affine', data='None')
         descriptors = LDDMMResult.create_group('descriptors')
 
         A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
@@ -1438,7 +1456,7 @@ class SurfaceMatching(object):
         elif self.param.algorithm == 'sgd':
             logging.info('Running stochastic gradient descent')
             self.saveRate = 100
-            sgd.sgd(self, verb=self.verb, maxIter=100*self.maxIter, burnIn=10000, epsInit=.1)
+            sgd.sgd(self, verb=self.verb, maxIter=100*self.maxIter, burnIn=10000, epsInit=.01)
 
         #return self.at, self.xt
 

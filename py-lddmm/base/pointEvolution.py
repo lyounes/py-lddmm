@@ -297,51 +297,77 @@ def landmarkSemiReducedEvolutionEuler(x0, ct, at, KparDiff, affine=None,
         return output
 
 
-def landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, Kpardiff, regweight, affine=None, forwardTraj = None):
+def landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, Kpardiff, regweight, affine=None, forwardTraj = None,
+                                           stateSubset = None, controlSubset = None, stateProb = 1.,
+                                           controlProb = 1., weightSubset = 1.):
     if not (affine is None or len(affine[0]) == 0):
         A = affine[0]
     else:
         A = np.zeros((1, 1, 1))
+
+    if np.isscalar(stateProb):
+        stateProb = stateProb * np.ones(x0.shape[0])
 
     N = x0.shape[0]
     dim = x0.shape[1]
     M = at.shape[0]
     timeStep = 1.0 / (M)
 
+    if stateSubset is not None:
+        x0_ = x0[stateSubset]
+    else:
+        stateSubset = np.arange(N)
+        x0_ = x0
+
+    J = np.intersect1d(stateSubset, controlSubset)
+
     if forwardTraj is None:
-        xt = landmarkSemiReducedEvolutionEuler(x0, ct, at, Kpardiff, affine=affine)
+        xt = landmarkSemiReducedEvolutionEuler(x0_, ct, at, Kpardiff, affine=affine)
     else:
         xt = forwardTraj
 
     pxt = np.zeros((M + 1, N, dim))
-    pxt[M, :, :] = px1
+    pxt[M, stateSubset, :] = px1
 
     for t in range(M):
-        px = np.squeeze(pxt[M - t, :, :])
+        px = np.squeeze(pxt[M - t, stateSubset, :])
         z = np.squeeze(xt[M - t - 1, :, :])
         c = np.squeeze(ct[M - t - 1, :, :])
         a = np.squeeze(at[M - t - 1, :, :])
-        zpx = Kpardiff.applyDiffKT(c, px, a, regweight=regweight, firstVar=z)
+        zpx = np.zeros((N, dim))
+        zpx[stateSubset, :] = Kpardiff.applyDiffKT(c, px, a, regweight=regweight, firstVar=z)
+        zpx[stateSubset, :] -= 2* (weightSubset/stateProb[stateSubset, None]) * z
+        zpx[J, :] += 2*(weightSubset / (stateProb[J, None]*controlProb)) * c[J, :]
         if not (affine is None):
-            pxt[M - t - 1, :, :] = np.dot(px, affineBasis.getExponential(timeStep * A[M - t - 1, :, :])) + timeStep * zpx
+            pxt[M - t - 1, stateSubset, :] = np.dot(px, affineBasis.getExponential(timeStep * A[M - t - 1, :, :])) \
+                                             + timeStep * zpx[stateSubset, :]
         else:
-            pxt[M - t - 1, :, :] = px + timeStep * zpx
+            pxt[M - t - 1, stateSubset, :] = px + timeStep * zpx[stateSubset, :]
     return pxt, xt
 
 
 
 # Computes gradient after covariant evolution for deformation cost a^TK(x,x) a
 def landmarkSemiReducedHamiltonianGradient(x0, ct, at, px1, KparDiff, regweight, getCovector = False, affine = None,
-                                           SGDSelection = None, SGDProb = None, forwardTraj = None):
+                                           controlSubset = None, controlProb = 1., stateSubset = None,
+                                           stateProb = 1., weightSubset = 1., forwardTraj = None):
+    if controlSubset is None:
+        controlSubset = [np.arange(at.shape[1]), np.arange(at.shape[1])]
+        stateSubset = np.arange(x0.shape[0])
+
+    if np.isscalar(stateProb):
+        stateProb = stateProb * np.ones(x0.shape[0])
+
     (pxt, xt) = landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, KparDiff, regweight, affine=affine,
+                                                       controlSubset = controlSubset[0], stateSubset=stateSubset,
+                                                       stateProb=stateProb, controlProb=controlProb,
+                                                       weightSubset=weightSubset,
                                                        forwardTraj=forwardTraj)
-    if SGDSelection is None:
-        SGDSelection = [np.arange(at.shape[1]), np.arange(at.shape[1])]
-    if SGDProb is None:
-        SGDProb = [1., 1.]
-    pprob = SGDProb[0] * SGDProb[1]
-    I0 = SGDSelection[0]
-    I1 = SGDSelection[1]
+    pprob = controlProb * controlProb
+    I0 = controlSubset[0]
+    I1 = controlSubset[1]
+    J = np.intersect1d(I0, stateSubset)
+
     dat = np.zeros(at.shape)
     dct = np.zeros(at.shape)
     timeStep = 1.0/at.shape[0]
@@ -353,16 +379,20 @@ def landmarkSemiReducedHamiltonianGradient(x0, ct, at, px1, KparDiff, regweight,
         a0 = np.squeeze(at[k, I0, :])
         a1 = np.squeeze(at[k, I1, :])
         c = np.squeeze(ct[k, :, :])
-        x = np.squeeze(xt[k, :, :])
+        x = np.zeros(x0.shape)
+        x[stateSubset, :] = np.squeeze(xt[k, :, :])
         px = np.squeeze(pxt[k+1, :, :])
         #print 'testgr', (2*a-px).sum()
         dat[k, I1, :] = regweight*KparDiff.applyK(c[I0,:], a0, firstVar=c[I1, :]) / pprob
         dat[k, I0, :] += regweight*KparDiff.applyK(c[I1,:], a1, firstVar=c[I0, :]) / pprob
-        dat[k, :, :] -= KparDiff.applyK(x, px, firstVar=c)
+        dat[k, :, :] -= KparDiff.applyK(x[stateSubset, :], px, firstVar=c)
         # print(f'px {np.fabs(px).max()} {np.fabs(dat[k,:,:]).max()}')
         dct[k, I0, :] = regweight*KparDiff.applyDiffKT(c[I1, :], a0, a1, firstVar=c[I0, :]) / pprob
         dct[k, I1, :] += regweight * KparDiff.applyDiffKT(c[I0, :], a1, a0, firstVar=c[I1, :]) / pprob
-        dct[k, :, :] -= KparDiff.applyDiffKT(x, at[k, :, :], px,  firstVar=c)
+        dct[k, :, :] -= KparDiff.applyDiffKT(x[stateSubset, :], at[k, :, :], px,  firstVar=c)
+        dct[k, controlSubset, :] += 2*weightSubset*c[controlSubset, :]/controlProb
+        dct[k, J, :] -= 2 * (weightSubset / (stateProb[J, None]*controlProb)) * x[J, :]
+
         if not (affine is None):
             dA[k] = affineBasis.gradExponential(A[k] * timeStep, pxt[k + 1], xt[k]) #.reshape([self.dim**2, 1])/timeStep
             db[k] = pxt[k+1].sum(axis=0) #.reshape([self.dim,1])
