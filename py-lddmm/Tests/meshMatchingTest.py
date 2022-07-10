@@ -10,6 +10,7 @@ else:
     print(os.environ)
 import matplotlib.pyplot as plt
 import numpy as np
+import pygalmesh
 from base.curveExamples import Circle
 from base.surfaceExamples import Sphere
 from base import loggingUtils
@@ -21,7 +22,7 @@ import pykeops
 pykeops.clean_pykeops()
 plt.ion()
 
-model = 'Circles'
+model = 'Spheres'
 
 def compute(model):
     loggingUtils.setup_default_logging('../Output', stdOutput = True)
@@ -31,7 +32,7 @@ def compute(model):
     regweight = 0.1
     if model=='Circles':
         f = Circle(radius = 10.)
-        fv0 = Mesh(f)
+        fv0 = Mesh(f, volumeRatio=5000)
         # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
         imagev = np.array(((fv0.vertices - np.array(f.center)[None, :]) ** 2).sum(axis=1) < 20, dtype=float)
         fv0.image = np.zeros((fv0.faces.shape[0], 2))
@@ -48,17 +49,35 @@ def compute(model):
         ftemp = fv0
         ftarg = fv1
     elif model == 'Spheres':
-        f = Sphere(radius=10.)
-        fv0 = Mesh(f)
+        mesh = pygalmesh.generate_mesh(
+            pygalmesh.Ball([0.0, 0.0, 0.0], 10.0),
+            min_facet_angle=30.0,
+            max_radius_surface_delaunay_ball=1.,
+            max_facet_distance=0.025,
+            max_circumradius_edge_ratio=2.0,
+            max_cell_circumradius=1.,  # lambda x: abs(np.sqrt(np.dot(x, x)) - 0.5) / 5 + 0.025,
+            verbose=False
+        )
+        fv0 = Mesh([np.array(mesh.cells[1].data, dtype=int), np.array(mesh.points, dtype=float)])
+        c0 = np.array([0,0,0])
         # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
-        imagev = np.array(((fv0.vertices - np.array(f.center)[None, :]) ** 2).sum(axis=1) < 20, dtype=float)
+        imagev = np.array(((fv0.vertices - c0[None, :]) ** 2).sum(axis=1) < 20, dtype=float)
         fv0.image = np.zeros((fv0.faces.shape[0], 2))
         fv0.image[:, 0] = (imagev[fv0.faces[:, 0]] + imagev[fv0.faces[:, 1]] + imagev[fv0.faces[:, 2]]
                            + imagev[fv0.faces[:, 3]]) / 4
         fv0.image[:, 1] = 1 - fv0.image[:, 0]
 
         f = Sphere(radius=12)
-        fv1 = Mesh(f)
+        mesh = pygalmesh.generate_mesh(
+            pygalmesh.Ball([0.0, 0.0, 0.0], 10.0),
+            min_facet_angle=30.0,
+            max_radius_surface_delaunay_ball=1.,
+            max_facet_distance=0.025,
+            max_circumradius_edge_ratio=2.0,
+            max_cell_circumradius=1.,  # lambda x: abs(np.sqrt(np.dot(x, x)) - 0.5) / 5 + 0.025,
+            verbose=False
+        )
+        fv1 = Mesh([np.array(mesh.cells[1].data, dtype=int), np.array(mesh.points, dtype=float)])
         # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
         imagev = np.array(((fv1.vertices - np.array(f.center)[None, :]) ** 2).sum(axis=1) < 10, dtype=float)
         fv1.image = np.zeros((fv1.faces.shape[0], 2))

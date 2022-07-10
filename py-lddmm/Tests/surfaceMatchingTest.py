@@ -21,7 +21,7 @@ pykeops.clean_pykeops()
 plt.ion()
 
 model = 'Balls'
-typeCost = 'Elastic'
+typeCost = 'LDDMM'
 
 def compute(model):
     loggingUtils.setup_default_logging('../Output', stdOutput = True)
@@ -67,13 +67,13 @@ def compute(model):
         # d = Heart()
         d = Ball1()
         mesh = pygalmesh.generate_surface_mesh(d, max_facet_distance=0.01, min_facet_angle=30.0,
-                                               max_radius_surface_delaunay_ball=0.05)
+                                               max_radius_surface_delaunay_ball=0.05, verbose=False)
         fv1 = Surface(surf=(mesh.cells[0].data, mesh.points))
         fv1.updateVertices(fv1.vertices*100)
 
         d = Ball2()
         mesh = pygalmesh.generate_surface_mesh(d, max_facet_distance=0.01, min_facet_angle=30.0,
-                                               max_radius_surface_delaunay_ball=0.05)
+                                               max_radius_surface_delaunay_ball=0.05, verbose=False)
         fv2 = Surface(surf=(mesh.cells[0].data, mesh.points))
         fv2.updateVertices(fv2.vertices*100)
 
@@ -185,8 +185,9 @@ def compute(model):
                               sigmaError=sigmaError, errorType='varifold', internalCost=internalCost)
     sm.KparDiff.pk_dtype = 'float64'
     sm.KparDist.pk_dtype = 'float64'
-    f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTest/'+model +'_'+typeCost,param=sm,
-                        testGradient=True, regWeight = regweight, Landmarks = landmarks,
+    f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTest/'+model +'_'+typeCost,
+                        param=sm, testGradient=True, regWeight = regweight, Landmarks = landmarks,
+                        unreduced=False,
                         #subsampleTargetSize = 500,
                         internalWeight=internalWeight, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01,
                         scaleWeight=10., affineWeight=100.)

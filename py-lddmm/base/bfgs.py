@@ -8,7 +8,7 @@ from .linesearch import line_search_wolfe
 # opt is an optimizable class that must provide the following functions:
 #   getVariable(): current value of the optimzed variable
 #   objectiveFun(): value of the objective function
-#   updateTry(direction, step, [acceptThreshold]) computes a temporary variable by moving the current one in the direction 'dircetion' with step 'step'
+#   updateTry(direction, step, [acceptThreshold]) computes a temporary variable by moving the current one in the direction 'direction' with step 'step'
 #                                                 the temporary variable is not stored if the objective function is larger than acceptThreshold (when specified)
 #                                                 This function should not update the current variable
 #   acceptVarTry() replace the current variable by the temporary one
@@ -52,7 +52,8 @@ def __stopCondition():
 
 def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, memory=25, Wolfe = True):
 
-    if (hasattr(opt, 'getVariable')==False | hasattr(opt, 'objectiveFun')==False | hasattr(opt, 'updateTry')==False | hasattr(opt, 'acceptVarTry')==False | hasattr(opt, 'getGradient')==False):
+    if (hasattr(opt, 'getVariable')==False or hasattr(opt, 'objectiveFun')==False or hasattr(opt, 'updateTry')==False
+            or hasattr(opt, 'acceptVarTry')==False or hasattr(opt, 'getGradient')==False):
         logging.error('Error: required functions are not provided')
         return
 

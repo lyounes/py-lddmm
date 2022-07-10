@@ -6,14 +6,18 @@ import numpy.linalg as la
 import logging
 import h5py
 import glob
-from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, bfgs
+from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, bfgs, sgd
 from . import surfaces, surface_distances as sd
 from . import pointSets, pointset_distances as psd
 from . import matchingParam
 from .affineBasis import AffineBasis, getExponential, gradExponential
+from . import pointEvolution as evol
 from functools import partial
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+
+from numpy.random import default_rng
+rng = default_rng()
 
 
 ## Parameter class for matching
@@ -32,11 +36,13 @@ class SurfaceMatchingParam(matchingParam.MatchingParam):
         self.sigmaError = sigmaError
         self.internalCost = internalCost
 
-class Direction:
+class Direction(dict):
     def __init__(self):
-        self.diff =None
-        self.aff = None
-        self.initx = None
+        super(Direction, self).__init__()
+        self['diff'] =None
+        self['aff'] = None
+        self['initx'] = None
+        self['pts'] = None
 
 
 ## Main class for surface matching
@@ -58,6 +64,7 @@ class SurfaceMatching(object):
     def __init__(self, Template=None, Target=None, Landmarks = None,
                  param=None, maxIter=1000, passenger = None,
                  regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
+                 unreduced=False, unreducedWeight = 1.0,
                  subsampleTargetSize=-1, affineOnly = False,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
                  testGradient=True, saveFile = 'evolution',
@@ -72,6 +79,11 @@ class SurfaceMatching(object):
         else:
             self.euclideanGradient = True
 
+        if self.param.algorithm == 'sgd':
+            self.sgd = True
+        else:
+            self.sgd = False
+
         self.fv0 = None
         self.fv1 = None
         self.fvInit = None
@@ -83,6 +95,11 @@ class SurfaceMatching(object):
         self.coeffAff = 1
         self.obj = 0
         self.xt = None
+        if self.param.algorithm == 'sgd':
+            self.unreduced = True
+        else:
+            self.unreduced = unreduced
+        self.unreducedWeight = unreducedWeight
         if Target is not None and (issubclass(type(Target), pointSets.PointSet) or
                                    (type(Target) in (tuple, list) and issubclass(type(Target[0]), pointSets.PointSet))):
             self.param.errorType = 'PointSet'
@@ -122,7 +139,7 @@ class SurfaceMatching(object):
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
                  testGradient=True, saveFile = 'evolution',
                  saveTrajectories = False, affine = 'none'):
-        self.saveRate = 10
+        self.saveRate = 1
         self.gradEps = -1
         self.randomInit = False
         self.iter = 0
@@ -154,9 +171,8 @@ class SurfaceMatching(object):
             self.internalCost = sd.elasticNorm
             self.internalCostGrad = sd.diffElasticNorm
         else:
-            print(self.param.internalCost)
             if self.param.internalCost is not None:
-                print('unknown ', self.internalCost)
+                logging.info(f'unknown {self.internalCost:.04f}')
             self.internalCost = None
 
 
@@ -176,6 +192,16 @@ class SurfaceMatching(object):
         self.saveEPDiffTrajectories = False
         self.varCounter = 0
         self.trajCounter = 0
+        self.sgdMeanSelectControl = 100
+        self.sgdMeanSelectTemplate = 100
+        self.sgdMeanSelectTarget = 500
+        self.probSelectControl = min(1.0, self.sgdMeanSelectControl / self.fv0.vertices.shape[0])
+        self.probSelectFaceTemplate = min(1.0, self.sgdMeanSelectTemplate / self.fv0.faces.shape[0])
+        self.probSelectFaceTarget = min(1.0, self.sgdMeanSelectTarget / self.fv1.faces.shape[0])
+        self.probSelectVertexTemplate = np.ones(self.fv0.vertices.shape[0])
+        for j in range(3):
+            self.probSelectVertexTemplate[self.fv0.faces[:,j]] *= 1 - self.probSelectFaceTemplate
+        self.probSelectVertexTemplate = 1 - self.probSelectVertexTemplate
 
 
     def set_template_and_target(self, Template, Target, subsampleTargetSize=-1):
@@ -278,15 +304,35 @@ class SurfaceMatching(object):
             self.def_lmk = pointSets.PointSet(data=self.tmpl_lmk)
         self.npt = self.x0.shape[0]
 
-
         self.at = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
         if self.randomInit:
             self.at = np.random.normal(0, 1, self.at.shape)
         self.atTry = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
-        self.Afft = np.zeros([self.Tsize, self.affineDim])
-        self.AfftTry = np.zeros([self.Tsize, self.affineDim])
+
+
+        if self.param.algorithm == 'sgd':
+            self.SGDSelectionPts = [None, None]
+            # self.SGDSelectionCost = [None, None]
+
+        if self.affineDim > 0:
+            self.Afft = np.zeros([self.Tsize, self.affineDim])
+            self.AfftTry = np.zeros([self.Tsize, self.affineDim])
+        else:
+            self.Afft = None
+            self.AfftTry = None
         self.xt = np.tile(self.x0, [self.Tsize+1, 1, 1])
         self.xtTry = np.copy(self.xt)
+        if self.unreduced:
+            self.ct = np.tile(self.x0, [self.Tsize, 1, 1])
+            if self.randomInit:
+                self.ct += np.random.normal(0, 1, self.ct.shape)
+            self.ctTry = np.copy(self.ct)
+        else:
+            self.ct = None
+            self.ctTry = None
+
+
+
         self.v = np.zeros([self.Tsize+1, self.npt, self.dim])
         self.saveFileList = []
         for kk in range(self.Tsize+1):
@@ -343,7 +389,7 @@ class SurfaceMatching(object):
             self.fun_obj = partial(sd.measureNormPSDef, KparDist=self.param.KparDist)
             self.fun_objGrad = partial(sd.measureNormPSGradient, KparDist=self.param.KparDist)
         else:
-            print('Unknown error Type: ', self.param.errorType)
+            logging.info(f'Unknown error Type:  {self.param.errorType}')
 
         if self.match_landmarks:
             self.lmk_obj0 = psd.L2Norm0
@@ -392,7 +438,7 @@ class SurfaceMatching(object):
         #print 'dataterm = ', obj + self.obj0
         return obj
 
-    def  objectiveFunDef(self, at, Afft=None, kernel = None, withTrajectory = True, withJacobian=False,
+    def  objectiveFunDef(self, control, Afft=None, kernel = None, withTrajectory = True, withJacobian=False,
                          fv0 = None, regWeight = None):
         if fv0 is None:
             fv0 = self.fv0
@@ -421,10 +467,25 @@ class SurfaceMatching(object):
                     A[1][t] = AB[dim2:dim2+self.dim]
         else:
             A = None
-        if withJacobian:
-            xt,Jt  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A, withJacobian=True)
+
+        if self.unreduced:
+            ct = control[0]
+            at = control[1]
         else:
-            xt  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A)
+            ct = None
+            at = control
+
+        if withJacobian:
+            if self.unreduced:
+                xt,Jt  = evol.landmarkSemiReducedEvolutionEuler(x0, ct, at, kernel, affine=A, withJacobian=True)
+            else:
+                xt,Jt  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A, withJacobian=True)
+        else:
+            Jt = None
+            if self.unreduced:
+                xt = evol.landmarkSemiReducedEvolutionEuler(x0, ct, at, kernel, affine=A)
+            else:
+                xt  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A)
         #print xt[-1, :, :]
         #print obj
         obj=0
@@ -434,11 +495,21 @@ class SurfaceMatching(object):
         for t in range(self.Tsize):
             z = np.squeeze(xt[t, :, :])
             a = np.squeeze(at[t, :, :])
+            if self.unreduced:
+                c = ct[t,:,:]
+            else:
+                c = None
             #rzz = kfun.kernelMatrix(param.KparDiff, z)
-            ra = kernel.applyK(z, a)
-            if hasattr(self, 'v'):  
+            if self.unreduced:
+                ca = kernel.applyK(c,a)
+                ra = kernel.applyK(c, a, firstVar=z)
+                obj += regWeight_[t] * timeStep * (a * ca).sum()
+                obj += self.unreducedWeight * timeStep * ((c - z)**2).sum()
+            else:
+                ra = kernel.applyK(z, a)
+                obj += regWeight_[t]*timeStep*(a*ra).sum()
+            if hasattr(self, 'v'):
                 self.v[t, :] = ra
-            obj += regWeight_[t]*timeStep*(a*ra).sum()
             if self.internalCost:
                 foo.updateVertices(z[:self.nvert, :])
                 obj1 += self.internalWeight*self.internalCost(foo, ra)*timeStep
@@ -466,7 +537,10 @@ class SurfaceMatching(object):
                 self.obj0 += self.fun_obj0(self.fv0) / (self.param.sigmaError**2)
             if self.match_landmarks:
                 self.obj0 += self.wlmk * self.lmk_obj0(self.tmpl_lmk) / (self.param.sigmaError**2)
-            (self.obj, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
+            if self.unreduced:
+                (self.obj, self.xt) = self.objectiveFunDef([self.ct, self.at], self.Afft, withTrajectory=True)
+            else:
+                (self.obj, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             #foo = surfaces.Surface(surf=self.fvDef)
             self.fvDef.updateVertices(np.squeeze(self.xt[-1, :self.nvert, :]))
             if self.match_landmarks:
@@ -480,28 +554,54 @@ class SurfaceMatching(object):
 
         return self.obj
 
-    def getVariable(self):
+
+    def Direction(self):
+        return Direction()
+
+    def update(self, dr, eps):
+        self.at -= eps * dr['diff']
+        if self.unreduced:
+            self.ct -= eps * dr['pts']
         if self.symmetric:
-            return [self.at, self.Afft, self.x0]
+            self.x0 -= eps * dr['initx']
+        if self.affineDim > 0:
+            self.Afft -= eps*dr['aff']
+
+    def getVariable(self):
+        if self.unreduced:
+            if self.symmetric:
+                return [self.ct, self.at, self.Afft, self.x0]
+            else:
+                return [self.ct, self.at, self.Afft, None]
         else:
-            return [self.at, self.Afft, None]
+            if self.symmetric:
+                return [self.at, self.Afft, self.x0]
+            else:
+                return [self.at, self.Afft, None]
 
     def updateTry(self, dr, eps, objRef=None):
         objTry = self.obj0
-        atTry = self.at - eps * dr.diff
+        atTry = self.at - eps * dr['diff']
+        if self.unreduced:
+            ctTry = self.ct - eps*dr['pts']
+        else:
+            ctTry = None
         if self.affineDim > 0:
-            AfftTry = self.Afft - eps * dr.aff
+            AfftTry = self.Afft - eps * dr['aff']
         else:
             AfftTry = self.Afft
 
         fv0 = surfaces.Surface(surf=self.fv0)
         if self.symmetric:
-            x0Try = self.x0 - eps * dr.initx
+            x0Try = self.x0 - eps * dr['initx']
             fv0.updateVertices(x0Try)
         else:
             x0Try = None
 
-        foo = self.objectiveFunDef(atTry, AfftTry, fv0 = fv0, withTrajectory=True)
+        if self.unreduced:
+            foo = self.objectiveFunDef([ctTry, atTry], AfftTry, fv0 = fv0, withTrajectory=True)
+        else:
+            foo = self.objectiveFunDef(atTry, AfftTry, fv0 = fv0, withTrajectory=True)
         objTry += foo[0]
         xtTry = foo[1]
 
@@ -529,28 +629,77 @@ class SurfaceMatching(object):
             self.xtTry = xtTry
             if self.symmetric:
                 self.x0Try = x0Try
+            if self.unreduced:
+                self.ctTry = ctTry
             #print 'objTry=',objTry, dir.diff.sum()
 
         return objTry
 
 
     def testEndpointGradient(self):
-        c0 = self.dataTerm(self.fvDef, _lmk_def=self.def_lmk)
-        ff = surfaces.Surface(surf=self.fvDef)
-        dff = np.random.normal(size=ff.vertices.shape)
-        eps = 1e-6
-        ff.updateVertices(ff.vertices+eps*dff)
+        # c0 = self.dataTerm(self.fvDef, _lmk_def=self.def_lmk)
+        dff = np.random.normal(size=self.fvDef.vertices.shape)
         if self.match_landmarks:
-            pp = pointSets.PointSet(data=self.def_lmk)
-            dpp = np.random.normal(size=pp.points.shape)
-            pp.updatePoints(pp.points + eps * dpp)
-            dall = np.concatenate((dff,dpp), axis=0)
+            dpp = np.random.normal(size=self.def_lmk.points.shape)
+            dall = np.concatenate((dff, dpp), axis=0)
         else:
-            pp = None
             dall = dff
-        c1 = self.dataTerm(ff, _lmk_def=pp)
+            dpp = None
+        c = []
+        eps0 = 1e-6
+        for eps in [-eps0, eps0]:
+            ff = surfaces.Surface(surf=self.fvDef)
+            ff.updateVertices(ff.vertices+eps*dff)
+            if self.match_landmarks:
+                pp = pointSets.PointSet(data=self.def_lmk)
+                pp.updatePoints(pp.points + eps * dpp)
+            else:
+                pp = None
+            c.append(self.dataTerm(ff, _lmk_def=pp))
         grd = self.endPointGradient()
-        logging.info("test endpoint gradient: {0:.5f} {1:.5f}".format((c1-c0)/eps, (grd*dall).sum()) )
+        logging.info("test endpoint gradient: {0:.5f} {1:.5f}".format((c[1]-c[0])/(2*eps), (grd*dall).sum()) )
+
+
+    def endPointGradientSGD(self):
+        if self.sgdMeanSelectTemplate > self.fv0.faces.shape[0]:
+            I0_ = np.arange(self.fv0.faces.shape[0])
+        else:
+            I0_ = rng.choice(self.fv0.faces.shape[0], self.sgdMeanSelectTemplate, replace=False)
+
+        if self.sgdMeanSelectTarget > self.fv1.faces.shape[0]:
+            I1_ = np.arange(self.fv1.faces.shape[0])
+        else:
+            I1_ = rng.choice(self.fv1.faces.shape[0], self.sgdMeanSelectTarget, replace=False)
+
+        select0 = np.zeros(self.fv0.faces.shape[0], dtype=bool)
+        select0[I0_] = True
+        fv0, I0 = self.fv0.select_faces(select0)
+        self.stateSubset = I0
+        xt = evol.landmarkSemiReducedEvolutionEuler(fv0.vertices, self.ct, self.at, self.param.KparDiff,
+                                                    affine=self.Afft)
+        endPoint = surfaces.Surface(surf=fv0)
+        endPoint.updateVertices(xt[-1, :, :])
+        endPoint.updateWeights(endPoint.weights / self.probSelectFaceTemplate)
+
+        select1 = np.zeros(self.fv1.faces.shape[0], dtype=bool)
+        select1[I1_] = True
+        fv1, I1 = self.fv1.select_faces(select1)
+        #endPoint.saveVTK('foo.vtk')
+        fv1.updateWeights(fv1.weights / self.probSelectFaceTarget)
+        # self.SGDSelectionCost = [I0, I1]
+
+        if self.param.errorType == 'L2Norm':
+            px_ = sd.L2NormGradient(endPoint, self.fv1.vfld)
+        else:
+            px_ = self.fun_objGrad(endPoint, fv1)
+        # if self.match_landmarks:
+        #     pxl = self.wlmk*self.lmk_objGrad(endPoint_lmk.points, self.targ_lmk.points)
+        #     px = np.concatenate((px, pxl), axis=0)
+
+        # px = np.zeros(self.fvDef.vertices.shape)
+        # px[I0] = px_
+        return px_ / self.param.sigmaError**2, xt
+
 
     def endPointGradient(self, endPoint=None):
         if endPoint is None:
@@ -559,6 +708,8 @@ class SurfaceMatching(object):
         elif self.match_landmarks:
             endPoint_lmk = endPoint[1]
             endPoint = endPoint[0]
+        else:
+            endPoint_lmk = None
         if self.param.errorType == 'L2Norm':
             px = sd.L2NormGradient(endPoint, self.fv1.vfld)
         else:
@@ -576,17 +727,27 @@ class SurfaceMatching(object):
         return px / self.param.sigmaError**2
     
     
-    def hamiltonianCovector(self, px1, KparDiff, regWeight, affine = None, fv0 = None, at = None):
+    def hamiltonianCovector(self, px1, KparDiff, regWeight, affine = None, fv0 = None, control = None):
         if fv0 is None:
             fv0 = self.fvInit
-        if at is None:
+        if control is None:
             at = self.at
+            if self.unreduced:
+                ct = self.ct
+            else:
+                ct = None
             current_at = True
             if self.varCounter == self.trajCounter:
                 computeTraj = False
             else:
                 computeTraj = True
         else:
+            if self.unreduced:
+                ct = control[0]
+                at = control[1]
+            else:
+                ct = None
+                at = control
             current_at = False
             computeTraj = True
         if self.match_landmarks:
@@ -598,7 +759,10 @@ class SurfaceMatching(object):
         M = at.shape[0]
         timeStep = 1.0/M
         if computeTraj:
-            xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+            if self.unreduced:
+                xt = evol.landmarkSemiReducedEvolutionEuler(x0, ct, at, KparDiff, affine=affine)
+            else:
+                xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
             if current_at:
                 self.trajCounter = self.varCounter
                 self.xt = xt
@@ -611,10 +775,8 @@ class SurfaceMatching(object):
             for k in range(A0.shape[0]):
                 A[k,...] = getExponential(timeStep*A0[k]) 
         else:
-            A = np.zeros([M,dim,dim])
-            for k in range(M):
-                A[k,...] = np.eye(dim) 
-                
+            A = None
+
         pxt = np.zeros([M+1, N, dim])
         pxt[M, :, :] = px1
         foo = surfaces.Surface(surf=fv0)
@@ -622,16 +784,30 @@ class SurfaceMatching(object):
             px = np.squeeze(pxt[M-t, :, :])
             z = np.squeeze(xt[M-t-1, :, :])
             a = np.squeeze(at[M-t-1, :, :])
+            if self.unreduced:
+                c = np.squeeze(ct[M - t - 1, :, :])
+                v = KparDiff.applyK(c,a, firstVar=z)
+            else:
+                c = None
+                v = KparDiff.applyK(z,a)
+
             foo.updateVertices(z)
-            v = KparDiff.applyK(z,a)
             if self.internalCost:
                 grd = self.internalCostGrad(foo, v)
                 Lv =  grd[0]
                 DLv = self.internalWeight*grd[1]
-                zpx = KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True,
-                                                      extra_term = -self.internalWeight*Lv) - DLv
+                if self.unreduced:
+                    zpx = KparDiff.applyDiffKT(c, px - self.internalWeight*Lv, a, regweight=self.regweight,
+                                               lddmm=False, firstVar=z) - DLv - 2*self.unreducedWeight * (z-c)
+                else:
+                    zpx = KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True,
+                                               extra_term=-self.internalWeight * Lv) - DLv
             else:
-                zpx = KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
+                if self.unreduced:
+                    zpx = KparDiff.applyDiffKT(c, px, a, regweight=self.regweight, lddmm=False, firstVar=z) \
+                        - 2*self.unreducedWeight * (z-c)
+                else:
+                    zpx = KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
 
             if not (affine is None):
                 pxt[M-t-1, :, :] = np.dot(px, A[M-t-1]) + timeStep * zpx
@@ -640,8 +816,76 @@ class SurfaceMatching(object):
         return pxt, xt
 
 
-    def gradientFromHamiltonian(self, at, xt, pxt, fv0, affine, kernel, regWeight):
+    # def gradientFromHamiltonian(self, at, xt, pxt, fv0, affine, kernel, regWeight):
+    #     dat = np.zeros(at.shape)
+    #     timeStep = 1.0/at.shape[0]
+    #     foo = surfaces.Surface(surf=fv0)
+    #     nvert = foo.vertices.shape[0]
+    #     if not (affine is None):
+    #         A = affine[0]
+    #         dA = np.zeros(affine[0].shape)
+    #         db = np.zeros(affine[1].shape)
+    #     for k in range(at.shape[0]):
+    #         z = np.squeeze(xt[k,...])
+    #         foo.updateVertices(z[:nvert, :])
+    #         a = np.squeeze(at[k, :, :])
+    #         px = np.squeeze(pxt[k+1, :, :])
+    #         #print 'testgr', (2*a-px).sum()
+    #         if not self.affineOnly:
+    #             v = kernel.applyK(z,a)
+    #             if self.internalCost:
+    #                 Lv = self.internalCostGrad(foo, v, variables='phi')
+    #                 #Lv = -foo.laplacian(v)
+    #                 dat[k, :, :] = 2*regWeight*a-px + self.internalWeight * Lv
+    #             else:
+    #                 dat[k, :, :] = 2*regWeight*a-px
+    #
+    #         if not (affine is None):
+    #             dA[k] = gradExponential(A[k]*timeStep, px, xt[k]) #.reshape([self.dim**2, 1])/timeStep
+    #             db[k] = pxt[k+1].sum(axis=0) #.reshape([self.dim,1])
+    #     if affine is None:
+    #         return dat, xt, pxt
+    #     else:
+    #         return dat, dA, db, xt, pxt
+
+
+    def hamiltonianGradient(self, px1, kernel = None, affine=None, regWeight=None, fv0=None, control=None):
+        if regWeight is None:
+            regWeight = self.regweight
+        if fv0 is None:
+            fv0 = self.fvInit
+        x0 = fv0.vertices
+        if control is None:
+            if self.unreduced:
+                control = [self.ct, self.at]
+                ct = self.ct
+                at = self.at
+            else:
+                control = self.at
+                at = self.at
+                ct = None
+        else:
+            if self.unreduced:
+                ct = control[0]
+                at = control[1]
+            else:
+                ct = None
+                at = control
+        if kernel is None:
+            kernel  = self.param.KparDiff
+        # if not self.internalCost:
+        #     return evol.landmarkHamiltonianGradient(x0, at, px1, kernel, regWeight, affine=affine,
+        #                                             getCovector=True)
+        #
+        foo = surfaces.Surface(surf=fv0)
+        foo.updateVertices(x0)
+        (pxt, xt) = self.hamiltonianCovector(px1, kernel, regWeight, fv0=foo, control = control, affine=affine)
+
         dat = np.zeros(at.shape)
+        if self.unreduced:
+            dct = np.zeros(ct.shape)
+        else:
+            dct = None
         timeStep = 1.0/at.shape[0]
         foo = surfaces.Surface(surf=fv0)
         nvert = foo.vertices.shape[0]
@@ -653,49 +897,87 @@ class SurfaceMatching(object):
             z = np.squeeze(xt[k,...])
             foo.updateVertices(z[:nvert, :])
             a = np.squeeze(at[k, :, :])
-            px = np.squeeze(pxt[k+1, :, :])
+            if self.unreduced:
+                c = ct[k,:,:]
+            else:
+                c = None
+            px = pxt[k+1, :, :]
             #print 'testgr', (2*a-px).sum()
             if not self.affineOnly:
-                v = kernel.applyK(z,a)
+                if self.unreduced:
+                    dat[k, :, :] = 2 * regWeight * kernel.applyK(c, a) - kernel.applyK(z, px, firstVar=c)
+                    dct[k, :, :] = 2 * regWeight * kernel.applyDiffKT(c, a, a) - kernel.applyDiffKT(z, a, px, firstVar=c) \
+                    + 2 * self.unreducedWeight * (c-z)
+                    v = kernel.applyK(c, a, firstVar=z)
+                else:
+                    dat[k, :, :] = 2 * regWeight * a - px
+                    v = kernel.applyK(z,a)
                 if self.internalCost:
                     Lv = self.internalCostGrad(foo, v, variables='phi')
                     #Lv = -foo.laplacian(v)
-                    dat[k, :, :] = 2*regWeight*a-px + self.internalWeight * Lv
-                else:
-                    dat[k, :, :] = 2*regWeight*a-px
+                    if self.unreduced:
+                        dat[k, :, :] += self.internalWeight * kernel.applyK(z, Lv, firstVar=c)
+                        dct[k, :, :] += self.internalWeight * kernel.applyDiffKT(z, a, Lv, firstVar=c)
+                    else:
+                        dat[k, :, :] += self.internalWeight * Lv
+
+                if not self.unreduced and self.euclideanGradient:
+                    dat[k, :, :] = kernel.applyK(z, dat[k, :, :])
 
             if not (affine is None):
                 dA[k] = gradExponential(A[k]*timeStep, px, xt[k]) #.reshape([self.dim**2, 1])/timeStep
                 db[k] = pxt[k+1].sum(axis=0) #.reshape([self.dim,1])
-        if affine is None:
-            return dat, xt, pxt
+
+        if self.unreduced:
+            output = [dct]
         else:
-            return dat, dA, db, xt, pxt
+            output = []
+        if affine is None:
+            return output + [dat, xt, pxt]
+        else:
+            return output + [dat, dA, db, xt, pxt]
 
-
-    def hamiltonianGradient(self, px1, kernel = None, affine=None, regWeight=None, fv0=None, at=None):
-        if regWeight is None:
-            regWeight = self.regweight
-        if fv0 is None:
-            fv0 = self.fvInit
-        x0 = fv0.vertices
-        if at is None:
-            at = self.at
-        if kernel is None:
-            kernel  = self.param.KparDiff
-        # if not self.internalCost:
-        #     return evol.landmarkHamiltonianGradient(x0, at, px1, kernel, regWeight, affine=affine,
-        #                                             getCovector=True)
         #
-        foo = surfaces.Surface(surf=fv0)
-        foo.updateVertices(x0)
-        (pxt, xt) = self.hamiltonianCovector(px1, kernel, regWeight, fv0=foo, at = at, affine=affine)
-        return self.gradientFromHamiltonian(at, xt, pxt, fv0, affine, kernel, regWeight)
+        # return self.gradientFromHamiltonian(control, xt, pxt, fv0, affine, kernel, regWeight)
+
+
+    def getGradientSGD(self, coeff=1.0):
+        A = self.affB.getTransforms(self.Afft)
+        px1, xt = self.endPointGradientSGD()
+        # I0 = self.SGDSelectionCost[0]
+        #x0[self.stateSubset, :] = xt[-1, :, :]
+        J0 = rng.choice(self.ct.shape[1], self.sgdMeanSelectControl, replace=False)
+        J1 = rng.choice(self.ct.shape[1], self.sgdMeanSelectControl, replace=False)
+        foo = evol.landmarkSemiReducedHamiltonianGradient(self.x0, self.ct, self.at, -px1, self.param.KparDiff,
+                                                          self.regweight, getCovector = True, affine = A,
+                                                          controlSubset = [J0, J1], stateSubset=self.stateSubset,
+                                                          controlProb=self.probSelectControl, stateProb=self.probSelectVertexTemplate,
+                                                          forwardTraj=xt)
+        dim2 = self.dim**2
+        grd = Direction()
+        grd['pts'] = foo[0] / (coeff*self.Tsize)
+        grd['diff'] = foo[1] / (coeff*self.Tsize)
+        if self.affineDim > 0:
+            grd['aff'] = np.zeros(self.Afft.shape)
+            dA = foo[2]
+            db = foo[3]
+            grd.aff = 2*self.affineWeight.reshape([1, self.affineDim])*self.Afft
+            #grd.aff = 2 * self.Afft
+            for t in range(self.Tsize):
+               dAff = np.dot(self.affineBasis.T, np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])]))
+               #grd.aff[t] -=  np.divide(dAff.reshape(grd.aff[t].shape), self.affineWeight.reshape(grd.aff[t].shape))
+               grd['aff'][t] -=  dAff.reshape(grd['aff'][t].shape)
+            grd['aff'] /= (self.coeffAff*coeff*self.Tsize)
+        else:
+            grd['aff'] = None
+            #            dAfft[:,0:self.dim**2]/=100
+        return grd
+
 
 
     def getGradient(self, coeff=1.0, update=None):
         if update is None:
-            at = None
+            control = None
             Afft = self.Afft
             if self.match_landmarks:
                 endPoint = (self.fvDef, self.def_lmk)
@@ -704,13 +986,21 @@ class SurfaceMatching(object):
             A = self.affB.getTransforms(self.Afft)
             xt = self.xt
         else:
-            at = self.at - update[1] * update[0].diff
-            if update[0].aff is not None:
-                Afft = self.Afft - update[1]*update[0].aff
+            if update[0]['aff'] is not None:
+                Afft = self.Afft - update[1]*update[0]['aff']
                 A = self.affB.getTransforms(Afft)
             else:
                 A = None
-            xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
+
+            if self.unreduced:
+                at = self.at - update[1] * update[0]['diff']
+                ct = self.ct - update[1] * update[0]['pts']
+                control = [ct, at]
+                xt = evol.landmarkSemiReducedEvolutionEuler(self.x0, ct, at, self.param.KparDiff, affine=A)
+            else:
+                control = self.at - update[1] * update[0]['diff']
+                xt = evol.landmarkDirectEvolutionEuler(self.x0, control, self.param.KparDiff, affine=A)
+
 
             if self.match_landmarks:
                 endPoint0 = surfaces.Surface(surf=self.fv0)
@@ -723,128 +1013,131 @@ class SurfaceMatching(object):
 
 
         px1 = -self.endPointGradient(endPoint=endPoint)
-        # A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
         dim2 = self.dim**2
-        # if self.affineDim > 0:
-        #     for t in range(self.Tsize):
-        #         AB = np.dot(self.affineBasis, self.Afft[t])
-        #         A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-        #         A[1][t] = AB[dim2:dim2+self.dim]
-        foo = self.hamiltonianGradient(px1, at=at, affine=A)
+        foo = self.hamiltonianGradient(px1, control=control, affine=A)
         grd = Direction()
-        if self.euclideanGradient:
-            grd.diff = np.zeros(foo[0].shape)
-            for t in range(self.Tsize):
-                z = xt[t, :, :]
-                grd.diff[t,:,:] = self.param.KparDiff.applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
+        # if self.euclideanGradient:
+        #     grd['diff'] = np.zeros(foo[0].shape)
+        #     for t in range(self.Tsize):
+        #         z = xt[t, :, :]
+        #         grd['diff'][t,:,:] = self.param.KparDiff.applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
+        # else:
+        if self.unreduced:
+            grd['pts'] = foo[0]/(coeff*self.Tsize)
+            grd['diff'] = foo[1] / (coeff * self.Tsize)
         else:
-            grd.diff = foo[0]/(coeff*self.Tsize)
-        grd.aff = np.zeros(self.Afft.shape)
+            grd['diff'] = foo[0]/(coeff*self.Tsize)
         if self.affineDim > 0:
+            grd['aff'] = np.zeros(self.Afft.shape)
             dA = foo[1]
             db = foo[2]
-            grd.aff = 2*self.affineWeight.reshape([1, self.affineDim])*Afft
+            grd['aff'] = 2*self.affineWeight.reshape([1, self.affineDim])*Afft
             #grd.aff = 2 * self.Afft
             for t in range(self.Tsize):
                dAff = np.dot(self.affineBasis.T, np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])]))
                #grd.aff[t] -=  np.divide(dAff.reshape(grd.aff[t].shape), self.affineWeight.reshape(grd.aff[t].shape))
-               grd.aff[t] -=  dAff.reshape(grd.aff[t].shape)
-            grd.aff /= (self.coeffAff*coeff*self.Tsize)
+               grd['aff'][t] -=  dAff.reshape(grd['aff'][t].shape)
+            grd['aff'] /= (self.coeffAff*coeff*self.Tsize)
             #            dAfft[:,0:self.dim**2]/=100
         if self.symmetric:
-            grd.initx = (self.initPointGradient() - foo[-1][0,...])/(self.coeffInitx * coeff)
+            grd['initx'] = (self.initPointGradient() - foo[-1][0,...])/(self.coeffInitx * coeff)
         return grd
 
 
 
     def addProd(self, dir1, dir2, beta):
         dr = Direction()
-        dr.diff = dir1.diff + beta * dir2.diff
+        for k in dir1.keys():
+            if k != 'aff' and dir1[k] is not None:
+                dr[k] = dir1[k] + beta * dir2[k]
         if self.affineDim > 0:
-            dr.aff = dir1.aff + beta * dir2.aff
-        if dir1.initx and dir2.initx:
-            dr.initx = dir1.initx + beta * dir2.initx
+            dr['aff'] = dir1['aff'] + beta * dir2['aff']
         return dr
 
     def prod(self, dir1, beta):
         dr = Direction()
-        dr.diff = beta * dir1.diff
+        for k in dir1.keys():
+            if k != 'aff' and dir1[k] is not None:
+                dr[k] = beta * dir1[k]
         if self.affineDim > 0:
-            dr.aff = beta * dir1.aff
-        if dir1.initx:
-            dr.initx = beta * dir1.initx
+            dr['aff'] = beta * dir1['aff']
         return dr
 
     def copyDir(self, dir0):
-        dr = Direction()
-        dr.diff = np.copy(dir0.diff)
-        if self.affineDim > 0:
-            dr.aff = np.copy(dir0.aff)
-        if dir0.initx:
-            dr.initx = np.copy(dir0.initx)
-        return dr
+        return deepcopy(dir0)
 
 
     def randomDir(self):
         dirfoo = Direction()
         if self.affineOnly:
-            dirfoo.diff = np.zeros((self.Tsize, self.npt, self.dim))
+            dirfoo['diff'] = np.zeros((self.Tsize, self.npt, self.dim))
         else:
-            dirfoo.diff = np.random.randn(self.Tsize, self.npt, self.dim)
+            dirfoo['diff'] = np.random.randn(self.Tsize, self.npt, self.dim)
+        if self.unreduced:
+            dirfoo['pts'] = np.random.normal(0, 1, size=self.ct.shape)
         if self.symmetric:
-            dirfoo.initx = np.random.randn(self.npt, self.dim)
-        dirfoo.aff = np.random.randn(self.Tsize, self.affineDim)
+            dirfoo['initx'] = np.random.randn(self.npt, self.dim)
+        dirfoo['aff'] = np.random.randn(self.Tsize, self.affineDim)
         return dirfoo
 
     def dotProduct(self, g1, g2):
         res = np.zeros(len(g2))
         for t in range(self.Tsize):
             z = np.squeeze(self.xt[t, :, :])
-            gg = np.squeeze(g1.diff[t, :, :])
+            gg = np.squeeze(g1['diff'][t, :, :])
             u = self.param.KparDiff.applyK(z, gg)
             #uu = np.multiply(g1.aff[t], self.affineWeight.reshape(g1.aff[t].shape))
             if self.affineDim > 0:
-                uu = g1.aff[t]
+                uu = g1['aff'][t]
             ll = 0
             for gr in g2:
-                ggOld = np.squeeze(gr.diff[t, :, :])
+                ggOld = np.squeeze(gr['diff'][t, :, :])
                 res[ll]  = res[ll] + (ggOld*u).sum()
                 if self.affineDim > 0:
-                    res[ll] += (uu*gr.aff[t]).sum() * self.coeffAff
+                    res[ll] += (uu*gr['aff'][t]).sum() * self.coeffAff
                 ll = ll + 1
 
         if self.symmetric:
             for ll,gr in enumerate(g2):
-                res[ll] += (g1.initx * gr.initx).sum() * self.coeffInitx
+                res[ll] += (g1['initx'] * gr['initx']).sum() * self.coeffInitx
 
         return res
 
     def dotProduct_euclidean(self, g1, g2):
         res = np.zeros(len(g2))
-        for t in range(self.Tsize):
-            u = np.squeeze(g1.diff[t, :, :])
-            if self.affineDim > 0:
-                uu = g1.aff[t]
-                # uu = (g1.aff[t]*self.affineWeight.reshape(g1.aff[t].shape))
-            else:
-                uu = 0
-            ll = 0
-            for gr in g2:
-                ggOld = np.squeeze(gr.diff[t, :, :])
-                res[ll]  += (ggOld*u).sum()
-                if self.affineDim > 0:
-                    res[ll] += (uu*gr.aff[t]).sum()
-                    #                    +np.multiply(g1[1][t, dim2:dim2+self.dim], gr[1][t, dim2:dim2+self.dim]).sum())
-                ll = ll + 1
-        if self.symmetric:
-            for ll,gr in enumerate(g2):
-                res[ll] += (g1.initx * gr.initx).sum() * self.coeffInitx
+        for k in g1.keys():
+            if g1[k] is not None:
+                for ll,gr in enumerate(g2):
+                    res[ll] += (g1[k]*gr[k]).sum()
         return res
+
+        # for t in range(self.Tsize):
+        #     u = np.squeeze(g1.diff[t, :, :])
+        #     if self.affineDim > 0:
+        #         uu = g1.aff[t]
+        #         # uu = (g1.aff[t]*self.affineWeight.reshape(g1.aff[t].shape))
+        #     else:
+        #         uu = 0
+        #     ll = 0
+        #     for gr in g2:
+        #         ggOld = np.squeeze(gr.diff[t, :, :])
+        #         res[ll]  += (ggOld*u).sum()
+        #         if self.affineDim > 0:
+        #             res[ll] += (uu*gr.aff[t]).sum()
+        #             #                    +np.multiply(g1[1][t, dim2:dim2+self.dim], gr[1][t, dim2:dim2+self.dim]).sum())
+        #         ll = ll + 1
+        # if self.symmetric:
+        #     for ll,gr in enumerate(g2):
+        #         res[ll] += (g1.initx * gr.initx).sum() * self.coeffInitx
+        # return res
 
     def acceptVarTry(self):
         self.obj = self.objTry
         self.at = np.copy(self.atTry)
-        self.Afft = np.copy(self.AfftTry)
+        if self.unreduced:
+            self.ct = np.copy(self.ctTry)
+        if self.affineDim > 0:
+            self.Afft = np.copy(self.AfftTry)
         self.xt = np.copy(self.xtTry)
         self.varCounter += 1
         self.trajCounter = self.varCounter
@@ -917,6 +1210,11 @@ class SurfaceMatching(object):
                 fn.append(fileName + f'{kk:03d}')
         else:
             fn = fileName
+
+        if self.unreduced:
+            pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curvesSGDState.vtk', self.xt)
+            pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curvesSGDControl.vtk', self.ct)
+
         fvDef = surfaces.Surface(surf=fv0)
         AV0 = fvDef.computeVertexArea()
         nu = orientation * fv0.computeVertexNormals()
@@ -998,8 +1296,25 @@ class SurfaceMatching(object):
         fig.canvas.flush_events()
         time.sleep(0.5)
 
+    def endOfIterationSGD(self, forceSave=False):
+        if forceSave or self.iter % self.saveRate == 0:
+            self.xt = evol.landmarkSemiReducedEvolutionEuler(self.x0, self.ct, self.at, self.param.KparDiff,
+                                                             affine=self.Afft)
+            pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curvesSGDState.vtk', self.xt)
+            pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curvesSGDControl.vtk', self.ct)
+            self.updateEndPoint(self.xt)
+            #self.ct = np.copy(self.xt[:-1, :, :])
+            self.saveEvolution(self.fv0, self.xt)
+        #else:
+            #self.updateEndPoint(self.xt)
+
     def endOfIteration(self, forceSave=False):
         self.iter += 1
+        if self.param.algorithm == 'sgd':
+            self.endOfIterationSGD(forceSave=forceSave)
+            return
+
+
         if self.testGradient:
             self.testEndpointGradient()
         if self.iter >= self.affBurnIn:
@@ -1015,12 +1330,23 @@ class SurfaceMatching(object):
         if forceSave or self.iter % self.saveRate == 0:
             logging.info('Saving surfaces...')
             if self.passenger_points is None:
-                self.xt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
-                                                             withJacobian=True)
+                if self.unreduced:
+                    self.xt, Jt = evol.landmarkSemiReducedEvolutionEuler(self.x0, self.ct, self.at,
+                                                                         self.param.KparDiff, affine=A,
+                                                                         withJacobian=True)
+                else:
+                    self.xt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
+                                                                 withJacobian=True)
                 yt = None
             else:
-                self.xt, yt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
-                                                             withPointSet=self.passenger_points, withJacobian=True)
+                if self.unreduced:
+                    self.xt, Jt = evol.landmarkSemiReducedEvolutionEuler(self.x0, self.ct, self.at,
+                                                                         self.param.KparDiff, affine=A,
+                                                                         withPointSet=self.passenger_points,
+                                                                         withJacobian=True)
+                else:
+                    self.xt, yt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
+                                                                 withPointSet=self.passenger_points, withJacobian=True)
                 if isinstance(self.passenger, surfaces.Surface):
                     self.passengerDef.updateVertices(yt[-1,...])
                 else:
@@ -1041,10 +1367,16 @@ class SurfaceMatching(object):
             if self.affine == 'euclidean' or self.affine == 'translation':
                 self.saveCorrectedEvolution(self.fvInit, self.xt, self.at, self.Afft, fileName=self.saveFileList,
                                             Jacobian=Jt)
-            self.saveEvolution(self.fvInit, self.xt, Jacobian=Jt, fileName=self.saveFileList, passenger = (self.passenger, yt))
+            self.saveEvolution(self.fvInit, self.xt, Jacobian=Jt, fileName=self.saveFileList,
+                               passenger = (self.passenger, yt))
+            self.saveHdf5(fileName=self.outputDir + '/output.h5')
         else:
             if self.varCounter != self.trajCounter:
-                self.xt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A)
+                if self.unreduced:
+                    self.xt = evol.landmarkSemiReducedEvolutionEuler(self.x0, self.ct, self.at,
+                                                                         self.param.KparDiff, affine=A)
+                else:
+                    self.xt = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A)
                 self.trajCounter = self.varCounter
             self.updateEndPoint(self.xt)
             self.fvInit.updateVertices(self.x0[:self.nvert, :])
@@ -1054,21 +1386,31 @@ class SurfaceMatching(object):
 
 
 
-    def saveHD5(self, fileName):
+    def saveHdf5(self, fileName):
         fout = h5py.File(fileName, 'w')
         LDDMMResult = fout.create_group('LDDMM Results')
+        parameters = LDDMMResult.create_group('parameters')
+        parameters.create_dataset('Time steps', data=self.Tsize)
+        parameters.create_dataset('Deformation Kernel type', data = self.param.KparDiff.name)
+        parameters.create_dataset('Deformation Kernel width', data = self.param.KparDiff.sigma)
+        parameters.create_dataset('Deformation Kernel order', data = self.param.KparDiff.order)
+        parameters.create_dataset('Spatial Varifold Kernel type', data = self.param.KparDist.name)
+        parameters.create_dataset('Spatial Varifold width', data = self.param.KparDist.sigma)
+        parameters.create_dataset('Spatial Varifold order', data = self.param.KparDist.order)
         template = LDDMMResult.create_group('template')
         template.create_dataset('vertices', data=self.fv0.vertices)
-        template.create_dataset('faces', data=self.fv0.vertices)
+        template.create_dataset('faces', data=self.fv0.faces)
         target = LDDMMResult.create_group('target')
         target.create_dataset('vertices', data=self.fv1.vertices)
-        target.create_dataset('faces', data=self.fv1.vertices)
+        target.create_dataset('faces', data=self.fv1.faces)
         deformedTemplate = LDDMMResult.create_group('deformedTemplate')
-        deformedTemplate.create_dataset('vertices', data=self.fv1.vertices)
-        deformedTemplate.create_dataset('faces', data=self.fv1.vertices)
+        deformedTemplate.create_dataset('vertices', data=self.fvDef.vertices)
         variables = LDDMMResult.create_group('variables')
         variables.create_dataset('alpha', data=self.at)
-        variables.create_dataset('affine', data=self.Afft)
+        if self.Afft is not None:
+            variables.create_dataset('affine', data=self.Afft)
+        else:
+            variables.create_dataset('affine', data='None')
         descriptors = LDDMMResult.create_group('descriptors')
 
         A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
@@ -1096,19 +1438,25 @@ class SurfaceMatching(object):
     def optimizeMatching(self):
         #print 'dataterm', self.dataTerm(self.fvDef)
         #print 'obj fun', self.objectiveFun(), self.obj0
-        self.coeffAff = self.coeffAff2
-        grd = self.getGradient(self.gradCoeff)
-        [grd2] = self.dotProduct(grd, [grd])
+        if self.param.algorithm in ('cg', 'bfgs'):
+            self.coeffAff = self.coeffAff2
+            grd = self.getGradient(self.gradCoeff)
+            [grd2] = self.dotProduct(grd, [grd])
 
-        self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
-        self.epsMax = 5.
-        logging.info(f'Gradient lower bound: {self.gradEps:.5f}')
-        self.coeffAff = self.coeffAff1
-        if self.param.algorithm == 'cg':
-            cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=0.1,
-                  Wolfe=self.param.wolfe)
-        elif self.param.algorithm == 'bfgs':
-            bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=1.,
-                      Wolfe=self.param.wolfe, memory=50)
+            self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
+            self.epsMax = 5.
+            logging.info(f'Gradient lower bound: {self.gradEps:.5f}')
+            self.coeffAff = self.coeffAff1
+            if self.param.algorithm == 'cg':
+                cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=0.1,
+                      Wolfe=self.param.wolfe)
+            elif self.param.algorithm == 'bfgs':
+                bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=1.,
+                          Wolfe=self.param.wolfe, memory=50)
+        elif self.param.algorithm == 'sgd':
+            logging.info('Running stochastic gradient descent')
+            self.saveRate = 100
+            sgd.sgd(self, verb=self.verb, maxIter=100*self.maxIter, burnIn=10000, epsInit=.01)
+
         #return self.at, self.xt
 

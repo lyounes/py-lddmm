@@ -370,8 +370,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 v = self.param.KparDiff.applyK(z, a)
                 if self.internalCost:
                     Lv = self.internalCostGrad(foo, v, variables='phi')
-                    dat[t, :, :] += self.param.KparDiff.applyK(z,
-                                                              2 * self.regweight * a - px + self.regweight * self.internalWeight * Lv)
+                    dat[t, :, :] += self.param.KparDiff.applyK(z, 2 * self.regweight * a - px + 
+                                                               self.regweight * self.internalWeight * Lv)
                 else:
                     dat[t, :, :] += self.param.KparDiff.applyK(z, 2 * self.regweight * a - px)
         if self.affineDim > 0:

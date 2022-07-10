@@ -161,16 +161,19 @@ class AffineBasis:
 
 
     def getTransforms(self, Afft):
-        Tsize = Afft.shape[0]
-        dim2 = self.dim**2
-        A = [np.zeros([Tsize, self.dim, self.dim]), np.zeros([Tsize, self.dim])]
-        if self.affineDim > 0:
-            AB = np.zeros((Tsize, self.basis.shape[0]))
-            for t in range(Tsize):
-                AB[t, :] = self.basis.dot(Afft[t,:])
-            A[0] = AB[:,0:dim2].reshape([Tsize, self.dim,self.dim])
-            A[1] = AB[:,dim2:dim2+self.dim]
-        return A
+        if Afft is not None:
+            Tsize = Afft.shape[0]
+            dim2 = self.dim**2
+            A = [np.zeros([Tsize, self.dim, self.dim]), np.zeros([Tsize, self.dim])]
+            if self.affineDim > 0:
+                AB = np.zeros((Tsize, self.basis.shape[0]))
+                for t in range(Tsize):
+                    AB[t, :] = self.basis.dot(Afft[t,:])
+                A[0] = AB[:,0:dim2].reshape([Tsize, self.dim,self.dim])
+                A[1] = AB[:,dim2:dim2+self.dim]
+            return A
+        else:
+            return None
 
 #     def getExponential(self, A):
 #         if self.dim==3 and self.affCode==3:

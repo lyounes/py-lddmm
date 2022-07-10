@@ -52,7 +52,8 @@ def __stopCondition():
 
 def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPar=None, Wolfe=True):
 
-    if (hasattr(opt, 'getVariable')==False | hasattr(opt, 'objectiveFun')==False | hasattr(opt, 'updateTry')==False | hasattr(opt, 'acceptVarTry')==False | hasattr(opt, 'getGradient')==False):
+    if (hasattr(opt, 'getVariable')==False or hasattr(opt, 'objectiveFun')==False or hasattr(opt, 'updateTry')==False
+            or hasattr(opt, 'acceptVarTry')==False or hasattr(opt, 'getGradient')==False):
         logging.error('Error: required functions are not provided')
         return
 
