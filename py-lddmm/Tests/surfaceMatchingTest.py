@@ -181,13 +181,13 @@ def compute(model):
     ## Object kernel
     K1 = Kernel(name='laplacian', sigma = sigmaKernel)
 
-    sm = SurfaceMatchingParam(timeStep=0.1, algorithm='bfgs', KparDiff=K1, KparDist=('gauss', sigmaDist),
-                              sigmaError=sigmaError, errorType='varifold', internalCost=internalCost)
+    sm = SurfaceMatchingParam(timeStep=0.1, algorithm='sgd', KparDiff=K1, KparDist=('gauss', sigmaDist),
+                              sigmaError=sigmaError, errorType='current', internalCost=internalCost)
     sm.KparDiff.pk_dtype = 'float64'
     sm.KparDist.pk_dtype = 'float64'
     f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTest/'+model +'_'+typeCost,
                         param=sm, testGradient=True, regWeight = regweight, Landmarks = landmarks,
-                        unreduced=False,
+                        unreduced=True, unreducedWeight= 1.0,
                         #subsampleTargetSize = 500,
                         internalWeight=internalWeight, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01,
                         scaleWeight=10., affineWeight=100.)

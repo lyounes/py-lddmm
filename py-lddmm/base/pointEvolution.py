@@ -376,20 +376,20 @@ def landmarkSemiReducedHamiltonianGradient(x0, ct, at, px1, KparDiff, regweight,
         dA = np.zeros(affine[0].shape)
         db = np.zeros(affine[1].shape)
     for k in range(at.shape[0]):
-        a0 = np.squeeze(at[k, I0, :])
-        a1 = np.squeeze(at[k, I1, :])
-        c = np.squeeze(ct[k, :, :])
+        a0 = at[k, I0, :]
+        a1 = at[k, I1, :]
+        c = ct[k, :, :]
         x = np.zeros(x0.shape)
-        x[stateSubset, :] = np.squeeze(xt[k, :, :])
-        px = np.squeeze(pxt[k+1, :, :])
+        x[stateSubset, :] = xt[k, :, :]
+        px = pxt[k+1, stateSubset, :]
         #print 'testgr', (2*a-px).sum()
         dat[k, I1, :] = regweight*KparDiff.applyK(c[I0,:], a0, firstVar=c[I1, :]) / pprob
         dat[k, I0, :] += regweight*KparDiff.applyK(c[I1,:], a1, firstVar=c[I0, :]) / pprob
-        dat[k, :, :] -= KparDiff.applyK(x[stateSubset, :], px, firstVar=c)
+        dat[k, :, :] -= KparDiff.applyK(xt[k, :, :], px, firstVar=c)
         # print(f'px {np.fabs(px).max()} {np.fabs(dat[k,:,:]).max()}')
         dct[k, I0, :] = regweight*KparDiff.applyDiffKT(c[I1, :], a0, a1, firstVar=c[I0, :]) / pprob
         dct[k, I1, :] += regweight * KparDiff.applyDiffKT(c[I0, :], a1, a0, firstVar=c[I1, :]) / pprob
-        dct[k, :, :] -= KparDiff.applyDiffKT(x[stateSubset, :], at[k, :, :], px,  firstVar=c)
+        dct[k, :, :] -= KparDiff.applyDiffKT(xt[k, :, :], at[k, :, :], px,  firstVar=c)
         dct[k, controlSubset, :] += 2*weightSubset*c[controlSubset, :]/controlProb
         dct[k, J, :] -= 2 * (weightSubset / (stateProb[J, None]*controlProb)) * x[J, :]
 
