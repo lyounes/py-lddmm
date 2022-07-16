@@ -181,7 +181,7 @@ def compute(model):
     ## Object kernel
     K1 = Kernel(name='laplacian', sigma = sigmaKernel)
 
-    sm = SurfaceMatchingParam(timeStep=0.1, algorithm='sgd', KparDiff=K1, KparDist=('gauss', sigmaDist),
+    sm = SurfaceMatchingParam(timeStep=0.1, algorithm='bfgs', KparDiff=K1, KparDist=('gauss', sigmaDist),
                               sigmaError=sigmaError, errorType='current', internalCost=internalCost)
     sm.KparDiff.pk_dtype = 'float64'
     sm.KparDist.pk_dtype = 'float64'

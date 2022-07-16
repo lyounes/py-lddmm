@@ -139,7 +139,7 @@ class SurfaceMatching(object):
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
                  testGradient=True, saveFile = 'evolution',
                  saveTrajectories = False, affine = 'none'):
-        self.saveRate = 1
+        self.saveRate = 10
         self.gradEps = -1
         self.randomInit = False
         self.iter = 0
@@ -961,8 +961,9 @@ class SurfaceMatching(object):
             if not self.affineOnly:
                 if self.unreduced:
                     dat[k, :, :] = 2 * regWeight * kernel.applyK(c, a) - kernel.applyK(z, px, firstVar=c)
-                    dct[k, :, :] = 2 * regWeight * kernel.applyDiffKT(c, a, a) - kernel.applyDiffKT(z, a, px, firstVar=c) \
-                    + 2 * self.unreducedWeight * (c-z)
+                    if k > 0:
+                        dct[k, :, :] = 2 * regWeight * kernel.applyDiffKT(c, a, a) - kernel.applyDiffKT(z, a, px, firstVar=c) \
+                        + 2 * self.unreducedWeight * (c-z)
                     v = kernel.applyK(c, a, firstVar=z)
                 else:
                     dat[k, :, :] = 2 * regWeight * a - px
@@ -972,7 +973,8 @@ class SurfaceMatching(object):
                     #Lv = -foo.laplacian(v)
                     if self.unreduced:
                         dat[k, :, :] += self.internalWeight * kernel.applyK(z, Lv, firstVar=c)
-                        dct[k, :, :] += self.internalWeight * kernel.applyDiffKT(z, a, Lv, firstVar=c)
+                        if k> 0:
+                            dct[k, :, :] += self.internalWeight * kernel.applyDiffKT(z, a, Lv, firstVar=c)
                     else:
                         dat[k, :, :] += self.internalWeight * Lv
 
@@ -1137,6 +1139,7 @@ class SurfaceMatching(object):
             dirfoo['diff'] = np.random.randn(self.Tsize, self.npt, self.dim)
         if self.unreduced:
             dirfoo['pts'] = np.random.normal(0, 1, size=self.ct.shape)
+            dirfoo['pts'][0, :, :] = 0
         if self.symmetric:
             dirfoo['initx'] = np.random.randn(self.npt, self.dim)
         dirfoo['aff'] = np.random.randn(self.Tsize, self.affineDim)

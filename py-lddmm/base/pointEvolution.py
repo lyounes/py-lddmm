@@ -387,11 +387,12 @@ def landmarkSemiReducedHamiltonianGradient(x0, ct, at, px1, KparDiff, regweight,
         dat[k, I0, :] += regweight*KparDiff.applyK(c[I1,:], a1, firstVar=c[I0, :]) / pprob
         dat[k, :, :] -= KparDiff.applyK(xt[k, :, :], px, firstVar=c)
         # print(f'px {np.fabs(px).max()} {np.fabs(dat[k,:,:]).max()}')
-        dct[k, I0, :] = regweight*KparDiff.applyDiffKT(c[I1, :], a0, a1, firstVar=c[I0, :]) / pprob
-        dct[k, I1, :] += regweight * KparDiff.applyDiffKT(c[I0, :], a1, a0, firstVar=c[I1, :]) / pprob
-        dct[k, :, :] -= KparDiff.applyDiffKT(xt[k, :, :], at[k, :, :], px,  firstVar=c)
-        dct[k, controlSubset, :] += 2*weightSubset*c[controlSubset, :]/controlProb
-        dct[k, J, :] -= 2 * (weightSubset / (stateProb[J, None]*controlProb)) * x[J, :]
+        if k > 0:
+            dct[k, I0, :] = regweight*KparDiff.applyDiffKT(c[I1, :], a0, a1, firstVar=c[I0, :]) / pprob
+            dct[k, I1, :] += regweight * KparDiff.applyDiffKT(c[I0, :], a1, a0, firstVar=c[I1, :]) / pprob
+            dct[k, :, :] -= KparDiff.applyDiffKT(xt[k, :, :], at[k, :, :], px,  firstVar=c)
+            dct[k, controlSubset, :] += 2*weightSubset*c[controlSubset, :]/controlProb
+            dct[k, J, :] -= 2 * (weightSubset / (stateProb[J, None]*controlProb)) * x[J, :]
 
         if not (affine is None):
             dA[k] = affineBasis.gradExponential(A[k] * timeStep, pxt[k + 1], xt[k]) #.reshape([self.dim**2, 1])/timeStep
