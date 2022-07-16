@@ -244,7 +244,7 @@ def get_edges_(faces):
 
 
 class Mesh:
-    def __init__(self, mesh=None, weights=None, image=None, volumeRatio=1000.):
+    def __init__(self, mesh=None, weights=None, image=None, volumeRatio = 1000.):
         if type(mesh) in (list, tuple):
             if isinstance(mesh[0], Mesh):
                 self.concatenate(mesh)
