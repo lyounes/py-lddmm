@@ -1,6 +1,7 @@
 import os
 from copy import deepcopy
 import numpy as np
+import h5py
 import scipy.linalg as la
 import logging
 from . import matchingParam
@@ -128,6 +129,57 @@ class MeshMatching(pointSetMatching.PointSetMatching):
             self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
             self.obj += self.obj0 + self.dataTerm(self.fvDef)
         return self.obj
+
+
+    def saveHdf5(self, fileName):
+        fout = h5py.File(fileName, 'w')
+        LDDMMResult = fout.create_group('LDDMM Results')
+        parameters = LDDMMResult.create_group('parameters')
+        parameters.create_dataset('Time steps', data=self.Tsize)
+        parameters.create_dataset('Deformation Kernel type', data = self.param.KparDiff.name)
+        parameters.create_dataset('Deformation Kernel width', data = self.param.KparDiff.sigma)
+        parameters.create_dataset('Deformation Kernel order', data = self.param.KparDiff.order)
+        parameters.create_dataset('Spatial Varifold Kernel type', data = self.param.KparDist.name)
+        parameters.create_dataset('Spatial Varifold width', data = self.param.KparDist.sigma)
+        parameters.create_dataset('Spatial Varifold order', data = self.param.KparDist.order)
+        parameters.create_dataset('Image Varifold Kernel type', data = self.param.KparIm.name)
+        parameters.create_dataset('Image Varifold width', data = self.param.KparIm.sigma)
+        parameters.create_dataset('Image Varifold order', data = self.param.KparIm.order)
+        template = LDDMMResult.create_group('template')
+        template.create_dataset('vertices', data=self.fv0.vertices)
+        template.create_dataset('faces', data=self.fv0.faces)
+        template.create_dataset('image', data=self.fv0.image)
+        target = LDDMMResult.create_group('target')
+        target.create_dataset('vertices', data=self.fv1.vertices)
+        target.create_dataset('faces', data=self.fv1.faces)
+        target.create_dataset('image', data=self.fv1.image)
+        deformedTemplate = LDDMMResult.create_group('deformedTemplate')
+        deformedTemplate.create_dataset('vertices', data=self.fvDef.vertices)
+        variables = LDDMMResult.create_group('variables')
+        variables.create_dataset('alpha', data=self.at)
+        if self.Afft is not None:
+            variables.create_dataset('affine', data=self.Afft)
+        else:
+            variables.create_dataset('affine', data='None')
+        descriptors = LDDMMResult.create_group('descriptors')
+
+        A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+        dim2 = self.dim**2
+        if self.affineDim > 0:
+            for t in range(self.Tsize):
+                AB = np.dot(self.affineBasis, self.Afft[t])
+                A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
+                A[1][t] = AB[dim2:dim2 + self.dim]
+        (xt, Jt) = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
+                                                     withJacobian=True)
+
+        AV0 = self.fv0.computeVertexVolume()
+        AV = self.fvDef.computeVertexVolume()/AV0
+        descriptors.create_dataset('Jacobian', data=Jt[-1,:])
+        descriptors.create_dataset('Surface Jacobian', data=AV)
+        descriptors.create_dataset('Displacement', data=xt[-1,...]-xt[0,...])
+
+        fout.close()
 
 
     def makeTryInstance(self, pts):
@@ -283,6 +335,9 @@ class MeshMatching(pointSetMatching.PointSetMatching):
                 fvDef = meshes.Mesh(mesh=self.fvDef)
                 fvDef.updateVertices(xt[kk, :, :])
                 fvDef.save(self.outputDir + '/' + self.saveFile + str(kk) + '.vtk')
+
+            self.saveHdf5(fileName=self.outputDir + '/output.h5')
+
         (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
         self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
         self.param.KparDiff.pk_dtype = self.Kdiff_dtype
