@@ -315,8 +315,9 @@ def varifoldNormDef(fvDef, fv1, KparDist, fun = None):
 
     cr1_ = cr1 * np.sqrt(a1[:, None])
     cr2_ = cr2 * np.sqrt(a2[:, None])
-    obj = KparDist.applyKTensor(c1, a1, a1, cr1_, cr1_).sum() - 2 * KparDist.applyKTensor(c2, a1, a2, cr1_, cr2_,
-                                                                                          firstVar=c1).sum()
+    obj1 = KparDist.applyKTensor(c1, a1, a1, cr1_, cr1_).sum()
+    obj2 = KparDist.applyKTensor(c2, a1, a2, cr1_, cr2_,firstVar=c1).sum()
+    obj = obj1 - 2*obj2
     # obj2 = KparDist.applyK(c1, beta1[..., np.newaxis], matrixWeights=True).sum()
     # obj2 -= 2 * KparDist.applyK(c2, beta2[..., np.newaxis], firstVar=c1, matrixWeights=True).sum()
     return obj

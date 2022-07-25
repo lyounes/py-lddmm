@@ -196,7 +196,7 @@ class SurfaceMatching(object):
         self.weightSubset = 0.
         self.sgdMeanSelectControl = 100
         self.sgdMeanSelectTemplate = 100
-        self.sgdMeanSelectTarget = 100
+        self.sgdMeanSelectTarget = 1000
         self.probSelectControl = min(1.0, self.sgdMeanSelectControl / self.fv0.vertices.shape[0])
         self.probSelectFaceTemplate = min(1.0, self.sgdMeanSelectTemplate / self.fv0.faces.shape[0])
         self.probSelectFaceTarget = min(1.0, self.sgdMeanSelectTarget / self.fv1.faces.shape[0])
@@ -1520,8 +1520,8 @@ class SurfaceMatching(object):
                           Wolfe=self.param.wolfe, memory=50)
         elif self.param.algorithm == 'sgd':
             logging.info('Running stochastic gradient descent')
-            self.saveRate = 100
-            sgd.sgd(self, verb=self.verb, maxIter=100*self.maxIter, burnIn=10000, epsInit=.01)
+            self.saveRate = 200
+            sgd.sgd(self, verb=self.verb, maxIter=10*self.maxIter, burnIn=10000, epsInit=.001)
 
         #return self.at, self.xt
 
