@@ -31,7 +31,7 @@ def compute(model):
     sigmaError = 1.
     regweight = 0.1
     if model=='Circles':
-        f = Circle(radius = 10.)
+        f = Circle(radius = 10., targetSize=250)
         fv0 = Mesh(f, volumeRatio=5000)
         # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
         imagev = np.array(((fv0.vertices - np.array(f.center)[None, :]) ** 2).sum(axis=1) < 20, dtype=float)
@@ -39,8 +39,8 @@ def compute(model):
         fv0.image[:, 0] = (imagev[fv0.faces[:, 0]] + imagev[fv0.faces[:, 1]] + imagev[fv0.faces[:, 2]]) / 3
         fv0.image[:, 1] = 1 - fv0.image[:, 0]
 
-        f = Circle(radius = 12)
-        fv1 = Mesh(f)
+        f = Circle(radius = 12, targetSize=250)
+        fv1 = Mesh(f, volumeRatio=5000)
         # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
         imagev = np.array(((fv1.vertices - np.array(f.center)[None, :]) ** 2).sum(axis=1) < 10, dtype=float)
         fv1.image = np.zeros((fv1.faces.shape[0], 2))
@@ -52,13 +52,14 @@ def compute(model):
         mesh = pygalmesh.generate_mesh(
             pygalmesh.Ball([0.0, 0.0, 0.0], 10.0),
             min_facet_angle=30.0,
-            max_radius_surface_delaunay_ball=1.,
+            max_radius_surface_delaunay_ball=.75,
             max_facet_distance=0.025,
             max_circumradius_edge_ratio=2.0,
-            max_cell_circumradius=1.,  # lambda x: abs(np.sqrt(np.dot(x, x)) - 0.5) / 5 + 0.025,
+            max_cell_circumradius=.75,  # lambda x: abs(np.sqrt(np.dot(x, x)) - 0.5) / 5 + 0.025,
             verbose=False
         )
         fv0 = Mesh([np.array(mesh.cells[1].data, dtype=int), np.array(mesh.points, dtype=float)])
+        print(fv0.vertices.shape)
         c0 = np.array([0,0,0])
         # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
         imagev = np.array(((fv0.vertices - c0[None, :]) ** 2).sum(axis=1) < 20, dtype=float)
@@ -67,19 +68,19 @@ def compute(model):
                            + imagev[fv0.faces[:, 3]]) / 4
         fv0.image[:, 1] = 1 - fv0.image[:, 0]
 
-        f = Sphere(radius=12)
-        mesh = pygalmesh.generate_mesh(
-            pygalmesh.Ball([0.0, 0.0, 0.0], 10.0),
+        mesh1 = pygalmesh.generate_mesh(
+            pygalmesh.Ball([0.0, 0.0, 0.0], 12.0),
             min_facet_angle=30.0,
-            max_radius_surface_delaunay_ball=1.,
+            max_radius_surface_delaunay_ball=.75,
             max_facet_distance=0.025,
             max_circumradius_edge_ratio=2.0,
-            max_cell_circumradius=1.,  # lambda x: abs(np.sqrt(np.dot(x, x)) - 0.5) / 5 + 0.025,
+            max_cell_circumradius=.75,  # lambda x: abs(np.sqrt(np.dot(x, x)) - 0.5) / 5 + 0.025,
             verbose=False
         )
-        fv1 = Mesh([np.array(mesh.cells[1].data, dtype=int), np.array(mesh.points, dtype=float)])
+        fv1 = Mesh([np.array(mesh1.cells[1].data, dtype=int), np.array(mesh1.points, dtype=float)])
+        print(fv1.vertices.shape)
         # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
-        imagev = np.array(((fv1.vertices - np.array(f.center)[None, :]) ** 2).sum(axis=1) < 10, dtype=float)
+        imagev = np.array(((fv1.vertices - c0[None, :]) ** 2).sum(axis=1) < 10, dtype=float)
         fv1.image = np.zeros((fv1.faces.shape[0], 2))
         fv1.image[:, 0] = (imagev[fv1.faces[:, 0]] + imagev[fv1.faces[:, 1]] + imagev[fv1.faces[:, 2]]
                            + imagev[fv1.faces[:, 3]]) / 4

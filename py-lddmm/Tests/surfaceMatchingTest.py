@@ -7,6 +7,7 @@ if 'DISPLAY' in os.environ:
     matplotlib.use('qt5Agg')
 else:
     matplotlib.use("Agg")
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 import matplotlib.pyplot as plt
 import numpy as np
 import pygalmesh
@@ -36,7 +37,7 @@ def compute(model):
         regweight = 0.1
         internalCost = 'elastic'
 
-    sigmaDist = 5.
+    sigmaDist = 10.
     sigmaError = 1.
     #internalCost = 'h1'
     landmarks = None
@@ -67,13 +68,13 @@ def compute(model):
         # d = Heart()
         d = Ball1()
         mesh = pygalmesh.generate_surface_mesh(d, max_facet_distance=0.01, min_facet_angle=30.0,
-                                               max_radius_surface_delaunay_ball=0.05, verbose=False)
+                                               max_radius_surface_delaunay_ball=0.01, verbose=False)
         fv1 = Surface(surf=(mesh.cells[0].data, mesh.points))
         fv1.updateVertices(fv1.vertices*100)
 
         d = Ball2()
         mesh = pygalmesh.generate_surface_mesh(d, max_facet_distance=0.01, min_facet_angle=30.0,
-                                               max_radius_surface_delaunay_ball=0.05, verbose=False)
+                                               max_radius_surface_delaunay_ball=0.01, verbose=False)
         fv2 = Surface(surf=(mesh.cells[0].data, mesh.points))
         fv2.updateVertices(fv2.vertices*100)
 
@@ -187,9 +188,9 @@ def compute(model):
     sm.KparDist.pk_dtype = 'float64'
     f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTest/'+model +'_'+typeCost,
                         param=sm, testGradient=True, regWeight = regweight, Landmarks = landmarks,
-                        unreduced=False,
+                        unreduced=True, unreducedWeight= 1000.0,
                         #subsampleTargetSize = 500,
-                        internalWeight=internalWeight, maxIter=1000, affine= 'none', rotWeight=.01, transWeight = .01,
+                        internalWeight=internalWeight, maxIter=2000, affine= 'none', rotWeight=.01, transWeight = .01,
                         scaleWeight=10., affineWeight=100.)
 
     f.optimizeMatching()

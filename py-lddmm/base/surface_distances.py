@@ -1,6 +1,9 @@
 import numpy as np
 from . import diffeo
 import logging
+from pykeops.numpy import LazyTensor
+import pykeops
+from . import kernelFunctions_util as ku
 
 def haussdorffDist(fv1, fv2):
     dst = ((fv1.vertices[:, np.newaxis, :] - fv2.vertices[np.newaxis, :, :] )**2).sum(axis=2)
@@ -274,7 +277,13 @@ def f0_(u):
 def df0_(u):
     return 2*u
 
-def varifoldNorm0(fv1, KparDist, fun = None):
+def varifoldNorm0(fv1, KparDist, fun = None, cpu=False, dtype='float64'):
+    if not cpu and pykeops.config.gpu_available:
+        return varifoldNorm0_pykeops(fv1, KparDist, dtype = dtype)
+    else:
+        return varifoldNorm0_numpy(fv1, KparDist, fun = fun)
+
+def varifoldNorm0_numpy(fv1, KparDist, fun = None):
     if fun is None:
         fun = (f0_, df0_)
     c2 = fv1.centers
@@ -284,15 +293,40 @@ def varifoldNorm0(fv1, KparDist, fun = None):
     f0 = fun[0]
 
     cr2_ = cr2 * np.sqrt(a2[:, None])
-    cr2cr2 = (cr2[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
-    a2a2 = a2[:, np.newaxis] * a2[np.newaxis, :]
-    beta2 = f0(cr2cr2) * a2a2
     return KparDist.applyKTensor(c2, a2, a2, cr2_, cr2_).sum()
-    # return KparDist.applyK(c2, beta2[..., np.newaxis], matrixWeights=True).sum()
+
+def varifoldNorm0_pykeops(fv1, KparDist, dtype = 'float64'):
+    c2 = fv1.centers
+    a2 = np.sqrt((fv1.surfel ** 2).sum(axis=1) + 1e-10)
+    cr2 = fv1.surfel / a2[:, np.newaxis]
+    a2 *= fv1.face_weights
+
+    y = LazyTensor(c2[:, None, :].astype(dtype))
+    x = LazyTensor(c2[None, :, :].astype(dtype))
+    cry = LazyTensor(cr2[:, None, :].astype(dtype))
+    crx = LazyTensor(cr2[None,:,  :].astype(dtype))
+    ay = LazyTensor(a2[:, None].astype(dtype), axis=0)
+    ax = LazyTensor(a2[:, None].astype(dtype), axis=1)
+    multiplier = (1 + (cry * crx).sum(axis=-1)**2) * (ay*ax).sum(axis=-1)
+    res = 0
+    for s in KparDist.sigma:
+        Kij = ku.makeKij(y/s, x/s, KparDist.name, KparDist.order)
+        res += (Kij* multiplier).sum(1).sum(0)[0] / s
+    res /= (1/KparDist.sigma).sum()
+    return res
+
+
 
 
 # Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct
-def varifoldNormDef(fvDef, fv1, KparDist, fun = None):
+def varifoldNormDef(fvDef, fv1, KparDist, fun = None, cpu=False, dtype='float64'):
+    if not cpu and pykeops.config.gpu_available:
+        return varifoldNormDef_pykeops(fvDef, fv1, KparDist, dtype = dtype)
+    else:
+        return varifoldNormDef_numpy(fvDef, fv1, KparDist, fun = fun)
+
+
+def varifoldNormDef_numpy(fvDef, fv1, KparDist, fun = None):
     if fun is None:
         fun = (f0_, df0_)
     c1 = fvDef.centers
@@ -305,24 +339,45 @@ def varifoldNormDef(fvDef, fv1, KparDist, fun = None):
     a2 *= fv1.face_weights
     f0 = fun[0]
 
-    # cr1cr1 = (cr1[:, np.newaxis, :] * cr1[np.newaxis, :, :]).sum(axis=2)
-    # a1a1 = a1[:, np.newaxis] * a1[np.newaxis, :]
-    # cr1cr2 = (cr1[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
-    # a1a2 = a1[:, np.newaxis] * a2[np.newaxis, :]
-
-    # beta1 = f0(cr1cr1) * a1a1
-    # beta2 = f0(cr1cr2) * a1a2
-
     cr1_ = cr1 * np.sqrt(a1[:, None])
     cr2_ = cr2 * np.sqrt(a2[:, None])
-    obj = KparDist.applyKTensor(c1, a1, a1, cr1_, cr1_).sum() - 2 * KparDist.applyKTensor(c2, a1, a2, cr1_, cr2_,
-                                                                                          firstVar=c1).sum()
-    # obj2 = KparDist.applyK(c1, beta1[..., np.newaxis], matrixWeights=True).sum()
-    # obj2 -= 2 * KparDist.applyK(c2, beta2[..., np.newaxis], firstVar=c1, matrixWeights=True).sum()
+    obj1 = KparDist.applyKTensor(c1, a1, a1, cr1_, cr1_).sum()
+    obj2 = KparDist.applyKTensor(c2, a1, a2, cr1_, cr2_,firstVar=c1).sum()
+    obj = obj1 - 2*obj2
     return obj
 
+def varifoldNormDef_pykeops(fvDef, fv1, KparDist, dtype='float64'):
+    c1 = fvDef.centers
+    c2 = fv1.centers
+    a1 = np.sqrt((fvDef.surfel ** 2).sum(axis=1) + 1e-10)
+    a2 = np.sqrt((fv1.surfel ** 2).sum(axis=1) + 1e-10)
+    cr1 = fvDef.surfel / a1[:, np.newaxis]
+    cr2 = fv1.surfel / a2[:, np.newaxis]
+    a1 *= fvDef.face_weights
+    a2 *= fv1.face_weights
 
-# Returns |fvDef - fv1|^2 for current norm
+    yi = LazyTensor(c1[:, None, :].astype(dtype))
+    yj = LazyTensor(c1[None, :, :].astype(dtype))
+    x = LazyTensor(c2[None, :, :].astype(dtype))
+    cryi = LazyTensor(cr1[:, None, :].astype(dtype))
+    cryj = LazyTensor(cr1[None, :,  :].astype(dtype))
+    crx = LazyTensor(cr2[None,:,  :].astype(dtype))
+    ayi = LazyTensor(a1[:, None].astype(dtype), axis=0)
+    ayj = LazyTensor(a1[:, None].astype(dtype), axis=1)
+    ax = LazyTensor(a2[:, None].astype(dtype), axis=1)
+    multiplieryy = (1 + (cryi * cryj).sum(axis=-1)**2) * (ayi*ayj).sum(axis=-1)
+    multiplieryx = (1 + (cryi * crx).sum(axis=-1)**2) * (ayi*ax).sum(axis=-1)
+    res = 0
+    for s in KparDist.sigma:
+        Kijyy = ku.makeKij(yi/s, yj/s, KparDist.name, KparDist.order)
+        Kijyx = ku.makeKij(yi/s, x/s, KparDist.name, KparDist.order)
+        res += (Kijyy* multiplieryy).sum(1).sum(0)[0] / s - 2* (Kijyx* multiplieryx).sum(1).sum(0)[0] / s
+    res /= (1/KparDist.sigma).sum()
+    return res
+
+
+
+
 def varifoldNorm(fvDef, fv1, KparDist, fun=None):
     if fun is None:
         fun = (f0_, df0_)
@@ -330,7 +385,16 @@ def varifoldNorm(fvDef, fv1, KparDist, fun=None):
 
 
 # Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (current norm)
-def varifoldNormGradient(fvDef, fv1, KparDist, with_weights=False, fun=None):
+def varifoldNormGradient(fvDef, fv1, KparDist, with_weights=False, fun = None, cpu=False, dtype='float64'):
+    if not cpu and pykeops.config.gpu_available:
+#        varifoldNormGradient_numpy(fvDef, fv1, KparDist, with_weights=with_weights, fun = fun)
+        return varifoldNormGradient_pykeops(fvDef, fv1, KparDist, with_weights=with_weights, dtype = dtype)
+    else:
+        return varifoldNormGradient_numpy(fvDef, fv1, KparDist, with_weights=with_weights, fun = fun)
+
+
+
+def varifoldNormGradient_numpy(fvDef, fv1, KparDist, with_weights=False, fun=None):
     if fun is None:
         fun = (f0_, df0_)
     xDef = fvDef.vertices
@@ -353,20 +417,13 @@ def varifoldNormGradient(fvDef, fv1, KparDist, with_weights=False, fun=None):
     beta1 = a1w[:, np.newaxis] * a1w[np.newaxis, :] * f0(cr1cr1)
     beta2 = a1w[:, np.newaxis] * a2w[np.newaxis, :] * f0(cr1cr2)
 
-    u1 = (df0(cr1cr1[:,:, np.newaxis]) * (cr1[np.newaxis, :, :] - cr1cr1[:,:, None] * cr1[:, None, :])
+    u1 = (df0(cr1cr1[:,:, np.newaxis]) * (cr1[None, :, :] - cr1cr1[:,:, None] * cr1[:, None, :])
           + f0(cr1cr1[:,:,None]) * cr1[:,None,:]) * a1w[np.newaxis, :, np.newaxis]
     u2 = (df0(cr1cr2[:,:, np.newaxis]) * (cr2[np.newaxis, :, :] - cr1cr2[:,:, None] * cr1[:, None, :])
           + f0(cr1cr2[:,:,None]) * cr1[:,None,:]) * a2w[np.newaxis, :, np.newaxis]
-    # u1 = (2 * d * cr1cr1[..., np.newaxis] * cr1[np.newaxis, ...]
-    #       - d * (cr1cr1 ** 2)[..., np.newaxis] * cr1[:, np.newaxis, :]
-    #       + cr1[:, np.newaxis, :]) * a1w[np.newaxis, :, np.newaxis]
-    # u2 = (2 * d * cr1cr2[..., np.newaxis] * cr2[np.newaxis, ...]
-    #       - d * (cr1cr2 ** 2)[..., np.newaxis] * cr1[:, np.newaxis, :]
-    #       + cr1[:, np.newaxis, :]) * a2w[np.newaxis, :, np.newaxis]
 
     z1 = fvDef.face_weights[:, None] * (KparDist.applyK(c1, u1, matrixWeights=True)
                                         - KparDist.applyK(c2, u2, firstVar=c1, matrixWeights=True))
-    # print a1.shape, c1.shape
     dz1 = (2. / 3.) * (KparDist.applyDiffKmat(c1, beta1) - KparDist.applyDiffKmat(c2, beta2, firstVar=c1))
 
     xDef1 = xDef[fvDef.faces[:, 0], :]
@@ -395,6 +452,111 @@ def varifoldNormGradient(fvDef, fv1, KparDist, with_weights=False, fun=None):
         z1w = (2 / 3) * fvDef.face_weights * (KparDist.applyK(c1, beta1[..., np.newaxis], matrixWeights=True)
                                               - KparDist.applyK(c2, beta2[..., np.newaxis], firstVar=c1,
                                                                 matrixWeights=True))
+        pxw = np.zeros(xDef.shape[0])
+        for j in range(dim):
+            I = fvDef.faces[:, j]
+            for k in range(I.size):
+                pxw[I[k]] += z1w[k]
+        return px, pxw
+    else:
+        return px
+
+def varifoldNormGradient_pykeops(fvDef, fv1, KparDist, with_weights=False, dtype = 'float64'):
+    xDef = fvDef.vertices
+    c1i = LazyTensor(fvDef.centers[:, None, :].astype(dtype))
+    c1j = LazyTensor(fvDef.centers[None, :, :].astype(dtype))
+    c2j = LazyTensor(fv1.centers[None, :, :].astype(dtype))
+    c2 = fv1.centers
+    dim = fv1.centers.shape[1]
+
+    a1 = np.sqrt((fvDef.surfel ** 2).sum(axis=1) + 1e-10)
+    a2 = np.sqrt((fv1.surfel ** 2).sum(axis=1) + 1e-10)
+    a1i = LazyTensor(a1[:, None].astype(dtype), axis=0)
+    a1j = LazyTensor(a1[:, None].astype(dtype), axis=1)
+    a2j = LazyTensor(a2[:, None].astype(dtype), axis=1)
+    cr1i = LazyTensor( (fvDef.surfel / a1[:, np.newaxis])[:,None,:].astype(dtype))
+    cr1j = LazyTensor( (fvDef.surfel / a1[:, np.newaxis])[None,:, :].astype(dtype))
+    cr2j = LazyTensor( (fv1.surfel / a2[:, np.newaxis])[None,:, :].astype(dtype))
+    a1wi = LazyTensor( (a1 * fvDef.face_weights)[:, None], axis=0)
+    a1wj = LazyTensor( (a1 * fvDef.face_weights)[:, None], axis=1)
+    a2wj = LazyTensor( (a2 * fv1.face_weights)[:, None], axis=1)
+
+    cr1cr1 = (cr1i*cr1j).sum(axis=2)
+    cr1cr2 = (cr1i*cr2j).sum(axis=2)
+#    cr1cr1 = (cr1[:, np.newaxis, :] * cr1[np.newaxis, :, :]).sum(axis=2)
+#    cr1cr2 = (cr1[:, np.newaxis, :] * cr2[np.newaxis, :, :]).sum(axis=2)
+
+    f011 = 1 + cr1cr1**2
+    f012 = 1 + cr1cr2**2
+    beta1 = (a1wi*a1wj) * f011 
+    beta2 = (a1wi*a2wj) * f012 
+#    beta1 = a1w[:, np.newaxis] * a1w[np.newaxis, :] * f0(cr1cr1)
+#    beta2 = a1w[:, np.newaxis] * a2w[np.newaxis, :] * f0(cr1cr2)
+
+    u1 = ((2*cr1cr1) * (cr1j - cr1cr1*cr1i) + f011 * cr1i) * a1wj
+    u2 = ((2*cr1cr2) * (cr2j - cr1cr2*cr1i) + f012 * cr1i) * a2wj
+    # u1 = (df0(cr1cr1[:,:, np.newaxis]) * (cr1[np.newaxis, :, :] - cr1cr1[:,:, None] * cr1[:, None, :])
+    #       + f0(cr1cr1[:,:,None]) * cr1[:,None,:]) * a1w[np.newaxis, :, np.newaxis]
+    # u2 = (df0(cr1cr2[:,:, np.newaxis]) * (cr2[np.newaxis, :, :] - cr1cr2[:,:, None] * cr1[:, None, :])
+    #       + f0(cr1cr2[:,:,None]) * cr1[:,None,:]) * a2w[np.newaxis, :, np.newaxis]
+
+    z1 = np.zeros(fvDef.centers.shape)
+    for s in KparDist.sigma:
+        Kijyy = ku.makeKij(c1i/s, c1j/s, KparDist.name, KparDist.order)
+        Kijyx = ku.makeKij(c1i/s, c2j/s, KparDist.name, KparDist.order)
+        z1 += (Kijyy * u1).sum(1) / s - (Kijyx * u2).sum(1) / s
+    z1 /= (1/KparDist.sigma).sum()
+    z1 *= fvDef.face_weights[:, None]
+
+#    z1 = fvDef.face_weights[:, None] * (KparDist.applyK(c1, u1, matrixWeights=True)
+#                                        - KparDist.applyK(c2, u2, firstVar=c1, matrixWeights=True))
+    dz1 = np.zeros(fvDef.centers.shape)
+    for s in KparDist.sigma:
+        dKijyy = ku.makeDiffKij(c1i/s, c1j/s, KparDist.name, KparDist.order)
+        dKijyx = ku.makeDiffKij(c1i/s, c2j/s, KparDist.name, KparDist.order)
+        dz1 += (dKijyy * beta1).sum(1) / (s**2) - (dKijyx * beta2).sum(1) / (s**2)
+    dz1 *= (2/3) / (1/KparDist.sigma).sum()
+
+    #dz1 = (2. / 3.) * (KparDist.applyDiffKmat(c1, beta1) - KparDist.applyDiffKmat(c2, beta2, firstVar=c1))
+
+    xDef1 = xDef[fvDef.faces[:, 0], :]
+    xDef2 = xDef[fvDef.faces[:, 1], :]
+    xDef3 = xDef[fvDef.faces[:, 2], :]
+
+    px = np.zeros([xDef.shape[0], dim])
+    I = fvDef.faces[:, 0]
+    crs = np.cross(xDef3 - xDef2, z1)
+    for k in range(I.size):
+        px[I[k], :] = px[I[k], :] + dz1[k, :] - crs[k, :]
+
+    I = fvDef.faces[:, 1]
+    crs = np.cross(xDef1 - xDef3, z1)
+    for k in range(I.size):
+        px[I[k], :] = px[I[k], :] + dz1[k, :] - crs[k, :]
+
+    I = fvDef.faces[:, 2]
+    crs = np.cross(xDef2 - xDef1, z1)
+    for k in range(I.size):
+        px[I[k], :] = px[I[k], :] + dz1[k, :] - crs[k, :]
+
+    if with_weights:
+        beta1 = f011 * a1i * a1wj
+        beta2 = f012 * a1i * a2wj
+#        beta1 = f0(cr1cr1) * a1[:, np.newaxis] * a1w[np.newaxis, :]
+#        beta2 = f0(cr1cr2) * a1[:, np.newaxis] * a2w[np.newaxis, :]
+
+        z1w = np.zeros(fvDef.centers.shape)
+        for s in KparDist.sigma:
+            Kijyy = ku.makeKij(c1i/s, c1j/s, KparDist.name, KparDist.order)
+            Kijyx = ku.makeKij(c1i/s, c2j/s, KparDist.name, KparDist.order)
+            z1w += (Kijyy * beta1).sum(1) / s - (Kijyx * beta2).sum(1) / s
+        z1w /= (1/KparDist.sigma).sum()
+        z1w *= (2/3)*fvDef.face_weights[:, None]
+
+
+#        z1w = (2 / 3) * fvDef.face_weights * (KparDist.applyK(c1, beta1[..., np.newaxis], matrixWeights=True)
+#                                              - KparDist.applyK(c2, beta2[..., np.newaxis], firstVar=c1,
+#                                                                matrixWeights=True))
         pxw = np.zeros(xDef.shape[0])
         for j in range(dim):
             I = fvDef.faces[:, j]
