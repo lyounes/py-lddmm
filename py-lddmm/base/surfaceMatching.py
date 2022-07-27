@@ -1521,7 +1521,7 @@ class SurfaceMatching(object):
         elif self.param.algorithm == 'sgd':
             logging.info('Running stochastic gradient descent')
             self.saveRate = 200
-            sgd.sgd(self, verb=self.verb, maxIter=10*self.maxIter, burnIn=10000, epsInit=.001)
+            sgd.sgd(self, verb=self.verb, maxIter=10*self.maxIter, burnIn=10000, epsInit=.0001)
 
         #return self.at, self.xt
 

@@ -188,7 +188,7 @@ def compute(model):
     sm.KparDist.pk_dtype = 'float64'
     f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTest/'+model +'_'+typeCost,
                         param=sm, testGradient=True, regWeight = regweight, Landmarks = landmarks,
-                        unreduced=True, unreducedWeight= 10.0,
+                        unreduced=True, unreducedWeight= 1000.0,
                         #subsampleTargetSize = 500,
                         internalWeight=internalWeight, maxIter=2000, affine= 'none', rotWeight=.01, transWeight = .01,
                         scaleWeight=10., affineWeight=100.)

@@ -1,5 +1,6 @@
 from numba import jit, prange, int64
 import numpy as np
+import cupy as cp
 from math import pi
 from pykeops.numpy import Genred, LazyTensor
 import pykeops
@@ -223,6 +224,37 @@ def applyK_numba(y, x, a, fun, scale, order):
             res[k] += resk
     res /= wsig
     return res
+
+
+def make_Kij_pykeops(y, x, name, scale, order, dtype='float64'):
+    Kij_ = []
+    for s in range(len(scale)):
+        ys = y/scale[s]
+        xs = x/scale[s]
+        ys_ = LazyTensor(ys.astype(dtype)[:, None, :])
+        xs_ = LazyTensor(xs.astype(dtype)[None, :, :])
+        if name == 'min':
+            Kij = (ys_ - xs_).ifelse(ys_.relu(), xs_.relu())
+        elif 'gauss' in name:
+            Dij = ((ys_ - xs_)**2).sum(-1)
+            Kij = (-0.5*Dij).exp()
+        elif 'lap' in name:
+            Dij = ((ys_ - xs_)**2).sum(-1).sqrt()
+            polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij*Dij*Dij\
+                    + c_[order, 4] *Dij*Dij*Dij*Dij
+            Kij = polij * (-Dij).exp()
+        elif 'poly' in name:
+            g = (ys_*xs_).sum(-1)
+            gk = LazyTensor(np.ones(ys_.shape))
+            Kij = LazyTensor(np.ones(ys_.shape))
+            for i in range(order):
+                gk *= g
+                Kij += gk
+        else: #Applying Euclidean kernel
+            Kij = (ys_*xs_).sum(-1)
+        Kij_.append(Kij)
+
+    return Kij_
 
 def applyK_pykeops(y, x, a, name, scale, order, dtype='float64'):
     res = np.zeros((y.shape[0], a.shape[1]))
@@ -1487,7 +1519,7 @@ def applydiffktensor_numba(y, x, ay, ax, betay, betax, name, scale, order):
 
 def applykdiffmat(y, x, beta, name, scale, order, cpu=False, dtype='float64'):
     if not cpu and pykeops.config.gpu_available:
-        return applykdiffmat_pykeops(y, x, beta, name, scale, order, dtype=dtype)
+        return applykdiffmat_cupy(y, x, beta, name, scale, order, dtype=dtype)
     else:
         return applykdiffmat_numba(y, x, beta, name, scale, order, name, scale, order)
 
@@ -1555,28 +1587,45 @@ def applykdiffmat_pykeops(y, x, beta, name, scale, order, dtype='float64'):
         else: # Euclidean kernel
             Kij = LazyTensor(np.ones(ys_.shape)) * xs_
 
+        print(np.array(Kij))
         res += (-sKP1[s]) * (Kij * beta).sum(1)
 
-
-    # for s in range(ns):
-    #     ys = y/scale[s]
-    #     xs = x/scale[s]
-    #     if 'gauss' in name:
-    #         for k in prange(num_nodes_y):
-    #             fk = np.zeros(dim)
-    #             for l in range(num_nodes):
-    #                 u = ((ys[k,:] - xs[l,:])**2).sum()/2
-    #                 fk -= sKP1[s] * np.exp(-u) * (ys[k, :] - xs[l, :]) * beta[k,l]
-    #             f[k,:] += fk
-    #     elif 'lap' in name:
-    #         for k in prange(num_nodes_y):
-    #             fk = np.zeros(dim)
-    #             for l in range(num_nodes):
-    #                 u = np.sqrt(((ys[k, :] - xs[l, :]) ** 2).sum())
-    #                 u1 = lapPolDiff(u, order) * np.exp(-u) * sKP1[s]
-    #                 fk -= u1 * (ys[k, :] - xs[l, :]) * beta[k,l]
-    #             f[k, :] += fk
     res/=wsig
     return res
 
+
+def applykdiffmat_cupy(y, x, beta, name, scale, order, dtype='float64'):
+    num_nodes = x.shape[0]
+    num_nodes_y = y.shape[0]
+    dim = x.shape[1]
+    res = cp.zeros((num_nodes_y, dim))
+
+    sKP = scale**KP
+    sKP1 = scale**(KP-1)
+    wsig = sKP.sum()
+    ns = len(scale)
+
+    for s in range(ns):
+        ys = y/scale[s]
+        xs = x/scale[s]
+        ys_ = cp.asarray(ys.astype(dtype)[:, None, :])
+        xs_ = cp.asarray(xs.astype(dtype)[None, :, :])
+        g = np.array([0.5])
+        sKP1s = np.array([sKP1[s]])
+        if 'gauss' in name:
+            diffij = ys_ - xs_
+            Dij = cp.square(diffij).sum(-1)
+            Kij = diffij * cp.exp(-0.5 * Dij)[:,:,None]
+        elif 'lap' in name:
+            diffij = ys_ - xs_
+            Dij = (diffij ** 2).sum(-1).sqrt()
+            Kij = diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
+            + c1_[order, 3] * Dij * Dij * Dij) * cp.exp(-Dij)
+        else: # Euclidean kernel
+            Kij = cp.ones(ys_.shape) * xs_
+
+        res += (-sKP1[s]) * (Kij * cp.asarray(beta[:,:,None])).sum(axis=1)
+
+    res/=wsig
+    return cp.asnumpy(res)
 
