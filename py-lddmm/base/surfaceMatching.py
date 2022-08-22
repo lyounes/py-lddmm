@@ -2,7 +2,7 @@ import os
 import time
 from copy import deepcopy
 import numpy as np
-import numpy.linalg as la
+# tryimport numpy.linalg as la
 import logging
 import h5py
 import glob

@@ -1,6 +1,12 @@
 from numba import jit, prange, int64
 import numpy as np
-import cupy as cp
+cupy_available = True
+try:
+    import cupy as cp
+except:
+    print('cannot import cupy')
+    cupy_available = False
+
 from math import pi
 from pykeops.numpy import Genred, LazyTensor
 import pykeops
@@ -1518,10 +1524,10 @@ def applydiffktensor_numba(y, x, ay, ax, betay, betax, name, scale, order):
 
 
 def applykdiffmat(y, x, beta, name, scale, order, cpu=False, dtype='float64'):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and cupy_available and pykeops.config.gpu_available:
         return applykdiffmat_cupy(y, x, beta, name, scale, order, dtype=dtype)
     else:
-        return applykdiffmat_numba(y, x, beta, name, scale, order, name, scale, order)
+        return applykdiffmat_numba(y, x, beta, name, scale, order)
 
 
 @jit(nopython=True, parallel=True)
