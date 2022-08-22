@@ -187,13 +187,16 @@ def compute(model):
     sm.KparDiff.pk_dtype = 'float64'
     sm.KparDist.pk_dtype = 'float64'
     f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTest/'+model +'_'+typeCost,
-                        param=sm, testGradient=True, regWeight = regweight, Landmarks = landmarks,
-                        unreduced=True, unreducedWeight= 1000.0,
+                        param=sm, testGradient=False, regWeight = regweight, Landmarks = landmarks,
+                        unreduced=True, unreducedWeight= 0.,
                         #subsampleTargetSize = 500,
-                        internalWeight=internalWeight, maxIter=2000, affine= 'none', rotWeight=.01, transWeight = .01,
+                        internalWeight=internalWeight, maxIter=20, affine= 'none', rotWeight=.01, transWeight = .01,
                         scaleWeight=10., affineWeight=100.)
-
     f.optimizeMatching()
+    for k in range(20):
+        f.unreducedWeight += 0.1 * f.ds
+        f.reset = True
+        f.optimizeMatching()
     plt.ioff()
     plt.show()
 
