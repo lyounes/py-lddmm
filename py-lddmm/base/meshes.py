@@ -244,7 +244,7 @@ def get_edges_(faces):
 
 
 class Mesh:
-    def __init__(self, mesh=None, weights=None, image=None, volumeRatio = 1000.):
+    def __init__(self, mesh=None, weights=None, image=None, imNames=None, volumeRatio = 1000.):
         if type(mesh) in (list, tuple):
             if isinstance(mesh[0], Mesh):
                 self.concatenate(mesh)
@@ -268,10 +268,17 @@ class Mesh:
                     self.updateWeights(weights)
                 if image is None:
                     self.image = np.ones((self.faces.shape[0], 1))
+                    self.imNames = ['0']
                     self.imageDim = 1
                 else:
                     self.image = np.copy(image)
                     self.imageDim = self.image.shape[1]
+                    self.imNames = []
+                    if imNames is None:
+                        for k in range(self.imageDim):
+                            self.imNames.append(str(k))
+                    else:
+                        self.imNames = imNames
                 self.computeCentersVolumesNormals(checkOrientation=True)
         elif type(mesh) is str:
             self.read(mesh)
@@ -290,6 +297,7 @@ class Mesh:
             self.dim = mesh.dim
             self.image = np.copy(mesh.image)
             self.imageDim = mesh.imageDim
+            self.imNames = mesh.imNames
         elif issubclass(type(mesh), Curve):
             g = GeometryBuilder()
             g.add_geometry(mesh.vertices, mesh.faces)
@@ -310,6 +318,7 @@ class Mesh:
             self.computeCentersVolumesNormals(checkOrientation=True)
             self.image = np.ones((self.faces.shape[0], 1))
             self.imageDim = 1
+            self.imNames = ['0']
         elif issubclass(type(mesh), Surface):
             g = GeometryBuilder()
             g.add_geometry(mesh.vertices, mesh.faces)
@@ -330,6 +339,7 @@ class Mesh:
             self.computeCentersVolumesNormals()
             self.image = np.ones((self.faces.shape[0], 1))
             self.imageDim = 1
+            self.imNames = ['0']
             self.computeCentersVolumesNormals(checkOrientation=True)
             print(f'Mesh: {self.vertices.shape[0]} vertices, {self.faces.shape[0]} cells')
         else:
@@ -343,6 +353,7 @@ class Mesh:
             self.vertex_weights = np.empty(0)
             self.image = np.empty(0)
             self.imageDim = 0
+            self.imNames = []
             self.dim = 0
 
         self.edges = None

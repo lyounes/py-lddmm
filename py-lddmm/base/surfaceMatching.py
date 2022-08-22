@@ -106,6 +106,8 @@ class SurfaceMatching(object):
 
         self.setOutputDir(outputDir)
         self.set_template_and_target(Template, Target, subsampleTargetSize)
+        self.unreducedWeight *= self.fv0.surfArea() /  self.fv0.vertices.shape[0]
+        self.ds = self.fv0.surfArea() /  self.fv0.vertices.shape[0]
 
         self.set_landmarks(Landmarks)
         self.set_fun(self.param.errorType, vfun=self.param.vfun)
@@ -484,15 +486,15 @@ class SurfaceMatching(object):
 
         if withJacobian:
             if self.unreduced:
-                xt,Jt  = evol.landmarkSemiReducedEvolutionEuler(x0, ct, at, kernel, affine=A, withJacobian=True)
+                xt,Jt  = evol.landmarkSemiReducedEvolutionEuler(x0, ct, at*self.ds, kernel, affine=A, withJacobian=True)
             else:
-                xt,Jt  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A, withJacobian=True)
+                xt,Jt  = evol.landmarkDirectEvolutionEuler(x0, at*self.ds, kernel, affine=A, withJacobian=True)
         else:
             Jt = None
             if self.unreduced:
-                xt = evol.landmarkSemiReducedEvolutionEuler(x0, ct, at, kernel, affine=A)
+                xt = evol.landmarkSemiReducedEvolutionEuler(x0, ct, at*self.ds, kernel, affine=A)
             else:
-                xt  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A)
+                xt  = evol.landmarkDirectEvolutionEuler(x0, at*self.ds, kernel, affine=A)
         #print xt[-1, :, :]
         #print obj
         obj=0
@@ -510,13 +512,13 @@ class SurfaceMatching(object):
             if self.unreduced:
                 ca = kernel.applyK(c,a)
                 ra = kernel.applyK(c, a, firstVar=z)
-                obj += regWeight_[t] * timeStep * (a * ca).sum()
+                obj += regWeight_[t] * timeStep * (a * ca).sum() * self.ds**2
                 obj += self.unreducedWeight * timeStep * ((c - z)**2).sum()
             else:
                 ra = kernel.applyK(z, a)
-                obj += regWeight_[t]*timeStep*(a*ra).sum()
+                obj += regWeight_[t]*timeStep*(a*ra).sum() * self.ds**2
             if hasattr(self, 'v'):
-                self.v[t, :] = ra
+                self.v[t, :] = ra * self.ds
             if self.internalCost:
                 foo.updateVertices(z[:self.nvert, :])
                 obj1 += self.internalWeight*self.internalCost(foo, ra)*timeStep
@@ -815,9 +817,9 @@ class SurfaceMatching(object):
         timeStep = 1.0/M
         if computeTraj:
             if self.unreduced:
-                xt = evol.landmarkSemiReducedEvolutionEuler(x0, ct, at, KparDiff, affine=affine)
+                xt = evol.landmarkSemiReducedEvolutionEuler(x0, ct, at*self.ds, KparDiff, affine=affine)
             else:
-                xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+                xt = evol.landmarkDirectEvolutionEuler(x0, at*self.ds, KparDiff, affine=affine)
             if current_at:
                 self.trajCounter = self.varCounter
                 self.xt = xt
@@ -841,10 +843,10 @@ class SurfaceMatching(object):
             a = np.squeeze(at[M-t-1, :, :])
             if self.unreduced:
                 c = np.squeeze(ct[M - t - 1, :, :])
-                v = KparDiff.applyK(c,a, firstVar=z)
+                v = KparDiff.applyK(c,a, firstVar=z)*self.ds
             else:
                 c = None
-                v = KparDiff.applyK(z,a)
+                v = KparDiff.applyK(z,a)*self.ds
 
             foo.updateVertices(z)
             if self.internalCost:
@@ -852,17 +854,17 @@ class SurfaceMatching(object):
                 Lv =  grd[0]
                 DLv = self.internalWeight*grd[1]
                 if self.unreduced:
-                    zpx = KparDiff.applyDiffKT(c, px - self.internalWeight*Lv, a, regweight=self.regweight,
+                    zpx = KparDiff.applyDiffKT(c, px - self.internalWeight*Lv, a*self.ds, regweight=self.regweight,
                                                lddmm=False, firstVar=z) - DLv - 2*self.unreducedWeight * (z-c)
                 else:
-                    zpx = KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True,
+                    zpx = KparDiff.applyDiffKT(z, px, a*self.ds, regweight=self.regweight, lddmm=True,
                                                extra_term=-self.internalWeight * Lv) - DLv
             else:
                 if self.unreduced:
-                    zpx = KparDiff.applyDiffKT(c, px, a, regweight=self.regweight, lddmm=False, firstVar=z) \
+                    zpx = KparDiff.applyDiffKT(c, px, a*self.ds, regweight=self.regweight, lddmm=False, firstVar=z) \
                         - 2*self.unreducedWeight * (z-c)
                 else:
-                    zpx = KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
+                    zpx = KparDiff.applyDiffKT(z, px, a*self.ds, regweight=self.regweight, lddmm=True)
 
             if not (affine is None):
                 pxt[M-t-1, :, :] = np.dot(px, A[M-t-1]) + timeStep * zpx
@@ -960,21 +962,22 @@ class SurfaceMatching(object):
             #print 'testgr', (2*a-px).sum()
             if not self.affineOnly:
                 if self.unreduced:
-                    dat[k, :, :] = 2 * regWeight * kernel.applyK(c, a) - kernel.applyK(z, px, firstVar=c)
+                    dat[k, :, :] = 2 * regWeight * kernel.applyK(c, a) * self.ds**2 - kernel.applyK(z, px, firstVar=c) * self.ds
                     if k > 0:
-                        dct[k, :, :] = 2 * regWeight * kernel.applyDiffKT(c, a, a) - kernel.applyDiffKT(z, a, px, firstVar=c) \
+                        dct[k, :, :] = 2 * regWeight * kernel.applyDiffKT(c, a, a) * self.ds**2 \
+                                       - kernel.applyDiffKT(z, a, px, firstVar=c) * self.ds \
                         + 2 * self.unreducedWeight * (c-z)
-                    v = kernel.applyK(c, a, firstVar=z)
+                    v = kernel.applyK(c, a, firstVar=z)*self.ds
                 else:
-                    dat[k, :, :] = 2 * regWeight * a - px
-                    v = kernel.applyK(z,a)
+                    dat[k, :, :] = 2 * regWeight * a * self.ds**2 - px * self.ds
+                    v = kernel.applyK(z,a)*self.ds
                 if self.internalCost:
                     Lv = self.internalCostGrad(foo, v, variables='phi')
                     #Lv = -foo.laplacian(v)
                     if self.unreduced:
                         dat[k, :, :] += self.internalWeight * kernel.applyK(z, Lv, firstVar=c)
                         if k> 0:
-                            dct[k, :, :] += self.internalWeight * kernel.applyDiffKT(z, a, Lv, firstVar=c)
+                            dct[k, :, :] += self.internalWeight * kernel.applyDiffKT(z, a, Lv, firstVar=c)*self.ds
                     else:
                         dat[k, :, :] += self.internalWeight * Lv
 
@@ -986,6 +989,7 @@ class SurfaceMatching(object):
                 db[k] = pxt[k+1].sum(axis=0) #.reshape([self.dim,1])
 
         if self.unreduced:
+            print('gradient', np.fabs(dct).max(), np.fabs(dat).max())
             output = [dct]
         else:
             output = []
@@ -1060,10 +1064,10 @@ class SurfaceMatching(object):
                 at = self.at - update[1] * update[0]['diff']
                 ct = self.ct - update[1] * update[0]['pts']
                 control = [ct, at]
-                xt = evol.landmarkSemiReducedEvolutionEuler(self.x0, ct, at, self.param.KparDiff, affine=A)
+                xt = evol.landmarkSemiReducedEvolutionEuler(self.x0, ct, at*self.ds, self.param.KparDiff, affine=A)
             else:
                 control = self.at - update[1] * update[0]['diff']
-                xt = evol.landmarkDirectEvolutionEuler(self.x0, control, self.param.KparDiff, affine=A)
+                xt = evol.landmarkDirectEvolutionEuler(self.x0, control*self.ds, self.param.KparDiff, affine=A)
 
 
             if self.match_landmarks:
@@ -1396,21 +1400,21 @@ class SurfaceMatching(object):
             logging.info('Saving surfaces...')
             if self.passenger_points is None:
                 if self.unreduced:
-                    self.xt, Jt = evol.landmarkSemiReducedEvolutionEuler(self.x0, self.ct, self.at,
+                    self.xt, Jt = evol.landmarkSemiReducedEvolutionEuler(self.x0, self.ct, self.at*self.ds,
                                                                          self.param.KparDiff, affine=A,
                                                                          withJacobian=True)
                 else:
-                    self.xt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
+                    self.xt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at*self.ds, self.param.KparDiff, affine=A,
                                                                  withJacobian=True)
                 yt = None
             else:
                 if self.unreduced:
-                    self.xt, Jt = evol.landmarkSemiReducedEvolutionEuler(self.x0, self.ct, self.at,
+                    self.xt, Jt = evol.landmarkSemiReducedEvolutionEuler(self.x0, self.ct, self.at*self.ds,
                                                                          self.param.KparDiff, affine=A,
                                                                          withPointSet=self.passenger_points,
                                                                          withJacobian=True)
                 else:
-                    self.xt, yt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
+                    self.xt, yt, Jt = evol.landmarkDirectEvolutionEuler(self.x0, self.at*self.ds, self.param.KparDiff, affine=A,
                                                                  withPointSet=self.passenger_points, withJacobian=True)
                 if isinstance(self.passenger, surfaces.Surface):
                     self.passengerDef.updateVertices(yt[-1,...])
@@ -1419,7 +1423,7 @@ class SurfaceMatching(object):
             self.trajCounter = self.varCounter
 
             if self.saveEPDiffTrajectories and not self.internalCost and self.affineDim <= 0:
-                xtEPDiff, atEPdiff = self.saveEPDiff(self.fvInit, self.at, fileName=self.saveFile)
+                xtEPDiff, atEPdiff = self.saveEPDiff(self.fvInit, self.at*self.ds, fileName=self.saveFile)
                 logging.info('EPDiff difference %f' % (np.fabs(self.xt[-1, :, :] - xtEPDiff[-1, :, :]).sum()))
 
             if self.saveTrajectories:
@@ -1503,6 +1507,9 @@ class SurfaceMatching(object):
     def optimizeMatching(self):
         #print 'dataterm', self.dataTerm(self.fvDef)
         #print 'obj fun', self.objectiveFun(), self.obj0
+        if self.unreduced:
+            print(f'Unreduced weight: {self.unreducedWeight:0.4f}')
+
         if self.param.algorithm in ('cg', 'bfgs'):
             self.coeffAff = self.coeffAff2
             grd = self.getGradient(self.gradCoeff)

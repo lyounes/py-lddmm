@@ -117,4 +117,4 @@ def line_search_wolfe(opt, pk, gfk=None, old_fval=None,
     #     derphi_star = gval[0]
 
 
-    return alpha_star, fc[0], gc[0], phi_star, old_fval
+    return alpha_star, fc[0], gc[0], phi_star, old_fval, gval[0]
