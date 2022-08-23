@@ -107,7 +107,10 @@ class SurfaceMatching(object):
         self.setOutputDir(outputDir)
         self.set_template_and_target(Template, Target, subsampleTargetSize)
         self.unreducedWeight *= self.fv0.surfArea() /  self.fv0.vertices.shape[0]
+        #if self.unreduced:
         self.ds = self.fv0.surfArea() /  self.fv0.vertices.shape[0]
+        #else:
+        #    self.ds = 1.
 
         self.set_landmarks(Landmarks)
         self.set_fun(self.param.errorType, vfun=self.param.vfun)
@@ -521,7 +524,7 @@ class SurfaceMatching(object):
                 self.v[t, :] = ra * self.ds
             if self.internalCost:
                 foo.updateVertices(z[:self.nvert, :])
-                obj1 += self.internalWeight*self.internalCost(foo, ra)*timeStep
+                obj1 += self.internalWeight*self.internalCost(foo, ra*self.ds)*timeStep
 
             if self.affineDim > 0:
                 obj2 +=  timeStep * np.multiply(self.affineWeight.reshape(Afft[t].shape), Afft[t]**2).sum()
@@ -975,11 +978,11 @@ class SurfaceMatching(object):
                     Lv = self.internalCostGrad(foo, v, variables='phi')
                     #Lv = -foo.laplacian(v)
                     if self.unreduced:
-                        dat[k, :, :] += self.internalWeight * kernel.applyK(z, Lv, firstVar=c)
+                        dat[k, :, :] += self.internalWeight * kernel.applyK(z, Lv, firstVar=c) * self.ds
                         if k> 0:
                             dct[k, :, :] += self.internalWeight * kernel.applyDiffKT(z, a, Lv, firstVar=c)*self.ds
                     else:
-                        dat[k, :, :] += self.internalWeight * Lv
+                        dat[k, :, :] += self.internalWeight * Lv * self.ds
 
                 if not self.unreduced and self.euclideanGradient:
                     dat[k, :, :] = kernel.applyK(z, dat[k, :, :])
