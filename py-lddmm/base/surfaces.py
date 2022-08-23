@@ -1653,6 +1653,7 @@ class Surface:
                 self.faces[k, 2] = int(ln[3])
 
         self.computeCentersAreas()
+        self.component = np.zeros(self.faces.shape[0], dtype=int)
 
 
         
