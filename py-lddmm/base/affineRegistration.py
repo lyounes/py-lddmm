@@ -3,6 +3,7 @@ from numba import jit
 import numpy.linalg as linalg
 from scipy.linalg import expm
 from scipy.optimize import minimize
+import logging
 
 def randomRotation(dim):
     A = np.random.normal(0,1, (dim, dim))
@@ -187,23 +188,35 @@ def rigidRegistration_varifold(surfaces, weights=None, sigma = 1., ninit=5):
 
     mx = np.mean(x,axis=0)
     my = np.mean(y,axis=0)
-    for k in range(ninit):
-        print(f'Initialization {k+1}')
-        if dimn == 2:
+    x00 = []
+    if dimn == 2:
+        for k in range(ninit):
             x0 = np.zeros(3)
             x0[0] = 2*k*np.pi/ninit
             R, T = getRotation(x0)
             x0[1:] = my - R@mx
+            x00.append(x0)
             #x0[0] = np.random.uniform(0, 2*np.pi, 1)
-        else:
-            x0 = np.zeros(6)
-            x0[:3] = np.random.uniform(0, 2*np.pi, 3)
-            R, T = getRotation(x0)
-            x0[3:] = my - R@mx
-
+    else:
+        for i1 in range(2):
+            for i2 in range(2):
+                for i3 in range(2):
+                    t = i1*np.pi
+                    phi = i2*np.pi
+                    psi = i3*np.pi
+                    x0 = np.zeros(6)
+                    x0[0] = t*np.cos(phi)*np.cos(psi)
+                    x0[1] = t * np.cos(phi) * np.sin(psi)
+                    x0[2] = t * np.sin(phi)
+                    R, T = getRotation(x0)
+                    x0[3:] = my - R@mx
+                    x00.append(x0)
+    for k, x0 in enumerate(x00):
+        logging.info(f'Rigid registration Initialization {k + 1}')
         res = minimize(objective_and_gradient_varifold, x0, args= (x, ys, wxy, sigma, False),
                        method='BFGS', jac=True, options={'maxiter':10000})
         if res.fun < bestobj:
+            logging.info(f'found better solution {bestobj:0.4f} {res.fun:0.4f}')
             bestx = np.copy(res.x)
             bestobj = res.fun
             #print(f'Current optimal: theta = {bestx[0]:.4f}, obj={bestobj:.4f}')

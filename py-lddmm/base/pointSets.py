@@ -209,7 +209,8 @@ def savePoints(fileName, x, vector=None, scalars=None):
 def saveTrajectories(fileName, xt):
     with open(fileName, 'w') as fvtkout:
         fvtkout.write('# vtk DataFile Version 3.0\ncurves \nASCII\nDATASET POLYDATA\n')
-        fvtkout.write('\nPOINTS {0: d} float'.format(xt.shape[0]*xt.shape[1]))
+        npt = xt.shape[0]*xt.shape[1]
+        fvtkout.write('\nPOINTS {0: d} float'.format(npt))
         if xt.shape[2] == 2:
             xt = np.concatenate((xt, np.zeros([xt.shape[0],xt.shape[1], 1])))
         for t in range(xt.shape[0]):
@@ -220,6 +221,12 @@ def saveTrajectories(fileName, xt):
         for t in range(xt.shape[0]-1):
             for ll in range(xt.shape[1]):
                 fvtkout.write('\n2 {0: d} {1: d}'.format(t*xt.shape[1]+ll, (t+1)*xt.shape[1]+ll))
+
+        fvtkout.write(('\nPOINT_DATA {0: d}').format(npt))
+        fvtkout.write('\nSCALARS time int 1\nLOOKUP_TABLE default')
+        for t in range(xt.shape[0]):
+            for ll in range(xt.shape[1]):
+                fvtkout.write(f'\n{t}')
 
         fvtkout.write('\n')
 

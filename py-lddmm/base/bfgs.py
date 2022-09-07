@@ -102,7 +102,10 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
     else:
         epsMax = 1.
 
-    burnIn = 20
+    if hasattr(opt, 'burnIn'):
+        burnIn = opt.burnIn
+    else:
+        burnIn = 20
     eps = epsInit
     epsMin = 1e-10
     opt.converged = False
@@ -195,13 +198,18 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
                     gradEps = max(min(gradEps, 0.001 * np.sqrt(grd2)), 0.0001)
                 logging.info(f'Gradient threshold: {gradEps:.6f}')
 
-            if Wolfe:
-                epsBig = epsMax / (grdTry)
-                eps = 1.
+            if it < burnIn:
+                Wolfe = False
+                eps = 0.01
+                epsBig = eps
             else:
-                epsBig = epsMax / (grdTry)
-                if eps > epsBig:
-                    eps = epsBig
+                if Wolfe:
+                    epsBig = epsMax / (grdTry)
+                    eps = 1.
+                else:
+                    epsBig = epsMax / (grdTry)
+                    if eps > epsBig:
+                        eps = epsBig
 
             objTry = opt.updateTry(dir0, eps, obj)
 

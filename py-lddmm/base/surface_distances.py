@@ -1,4 +1,5 @@
 import numpy as np
+from numba import jit
 from . import diffeo
 import logging
 from pykeops.numpy import LazyTensor
@@ -321,7 +322,7 @@ def varifoldNorm0_pykeops(fv1, KparDist, dtype = 'float64'):
 # Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct
 def varifoldNormDef(fvDef, fv1, KparDist, fun = None, cpu=False, dtype='float64'):
     if not cpu and pykeops.config.gpu_available:
-        return varifoldNormDef_pykeops(fvDef, fv1, KparDist, dtype = dtype)
+        return varifoldNormDef_pykeops(fvDef, fv1, KparDist, dtype = KparDist.pk_dtype)
     else:
         return varifoldNormDef_numpy(fvDef, fv1, KparDist, fun = fun)
 
@@ -388,7 +389,7 @@ def varifoldNorm(fvDef, fv1, KparDist, fun=None):
 def varifoldNormGradient(fvDef, fv1, KparDist, with_weights=False, fun = None, cpu=False, dtype='float64'):
     if not cpu and pykeops.config.gpu_available:
 #        varifoldNormGradient_numpy(fvDef, fv1, KparDist, with_weights=with_weights, fun = fun)
-        return varifoldNormGradient_pykeops(fvDef, fv1, KparDist, with_weights=with_weights, dtype = dtype)
+        return varifoldNormGradient_pykeops(fvDef, fv1, KparDist, with_weights=with_weights, dtype = KparDist.pk_dtype)
     else:
         return varifoldNormGradient_numpy(fvDef, fv1, KparDist, with_weights=with_weights, fun = fun)
 
@@ -472,14 +473,14 @@ def varifoldNormGradient_pykeops(fvDef, fv1, KparDist, with_weights=False, dtype
     a1 = np.sqrt((fvDef.surfel ** 2).sum(axis=1) + 1e-10)
     a2 = np.sqrt((fv1.surfel ** 2).sum(axis=1) + 1e-10)
     a1i = LazyTensor(a1[:, None].astype(dtype), axis=0)
-    a1j = LazyTensor(a1[:, None].astype(dtype), axis=1)
-    a2j = LazyTensor(a2[:, None].astype(dtype), axis=1)
+    # a1j = LazyTensor(a1[:, None].astype(dtype), axis=1)
+    # a2j = LazyTensor(a2[:, None].astype(dtype), axis=1)
     cr1i = LazyTensor( (fvDef.surfel / a1[:, np.newaxis])[:,None,:].astype(dtype))
     cr1j = LazyTensor( (fvDef.surfel / a1[:, np.newaxis])[None,:, :].astype(dtype))
     cr2j = LazyTensor( (fv1.surfel / a2[:, np.newaxis])[None,:, :].astype(dtype))
-    a1wi = LazyTensor( (a1 * fvDef.face_weights)[:, None], axis=0)
-    a1wj = LazyTensor( (a1 * fvDef.face_weights)[:, None], axis=1)
-    a2wj = LazyTensor( (a2 * fv1.face_weights)[:, None], axis=1)
+    a1wi = LazyTensor( (a1 * fvDef.face_weights)[:, None].astype(dtype), axis=0)
+    a1wj = LazyTensor( (a1 * fvDef.face_weights)[:, None].astype(dtype), axis=1)
+    a2wj = LazyTensor( (a2 * fv1.face_weights)[:, None].astype(dtype), axis=1)
 
     cr1cr1 = (cr1i*cr1j).sum(axis=2)
     cr1cr2 = (cr1i*cr2j).sum(axis=2)
@@ -717,26 +718,94 @@ def diffNormGrad(fv, phi, variables='both'):
     else:
         logging.info('Incorrect option in diffNormGrad')
 
-def elasticNorm(fv, phi):
-    v1 = fv.vertices[fv.faces[:, 0], :]
-    v2 = fv.vertices[fv.faces[:, 1], :]
-    v3 = fv.vertices[fv.faces[:, 2], :]
+@jit(nopython=True)
+def elasticNorm_nb(fc, ver, phi, surfel):
+    v1 = ver[fc[:, 0], :]
+    v2 = ver[fc[:, 1], :]
+    v3 = ver[fc[:, 2], :]
     l1 = ((v2 - v3) ** 2).sum(axis=1)
     l2 = ((v1 - v3) ** 2).sum(axis=1)
     l3 = ((v1 - v2) ** 2).sum(axis=1)
-    phi1 = phi[fv.faces[:, 0], :]
-    phi2 = phi[fv.faces[:, 1], :]
-    phi3 = phi[fv.faces[:, 2], :]
-    a = 4 * np.sqrt((fv.surfel ** 2).sum(axis=1))
+    phi1 = phi[fc[:, 0], :]
+    phi2 = phi[fc[:, 1], :]
+    phi3 = phi[fc[:, 2], :]
+    a = 4 * np.sqrt((surfel ** 2).sum(axis=1))
     u = l1 * ((phi2 - phi1) * (phi3 - phi1)).sum(axis=1) + l2 * ((phi3 - phi2) * (phi1 - phi2)).sum(axis=1) + \
         l3 * ((phi1 - phi3) * (phi2 - phi3)).sum(axis=1) - \
         0.5 * (((v1-v3)*(phi1-phi2)).sum(axis=1) - ((v1-v2)*(phi1-phi3)).sum(axis=1))**2
     res = (u / a).sum()
     return res
 
+def elasticNorm(fv, phi):
+    return elasticNorm_nb(fv.faces, fv.vertices, phi, fv.surfel)
 
 
+
+@jit(nopython=True)
+def diffElasticNorm_nb(fc, ver, phi, surfel, variables='both'):
+    v1 = ver[fc[:, 0], :]
+    v2 = ver[fc[:, 1], :]
+    v3 = ver[fc[:, 2], :]
+    l1 = np.expand_dims(((v2 - v3) ** 2).sum(axis=1),1)
+    l2 = np.expand_dims(((v1 - v3) ** 2).sum(axis=1),1)
+    l3 = np.expand_dims(((v1 - v2) ** 2).sum(axis=1),1)
+    phi1 = phi[fc[:, 0], :]
+    phi2 = phi[fc[:, 1], :]
+    phi3 = phi[fc[:, 2], :]
+    # a = ((fv.surfel**2).sum(axis=1))
+    a = 2 * np.expand_dims(np.sqrt((surfel ** 2).sum(axis=1)),1)
+    a2 = 2 * a#[:, np.newaxis]
+    correct =  np.expand_dims(((v1-v3)*(phi1-phi2)).sum(axis=1) - ((v1-v2)*(phi1-phi3)).sum(axis=1),1)
+    gradx = np.zeros(ver.shape)
+    gradphi = np.zeros(phi.shape)
+    if variables == 'both' or variables == 'phi':
+        r1 = (l1* (phi2 + phi3 - 2 * phi1) + (l2 - l3) * (phi2 - phi3)) / a2 \
+        + .5 * (v2-v3) * correct / a
+        r2 = (l2 * (phi1 + phi3 - 2 * phi2) + (l1 - l3) * (phi1 - phi3)) / a2 \
+        + .5 * (v3-v1) * correct / a
+        r3 = (l3 * (phi1 + phi2 - 2 * phi3) + (l2 - l1) * (phi2 - phi1)) / a2 \
+        + .5 * (v1 -v2) * correct / a
+        for k, f in enumerate(fc):
+            gradphi[f[0], :] -= r1[k, :]
+            gradphi[f[1], :] -= r2[k, :]
+            gradphi[f[2], :] -= r3[k, :]
+
+    if variables == 'both' or variables == 'x':
+        u = (l1[:,0] * ((phi2 - phi1) * (phi3 - phi1)).sum(axis=1) + l2[:,0] * ((phi3 - phi2) * (phi1 - phi2)).sum(axis=1)
+             + l3[:,0] * ((phi1 - phi3) * (phi2 - phi3)).sum(axis=1))
+        u = u - 0.5 * (((v1-v3)*(phi1-phi2)).sum(axis=1) - ((v1-v2)*(phi1-phi3)).sum(axis=1))**2
+        # u = (2*u/a**2)[...,np.newaxis]
+        u = np.expand_dims(u,1) / (a ** 3)
+        r1 = (- u * np.cross(v2 - v3, surfel) + 2 * (
+                    (v1 - v3) * np.expand_dims(((phi3 - phi2) * (phi1 - phi2)).sum(axis=1),1)
+                    + (v1 - v2) * np.expand_dims(((phi1 - phi3) * (phi2 - phi3)).sum(axis=1), 1)) / a2)
+        r2 = (- u * np.cross(v3 - v1, surfel) + 2 * (
+                    (v2 - v1) * np.expand_dims(((phi1 - phi3) * (phi2 - phi3)).sum(axis=1), 1)
+                    + (v2 - v3) * np.expand_dims(((phi2 - phi1) * (phi3 - phi1)).sum(axis=1), 1)) / a2)
+        r3 = (- u * np.cross(v1 - v2, surfel) + 2 * (
+                    (v3 - v2) * np.expand_dims(((phi2 - phi1) * (phi3 - phi1)).sum(axis=1),1)
+                    + (v3 - v1) * np.expand_dims(((phi3 - phi2) * (phi1 - phi2)).sum(axis=1), 1)) / a2)
+        r1 -= .5 * (phi3 - phi2) * correct / a
+        r2 -= .5 * (phi1 - phi3) * correct / a
+        r3 -= .5 * (phi2 - phi1) * correct / a
+        for k in range(fc.shape[0]):
+            gradx[fc[k, 0], :] = gradx[fc[k,0], :] + r1[k, :]
+            gradx[fc[k,1], :] = gradx[fc[k,1], :] + r2[k, :]
+            gradx[fc[k,2], :] = gradx[fc[k,2], :] + r3[k, :]
+
+    return gradphi, gradx
 def diffElasticNorm(fv, phi, variables='both'):
+    grad = diffElasticNorm_nb(fv.faces, fv.vertices, phi, fv.surfel, variables=variables)
+    if variables == 'both':
+        return grad
+    elif variables == 'phi':
+        return grad[0]
+    elif variables == 'x':
+        return grad[1]
+    else:
+        logging.info('Incorrect option in diffElasticNorm')
+
+def diffElasticNorm_old(fv, phi, variables='both'):
     v1 = fv.vertices[fv.faces[:, 0], :]
     v2 = fv.vertices[fv.faces[:, 1], :]
     v3 = fv.vertices[fv.faces[:, 2], :]
