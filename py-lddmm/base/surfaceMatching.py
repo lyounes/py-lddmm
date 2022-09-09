@@ -112,7 +112,10 @@ class SurfaceMatching(object):
         self.set_template_and_target(Template, Target, subsampleTargetSize)
         self.unreducedWeight *=  1000.0 / self.fv0.vertices.shape[0]
         #if self.unreduced:
-        self.ds = self.fv0.surfArea() /  self.fv0.vertices.shape[0]
+        if self.param.algorithm == 'sgd':
+            self.ds = 1.
+        else:
+            self.ds = self.fv0.surfArea() /  self.fv0.vertices.shape[0]
         #else:
         #    self.ds = 1.
 
@@ -159,6 +162,7 @@ class SurfaceMatching(object):
         self.testGradient = testGradient
         self.internalWeight = internalWeight
         self.regweight = regWeight
+        self.reset = True
 
         self.affineOnly = affineOnly
         self.affine = affine
@@ -201,11 +205,13 @@ class SurfaceMatching(object):
         self.saveEPDiffTrajectories = False
         self.varCounter = 0
         self.trajCounter = 0
+        self.unreducedResetRate = 50
 
         self.weightSubset = 0.
+        self.sgdEpsInit = 1e-4
         self.sgdMeanSelectControl = 100
         self.sgdMeanSelectTemplate = 100
-        self.sgdMeanSelectTarget = 100
+        self.sgdMeanSelectTarget = 100000
         self.probSelectControl = min(1.0, self.sgdMeanSelectControl / self.fv0.vertices.shape[0])
         self.probSelectFaceTemplate = min(1.0, self.sgdMeanSelectTemplate / self.fv0.faces.shape[0])
         self.probSelectFaceTarget = min(1.0, self.sgdMeanSelectTarget / self.fv1.faces.shape[0])
@@ -218,6 +224,7 @@ class SurfaceMatching(object):
                 nf[self.fv0.faces[k,j]] += 1
 
         self.probSelectVertexTemplate = 1 - self.probSelectVertexTemplate
+        self.stateSubset = None
 
 
     def set_template_and_target(self, Template, Target, subsampleTargetSize=-1):
@@ -687,94 +694,6 @@ class SurfaceMatching(object):
         logging.info("test endpoint gradient: {0:.5f} {1:.5f}".format((c[1]-c[0])/(2*eps), (grd*dall).sum()) )
 
 
-    def endPointGradientSGD(self):
-        if self.sgdMeanSelectTemplate >= self.fv0.faces.shape[0]:
-            I0_ = np.arange(self.fv0.faces.shape[0])
-            p0 = 1.
-            sqp0 = 1.
-        else:
-            I0_ = rng.choice(self.fv0.faces.shape[0], self.sgdMeanSelectTemplate, replace=False)
-            p0 = self.sgdMeanSelectTemplate / self.fv0.faces.shape[0]
-            sqp0 = np.sqrt(self.sgdMeanSelectTemplate*(self.sgdMeanSelectTemplate-1)
-                         /(self.fv0.faces.shape[0]*(self.fv0.faces.shape[0]-1)))
-
-        if self.sgdMeanSelectTarget > self.fv1.faces.shape[0]:
-            I1_ = np.arange(self.fv1.faces.shape[0])
-            p1 = p0 / sqp0
-        else:
-            I1_ = rng.choice(self.fv1.faces.shape[0], self.sgdMeanSelectTarget, replace=False)
-            p1 = (self.sgdMeanSelectTarget/self.fv1.faces.shape[0])*p0/sqp0
-
-        select0 = np.zeros(self.fv0.faces.shape[0], dtype=bool)
-        select0[I0_] = True
-        fv0, I0 = self.fv0.select_faces(select0)
-        self.stateSubset = I0
-        xt = evol.landmarkSemiReducedEvolutionEuler(fv0.vertices, self.ct, self.at, self.param.KparDiff,
-                                                    affine=self.Afft)
-        endPoint = surfaces.Surface(surf=fv0)
-        endPoint.updateVertices(xt[-1, :, :])
-        endPoint.face_weights /= sqp0
-        # endPoint.updateWeights(endPoint.weights / sqp0)
-
-        select1 = np.zeros(self.fv1.faces.shape[0], dtype=bool)
-        select1[I1_] = True
-        fv1, I1 = self.fv1.select_faces(select1)
-        #endPoint.saveVTK('foo.vtk')
-        fv1.face_weights /= p1
-#        fv1.updateWeights(fv1.weights / p1)
-        # self.SGDSelectionCost = [I0, I1]
-
-        if self.param.errorType == 'L2Norm':
-            px_ = sd.L2NormGradient(endPoint, self.fv1.vfld)
-        else:
-            px_ = self.fun_objGrad(endPoint, fv1)
-            ## Correction for diagonal term
-            if self.sgdMeanSelectTemplate < self.fv0.faces.shape[0]:
-                s0 = (1/sqp0 - sqp0/p0)#(sqp0 **2 /p0-1) * p0/sqp0
-                if self.param.errorType == 'varifold':
-                    s1 = 2.
-                else:
-                    s1 = 1.
-
-                pc = np.zeros(fv0.vertices.shape)
-                xDef0 = fv0.vertices[fv0.faces[:, 0], :]
-                xDef1 = fv0.vertices[fv0.faces[:, 1], :]
-                xDef2 = fv0.vertices[fv0.faces[:, 2], :]
-                nu = np.cross(xDef1-xDef0, xDef2-xDef0)
-                dz0 = np.cross(xDef1 - xDef2, nu)
-                dz1 = np.cross(xDef2 - xDef1, nu)
-                dz2 = np.cross(xDef0 - xDef1, nu)
-                for k in range(fv0.faces.shape[0]):
-                    pc[fv0.faces[k,0], :] += dz0[k,:]
-                    pc[fv0.faces[k,1], :] += dz1[k,:]
-                    pc[fv0.faces[k,2], :] += dz2[k,:]
-                px_ -= s1*(s0-1)*pc/2
-
-
-
-        # if self.match_landmarks:
-        #     pxl = self.wlmk*self.lmk_objGrad(endPoint_lmk.points, self.targ_lmk.points)
-        #     px = np.concatenate((px, pxl), axis=0)
-
-        # px = np.zeros(self.fvDef.vertices.shape)
-        # px[I0] = px_
-        return px_ / self.param.sigmaError**2, xt
-
-    def checkSGDEndpointGradient(self):
-        endPoint = surfaces.Surface(surf=self.fv0)
-        xt = evol.landmarkSemiReducedEvolutionEuler(self.fv0.vertices, self.ct, self.at, self.param.KparDiff,
-                                                    affine=self.Afft)
-        endPoint.updateVertices(xt[-1, :, :])
-
-        pxTrue = self.endPointGradient(endPoint=endPoint)
-        px = np.zeros(pxTrue.shape)
-        nsim = 25
-        for k in range(nsim):
-            px += self.endPointGradientSGD()[0]
-
-        px /= nsim
-        diff = ((px - pxTrue)**2).mean()
-        logging.info(f'check SGD gradient: {diff:.4f}')
 
     def endPointGradient(self, endPoint=None):
         if endPoint is None:
@@ -1037,6 +956,93 @@ class SurfaceMatching(object):
         #
         # return self.gradientFromHamiltonian(control, xt, pxt, fv0, affine, kernel, regWeight)
 
+    def endPointGradientSGD(self):
+        if self.sgdMeanSelectTemplate >= self.fv0.faces.shape[0]:
+            I0_ = np.arange(self.fv0.faces.shape[0])
+            p0 = 1.
+            sqp0 = 1.
+        else:
+            I0_ = rng.choice(self.fv0.faces.shape[0], self.sgdMeanSelectTemplate, replace=False)
+            p0 = self.sgdMeanSelectTemplate / self.fv0.faces.shape[0]
+            sqp0 = np.sqrt(self.sgdMeanSelectTemplate * (self.sgdMeanSelectTemplate - 1)
+                           / (self.fv0.faces.shape[0] * (self.fv0.faces.shape[0] - 1)))
+
+        if self.sgdMeanSelectTarget > self.fv1.faces.shape[0]:
+            I1_ = np.arange(self.fv1.faces.shape[0])
+            p1 = p0 / sqp0
+        else:
+            I1_ = rng.choice(self.fv1.faces.shape[0], self.sgdMeanSelectTarget, replace=False)
+            p1 = (self.sgdMeanSelectTarget / self.fv1.faces.shape[0]) * p0 / sqp0
+
+        select0 = np.zeros(self.fv0.faces.shape[0], dtype=bool)
+        select0[I0_] = True
+        fv0, I0 = self.fv0.select_faces(select0)
+        self.stateSubset = I0
+        xt = evol.landmarkSemiReducedEvolutionEuler(fv0.vertices, self.ct, self.at, self.param.KparDiff,
+                                                    affine=self.Afft)
+        endPoint = surfaces.Surface(surf=fv0)
+        endPoint.updateVertices(xt[-1, :, :])
+        endPoint.face_weights /= sqp0
+        # endPoint.updateWeights(endPoint.weights / sqp0)
+
+        select1 = np.zeros(self.fv1.faces.shape[0], dtype=bool)
+        select1[I1_] = True
+        fv1, I1 = self.fv1.select_faces(select1)
+        # endPoint.saveVTK('foo.vtk')
+        fv1.face_weights /= p1
+        #        fv1.updateWeights(fv1.weights / p1)
+        # self.SGDSelectionCost = [I0, I1]
+
+        if self.param.errorType == 'L2Norm':
+            px_ = sd.L2NormGradient(endPoint, self.fv1.vfld)
+        else:
+            px_ = self.fun_objGrad(endPoint, fv1)
+            ## Correction for diagonal term
+            if self.sgdMeanSelectTemplate < self.fv0.faces.shape[0]:
+                s0 = (1 / sqp0 - sqp0 / p0)  # (sqp0 **2 /p0-1) * p0/sqp0
+                if self.param.errorType == 'varifold':
+                    s1 = 2.
+                else:
+                    s1 = 1.
+
+                pc = np.zeros(fv0.vertices.shape)
+                xDef0 = fv0.vertices[fv0.faces[:, 0], :]
+                xDef1 = fv0.vertices[fv0.faces[:, 1], :]
+                xDef2 = fv0.vertices[fv0.faces[:, 2], :]
+                nu = np.cross(xDef1 - xDef0, xDef2 - xDef0)
+                dz0 = np.cross(xDef1 - xDef2, nu)
+                dz1 = np.cross(xDef2 - xDef1, nu)
+                dz2 = np.cross(xDef0 - xDef1, nu)
+                for k in range(fv0.faces.shape[0]):
+                    pc[fv0.faces[k, 0], :] += dz0[k, :]
+                    pc[fv0.faces[k, 1], :] += dz1[k, :]
+                    pc[fv0.faces[k, 2], :] += dz2[k, :]
+                px_ -= s1 * (s0 - 1) * pc / 2
+
+        # if self.match_landmarks:
+        #     pxl = self.wlmk*self.lmk_objGrad(endPoint_lmk.points, self.targ_lmk.points)
+        #     px = np.concatenate((px, pxl), axis=0)
+
+        # px = np.zeros(self.fvDef.vertices.shape)
+        # px[I0] = px_
+        self.xt[:, I0, :] = xt
+        return px_ / self.param.sigmaError ** 2, xt
+
+    def checkSGDEndpointGradient(self):
+        endPoint = surfaces.Surface(surf=self.fv0)
+        xt = evol.landmarkSemiReducedEvolutionEuler(self.fv0.vertices, self.ct, self.at, self.param.KparDiff,
+                                                    affine=self.Afft)
+        endPoint.updateVertices(xt[-1, :, :])
+
+        pxTrue = self.endPointGradient(endPoint=endPoint)
+        px = np.zeros(pxTrue.shape)
+        nsim = 25
+        for k in range(nsim):
+            px += self.endPointGradientSGD()[0]
+
+        px /= nsim
+        diff = ((px - pxTrue) ** 2).mean()
+        logging.info(f'check SGD gradient: {diff:.4f}')
 
     def getGradientSGD(self, coeff=1.0):
         #self.checkSGDEndpointGradient()
@@ -1080,6 +1086,9 @@ class SurfaceMatching(object):
 
 
     def getGradient(self, coeff=1.0, update=None):
+        if self.param.algorithm == 'sgd':
+            return self.getGradientSGD(coeff=coeff)
+        
         if update is None:
             control = None
             Afft = self.Afft
@@ -1316,9 +1325,6 @@ class SurfaceMatching(object):
         else:
             fn = fileName
 
-        if self.unreduced:
-            pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curvesSGDState.vtk', self.xt)
-            pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curvesSGDControl.vtk', self.ct)
 
         fvDef = surfaces.Surface(surf=fv0)
         AV0 = fvDef.computeVertexArea()
@@ -1403,20 +1409,28 @@ class SurfaceMatching(object):
 
     def endOfIterationSGD(self, forceSave=False):
         if forceSave or self.iter % self.saveRate == 0:
-            self.xt = evol.landmarkSemiReducedEvolutionEuler(self.x0, self.ct, self.at, self.param.KparDiff,
-                                                             affine=self.Afft)
+            # self.xt = evol.landmarkSemiReducedEvolutionEuler(self.x0, self.ct, self.at, self.param.KparDiff,
+            #                                                  affine=self.Afft)
             pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curvesSGDState.vtk', self.xt)
             pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curvesSGDControl.vtk', self.ct)
-            self.updateEndPoint(self.xt)
+            #self.updateEndPoint(self.xt)
             #self.ct = np.copy(self.xt[:-1, :, :])
             self.saveEvolution(self.fv0, self.xt)
+
+        if self.iter % self.unreducedResetRate == 0:
+            logging.info('Resetting trajectories')
+            self.ct = np.copy(self.xt[:-1, :, :])
+            # f.at = np.zeros(f.at.shape)
+            self.ctTry = np.copy(self.ct)
+
         #else:
             #self.updateEndPoint(self.xt)
 
     def startOfIteration(self):
-        if self.reset:
-            self.param.KparDiff.pk_dtype = 'float64'
-            self.param.KparDist.pk_dtype = 'float64'
+        if self.param.algorithm != 'sgd':
+            if self.reset:
+                self.param.KparDiff.pk_dtype = 'float64'
+                self.param.KparDist.pk_dtype = 'float64'
 
     def endOfIteration(self, forceSave=False):
         self.iter += 1
@@ -1479,6 +1493,9 @@ class SurfaceMatching(object):
                                             Jacobian=Jt)
             self.saveEvolution(self.fvInit, self.xt, Jacobian=Jt, fileName=self.saveFileList,
                                passenger = (self.passenger, yt))
+            if self.unreduced:
+                pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curvesSGDState.vtk', self.xt)
+                pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curvesSGDControl.vtk', self.ct)
             self.saveHdf5(fileName=self.outputDir + '/output.h5')
         else:
             if self.varCounter != self.trajCounter:
@@ -1491,6 +1508,12 @@ class SurfaceMatching(object):
             self.updateEndPoint(self.xt)
             self.fvInit.updateVertices(self.x0[:self.nvert, :])
 
+        if self.unreduced and self.iter % self.unreducedResetRate == 0:
+            logging.info('Resetting trajectories')
+            self.ct = np.copy(self.xt[:-1, :, :])
+            # f.at = np.zeros(f.at.shape)
+            self.ctTry = np.copy(self.ct)
+            self.reset = True
         if self.pplot:
             self.plotAtIteration()
 
@@ -1571,8 +1594,7 @@ class SurfaceMatching(object):
                           Wolfe=self.param.wolfe, memory=50)
         elif self.param.algorithm == 'sgd':
             logging.info('Running stochastic gradient descent')
-            self.saveRate = 200
-            sgd.sgd(self, verb=self.verb, maxIter=10*self.maxIter, burnIn=10000, epsInit=.001)
+            sgd.sgd(self, verb=self.verb, maxIter=self.maxIter, burnIn=10000, epsInit=self.sgdEpsInit)
 
         #return self.at, self.xt
 
