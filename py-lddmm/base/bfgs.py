@@ -102,7 +102,10 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
     else:
         epsMax = 1.
 
-    burnIn = 20
+    if hasattr(opt, 'burnIn'):
+        burnIn = opt.burnIn
+    else:
+        burnIn = 20
     eps = epsInit
     epsMin = 1e-10
     opt.converged = False
@@ -124,6 +127,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
     diffVar = None
     grdOld = None
     obj_old = None
+    gval = None
     while it < maxIter:
 
         try_BFGS = True
@@ -136,7 +140,10 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
                 obj = opt.objectiveFun()
                 obj_old = None
 
-            grd = opt.getGradient(gradCoeff)
+            if gval is None:
+                grd = opt.getGradient(gradCoeff)
+            else:
+                grd = gval
 
             if TestGradient:
                 if hasattr(opt, 'randomDir'):
@@ -191,13 +198,18 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
                     gradEps = max(min(gradEps, 0.001 * np.sqrt(grd2)), 0.0001)
                 logging.info(f'Gradient threshold: {gradEps:.6f}')
 
-            if Wolfe:
-                epsBig = epsMax / (grdTry)
-                eps = 1.
+            if it < burnIn:
+                Wolfe = False
+                eps = 0.01
+                epsBig = eps
             else:
-                epsBig = epsMax / (grdTry)
-                if eps > epsBig:
-                    eps = epsBig
+                if Wolfe:
+                    epsBig = epsMax / (grdTry)
+                    eps = 1.
+                else:
+                    epsBig = epsMax / (grdTry)
+                    if eps > epsBig:
+                        eps = epsBig
 
             objTry = opt.updateTry(dir0, eps, obj)
 
@@ -236,7 +248,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
         if not stopBFGS:
             __Wolfe = True
             if Wolfe:
-                eps, fc, gc, phi_star, old_fval = line_search_wolfe(opt, dir0, gfk=grd, old_fval=obj,
+                eps, fc, gc, phi_star, old_fval, gval = line_search_wolfe(opt, dir0, gfk=grd, old_fval=obj,
                                    old_old_fval=obj_old, c1=1e-4, c2=0.9, amax=None,
                                    maxiter=10)
                 if eps is not None:
@@ -249,6 +261,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
                     __Wolfe = False
             if not Wolfe or not __Wolfe:
                 eps = _eps
+                gval = None
                 while (objTry > obj) and (eps > epsMin):
                     eps = eps / 2
                     objTry = opt.updateTry(dir0, eps, obj)

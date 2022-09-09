@@ -125,6 +125,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
     #     return opt.getVariable()
 
 
+    gval = None
     obj_old = None
     skipCG = 0
     noUpdate = 0
@@ -142,7 +143,10 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
             obj_old = None
 
         if noUpdate==0:
-            grd = opt.getGradient(gradCoeff)
+            if gval is None:
+                grd = opt.getGradient(gradCoeff)
+            else:
+                grd = gval
 
         if TestGradient:
             if hasattr(opt, 'randomDir'):
@@ -217,7 +221,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
             __Wolfe = True
             if Wolfe:
                 objTry = opt.updateTry(dir0, eps, obj)
-                eps, fc, gc, phi_star, old_fval = line_search_wolfe(opt, dir0, gfk=grd, old_fval=obj,
+                eps, fc, gc, phi_star, old_fval, gval = line_search_wolfe(opt, dir0, gfk=grd, old_fval=obj,
                                    old_old_fval=obj_old, c1=1e-4, c2=0.9, amax=None,
                                    maxiter=10)
                 if eps is not None:
@@ -231,6 +235,7 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
 
             if not Wolfe or not __Wolfe:
                 eps = _eps
+                gval = None
                 objTry = opt.updateTry(dir0, eps, obj)
                 badGradient = 0
                 if objTry > obj:

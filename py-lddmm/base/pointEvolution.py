@@ -310,8 +310,8 @@ def landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, Kpardiff, regweight,
 
     N = x0.shape[0]
     dim = x0.shape[1]
-    M = at.shape[0]
-    timeStep = 1.0 / (M)
+    T = at.shape[0]
+    timeStep = 1.0 / T
 
     if stateSubset is not None:
         x0_ = x0[stateSubset]
@@ -326,23 +326,23 @@ def landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, Kpardiff, regweight,
     else:
         xt = forwardTraj
 
-    pxt = np.zeros((M + 1, N, dim))
-    pxt[M, stateSubset, :] = px1
+    pxt = np.zeros((T, N, dim))
+    pxt[T-1, stateSubset, :] = px1
 
-    for t in range(M):
-        px = np.squeeze(pxt[M - t, stateSubset, :])
-        z = np.squeeze(xt[M - t - 1, :, :])
-        c = np.squeeze(ct[M - t - 1, :, :])
-        a = np.squeeze(at[M - t - 1, :, :])
+    for t in range(1,T):
+        px = np.squeeze(pxt[T - t, stateSubset, :])
+        z = np.squeeze(xt[T - t, :, :])
+        c = np.squeeze(ct[T - t, :, :])
+        a = np.squeeze(at[T - t, :, :])
         zpx = np.zeros((N, dim))
         zpx[stateSubset, :] = Kpardiff.applyDiffKT(c, px, a, regweight=regweight, firstVar=z)
         zpx[stateSubset, :] -= 2* (weightSubset/stateProb[stateSubset, None]) * z
         zpx[J, :] += 2*(weightSubset / (stateProb[J, None]*controlProb)) * c[J, :]
         if not (affine is None):
-            pxt[M - t - 1, stateSubset, :] = np.dot(px, affineBasis.getExponential(timeStep * A[M - t - 1, :, :])) \
+            pxt[T - t - 1, stateSubset, :] = np.dot(px, affineBasis.getExponential(timeStep * A[T - t, :, :])) \
                                              + timeStep * zpx[stateSubset, :]
         else:
-            pxt[M - t - 1, stateSubset, :] = px + timeStep * zpx[stateSubset, :]
+            pxt[T - t - 1, stateSubset, :] = px + timeStep * zpx[stateSubset, :]
     return pxt, xt
 
 
@@ -375,28 +375,28 @@ def landmarkSemiReducedHamiltonianGradient(x0, ct, at, px1, KparDiff, regweight,
         A = affine[0]
         dA = np.zeros(affine[0].shape)
         db = np.zeros(affine[1].shape)
-    for k in range(at.shape[0]):
-        a0 = at[k, I0, :]
-        a1 = at[k, I1, :]
-        c = ct[k, :, :]
+    for t in range(at.shape[0]):
+        a0 = at[t, I0, :]
+        a1 = at[t, I1, :]
+        c = ct[t, :, :]
         x = np.zeros(x0.shape)
-        x[stateSubset, :] = xt[k, :, :]
-        px = pxt[k+1, stateSubset, :]
+        x[stateSubset, :] = xt[t, :, :]
+        px = pxt[t, stateSubset, :]
         #print 'testgr', (2*a-px).sum()
-        dat[k, I1, :] = regweight*KparDiff.applyK(c[I0,:], a0, firstVar=c[I1, :]) / pprob
-        dat[k, I0, :] += regweight*KparDiff.applyK(c[I1,:], a1, firstVar=c[I0, :]) / pprob
-        dat[k, :, :] -= KparDiff.applyK(xt[k, :, :], px, firstVar=c)
+        dat[t, I1, :] = regweight*KparDiff.applyK(c[I0,:], a0, firstVar=c[I1, :]) / pprob
+        dat[t, I0, :] += regweight*KparDiff.applyK(c[I1,:], a1, firstVar=c[I0, :]) / pprob
+        dat[t, :, :] -= KparDiff.applyK(xt[t, :, :], px, firstVar=c)
         # print(f'px {np.fabs(px).max()} {np.fabs(dat[k,:,:]).max()}')
-        if k > 0:
-            dct[k, I0, :] = regweight*KparDiff.applyDiffKT(c[I1, :], a0, a1, firstVar=c[I0, :]) / pprob
-            dct[k, I1, :] += regweight * KparDiff.applyDiffKT(c[I0, :], a1, a0, firstVar=c[I1, :]) / pprob
-            dct[k, :, :] -= KparDiff.applyDiffKT(xt[k, :, :], at[k, :, :], px,  firstVar=c)
-            dct[k, controlSubset, :] += 2*weightSubset*c[controlSubset, :]/controlProb
-            dct[k, J, :] -= 2 * (weightSubset / (stateProb[J, None]*controlProb)) * x[J, :]
+        if t > 0:
+            dct[t, I0, :] = regweight*KparDiff.applyDiffKT(c[I1, :], a0, a1, firstVar=c[I0, :]) / pprob
+            dct[t, I1, :] += regweight * KparDiff.applyDiffKT(c[I0, :], a1, a0, firstVar=c[I1, :]) / pprob
+            dct[t, :, :] -= KparDiff.applyDiffKT(xt[t, :, :], at[t, :, :], px,  firstVar=c)
+            dct[t, controlSubset, :] += 2*weightSubset*c[controlSubset, :]/controlProb
+            dct[t, J, :] -= 2 * (weightSubset / (stateProb[J, None]*controlProb)) * x[J, :]
 
         if not (affine is None):
-            dA[k] = affineBasis.gradExponential(A[k] * timeStep, pxt[k + 1], xt[k]) #.reshape([self.dim**2, 1])/timeStep
-            db[k] = pxt[k+1].sum(axis=0) #.reshape([self.dim,1])
+            dA[t] = affineBasis.gradExponential(A[t] * timeStep, pxt[t, :, :], xt[t, :, :]) #.reshape([self.dim**2, 1])/timeStep
+            db[t] = pxt[t, :, :].sum(axis=0) #.reshape([self.dim,1])
 
     if affine is None:
         if getCovector == False:

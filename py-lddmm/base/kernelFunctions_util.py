@@ -1,6 +1,14 @@
+import logging
+
 from numba import jit, prange, int64
 import numpy as np
-import cupy as cp
+cupy_available = True
+try:
+    import cupy as cp
+except:
+    print('cannot import cupy')
+    cupy_available = False
+
 from math import pi
 from pykeops.numpy import Genred, LazyTensor
 import pykeops
@@ -97,6 +105,12 @@ def poly_fun(u_, v_, a_, order):
     return res * a_
 
 @jit(nopython=True)
+def const_fun(u_, v_, a_, order):
+    return 1
+@jit(nopython=True)
+def const_fun_diff(u_, v_, a_, order):
+    return 0
+@jit(nopython=True)
 def min_fun(u_,v_, a_, order):
     uv_ = np.minimum(u_, v_)
     return ReLUK(uv_) * a_
@@ -185,6 +199,8 @@ def pick_fun(name, diff = False):
             fun = min_fun
         elif 'poly' in name:
             fun = poly_fun
+        elif 'constant' in name:
+            fun = const_fun
         else:
             fun = euclidean_fun
     else:
@@ -196,6 +212,8 @@ def pick_fun(name, diff = False):
             fun = min_fun_diff
         elif 'poly' in name:
             fun = poly_fun_diff
+        elif 'constant' in name:
+            fun = const_fun_diff
         else:
             fun = euclidean_fun_diff
     return fun
@@ -369,6 +387,8 @@ def makeDiffKij(ys_, xs_, name, order):
         else:
             dKij = 1 + 2*g + 3*g*g + 4*g*g*g + 5*g*g*g*g
         Kij = LazyTensor(np.ones(ys_.shape)) * xs_ * dKij
+    elif 'constant' in name:
+        Kij = 0
     else:  # Euclidean kernel
         Kij = LazyTensor(np.ones(ys_.shape)) * xs_
     return Kij
@@ -409,6 +429,9 @@ def makeKij(ys_, xs_, name, order):
             Kij = 1 + g + g*g + g*g*g + g*g*g*g
         else:
             Kij = 1 + g + g*g + g*g*g + g*g*g*g + g*g*g*g*g
+    elif 'constant' in name:
+        # logging.info('constant')
+        Kij = 1
     else:  # Applying Euclidean kernel
         Kij = (ys_ * xs_).sum(-1)
     return Kij
@@ -1518,10 +1541,10 @@ def applydiffktensor_numba(y, x, ay, ax, betay, betax, name, scale, order):
 
 
 def applykdiffmat(y, x, beta, name, scale, order, cpu=False, dtype='float64'):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and cupy_available and pykeops.config.gpu_available:
         return applykdiffmat_cupy(y, x, beta, name, scale, order, dtype=dtype)
     else:
-        return applykdiffmat_numba(y, x, beta, name, scale, order, name, scale, order)
+        return applykdiffmat_numba(y, x, beta, name, scale, order)
 
 
 @jit(nopython=True, parallel=True)

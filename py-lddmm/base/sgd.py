@@ -19,7 +19,7 @@ from copy import deepcopy
 # rate: SGD rate
 
 def sgd(opt, verb = True, maxIter=1000, burnIn = 100, epsInit=1., rate = 0.01, adam = True):
-    if not hasattr(opt, 'addProd') or not hasattr(opt, 'getGradientSGD'):
+    if not hasattr(opt, 'addProd') or not hasattr(opt, 'getGradient'):
         logging.error('Error: required functions for SGD are not provided')
         return
 
@@ -34,10 +34,10 @@ def sgd(opt, verb = True, maxIter=1000, burnIn = 100, epsInit=1., rate = 0.01, a
     logging.info('iteration 0')
     it = 1
     while it <= maxIter:
-        if hasattr(opt, 'startOfIterationSGD'):
-            opt.startOfIterationSGD()
+        if hasattr(opt, 'startOfIteration'):
+            opt.startOfIteration()
 
-        grd = opt.getGradientSGD(gradCoeff)
+        grd = opt.getGradient(gradCoeff)
         if it == 1:
             meanGrd = deepcopy(grd)
             varGrd = dict()
@@ -55,7 +55,8 @@ def sgd(opt, verb = True, maxIter=1000, burnIn = 100, epsInit=1., rate = 0.01, a
         grd_ = deepcopy(grd)
         for k in grd.keys():
             if grd[k] is not None:
-                grd_[k] /= epsInit + np.sqrt(varGrd[k] - meanGrd[k]**2 + 1e-10)
+                grd_[k] /= epsInit + np.sqrt(varGrd[k] + 1e-10)
+                #grd_[k] /= epsInit + np.sqrt(varGrd[k] - meanGrd[k] ** 2 + 1e-10)
         eps = epsInit / (1 + rate*max(0, it - burnIn))
         opt.update(grd_, eps)
         if verb:
@@ -67,10 +68,14 @@ def sgd(opt, verb = True, maxIter=1000, burnIn = 100, epsInit=1., rate = 0.01, a
                     # logging.info(k)
                     gabs += np.fabs(grd[k]).max()
                     mgabs += np.fabs(meanGrd[k]).max()
-                    message += k + f': {np.fabs(grd_[k]).max():.5f} {np.sqrt(varGrd[k] - meanGrd[k]**2 + 1e-10).max():.5f} '
+                    message += k + f': {np.fabs(grd_[k]).max():.5f} {np.sqrt(varGrd[k] + 1e-10).max():.5f} '
+                    #message += k + f': {np.fabs(grd_[k]).max():.5f} {np.sqrt(varGrd[k] - meanGrd[k] ** 2 + 1e-10).max():.5f} '
             logging.info(message + f' eps = {eps:.5f}')
         if hasattr(opt, 'endOfIteration'):
             opt.endOfIteration()
         it += 1
+
+    if hasattr(opt, 'endOfProcedure'):
+        opt.endOfProcedure()
 
     return opt

@@ -384,6 +384,9 @@ class KernelSpec:
         elif name == 'euclidean':
             self.name = 'euclidean'
             self.par = [sigma]
+        elif name == 'constant':
+            self.name = 'constant'
+            self.par = []
         else:
             self.name = 'none'
             self.kernelMatrix = None

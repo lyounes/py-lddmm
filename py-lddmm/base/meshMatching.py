@@ -114,6 +114,7 @@ class MeshMatching(pointSetMatching.PointSetMatching):
 
 
     def dataTerm(self, _fvDef, _fvInit = None):
+        # logging.info('dataTerm ' + self.param.KparIm.name)
         # if self.param.errorType == 'classification':
         #     obj = pointSets.LogisticScoreL2(_fvDef, self.fv1, self.u, w=self.wTr, intercept=self.intercept, l1Cost=self.l1Cost) \
         #           / (self.param.sigmaError**2)

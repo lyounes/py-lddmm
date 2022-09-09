@@ -3,6 +3,7 @@ from numba import jit
 import numpy.linalg as linalg
 from scipy.linalg import expm
 from scipy.optimize import minimize
+import logging
 
 def randomRotation(dim):
     A = np.random.normal(0,1, (dim, dim))
@@ -72,8 +73,8 @@ def _flipMidPoint(Y,X):
 
     return Z, S, T
 
-#@jit(nopython=False)
-def objective_and_gradient_varifold(u, x, ys, wxy, sigma):
+@jit(nopython=True)
+def objective_and_gradient_varifold(u, x, ys, wxy, sigma, test=True):
     grad = np.zeros(u.shape)
     dimn = x.shape[1]
     if dimn == 3:
@@ -84,41 +85,41 @@ def objective_and_gradient_varifold(u, x, ys, wxy, sigma):
             st = np.sin(t)
             ct = np.cos(t)
             a1 = st / t
-            a2 = (1 - ct) / (t ** 2)
-            ucx = np.cross(np.expand_dims(ur, 0), x)
-            udx = (np.expand_dims(ur, 0) * x).sum(axis=1)
+            a2 = (1 - ct) / t
             unorm = ur / t
-            Rx = ct * x + a1 * ucx + a2 * np.expand_dims(udx, 0) * np.expand_dims(ur, 1)
+            ucx = np.cross(np.expand_dims(unorm, 0), x)
+            udx = (np.expand_dims(unorm, 0) * x).sum(axis=1)
+            Rx = ct * x + st * ucx + (1-ct) * np.expand_dims(udx, 1) * np.expand_dims(unorm, 0)
             xx = (Rx + T) / sigma
             xy = np.expand_dims(xx, 1) - np.expand_dims(ys, 0)
             dxy = (xy ** 2).sum(axis=2)
             Kxy = np.exp(-dxy / 2) * wxy
             obj = -Kxy.sum()
-            dKxy = - np.expand_dims(Kxy, 2) * xy
-            da1 = (t * ct - st) / (t ** 3)
-            da2 = (t * st - 2 * (1 - ct)) / (t ** 4)
-            dKxyx = (dKxy * np.expand_dims(x, 1)).sum()
-            dKxyu = dKxy[:,:,0] * u[0] + dKxy[:,:,1] * u[1] + dKxy[:,:,2] * u[2]
+            dKxy = - np.sum(np.expand_dims(Kxy, 2) * xy, axis = 1)
+            # da1 = (t * ct - st) / (t ** 2)
+            # da2 = (t * st - 2 * (1 - ct)) / (t ** 2)
+            da1 = ct - a1
+            da2 = st - 2 * a2
+            dKxyx = (dKxy * x).sum()
+            dKxyu = dKxy[:,0] * unorm[0] + dKxy[:,1] * unorm[1] + dKxy[:,2] * unorm[2]
                 #(dKxy * np.expand_dims(ur, (0,1))).sum(axis=2)
-            dRx = da1 * (dKxy * np.expand_dims(ucx, 1)).sum() * unorm \
-                  + a1 * np.sum(np.sum(np.cross(np.expand_dims(x, 1), dKxy), axis=0),axis= 0) \
-                  - st * dKxyx * unorm + da2 * (dKxyu * np.expand_dims(udx, 1)).sum() * unorm \
-                  + a2 * ((dKxyu * np.expand_dims(x, 1)).sum()
-                          + (dKxy * np.sum(np.sum(np.expand_dims(np.expand_dims(udx, 1), 2), axis=0), axis=0)))
+            dRx = (da1 * (dKxy * ucx).sum() - st * dKxyx + da2 * (dKxyu * udx).sum()) * unorm \
+                  + a1 * np.sum(np.cross(x, dKxy), axis=0) \
+                  + a2 * ((np.expand_dims(dKxyu, 1) * x + dKxy * np.expand_dims(udx, 1)).sum(axis=0))
             dRx = -dRx / sigma
-            dT = - np.sum(np.sum(dKxy, axis=0), axis=0) / sigma
-            grad[:3] = dRx
+            dT = - np.sum(dKxy, axis=0) / sigma
         else:
             xx = (x + T) / sigma
             xy = np.expand_dims(xx, 1) - np.expand_dims(ys, 0)
             dxy = (xy ** 2).sum(axis=2)
             Kxy = np.exp(-dxy / 2) * wxy
             obj = -Kxy.sum()
-            dKxy = - np.expand_dims(Kxy, 2) * xy
+            dKxy = - np.sum(np.expand_dims(Kxy, 2) * xy, axis = 1)
             dRx = -np.sum(np.sum(np.cross(np.expand_dims(x, 1), dKxy), axis=0), axis=0)/sigma
-            dT = - np.sum(np.sum(dKxy, axis=0), axis=0) / sigma
-            grad[:3] = dRx
+            dT = - np.sum(dKxy, axis=0) / sigma
+        grad[:3] = dRx
         grad[3:] = dT
+        #print(f'obj={obj:.4f}; grad = {np.fabs(grad).max():.4f}')
     else:
         ct = np.cos(u[0])
         st = np.sin(u[0])
@@ -137,6 +138,15 @@ def objective_and_gradient_varifold(u, x, ys, wxy, sigma):
         grad[:1] = -dRx / sigma
         grad[1:] = -dT / sigma
         #print(f'theta = {u[0]:.4f}, obj={obj:.4f}; grad = {np.fabs(grad).max():.4f}')
+
+    if test:
+        eps = 1e-8
+        du = np.random.normal(0,1, u.shape)
+        # t = np.sqrt((u[:3] ** 2).sum())
+        # du[:3] = (du[:3] * u[:3]).sum() * u[:3] / t**2
+        obj1, foo = objective_and_gradient_varifold(u+eps*du, x, ys, wxy, sigma, test=False)
+        obj2, foo = objective_and_gradient_varifold(u - eps * du, x, ys, wxy, sigma, test=False)
+        #print(f'test gradient {(obj1 - obj2)/(2*eps):.6f}, {(du*grad).sum():.6f}')
     return obj, grad
 
 
@@ -157,8 +167,11 @@ def rigidRegistration_varifold(surfaces, weights=None, sigma = 1., ninit=5):
         if dimn == 3:
             ur = u[:3]
             t = np.sqrt((ur ** 2).sum())
-            A = np.array([[0, -ur[2], ur[1]], [ur[2], 0, -ur[0]], [ur[0], -ur[1], 0]])
-            R = np.eye(3) + ((1 - np.cos(t)) / (t ** 2)) * (np.dot(A, A)) + (np.sin(t) / t) * A
+            if t <1e-10:
+                R = np.eye(3)
+            else:
+                A = np.array([[0, -ur[2], ur[1]], [ur[2], 0, -ur[0]], [-ur[1], ur[0], 0]])
+                R = np.eye(3) + ((1 - np.cos(t)) / (t ** 2)) * (np.dot(A, A)) + (np.sin(t) / t) * A
             T = u[3:]
         else:
             ct = np.cos(u[0])
@@ -171,27 +184,39 @@ def rigidRegistration_varifold(surfaces, weights=None, sigma = 1., ninit=5):
         bestx = np.zeros(3)
     else:
         bestx = np.zeros(6)
-    bestobj, foo = objective_and_gradient_varifold(bestx, x, ys, wxy, sigma)
+    bestobj, foo = objective_and_gradient_varifold(bestx, x, ys, wxy, sigma, test=False)
 
     mx = np.mean(x,axis=0)
     my = np.mean(y,axis=0)
-    for k in range(ninit):
-        print(f'Initialization {k+1}')
-        if dimn == 2:
+    x00 = []
+    if dimn == 2:
+        for k in range(ninit):
             x0 = np.zeros(3)
             x0[0] = 2*k*np.pi/ninit
             R, T = getRotation(x0)
             x0[1:] = my - R@mx
+            x00.append(x0)
             #x0[0] = np.random.uniform(0, 2*np.pi, 1)
-        else:
-            x0 = np.zeros(6)
-            x0[:3] = np.random.uniform(0, 2*np.pi, 3)
-            R, T = getRotation(x0)
-            x0[3:] = my - R@mx
-
-        res = minimize(objective_and_gradient_varifold, x0, args= (x, ys, wxy, sigma),
+    else:
+        for i1 in range(2):
+            for i2 in range(2):
+                for i3 in range(2):
+                    t = i1*np.pi
+                    phi = i2*np.pi
+                    psi = i3*np.pi
+                    x0 = np.zeros(6)
+                    x0[0] = t*np.cos(phi)*np.cos(psi)
+                    x0[1] = t * np.cos(phi) * np.sin(psi)
+                    x0[2] = t * np.sin(phi)
+                    R, T = getRotation(x0)
+                    x0[3:] = my - R@mx
+                    x00.append(x0)
+    for k, x0 in enumerate(x00):
+        logging.info(f'Rigid registration Initialization {k + 1}')
+        res = minimize(objective_and_gradient_varifold, x0, args= (x, ys, wxy, sigma, False),
                        method='BFGS', jac=True, options={'maxiter':10000})
         if res.fun < bestobj:
+            logging.info(f'found better solution {bestobj:0.4f} {res.fun:0.4f}')
             bestx = np.copy(res.x)
             bestobj = res.fun
             #print(f'Current optimal: theta = {bestx[0]:.4f}, obj={bestobj:.4f}')
