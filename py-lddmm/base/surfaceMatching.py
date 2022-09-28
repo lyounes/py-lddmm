@@ -132,6 +132,8 @@ class SurfaceMatching(object):
         self.pplot = pplot
         if self.pplot:
             self.initial_plot()
+        if self.param.algorithm == 'sgd':
+            self.set_sgd()
 
     def set_passenger(self, passenger):
         self.passenger = passenger
@@ -211,6 +213,8 @@ class SurfaceMatching(object):
         self.trajCounter = 0
         self.unreducedResetRate = 50
 
+
+    def set_sgd(self):
         self.weightSubset = 0.
         self.sgdEpsInit = 1e-4
         self.sgdMeanSelectControl = 100
