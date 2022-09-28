@@ -26,7 +26,7 @@ from .surfaceMatching import SurfaceMatching, Direction
 #        maxIter: max iterations in conjugate gradient
 class SurfaceTimeMatching(SurfaceMatching):
     def __init__(self, Template=None, Target=None, param=None, times = None,
-                 maxIter=1000, regWeight = 1.0, affineWeight = 1.0, verb=True, affine = 'none',
+                 maxIter=1000, regWeight = 1.0, affineWeight = 1.0, mode='normal', affine = 'none',
                   rotWeight = None, scaleWeight = None, transWeight = None, internalWeight=1., volumeWeight = None,
                   rescaleTemplate=False, subsampleTargetSize=-1, testGradient=True,  saveFile = 'evolution', outputDir = '.'):
 
@@ -37,7 +37,7 @@ class SurfaceTimeMatching(SurfaceMatching):
             self.times = np.array(times)
         self.nTarg = len(Target)
         super().__init__(Template=Template, Target=Target, param=param, maxIter=maxIter,
-                 regWeight = regWeight, affineWeight = affineWeight, internalWeight=internalWeight, verb=verb,
+                 regWeight = regWeight, affineWeight = affineWeight, internalWeight=internalWeight, mode=mode,
                  subsampleTargetSize=subsampleTargetSize, affineOnly = False,
                  rotWeight = rotWeight, scaleWeight = scaleWeight, transWeight = transWeight, symmetric = False,
                  testGradient=testGradient, saveFile = saveFile,
