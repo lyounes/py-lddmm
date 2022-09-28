@@ -227,9 +227,9 @@ class SurfaceTimeMatching(SurfaceMatching):
     #
     def updateTry(self, dir, eps, objRef=None):
         objTry = self.obj0
-        atTry = self.at - eps * dir.diff
+        atTry = self.at - eps * dir['diff']
         if self.affineDim > 0:
-            AfftTry = self.Afft - eps * dir.aff
+            AfftTry = self.Afft - eps * dir['aff']
         else:
             AfftTry = self.Afft
         foo = self.objectiveFunDef(atTry, AfftTry, withTrajectory=True)
@@ -300,10 +300,10 @@ class SurfaceTimeMatching(SurfaceMatching):
         #print "px", (px[0]**2).sum()
         return px
 
-    def hamiltonianCovector(self, px1, KparDiff, regweight, affine=None, fv0 = None, at=None):
+    def hamiltonianCovector(self, px1, KparDiff, regweight, affine=None, fv0 = None, control=None):
         if fv0 is None:
             fv0 = self.fvInit
-        if at is None:
+        if control is None:
             at = self.at
             current_at = True
             if self.varCounter == self.trajCounter:
@@ -311,6 +311,7 @@ class SurfaceTimeMatching(SurfaceMatching):
             else:
                 computeTraj = True
         else:
+            at = control
             current_at = False
             computeTraj = True
         x0 = fv0.vertices
@@ -388,28 +389,28 @@ class SurfaceTimeMatching(SurfaceMatching):
             
         dim2 = self.dim**2
 
-        foo = self.hamiltonianGradient(px1, at=at, affine=A)
+        foo = self.hamiltonianGradient(px1, affine=A)
         grd = Direction()
         if self.euclideanGradient:
-            grd.diff = np.zeros(foo[0].shape)
+            grd['diff'] = np.zeros(foo[0].shape)
             for t in range(self.Tsize):
                 z = self.xt[t, :, :]
-                grd.diff[t,:,:] = self.param.KparDiff.applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
+                grd['diff'][t,:,:] = self.param.KparDiff.applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
         else:
-            grd.diff = foo[0]/(coeff*self.Tsize)
-        grd.aff = np.zeros(self.Afft.shape)
+            grd['diff'] = foo[0]/(coeff*self.Tsize)
+        grd['aff'] = np.zeros(self.Afft.shape)
         # if self.affineBurnIn:
         #     grd.diff *= 0
         if self.affineDim > 0 and self.iter < self.affBurnIn:
             dA = foo[1]
             db = foo[2]
-            grd.aff = 2*np.multiply(self.affineWeight.reshape([1, self.affineDim]), self.Afft)
+            grd['aff'] = 2*np.multiply(self.affineWeight.reshape([1, self.affineDim]), self.Afft)
             #grd.aff = 2 * self.Afft
             for t in range(self.Tsize):
                dAff = np.dot(self.affineBasis.T, np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])]))
                #grd.aff[t] -=  np.divide(dAff.reshape(grd.aff[t].shape), self.affineWeight.reshape(grd.aff[t].shape))
-               grd.aff[t] -=  dAff.reshape(grd.aff[t].shape)
-            grd.aff /= (self.coeffAff*coeff*self.Tsize)
+               grd['aff'][t] -=  dAff.reshape(grd['aff'][t].shape)
+            grd['aff'] /= (self.coeffAff*coeff*self.Tsize)
         return grd
 
 

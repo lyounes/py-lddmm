@@ -21,7 +21,7 @@ sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, KparDist=('
                                           sigmaError=.5, errorType='current')
 
 f = match.SurfaceTimeMatching(Template=fv0, Target=fv1, outputDir=outputDir, param=sm, regWeight=.1,
-                        affine='euclidean', testGradient=False, affineWeight=.1,  maxIter=1000)
+                        affine='euclidean', testGradient=True, affineWeight=.1,  maxIter=1000)
 
 f.optimizeMatching()
 
