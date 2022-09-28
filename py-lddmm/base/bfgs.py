@@ -195,7 +195,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
                 if gradEps is None:
                     gradEps = max(0.001 * np.sqrt(grd2), 0.0001)
                 else:
-                    gradEps = max(min(gradEps, 0.001 * np.sqrt(grd2)), 0.0001)
+                    gradEps = min(gradEps, 0.001 * np.sqrt(grd2))
                 logging.info(f'Gradient threshold: {gradEps:.6f}')
 
             if it < burnIn:
