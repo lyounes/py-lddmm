@@ -63,7 +63,7 @@ class Direction(dict):
 class SurfaceMatching(object):
     def __init__(self, Template=None, Target=None, Landmarks = None,
                  param=None, maxIter=1000, passenger = None,
-                 regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
+                 regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, mode='normal',
                  unreduced=False, unreducedWeight = 1.0,
                  subsampleTargetSize=-1, affineOnly = False,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
@@ -122,7 +122,7 @@ class SurfaceMatching(object):
         self.set_landmarks(Landmarks)
         self.set_fun(self.param.errorType, vfun=self.param.vfun)
         self.set_parameters(maxIter=maxIter, regWeight = regWeight, affineWeight = affineWeight,
-                            internalWeight=internalWeight, verb=verb, affineOnly = affineOnly,
+                            internalWeight=internalWeight, mode=mode,  affineOnly = affineOnly,
                             rotWeight = rotWeight, scaleWeight = scaleWeight, transWeight = transWeight,
                             symmetric = symmetric, testGradient=testGradient, saveFile = saveFile,
                             saveTrajectories = saveTrajectories, affine = affine)
@@ -146,7 +146,7 @@ class SurfaceMatching(object):
 
 
     def set_parameters(self, maxIter=1000,
-                 regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
+                 regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, mode = 'normal',
                  affineOnly = False,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
                  testGradient=True, saveFile = 'evolution',
@@ -156,7 +156,11 @@ class SurfaceMatching(object):
         self.randomInit = False
         self.iter = 0
         self.maxIter = maxIter
-        self.verb = verb
+        if mode in ('normal', 'debug'):
+            self.verb = True
+        else:
+            self.verb = False
+        self.mode = mode
         self.saveTrajectories = saveTrajectories
         self.symmetric = symmetric
         self.testGradient = testGradient
@@ -551,7 +555,8 @@ class SurfaceMatching(object):
             if self.affineDim > 0:
                 obj2 +=  timeStep * np.multiply(self.affineWeight.reshape(Afft[t].shape), Afft[t]**2).sum()
             #print xt.sum(), at.sum(), obj
-        logging.info(f'LDDMM: {obj:.4f}, unreduced penalty: {obj3:.4f}, internal cost: {obj1:.4f}, Affine cost: {obj2:.4f}')
+        if self.mode == 'debug':
+            logging.info(f'LDDMM: {obj:.4f}, unreduced penalty: {obj3:.4f}, internal cost: {obj1:.4f}, Affine cost: {obj2:.4f}')
         obj += obj1 + obj2 + obj3
         if withJacobian:
             return obj, xt, Jt
@@ -999,25 +1004,25 @@ class SurfaceMatching(object):
             px_ = self.fun_objGrad(endPoint, fv1)
             ## Correction for diagonal term
             if self.sgdMeanSelectTemplate < self.fv0.faces.shape[0]:
-                s0 = (1 / sqp0 - sqp0 / p0)  # (sqp0 **2 /p0-1) * p0/sqp0
+                s0 = (1/(sqp0**2) - 1/p0) #(1 / sqp0 - sqp0 / p0)  #  # (sqp0 **2 /p0-1) * p0/sqp0
                 if self.param.errorType == 'varifold':
                     s1 = 2.
                 else:
                     s1 = 1.
 
                 pc = np.zeros(fv0.vertices.shape)
-                xDef0 = fv0.vertices[fv0.faces[:, 0], :]
-                xDef1 = fv0.vertices[fv0.faces[:, 1], :]
-                xDef2 = fv0.vertices[fv0.faces[:, 2], :]
+                xDef0 = endPoint.vertices[fv0.faces[:, 0], :]
+                xDef1 = endPoint.vertices[fv0.faces[:, 1], :]
+                xDef2 = endPoint.vertices[fv0.faces[:, 2], :]
                 nu = np.cross(xDef1 - xDef0, xDef2 - xDef0)
                 dz0 = np.cross(xDef1 - xDef2, nu)
-                dz1 = np.cross(xDef2 - xDef1, nu)
+                dz1 = np.cross(xDef2 - xDef0, nu)
                 dz2 = np.cross(xDef0 - xDef1, nu)
                 for k in range(fv0.faces.shape[0]):
                     pc[fv0.faces[k, 0], :] += dz0[k, :]
                     pc[fv0.faces[k, 1], :] += dz1[k, :]
                     pc[fv0.faces[k, 2], :] += dz2[k, :]
-                px_ -= s1 * (s0 - 1) * pc / 2
+                px_ -= s1 * s0 * pc / 2
 
         # if self.match_landmarks:
         #     pxl = self.wlmk*self.lmk_objGrad(endPoint_lmk.points, self.targ_lmk.points)
@@ -1052,14 +1057,14 @@ class SurfaceMatching(object):
         #x0[self.stateSubset, :] = xt[-1, :, :]
         if self.sgdMeanSelectControl <= self.ct.shape[1]:
             J0 = rng.choice(self.ct.shape[1], self.sgdMeanSelectControl, replace=False)
-            J1 = rng.choice(self.ct.shape[1], self.sgdMeanSelectControl, replace=False)
+            #J1 = rng.choice(self.ct.shape[1], self.sgdMeanSelectControl, replace=False)
         else:
             J0 = np.arange(self.ct.shape[1])
-            J1 = np.arange(self.ct.shape[1])
+            #J1 = np.arange(self.ct.shape[1])
         foo = evol.landmarkSemiReducedHamiltonianGradient(self.x0, self.ct, self.at, -px1, self.param.KparDiff,
                                                           self.regweight, getCovector = True, affine = A,
                                                           weightSubset=self.unreducedWeight,
-                                                          controlSubset = [J0, J1], stateSubset=self.stateSubset,
+                                                          controlSubset = J0, stateSubset=self.stateSubset,
                                                           controlProb=self.probSelectControl,
                                                           stateProb=self.probSelectVertexTemplate,
                                                           forwardTraj=xt)
@@ -1088,7 +1093,7 @@ class SurfaceMatching(object):
     def getGradient(self, coeff=1.0, update=None):
         if self.param.algorithm == 'sgd':
             return self.getGradientSGD(coeff=coeff)
-        
+
         if update is None:
             control = None
             Afft = self.Afft
@@ -1582,7 +1587,8 @@ class SurfaceMatching(object):
             grd = self.getGradient(self.gradCoeff)
             [grd2] = self.dotProduct(grd, [grd])
 
-            self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
+            if self.gradEps < 0:
+                self.gradEps = max(1e-5, np.sqrt(grd2) / 10000)
             self.epsMax = 5.
             logging.info(f'Gradient lower bound: {self.gradEps:.5f}')
             self.coeffAff = self.coeffAff1

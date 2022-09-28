@@ -352,20 +352,23 @@ def landmarkSemiReducedHamiltonianGradient(x0, ct, at, px1, KparDiff, regweight,
                                            controlSubset = None, controlProb = 1., stateSubset = None,
                                            stateProb = 1., weightSubset = 1., forwardTraj = None):
     if controlSubset is None:
-        controlSubset = [np.arange(at.shape[1]), np.arange(at.shape[1])]
+        controlSubset = np.arange(at.shape[1])
         stateSubset = np.arange(x0.shape[0])
 
     if np.isscalar(stateProb):
         stateProb = stateProb * np.ones(x0.shape[0])
 
     (pxt, xt) = landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, KparDiff, regweight, affine=affine,
-                                                       controlSubset = controlSubset[0], stateSubset=stateSubset,
+                                                       controlSubset = controlSubset, stateSubset=stateSubset,
                                                        stateProb=stateProb, controlProb=controlProb,
                                                        weightSubset=weightSubset,
                                                        forwardTraj=forwardTraj)
-    pprob = controlProb * controlProb
-    I0 = controlSubset[0]
-    I1 = controlSubset[1]
+    #pprob = controlProb * controlProb
+    M = at.shape[1]
+    pprob = controlProb * (M*controlProb - 1)/(M-1)
+    dprob = 1/controlProb - 1/pprob
+    I0 = controlSubset
+    #I1 = controlSubset[1]
     J = np.intersect1d(I0, stateSubset)
 
     dat = np.zeros(at.shape)
@@ -377,19 +380,20 @@ def landmarkSemiReducedHamiltonianGradient(x0, ct, at, px1, KparDiff, regweight,
         db = np.zeros(affine[1].shape)
     for t in range(at.shape[0]):
         a0 = at[t, I0, :]
-        a1 = at[t, I1, :]
+        #a1 = at[t, I1, :]
         c = ct[t, :, :]
         x = np.zeros(x0.shape)
         x[stateSubset, :] = xt[t, :, :]
         px = pxt[t, stateSubset, :]
         #print 'testgr', (2*a-px).sum()
-        dat[t, I1, :] = regweight*KparDiff.applyK(c[I0,:], a0, firstVar=c[I1, :]) / pprob
-        dat[t, I0, :] += regweight*KparDiff.applyK(c[I1,:], a1, firstVar=c[I0, :]) / pprob
+        dat[t, I0, :] = 2 * regweight*KparDiff.applyK(c[I0,:], a0) / pprob
+        dat[t, I0, :] += 2*dprob * a0
+        #dat[t, I0, :] += regweight*KparDiff.applyK(c[I1,:], a1, firstVar=c[I0, :]) / pprob
         dat[t, :, :] -= KparDiff.applyK(xt[t, :, :], px, firstVar=c)
         # print(f'px {np.fabs(px).max()} {np.fabs(dat[k,:,:]).max()}')
         if t > 0:
-            dct[t, I0, :] = regweight*KparDiff.applyDiffKT(c[I1, :], a0, a1, firstVar=c[I0, :]) / pprob
-            dct[t, I1, :] += regweight * KparDiff.applyDiffKT(c[I0, :], a1, a0, firstVar=c[I1, :]) / pprob
+            dct[t, I0, :] = 2*regweight*KparDiff.applyDiffKT(c[I0, :], a0, a0) / pprob
+            #dct[t, I1, :] += regweight * KparDiff.applyDiffKT(c[I0, :], a1, a0, firstVar=c[I1, :]) / pprob
             dct[t, :, :] -= KparDiff.applyDiffKT(xt[t, :, :], at[t, :, :], px,  firstVar=c)
             dct[t, controlSubset, :] += 2*weightSubset*c[controlSubset, :]/controlProb
             dct[t, J, :] -= 2 * (weightSubset / (stateProb[J, None]*controlProb)) * x[J, :]
