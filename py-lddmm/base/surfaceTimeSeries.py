@@ -44,6 +44,7 @@ class SurfaceTimeMatching(SurfaceMatching):
                  saveTrajectories = False, affine = affine, outputDir = outputDir,pplot=False)
 
         self.volumeWeight = volumeWeight
+        self.ds = 1.
         #self.saveRate = 1
 
         # if self.affine=='euclidean' or self.affine=='translation':
@@ -71,9 +72,15 @@ class SurfaceTimeMatching(SurfaceMatching):
 
     def initialize_variables(self):
         self.Tsize = int(round(1.0 / self.param.timeStep))
-        self.x0 = np.copy(self.fvInit.vertices)
-        self.x0try = np.copy(self.fvInit.vertices)
-        self.npt = self.fvInit.vertices.shape[0]
+        self.nvert = self.fvInit.vertices.shape[0]
+        if self.match_landmarks:
+            self.x0 = np.concatenate((self.fvInit.vertices, self.tmpl_lmk.points), axis=0)
+            self.nlmk = self.tmpl_lmk.points.shape[0]
+        else:
+            self.x0 = np.copy(self.fvInit.vertices)
+            self.nlmk = 0
+        self.x0try = np.copy(self.x0)
+        self.npt = self.x0.shape[0]
         if self.times is None:
             self.times = 1+np.arange(self.nTarg)
         self.Tsize = int(round(self.times[-1]/self.param.timeStep))
@@ -96,6 +103,10 @@ class SurfaceTimeMatching(SurfaceMatching):
         self.fvDef = []
         for k in range(self.nTarg):
             self.fvDef.append(surfaces.Surface(surf=self.fv0))
+        self.def_lmk = []
+        if self.match_landmarks:
+            for k in range(self.nTarg):
+                self.def_lmk.append(pointSets.PointSet(data=self.tmpl_lmk))
         self.a0 = np.zeros([self.x0.shape[0], self.x0.shape[1]])
 
         self.regweight_ = np.ones(self.Tsize)
@@ -151,6 +162,22 @@ class SurfaceTimeMatching(SurfaceMatching):
             f.saveVTK(self.outputDir+f'/Target{k:03d}.vtk')
         self.dim = self.fv0.vertices.shape[1]
 
+    def set_landmarks(self, landmarks):
+        if landmarks is None:
+            self.match_landmarks = False
+            self.tmpl_lmk = None
+            self.targ_lmk = None
+            self.def_lmk = None
+            self.wlmk = 0
+            return
+
+        self.match_landmarks = True
+        tmpl_lmk, targ_lmk, self.wlmk = landmarks
+        self.tmpl_lmk = pointSets.PointSet(data=tmpl_lmk)
+        self.targ_lmk = []
+        for l in targ_lmk:
+            self.targ_lmk.append(pointSets.PointSet(data=l))
+
     def initial_plot(self):
         pass
 
@@ -195,15 +222,22 @@ class SurfaceTimeMatching(SurfaceMatching):
         logging.info('orientation: {0:d}'.format(self.fv0ori))
 
 
-    def dataTerm(self, _fvDef, fv1 = None, fvInit = None):
+    def dataTerm(self, _fvDef, fv1 = None, fvInit = None, _lmk_def = None, lmk1 = None):
         obj = 0
         if fv1 is None:
             fv1 = self.fv1
-        for k,s in enumerate(_fvDef):
-            obj += super().dataTerm(s, fv1 = fv1[k])
-            if self.volumeWeight:
-                obj += self.volumeWeight * (s.surfVolume() - fv1[k].surfVolume()) ** 2
-
+        if self.match_landmarks:
+            if _lmk_def is None:
+                _lmk_def = self.def_lmk
+            if lmk1 is None:
+                lmk1 = self.targ_lmk
+            for k, s in enumerate(_fvDef):
+                obj += super().dataTerm(s, fv1=fv1[k], _lmk_def=_lmk_def[k], lmk1=lmk1[k].points)
+        else:
+            for k,s in enumerate(_fvDef):
+                obj += super().dataTerm(s, fv1 = fv1[k])
+                if self.volumeWeight:
+                    obj += self.volumeWeight * (s.surfVolume() - fv1[k].surfVolume()) ** 2
         return obj
 
     def objectiveFun(self):
@@ -215,10 +249,14 @@ class SurfaceTimeMatching(SurfaceMatching):
                     self.obj0 += sd.L2Norm0(self.fv1[k]) / (self.param.sigmaError ** 2)
                 else:
                     self.obj0 += self.fun_obj0(self.fv1[k]) / (self.param.sigmaError**2)
+                if self.match_landmarks:
+                    self.obj0 += self.wlmk * self.lmk_obj0(self.targ_lmk[k]) / (self.param.sigmaError ** 2)
                 #foo = surfaces.Surface(surf=self.fvDef[k])
-                self.fvDef[k].updateVertices(np.squeeze(self.xt[self.jumpIndex[k], :, :]))
+                self.fvDef[k].updateVertices(np.squeeze(self.xt[self.jumpIndex[k], :self.nvert, :]))
+                if self.match_landmarks:
+                    self.def_lmk.points = self.xt[self.jumpIndex[k], self.nvert:, :]
                 #foo.computeCentersAreas()
-            self.obj += self.obj0 + self.dataTerm(self.fvDef)
+            self.obj += self.obj0 + self.dataTerm(self.fvDef, _lmk_def=self.def_lmk)
             #print self.obj0,  self.dataTerm(self.fvDef)
         return self.obj
 
@@ -236,16 +274,24 @@ class SurfaceTimeMatching(SurfaceMatching):
         objTry += foo[0]
         xtTry = foo[1]
 
-        ff = [] 
+        ff = []
         for k in range(self.nTarg):
             ff.append(surfaces.Surface(surf=self.fvDef[k]))
-            ff[k].updateVertices(np.squeeze(foo[1][self.jumpIndex[k], :, :]))
-        objTry += self.dataTerm(ff)
+            ff[k].updateVertices(np.squeeze(foo[1][self.jumpIndex[k], :self.nvert, :]))
+        if self.match_landmarks:
+            pp = []
+            for k in range(self.nTarg):
+                pp = pointSets.PointSet(data=self.def_lmk[k])
+                pp.updatePoints(np.squeeze(foo[1][self.jumpIndex[k], self.nvert:, :]))
+        else:
+            pp = None
+        # objTry += self.dataTerm(ff)
+        objTry += self.dataTerm(ff, _lmk_def=pp)
         if np.isnan(objTry):
             print('Warning: nan in updateTry')
             return 1e500
 
-        if (objRef is None) | (objTry < objRef):
+        if (objRef is None) or (objTry < objRef):
             self.atTry = atTry
             self.AfftTry = AfftTry
             self.objTry = objTry
@@ -256,18 +302,36 @@ class SurfaceTimeMatching(SurfaceMatching):
 
     def testEndpointGradient(self):
         c0 = self.dataTerm(self.fvDef)
-        eps = 1e-6
-        f2 = []
+        eps0 = 1e-8
+        f2 = [[],[]]
+        p2 = [[],[]]
         grd = self.endPointGradient()
         grdscp = 0
+        c = [0, 0]
         for k,f in enumerate(self.fvDef):
-            ff = surfaces.Surface(surf=f)
-            dff = np.random.normal(size=ff.vertices.shape)
-            grdscp += (grd[k]*dff).sum()
-            ff.updateVertices(ff.vertices+eps*dff)
-            f2.append(ff)
-        c1 = self.dataTerm(f2)
-        logging.info("test endpoint gradient: {0:.5f} {1:.5f}".format((c1-c0)/eps, -grdscp) )
+            dff = np.random.normal(size=f.vertices.shape)
+            if self.match_landmarks:
+                dpp = np.random.normal(size=self.def_lmk[k].points.shape)
+                dall = np.concatenate((dff, dpp), axis=0)
+            else:
+                dall = dff
+                dpp = None
+            grdscp += (grd[k]*dall).sum()
+            eps = [-eps0, eps0]
+            for j in range(2):
+                if self.match_landmarks:
+                    pp = pointSets.PointSet(data=self.def_lmk[k])
+                    pp.updatePoints(pp.points + eps[j] * dpp)
+                else:
+                    pp = None
+                ff = surfaces.Surface(surf=f)
+                ff.updateVertices(ff.vertices+eps[j]*dff)
+                f2[j].append(ff)
+                p2[j].append(pp)
+        #print(f2)
+        c0 = self.dataTerm(f2[0], _lmk_def=p2[0])
+        c1 = self.dataTerm(f2[1], _lmk_def=p2[1])
+        logging.info("test endpoint gradient: {0:.5f} {1:.5f}".format((c1-c0)/(2*eps0), -grdscp) )
 
 
     # def endPointGradient(self, endPoint=None):
@@ -285,6 +349,12 @@ class SurfaceTimeMatching(SurfaceMatching):
     def endPointGradient(self, endPoint=None):
         if endPoint is None:
             endPoint = self.fvDef
+            endPoint_lmk = self.def_lmk
+        elif self.match_landmarks:
+            endPoint_lmk = endPoint[1]
+            endPoint = endPoint[0]
+        else:
+            endPoint_lmk = None
         px = []
         for k in range(self.nTarg):
             if self.param.errorType == 'L2Norm':
@@ -293,9 +363,12 @@ class SurfaceTimeMatching(SurfaceMatching):
                 if self.fv1:
                     targGradient = -self.fun_objGrad(endPoint[k], self.fv1[k])/(self.param.sigmaError**2)
                 else:
-                    targGradient = -self.fun_objGrad(endPoint[k])
+                    targGradient = -self.fun_objGrad(endPoint[k])/(self.param.sigmaError**2)
             if self.volumeWeight:
                 targGradient -= (2./3) * self.volumeWeight*(endPoint[k].surfVolume() - self.fv1[k].surfVolume()) * self.fvDef[k].computeAreaWeightedVertexNormals()
+            if self.match_landmarks:
+                pxl = self.wlmk * self.lmk_objGrad(endPoint_lmk[k].points, self.targ_lmk[k].points)
+                targGradient = np.concatenate((targGradient, pxl), axis=0)
             px.append(targGradient)
         #print "px", (px[0]**2).sum()
         return px
@@ -314,12 +387,15 @@ class SurfaceTimeMatching(SurfaceMatching):
             at = control
             current_at = False
             computeTraj = True
-        x0 = fv0.vertices
+        if self.match_landmarks:
+            x0 = np.concatenate((fv0.vertices, self.tmpl_lmk.points), axis=0)
+        else:
+            x0 = fv0.vertices
         N = x0.shape[0]
         dim = x0.shape[1]
-        M = at.shape[0]
+        T = at.shape[0]
         nTarg = len(px1)
-        timeStep = 1.0 / M
+        timeStep = 1.0 / T
         if computeTraj:
             xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
             if current_at:
@@ -327,24 +403,24 @@ class SurfaceTimeMatching(SurfaceMatching):
                 self.xt = xt
         else:
             xt = self.xt
-        pxt = np.zeros([M + 1, N, dim])
-        pxt[M, :, :] = px1[nTarg - 1]
+        pxt = np.zeros([T, N, dim])
+        pxt[T-1, :, :] = px1[nTarg - 1]
         jk = nTarg - 2
         if not(affine is None):
             A0 = affine[0]
-            A = np.zeros([M,dim,dim])
+            A = np.zeros([T,dim,dim])
             for k in range(A0.shape[0]):
                 A[k,...] = getExponential(timeStep*A0[k])
         else:
-            A = np.zeros([M,dim,dim])
-            for k in range(M):
+            A = np.zeros([T,dim,dim])
+            for k in range(T):
                 A[k,...] = np.eye(dim)
 
         foo = surfaces.Surface(surf=fv0)
-        for t in range(M):
-            px = np.squeeze(pxt[M - t, :, :])
-            z = np.squeeze(xt[M - t - 1, :, :])
-            a = np.squeeze(at[M - t - 1, :, :])
+        for t in range(1,T):
+            px = np.squeeze(pxt[T - t, :, :])
+            z = np.squeeze(xt[T - t, :, :])
+            a = np.squeeze(at[T - t, :, :])
             foo.updateVertices(z)
             v = KparDiff.applyK(z,a)
             if self.internalCost:
@@ -356,11 +432,11 @@ class SurfaceTimeMatching(SurfaceMatching):
             else:
                 zpx = self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
             if not (affine is None):
-                pxt[M-t-1, :, :] = np.dot(px, A[M-t-1]) + timeStep * zpx
+                pxt[T-t-1, :, :] = np.dot(px, A[T-t]) + timeStep * zpx
             else:
-                pxt[M-t-1, :, :] = px + timeStep * zpx
-            if (t < M - 1) and self.isjump[M - 1 - t]:
-                pxt[M - t - 1, :, :] += px1[jk]
+                pxt[T-t-1, :, :] = px + timeStep * zpx
+            if (t < T - 1) and self.isjump[T - t]:
+                pxt[T - t - 1, :, :] += px1[jk]
                 jk -= 1
             # print 'zpx', np.fabs(zpx).sum(), np.fabs(px).sum(), z.sum()
             # print 'pxt', np.fabs((pxt)[M-t-2]).sum()
@@ -369,35 +445,48 @@ class SurfaceTimeMatching(SurfaceMatching):
 
     def getGradient(self, coeff=1.0, update = None):
         if update is None:
-            at = self.at
-            endPoint = self.fvDef
+            control = None
+            Afft = self.Afft
+            if self.match_landmarks:
+                endPoint = (self.fvDef, self.def_lmk)
+            else:
+                endPoint = self.fvDef
             A = self.affB.getTransforms(self.Afft)
+            # at = self.at
+            # endPoint = self.fvDef
+            # A = self.affB.getTransforms(self.Afft)
         else:
-            at = self.at - update[1] * update[0].diff
+            control = self.at - update[1] * update[0]['diff']
             if len(update[0].aff) > 0:
-                A = self.affB.getTransforms(self.Afft - update[1]*update[0].aff)
+                A = self.affB.getTransforms(self.Afft - update[1]*update[0]['aff'])
             else:
                 A = None
-            xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
+            xt = evol.landmarkDirectEvolutionEuler(self.x0, control, self.param.KparDiff, affine=A)
             endPoint = []
             fvDef = surfaces.Surface(surf=self.fv0)
             for k in range(self.nTarg):
-                fvDef.updateVertices(np.squeeze(xt[self.jumpIndex[k], :, :]))
-                endPoint.append(fvDef)
+                if self.match_landmarks:
+                    endPoint0 = surfaces.Surface(surf=self.fv0)
+                    endPoint0.updateVertices(xt[self.jumpIndex[k], :self.nvert, :])
+                    endPoint1 = pointSets.PointSet(data=xt[self.jumpIndex[k], self.nvert:, :])
+                    endPoint.append((endPoint0, endPoint1))
+                else:
+                    fvDef.updateVertices(np.squeeze(xt[self.jumpIndex[k], :, :]))
+                    endPoint.append(fvDef)
 
         px1 = self.endPointGradient(endPoint=endPoint)
             
         dim2 = self.dim**2
 
-        foo = self.hamiltonianGradient(px1, affine=A)
+        foo = self.hamiltonianGradient(px1, affine=A, control=control)
         grd = Direction()
-        if self.euclideanGradient:
-            grd['diff'] = np.zeros(foo[0].shape)
-            for t in range(self.Tsize):
-                z = self.xt[t, :, :]
-                grd['diff'][t,:,:] = self.param.KparDiff.applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
-        else:
-            grd['diff'] = foo[0]/(coeff*self.Tsize)
+        # if self.euclideanGradient:
+        #     grd['diff'] = np.zeros(foo[0].shape)
+        #     for t in range(self.Tsize):
+        #         z = self.xt[t, :, :]
+        #         grd['diff'][t,:,:] = self.param.KparDiff.applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
+        # else:
+        grd['diff'] = foo[0]/(coeff*self.Tsize)
         grd['aff'] = np.zeros(self.Afft.shape)
         # if self.affineBurnIn:
         #     grd.diff *= 0
@@ -425,12 +514,21 @@ class SurfaceTimeMatching(SurfaceMatching):
                 f = surfaces.Surface(surf=fv)
                 yyt = np.dot(f.vertices - X1[self.jumpIndex[k], ...], U.T)
                 f.updateVertices(yyt)
+                if self.match_landmarks:
+                    p = pointSets.PointSet(data=self.targ_lmk[k])
+                    yyt = np.dot(p.points - X1[-1, ...], U)
+                    p.updatePoints(yyt)
+                    p.saveVTK(self.outputDir + f'/Target{k:02d}LandmarkCorrected.vtk')
             f.saveVTK(self.outputDir + f'/Target{k:02d}Corrected.vtk')
 
+    def saveHdf5(self, fileName):
+        pass
 
     def updateEndPoint(self, xt):
         for k in range(self.nTarg):
-            self.fvDef[k].updateVertices(np.squeeze(xt[self.jumpIndex[k], :, :]))
+            self.fvDef[k].updateVertices(np.squeeze(xt[self.jumpIndex[k], :self.nvert, :]))
+            if self.match_landmarks:
+                self.def_lmk[k].updatePoints(xt[self.jumpIndex[k], self.nvert:, :])
 
     # def endOfIteration(self):
     #     self.iter += 1

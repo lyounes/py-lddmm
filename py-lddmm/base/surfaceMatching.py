@@ -579,7 +579,7 @@ class SurfaceMatching(object):
             if self.symmetric:
                 self.obj0 += self.fun_obj0(self.fv0) / (self.param.sigmaError**2)
             if self.match_landmarks:
-                self.obj0 += self.wlmk * self.lmk_obj0(self.tmpl_lmk) / (self.param.sigmaError**2)
+                self.obj0 += self.wlmk * self.lmk_obj0(self.targ_lmk) / (self.param.sigmaError**2)
             if self.unreduced:
                 (self.obj, self.xt) = self.objectiveFunDef([self.ct, self.at], self.Afft, withTrajectory=True)
             else:
@@ -1313,7 +1313,7 @@ class SurfaceMatching(object):
                 vf.scalars.append('Jacobian')
                 vf.scalars.append(np.exp(Jacobian[t, :self.nvert, 0]))
             vf.scalars.append('displacement')
-            vf.scalars.append(displ[:, self.nvert])
+            vf.scalars.append(displ[:self.nvert])
             vf.vectors.append('velocity')
             vf.vectors.append(vt[:self.nvert, :])
             nu = self.fv0ori * f.computeVertexNormals()
