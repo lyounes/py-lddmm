@@ -124,7 +124,7 @@ class SurfaceMatching(object):
         self.set_parameters(maxIter=maxIter, regWeight = regWeight, affineWeight = affineWeight,
                             internalWeight=internalWeight, mode=mode,  affineOnly = affineOnly,
                             rotWeight = rotWeight, scaleWeight = scaleWeight, transWeight = transWeight,
-                            symmetric = symmetric, testGradient=testGradient, saveFile = saveFile,
+                            symmetric = symmetric, saveFile = saveFile,
                             saveTrajectories = saveTrajectories, affine = affine)
         self.initialize_variables()
         self.gradCoeff = self.x0.shape[0]
@@ -151,7 +151,7 @@ class SurfaceMatching(object):
                  regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, mode = 'normal',
                  affineOnly = False,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
-                 testGradient=True, saveFile = 'evolution',
+                 saveFile = 'evolution',
                  saveTrajectories = False, affine = 'none'):
         self.saveRate = 10
         self.gradEps = -1
@@ -160,12 +160,15 @@ class SurfaceMatching(object):
         self.maxIter = maxIter
         if mode in ('normal', 'debug'):
             self.verb = True
+            if mode == 'debug':
+                self.testGradient = True
+            else:
+                self.testGradient = False
         else:
             self.verb = False
         self.mode = mode
         self.saveTrajectories = saveTrajectories
         self.symmetric = symmetric
-        self.testGradient = testGradient
         self.internalWeight = internalWeight
         self.regweight = regWeight
         self.reset = True
@@ -214,12 +217,12 @@ class SurfaceMatching(object):
         self.unreducedResetRate = 50
 
 
-    def set_sgd(self):
+    def set_sgd(self, control=100, template=100, target=100):
         self.weightSubset = 0.
         self.sgdEpsInit = 1e-4
-        self.sgdMeanSelectControl = 100
-        self.sgdMeanSelectTemplate = 100
-        self.sgdMeanSelectTarget = 100000
+        self.sgdMeanSelectControl = control
+        self.sgdMeanSelectTemplate = template
+        self.sgdMeanSelectTarget = target
         self.probSelectControl = min(1.0, self.sgdMeanSelectControl / self.fv0.vertices.shape[0])
         self.probSelectFaceTemplate = min(1.0, self.sgdMeanSelectTemplate / self.fv0.faces.shape[0])
         self.probSelectFaceTarget = min(1.0, self.sgdMeanSelectTarget / self.fv1.faces.shape[0])
@@ -814,14 +817,14 @@ class SurfaceMatching(object):
                 Lv =  grd[0]
                 DLv = self.internalWeight*grd[1]
                 if self.unreduced:
-                    zpx = KparDiff.applyDiffKT(c, px - self.internalWeight*Lv, a*self.ds, regweight=self.regweight,
+                    zpx = KparDiff.applyDiffKT(c, px - self.internalWeight*Lv, a*self.ds,
                                                lddmm=False, firstVar=z) - DLv - 2*self.unreducedWeight * (z-c)
                 else:
                     zpx = KparDiff.applyDiffKT(z, px, a*self.ds, regweight=self.regweight, lddmm=True,
                                                extra_term=-self.internalWeight * Lv) - DLv
             else:
                 if self.unreduced:
-                    zpx = KparDiff.applyDiffKT(c, px, a*self.ds, regweight=self.regweight, lddmm=False, firstVar=z) \
+                    zpx = KparDiff.applyDiffKT(c, px, a*self.ds, lddmm=False, firstVar=z) \
                         - 2*self.unreducedWeight * (z-c)
                 else:
                     zpx = KparDiff.applyDiffKT(z, px, a*self.ds, regweight=self.regweight, lddmm=True)
@@ -953,7 +956,8 @@ class SurfaceMatching(object):
                 db[t] = px.sum(axis=0) #.reshape([self.dim,1])
 
         if self.unreduced:
-            print('gradient', np.fabs(dct).max(), np.fabs(dat).max())
+            if self.mode == 'debug':
+                logging.info('gradient', np.fabs(dct).max(), np.fabs(dat).max())
             output = [dct]
         else:
             output = []

@@ -297,7 +297,7 @@ def landmarkSemiReducedEvolutionEuler(x0, ct, at, KparDiff, affine=None,
         return output
 
 
-def landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, Kpardiff, regweight, affine=None, forwardTraj = None,
+def landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, Kpardiff, affine=None, forwardTraj = None,
                                            stateSubset = None, controlSubset = None, stateProb = 1.,
                                            controlProb = 1., weightSubset = 1.):
     if not (affine is None or len(affine[0]) == 0):
@@ -335,7 +335,7 @@ def landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, Kpardiff, regweight,
         c = np.squeeze(ct[T - t, :, :])
         a = np.squeeze(at[T - t, :, :])
         zpx = np.zeros((N, dim))
-        zpx[stateSubset, :] = Kpardiff.applyDiffKT(c, px, a, regweight=regweight, firstVar=z)
+        zpx[stateSubset, :] = Kpardiff.applyDiffKT(c, px, a, firstVar=z)
         zpx[stateSubset, :] -= 2* (weightSubset/stateProb[stateSubset, None]) * z
         zpx[J, :] += 2*(weightSubset / (stateProb[J, None]*controlProb)) * c[J, :]
         if not (affine is None):
@@ -358,7 +358,7 @@ def landmarkSemiReducedHamiltonianGradient(x0, ct, at, px1, KparDiff, regweight,
     if np.isscalar(stateProb):
         stateProb = stateProb * np.ones(x0.shape[0])
 
-    (pxt, xt) = landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, KparDiff, regweight, affine=affine,
+    (pxt, xt) = landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, KparDiff, affine=affine,
                                                        controlSubset = controlSubset, stateSubset=stateSubset,
                                                        stateProb=stateProb, controlProb=controlProb,
                                                        weightSubset=weightSubset,

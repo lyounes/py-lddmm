@@ -1969,6 +1969,7 @@ class Surface:
             # self.surfel = np.cross(xDef2 - xDef1, xDef3 - xDef1) / 2
             self.computeCentersAreas()
             self.component = np.zeros(self.faces.shape[0], dtype=int)
+            print(f'STL file: {self.vertices.shape[0]} vertices, {self.faces.shape[0]} faces')
         else:
             raise Exception('Cannot run readSTL without VTK')
 
