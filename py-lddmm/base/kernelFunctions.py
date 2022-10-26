@@ -362,6 +362,7 @@ class KernelSpec:
         self.localMaps = localMaps
         self.kff = False
         self.pk_dtype = 'float64'
+        self.ms_exponent = -1
         if name == 'laplacian':
             self.kernelMatrix = kernelMatrixLaplacian
             if self.order > 4:
@@ -436,9 +437,9 @@ class Kernel(KernelSpec):
         z = None
         if not (self.kernelMatrix is None):
             if firstVar is None:
-                z = ku.kernelmatrix(x, x, self.name, self.sigma, self.order)
+                z = ku.kernelmatrix(x, x, self.name, self.sigma, self.order, KP=self.ms_exponent)
             else:
-                z = ku.kernelmatrix(x, firstVar, self.name, self.sigma, self.order)
+                z = ku.kernelmatrix(x, firstVar, self.name, self.sigma, self.order, KP=self.ms_exponent)
         return z
 
         
@@ -447,26 +448,26 @@ class Kernel(KernelSpec):
         if firstVar is None:
             y = np.copy(x)
             if matrixWeights:
-                z = ku.applykmat(y, x, a, self.name, self.sigma, self.order)
+                z = ku.applykmat(y, x, a, self.name, self.sigma, self.order, KP=self.ms_exponent)
             elif self.localMaps:
                 if self.localMaps[2] == 'naive':
-                    z = ku.applylocalk_naive(y ,x ,a ,self.name, self.sigma ,self.order)
+                    z = ku.applylocalk_naive(y ,x ,a ,self.name, self.sigma ,self.order, KP=self.ms_exponent)
                 else:
                     z = ku.applylocalk(y ,x ,a ,self.name, self.sigma ,self.order, self.localMaps[0] ,
-                                        self.localMaps[1])
+                                        self.localMaps[1], KP=self.ms_exponent)
             else:
-                z = ku.applyK(y ,x ,a ,self.name, self.sigma ,self.order, cpu=cpu, dtype=self.pk_dtype)
+                z = ku.applyK(y ,x ,a ,self.name, self.sigma ,self.order, cpu=cpu, dtype=self.pk_dtype, KP=self.ms_exponent)
         else:
             if matrixWeights:
-                z = ku.applykmat(firstVar, x, a, self.name, self.sigma, self.order)
+                z = ku.applykmat(firstVar, x, a, self.name, self.sigma, self.order, KP=self.ms_exponent)
             elif self.localMaps:
                 if self.localMaps[2] == 'naive':
-                    z = ku.applylocalk_naive(firstVar ,x ,a ,self.name, self.sigma ,self.order)
+                    z = ku.applylocalk_naive(firstVar ,x ,a ,self.name, self.sigma ,self.order, KP=self.ms_exponent)
                 else:
                     z = ku.applylocalk(firstVar ,x ,a ,self.name, self.sigma ,self.order , self.localMaps[0] ,
-                                        self.localMaps[1])
+                                        self.localMaps[1], KP=self.ms_exponent)
             else:
-                z = ku.applyK(firstVar ,x ,a , self.name, self.sigma ,self.order, cpu=cpu, dtype=self.pk_dtype)
+                z = ku.applyK(firstVar ,x ,a , self.name, self.sigma ,self.order, cpu=cpu, dtype=self.pk_dtype, KP=self.ms_exponent)
         if self.affine == 'affine':
             xx = x-self.center
             if firstVar is None:
@@ -497,46 +498,47 @@ class Kernel(KernelSpec):
                     yE = np.dot(yy, E.T)
                     z += self.w1 * np.multiply(xE, a).sum() * yE
                 #print 'In kernel: ', self.w1 * np.multiply(yy, aa).sum()
-
         return z
 
     # Computes K(x,x)a or K(x,y)a
     def applyKTensor(self, x, ay, ax, betay, betax, firstVar = None, grid=None, cpu=False):
         if firstVar is None:
             y = np.copy(x)
-            z = ku.applyktensor(y ,x , ay, ax, betay, betax ,self.name, self.sigma ,self.order, cpu=cpu, dtype=self.pk_dtype)
+            z = ku.applyktensor(y ,x , ay, ax, betay, betax ,self.name, self.sigma ,self.order, cpu=cpu,
+                                dtype=self.pk_dtype, KP=self.ms_exponent)
         else:
-            z = ku.applyktensor(firstVar ,x , ay, ax, betay, betax , self.name, self.sigma ,self.order, cpu=cpu, dtype=self.pk_dtype)
+            z = ku.applyktensor(firstVar ,x , ay, ax, betay, betax , self.name, self.sigma ,self.order, cpu=cpu,
+                                dtype=self.pk_dtype, KP=self.ms_exponent)
         return z
 
     # # Computes A(i) = sum_j D_1[K(x(i), x(j))a2(j)]a1(i)
     def applyDiffK(self, x, a1, a2):
-        z = ku.applykdiff1(x, a1, a2, self.name, self.sigma, self.order)
+        z = ku.applykdiff1(x, a1, a2, self.name, self.sigma, self.order, KP=self.ms_exponent)
         return z
 
     # Computes A(i) = sum_j D_2[K(x(i), x(j))a2(j)]a1(j)
     def applyDiffK2(self, x, a1, a2):
-        z = ku.applykdiff2(x, a1, a2, self.name, self.sigma, self.order)
+        z = ku.applykdiff2(x, a1, a2, self.name, self.sigma, self.order, KP=self.ms_exponent)
         return z
 
     def applyDiffK1and2(self, x, a1, a2):
-        z = ku.applykdiff1and2(x, a1, a2, self.name, self.sigma, self.order)
+        z = ku.applykdiff1and2(x, a1, a2, self.name, self.sigma, self.order, KP=self.ms_exponent)
         return z
 
     # Computes A(i) = sum_j D_2[K(x(i), x(j))a2(j)]a1(j)
     def applyDiffKmat(self, x, beta, firstVar=None):
         if firstVar is None:
-            z = ku.applykdiffmat(x, x, beta, self.name, self.sigma, self.order)
+            z = ku.applykdiffmat(x, x, beta, self.name, self.sigma, self.order, KP=self.ms_exponent)
         else:
-            z = ku.applykdiffmat(firstVar, x, beta, self.name, self.sigma, self.order)
+            z = ku.applykdiffmat(firstVar, x, beta, self.name, self.sigma, self.order, KP=self.ms_exponent)
         return z
 
     # Computes A(i) = sum_j D_2[K(x(i), x(j))a2(j)]a1(j)
     def applyDiffKTensor(self, x, ay, ax, betay, betax, firstVar=None):
         if firstVar is None:
-            z = ku.applydiffktensor(x, x, ay, ax, betay, betax, self.name, self.sigma, self.order)
+            z = ku.applydiffktensor(x, x, ay, ax, betay, betax, self.name, self.sigma, self.order, KP=self.ms_exponent)
         else:
-            z = ku.applydiffktensor(firstVar, x, ay, ax, betay, betax, self.name, self.sigma, self.order)
+            z = ku.applydiffktensor(firstVar, x, ay, ax, betay, betax, self.name, self.sigma, self.order, KP=self.ms_exponent)
         return z
 
     # Computes array A(i) = sum_k sum_(j) nabla_1[a1(k,i). K(x(i), x(j))a2(k,j)]
@@ -552,14 +554,14 @@ class Kernel(KernelSpec):
         if self.localMaps:
             if self.localMaps[2] == 'naive':
                 zpx = ku.applylocalk_naivedifft(y ,x , p ,a , self.name, self.sigma ,self.order,
-                                                regweight=regweight, lddmm=lddmm)
+                                                regweight=regweight, lddmm=lddmm, KP=self.ms_exponent)
                 #ku.applylocalk_naivedifft.parallel_diagnostics(level=4)
             else:
                 zpx = ku.applylocalkdifft(y, x, p, a, self.name,  self.sigma, self.order, self.localMaps[0],
-                                           self.localMaps[1], regweight=regweight, lddmm=lddmm)
+                                           self.localMaps[1], regweight=regweight, lddmm=lddmm, KP=self.ms_exponent)
         else:
             zpx = ku.applyDiffKT(y ,x , p ,a , self.name, self.sigma ,self.order,
-                                 regweight=regweight, lddmm=lddmm, cpu=cpu, dtype=self.pk_dtype)
+                                 regweight=regweight, lddmm=lddmm, cpu=cpu, dtype=self.pk_dtype, KP=self.ms_exponent)
         if self.affine == 'affine':
             xx = x-self.center
 
@@ -591,16 +593,16 @@ class Kernel(KernelSpec):
             y = firstVar
         if self.localMaps:
             if self.localMaps[2] == 'naive':
-                zpx = ku.applylocalk_naivediv(y, x,a, self.name, self.sigma, self.order)
+                zpx = ku.applylocalk_naivediv(y, x,a, self.name, self.sigma, self.order, KP=self.ms_exponent)
             else:
                 zpx = ku.applylocalkdiv(y, x, a, self.name, self.sigma, self.order, self.localMaps[0],
-                                        self.localMaps[1])
+                                        self.localMaps[1], KP=self.ms_exponent)
         else:
-            zpx = ku.applyDiv(y,x,a, self.name, self.sigma, self.order)
+            zpx = ku.applyDiv(y,x,a, self.name, self.sigma, self.order, KP=self.ms_exponent)
         return zpx
 
 
     def applyDDiffK11and12(self, x, n, a, p):
-        z = ku.applykdiff11and12(x, n, a, p, self.name, self.sigma, self.order)
+        z = ku.applykdiff11and12(x, n, a, p, self.name, self.sigma, self.order, KP=self.ms_exponent)
         return z
 

@@ -13,7 +13,6 @@ from math import pi
 from pykeops.numpy import Genred, LazyTensor
 import pykeops
 
-KP = -1
 pkfloat = 'float64'
 
 c_ = np.array([[1,0,0,0,0],
@@ -150,10 +149,11 @@ def min_fun_diff(u_,v_, a_, order):
     return (heaviside(v_ - u_) * a_) * ReLUKDiff(uv_)
 
 @jit(nopython=True, parallel=True)
-def kernelmatrix(y, x, name, scale, ord):
+def kernelmatrix(y, x, name, scale, ord, KP=-1):
     num_nodes = x.shape[0]
     num_nodes_y = y.shape[0]
     f = np.zeros((num_nodes_y, num_nodes))
+
 
     wsig = 0
     for s in scale:
@@ -218,16 +218,16 @@ def pick_fun(name, diff = False):
             fun = euclidean_fun_diff
     return fun
 
-def applyK(y, x, a, name, scale, order, cpu=False, dtype='float64'):
+def applyK(y, x, a, name, scale, order, cpu=False, dtype='float64', KP=-1):
     if not cpu and pykeops.config.gpu_available:
-        return applyK_pykeops(y, x, a, name, scale, order, dtype=dtype)
+        return applyK_pykeops(y, x, a, name, scale, order, dtype=dtype, KP=KP)
     else:
         fun = pick_fun(name)
-        return applyK_numba(y, x, a, fun , scale, order)
+        return applyK_numba(y, x, a, fun , scale, order, KP=KP)
 
 
 @jit(nopython=True, parallel=True)
-def applyK_numba(y, x, a, fun, scale, order):
+def applyK_numba(y, x, a, fun, scale, order, KP=-1):
     res = np.zeros((y.shape[0], a.shape[1]))
     ns = len(scale)
     sKP = scale**KP
@@ -274,7 +274,7 @@ def make_Kij_pykeops(y, x, name, scale, order, dtype='float64'):
 
     return Kij_
 
-def applyK_pykeops(y, x, a, name, scale, order, dtype='float64'):
+def applyK_pykeops(y, x, a, name, scale, order, dtype='float64', KP=-1):
     res = np.zeros((y.shape[0], a.shape[1]))
     ns = len(scale)
     sKP = scale**KP
@@ -312,17 +312,17 @@ def applyK_pykeops(y, x, a, name, scale, order, dtype='float64'):
     return res
 
 def applyK1K2(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, a,
-              cpu=False, dtype='float64'):
+              cpu=False, dtype='float64', KP=-1):
     if not cpu and pykeops.config.gpu_available:
         return applyK1K2_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, a,
-                                 dtype=dtype)
+                                 dtype=dtype, KP=KP)
     else:
         fun1 = pick_fun(name1)
         fun2 = pick_fun(name2)
-        return applyK1K2_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2, a)
+        return applyK1K2_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2, a, KP=KP)
 
 @jit(nopython=True, parallel=True)
-def applyK1K2_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2, a):
+def applyK1K2_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2, a, KP=-1):
     res = np.zeros((y1.shape[0], a.shape[1]))
     ns1 = len(scale1)
     s1KP = scale1**KP
@@ -438,7 +438,7 @@ def makeKij(ys_, xs_, name, order):
 
 
 def applyK1K2_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, a,
-                                 dtype='float64'):
+                                 dtype='float64', KP=-1):
     res = np.zeros((y1.shape[0], a.shape[1]))
     ns1 = len(scale1)
     s1KP = scale1**KP
@@ -482,15 +482,15 @@ def applyK1K2_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, orde
     res /= wsig
     return res
 
-def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., lddmm=False, cpu=False, dtype='float64'):
+def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., lddmm=False, cpu=False, dtype='float64', KP=-1):
     if not cpu and pykeops.config.gpu_available:
-        return applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=regweight, lddmm=lddmm, dtype=dtype)
+        return applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=regweight, lddmm=lddmm, dtype=dtype, KP=KP)
     else:
         fun = pick_fun(name, diff=True)
-        return applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=regweight, lddmm=lddmm)
+        return applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=regweight, lddmm=lddmm, KP=KP)
 
 @jit(nopython=True, parallel=True)
-def applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=1., lddmm=False):
+def applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=1., lddmm=False, KP=-1):
     res = np.zeros(y.shape)
     ns = len(scale)
     sKP1 = scale**(KP-1)
@@ -509,7 +509,7 @@ def applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=1., lddmm=False):
     res /= wsig
     return res
 
-def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=False, dtype='float64'):
+def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=False, dtype='float64', KP=-1):
     res = np.zeros(y.shape)
     ns = len(scale)
     sKP1 = scale**(KP-1)
@@ -558,19 +558,19 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
     return res
 
 def applyDiffK1K2T(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, p, a,
-              regweight=1., lddmm=False, cpu=False, dtype='float64'):
+              regweight=1., lddmm=False, cpu=False, dtype='float64', KP=-1):
     if not cpu and pykeops.config.gpu_available:
         return applyDiffK1K2T_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, p, a,
-                                 regweight=regweight, lddmm=lddmm, dtype=dtype)
+                                 regweight=regweight, lddmm=lddmm, dtype=dtype, KP=KP)
     else:
         fun1 = pick_fun(name1, diff=True)
         fun2 = pick_fun(name2)
         return applyDiffK1K2T_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2, p, a,
-                                    regweight=regweight, lddmm=lddmm)
+                                    regweight=regweight, lddmm=lddmm, KP=KP)
 
 @jit(nopython=True, parallel=True)
 def applyDiffK1K2T_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2,
-                         p, a, regweight=1., lddmm=False):
+                         p, a, regweight=1., lddmm=False, KP=-1):
     res = np.zeros(y1.shape)
     ns1 = len(scale1)
     s1KP = scale1 ** (KP-1)
@@ -595,7 +595,7 @@ def applyDiffK1K2T_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, ord
     return res
 
 def applyDiffK1K2T_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, p, a,
-                                 regweight=1., lddmm=False, dtype='float64'):
+                                 regweight=1., lddmm=False, dtype='float64', KP=-1):
     res = np.zeros(y1.shape)
     ns1 = len(scale1)
     s1KP = scale1 ** (KP-1)
@@ -632,39 +632,40 @@ def applyDiffK1K2T_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2,
 
 
 @jit(nopython=True, parallel=True)
-def applyDiv(y, x, a, name, scale, order):
+def applyDiv(y, x, a, name, scale, order, KP=-1):
     res = np.zeros((y.shape[0], 1))
+    sc = scale**(KP-1)
     if name == 'min':
         for k in prange(y.shape[0]):
             for l in range(x.shape[0]):
-                for s in scale:
+                for kk,s in enumerate(scale):
                     u = np.minimum(y[k,:],x[l,:]) / s
                     #res[k, :] += (heaviside(x[k,:]-y[l,:])*a[l,:]*logcoshKDiff(u)/s).sum()
                     res[k, :] += (heaviside(x[k,:]-y[l,:])*a[l,:]*ReLUKDiff(u)/s).sum()
     elif 'gauss' in name:
         for k in prange(y.shape[0]):
             for l in range(x.shape[0]):
-                for s in scale:
+                for kk,s in enumerate(scale):
                     res[k, :] += ((y[k,:]-x[l,:])*a[l,:]).sum() * \
-                                 (-np.exp(- ((y[k,:]-x[l,:])**2).sum()/(2*s**2)))/(s**2)
+                                 (-np.exp(- ((y[k,:]-x[l,:])**2).sum()/(2*s**2)))*sc[kk]
     elif 'lap' in name:
         for k in prange(y.shape[0]):
             for l in range(x.shape[0]):
-                for s in scale:
+                for kk,s in enumerate(scale):
                     u = np.sqrt(((y[k,:] - x[l,:]) ** 2).sum()) / s
-                    res[k, :] += ((y[k,:]-x[l,:])*a[l,:]).sum() * (-lapPolDiff(u, order) * np.exp(- u) /(s**2))
-    res /= len(scale)
+                    res[k, :] += ((y[k,:]-x[l,:])*a[l,:]).sum() * (-lapPolDiff(u, order) * np.exp(- u) *sc[kk])
+    res /= (scale**KP).sum()
     return res
 
 
-def applylocalk(y, x, a, name, scale, order, neighbors, num_neighbors):
+def applylocalk(y, x, a, name, scale, order, neighbors, num_neighbors, KP=-1):
     if 'lap' in name:
-        return applylocalk_lap(y,x,a,scale,order,neighbors,num_neighbors)
+        return applylocalk_lap(y,x,a,scale,order,neighbors,num_neighbors, KP=KP)
     elif 'gauss' in name:
-        return applylocalk_gauss(y,x,a,scale,neighbors,num_neighbors)
+        return applylocalk_gauss(y,x,a,scale,neighbors,num_neighbors, KP=KP)
 
 @jit(nopython=True, parallel=True)
-def applylocalk_gauss(y, x, a, scale, neighbors, num_neighbors):
+def applylocalk_gauss(y, x, a, scale, neighbors, num_neighbors, KP=-1):
     num_nodes = x.shape[0]
     num_nodes_y = y.shape[0]
     dim = x.shape[1]
@@ -710,7 +711,7 @@ def applylocalk_gauss(y, x, a, scale, neighbors, num_neighbors):
     return f
 
 @jit(nopython=True, parallel=True)
-def applylocalk_lap(y, x, a, scale, order, neighbors, num_neighbors):
+def applylocalk_lap(y, x, a, scale, order, neighbors, num_neighbors, KP=-1):
     num_nodes = x.shape[0]
     num_nodes_y = y.shape[0]
     dim = x.shape[1]
@@ -758,7 +759,7 @@ def applylocalk_lap(y, x, a, scale, order, neighbors, num_neighbors):
     return f
 
 @jit(nopython=True, parallel=True)
-def applylocalk_naive(y, x, a, name, scale, order):
+def applylocalk_naive(y, x, a, name, scale, order, KP=-1):
     f = np.zeros(y.shape)
     wsig = 0
     for s in scale:
@@ -780,14 +781,14 @@ def applylocalk_naive(y, x, a, name, scale, order):
     return f
 
 
-def applylocalkdifft(y, x, p, a, name, scale, order, neighbors, num_neighbors, regweight=1., lddmm=False):
+def applylocalkdifft(y, x, p, a, name, scale, order, neighbors, num_neighbors, regweight=1., lddmm=False, KP=-1):
     if 'lap' in name:
-        return applylocalkdifft_lap(y, x, p, a, scale, order, neighbors, num_neighbors, regweight, lddmm)
+        return applylocalkdifft_lap(y, x, p, a, scale, order, neighbors, num_neighbors, regweight, lddmm, KP=KP)
     elif 'gauss' in name:
-        return applylocalkdifft_gauss(y, x, p, a, scale, neighbors, num_neighbors, regweight, lddmm)
+        return applylocalkdifft_gauss(y, x, p, a, scale, neighbors, num_neighbors, regweight, lddmm, KP=KP)
 
 @jit(nopython=True, parallel=True)
-def applylocalkdifft_gauss(y, x, p, a, scale, neighbors, num_neighbors, regweight=1., lddmm=False):
+def applylocalkdifft_gauss(y, x, p, a, scale, neighbors, num_neighbors, regweight=1., lddmm=False, KP=-1):
     num_nodes = x.shape[0]
     num_nodes_y = y.shape[0]
     dim = x.shape[1]
@@ -838,7 +839,7 @@ def applylocalkdifft_gauss(y, x, p, a, scale, neighbors, num_neighbors, regweigh
     return f
 
 @jit(nopython=True, parallel=True)
-def applylocalkdifft_lap(y, x, p, a, scale, order, neighbors, num_neighbors, regweight=1., lddmm=False):
+def applylocalkdifft_lap(y, x, p, a, scale, order, neighbors, num_neighbors, regweight=1., lddmm=False, KP=-1):
     num_nodes = x.shape[0]
     num_nodes_y = y.shape[0]
     dim = x.shape[1]
@@ -890,7 +891,7 @@ def applylocalkdifft_lap(y, x, p, a, scale, order, neighbors, num_neighbors, reg
     return f
 
 @jit(nopython=True, parallel=True)
-def applylocalkdiv(x, y, a, name, scale, order, neighbors, num_neighbors):
+def applylocalkdiv(x, y, a, name, scale, order, neighbors, num_neighbors, KP=-1):
     num_nodes = x.shape[0]
     num_nodes_y = y.shape[0]
     dim = x.shape[1]
@@ -964,7 +965,7 @@ def applylocalkdiv(x, y, a, name, scale, order, neighbors, num_neighbors):
     return f
 
 @jit(nopython=True, parallel=True)
-def applylocalk_naivedifft(y, x, p, a, name, scale, order, regweight=1., lddmm=False):
+def applylocalk_naivedifft(y, x, p, a, name, scale, order, regweight=1., lddmm=False, KP=-1):
     num_nodes = x.shape[0]
     num_nodes_y = y.shape[0]
     dim = x.shape[1]
@@ -1005,7 +1006,7 @@ def applylocalk_naivedifft(y, x, p, a, name, scale, order, regweight=1., lddmm=F
     return f
 
 @jit(nopython=True, parallel=True)
-def applylocalk_naivediv(x, y, a, name, scale, order):
+def applylocalk_naivediv(x, y, a, name, scale, order, KP=-1):
     num_nodes = x.shape[0]
     num_nodes_y = y.shape[0]
     dim = x.shape[1]
@@ -1045,7 +1046,7 @@ def applylocalk_naivediv(x, y, a, name, scale, order):
     return f
 
 @jit(nopython=True, parallel=True)
-def applykdiff1(x, a1, a2, name, scale, order):
+def applykdiff1(x, a1, a2, name, scale, order, KP=-1):
     num_nodes = x.shape[0]
     dim = x.shape[1]
     f = np.zeros((num_nodes, dim))
@@ -1086,7 +1087,7 @@ def applykdiff1(x, a1, a2, name, scale, order):
     return f
 
 @jit(nopython=True, parallel=True)
-def applykdiff2(x, a1, a2, name, scale, order):
+def applykdiff2(x, a1, a2, name, scale, order, KP=-1):
     num_nodes = x.shape[0]
     dim = x.shape[1]
     f = np.zeros((num_nodes, dim))
@@ -1127,7 +1128,7 @@ def applykdiff2(x, a1, a2, name, scale, order):
     return f
 
 @jit(nopython=True, parallel=True)
-def applykdiff1and2(x, a1, a2, name, scale, order):
+def applykdiff1and2(x, a1, a2, name, scale, order, KP=-1):
     num_nodes = x.shape[0]
     dim = x.shape[1]
     f = np.zeros((num_nodes, dim))
@@ -1170,7 +1171,7 @@ def applykdiff1and2(x, a1, a2, name, scale, order):
     return f
 
 @jit(nopython=True, parallel=True)
-def applykdiff11(x, a1, a2, p, name, scale, order):
+def applykdiff11(x, a1, a2, p, name, scale, order, KP=-1):
     num_nodes = x.shape[0]
     dim = x.shape[1]
     f = np.zeros((num_nodes, dim))
@@ -1225,7 +1226,7 @@ def applykdiff11(x, a1, a2, p, name, scale, order):
 
 
 @jit(nopython=True, parallel=True)
-def applykdiff12(x, a1, a2, p, name, scale, order):
+def applykdiff12(x, a1, a2, p, name, scale, order, KP=-1):
     num_nodes = x.shape[0]
     dim = x.shape[1]
     f = np.zeros((num_nodes, dim))
@@ -1280,7 +1281,7 @@ def applykdiff12(x, a1, a2, p, name, scale, order):
 
 
 @jit(nopython=True, parallel=True)
-def applykdiff11and12(x, a1, a2, p, name, scale, order):
+def applykdiff11and12(x, a1, a2, p, name, scale, order, KP=-1):
     num_nodes = x.shape[0]
     dim = x.shape[1]
     f = np.zeros((num_nodes, dim))
@@ -1333,17 +1334,17 @@ def applykdiff11and12(x, a1, a2, p, name, scale, order):
 
     return f
 
-def applyktensor(y, x, ay, ax, betay, betax, name, scale, order, cpu=False, dtype='float64'):
+def applyktensor(y, x, ay, ax, betay, betax, name, scale, order, cpu=False, dtype='float64', KP=-1):
     if not cpu and pykeops.config.gpu_available:
        # res1 = applyktensor_numba(y, x, ay, ax, betay, betax, name, scale, order)
-        res2 = applyktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype=dtype)
+        res2 = applyktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype=dtype, KP=KP)
         return res2 
     else:
-        return applyktensor_numba(y, x, ay, ax, betay, betax, name, scale, order)
+        return applyktensor_numba(y, x, ay, ax, betay, betax, name, scale, order, KP=KP)
 
 
 
-def applyktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype='float64'):
+def applyktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype='float64', KP=-1):
     dim = x.shape[1]
     num_nodes_y = y.shape[0]
     res = np.zeros(num_nodes_y)
@@ -1385,7 +1386,7 @@ def applyktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype='
     return np.array(res)
 
 @jit(nopython=True, parallel=True)
-def applyktensor_numba(y, x, ay, ax, betay, betax, name, scale, order):
+def applyktensor_numba(y, x, ay, ax, betay, betax, name, scale, order, KP=-1):
     dim = x.shape[1]
     num_nodes = x.shape[0]
     num_nodes_y = y.shape[0]
@@ -1419,7 +1420,7 @@ def applyktensor_numba(y, x, ay, ax, betay, betax, name, scale, order):
 
 
 @jit(nopython=True, parallel=True)
-def applykmat(y, x, beta, name, scale, order):
+def applykmat(y, x, beta, name, scale, order, KP=-1):
     dim = x.shape[1]
     num_nodes = x.shape[0]
     num_nodes_y = y.shape[0]
@@ -1451,14 +1452,14 @@ def applykmat(y, x, beta, name, scale, order):
     f /= wsig
     return f
 
-def applydiffktensor(y, x, ay, ax, betay, betax, name, scale, order, cpu=False, dtype='float64'):
+def applydiffktensor(y, x, ay, ax, betay, betax, name, scale, order, cpu=False, dtype='float64', KP=-1):
     if not cpu and pykeops.config.gpu_available:
-        return applydiffktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype=dtype)
+        return applydiffktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype=dtype, KP=KP)
     else:
-        return applydiffktensor_numba(y, x, ay, ax, betay, betax, name, scale, order)
+        return applydiffktensor_numba(y, x, ay, ax, betay, betax, name, scale, order, KP=KP)
 
 
-def applydiffktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype='float64'):
+def applydiffktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype='float64', KP=-1):
     num_nodes = x.shape[0]
     num_nodes_y = y.shape[0]
     dim = x.shape[1]
@@ -1506,7 +1507,7 @@ def applydiffktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dty
 
 
 @jit(nopython=True, parallel=True)
-def applydiffktensor_numba(y, x, ay, ax, betay, betax, name, scale, order):
+def applydiffktensor_numba(y, x, ay, ax, betay, betax, name, scale, order, KP=-1):
     num_nodes = x.shape[0]
     num_nodes_y = y.shape[0]
     dim = x.shape[1]
@@ -1540,15 +1541,15 @@ def applydiffktensor_numba(y, x, ay, ax, betay, betax, name, scale, order):
 
 
 
-def applykdiffmat(y, x, beta, name, scale, order, cpu=False, dtype='float64'):
+def applykdiffmat(y, x, beta, name, scale, order, cpu=False, dtype='float64', KP=-1):
     if not cpu and cupy_available and pykeops.config.gpu_available:
-        return applykdiffmat_cupy(y, x, beta, name, scale, order, dtype=dtype)
+        return applykdiffmat_cupy(y, x, beta, name, scale, order, dtype=dtype, KP=KP)
     else:
-        return applykdiffmat_numba(y, x, beta, name, scale, order)
+        return applykdiffmat_numba(y, x, beta, name, scale, order, KP=KP)
 
 
 @jit(nopython=True, parallel=True)
-def applykdiffmat_numba(y, x, beta, name, scale, order):
+def applykdiffmat_numba(y, x, beta, name, scale, order, KP=-1):
     num_nodes = x.shape[0]
     num_nodes_y = y.shape[0]
     dim = x.shape[1]
@@ -1580,7 +1581,7 @@ def applykdiffmat_numba(y, x, beta, name, scale, order):
     f/=wsig
     return f
 
-def applykdiffmat_pykeops(y, x, beta, name, scale, order, dtype='float64'):
+def applykdiffmat_pykeops(y, x, beta, name, scale, order, dtype='float64', KP=-1):
     num_nodes = x.shape[0]
     num_nodes_y = y.shape[0]
     dim = x.shape[1]
@@ -1617,7 +1618,7 @@ def applykdiffmat_pykeops(y, x, beta, name, scale, order, dtype='float64'):
     return res
 
 
-def applykdiffmat_cupy(y, x, beta, name, scale, order, dtype='float64'):
+def applykdiffmat_cupy(y, x, beta, name, scale, order, dtype='float64', KP=-1):
     num_nodes = x.shape[0]
     num_nodes_y = y.shape[0]
     dim = x.shape[1]

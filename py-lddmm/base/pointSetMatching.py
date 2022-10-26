@@ -80,6 +80,9 @@ class PointSetMatching(object):
         self.set_template_and_target(Template, Target)
         self.set_fun(self.param.errorType)
 
+        self.reset = False
+        self.Kdiff_dtype = self.param.KparDiff.pk_dtype
+        self.Kdist_dtype = self.param.KparDist.pk_dtype
 
             #print np.fabs(self.fv1.surfel-self.fv0.surfel).max()
         self.set_parameters(maxIter=maxIter, regWeight = regWeight, affineWeight = affineWeight,
@@ -367,6 +370,19 @@ class PointSetMatching(object):
         return evol.landmarkHamiltonianGradient(x0, at, px1, kernel, regWeight, affine=affine,
                                                 getCovector=True)
                                                     
+    def setUpdate(self, update):
+        at = self.at - update[1] * update[0].diff
+
+        Afft = self.Afft - update[1] * update[0].aff
+        if len(update[0].aff) > 0:
+            A = self.affB.getTransforms(Afft)
+        else:
+            A = None
+        xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
+        endPoint = PointSet(data=self.fv0)
+        endPoint.updatePoints(xt[-1, :, :])
+
+        return at, Afft, xt, endPoint
 
     def getGradient(self, coeff=1.0, update=None):
         if update is None:
@@ -376,15 +392,7 @@ class PointSetMatching(object):
             A = self.affB.getTransforms(self.Afft)
             xt = self.xt
         else:
-            at = self.at - update[1] * update[0].diff
-            Afft = self.Afft - update[1]*update[0].aff
-            if len(update[0].aff) > 0:
-                A = self.affB.getTransforms(Afft)
-            else:
-                A = None
-            xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
-            endPoint = PointSet(data=self.fv0)
-            endPoint.updatePoints(xt[-1, :, :])
+            at, Afft, xt, endPoint = self.setUpdate(update)
 
         dim2 = self.dim**2
         px1 = -self.endPointGradient(endPoint=endPoint)
@@ -411,6 +419,11 @@ class PointSetMatching(object):
             #            dAfft[:,0:self.dim**2]/=100
         return grd
 
+    def startOfIteration(self):
+        if self.reset:
+            logging.info('Switching to 64 bits')
+            self.param.KparDiff.pk_dtype = 'float64'
+            self.param.KparDist.pk_dtype = 'float64'
 
 
     def addProd(self, dir1, dir2, beta):
@@ -529,6 +542,8 @@ class PointSetMatching(object):
                 fvDef.save(self.outputDir + '/' + self.saveFile + str(kk) + '.vtk')
         (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
         self.fvDef.points = np.copy(np.squeeze(self.xt[-1, :, :]))
+        self.param.KparDiff.pk_dtype = self.Kdiff_dtype
+        self.param.KparDist.pk_dtype = self.Kdist_dtype
 
 
     def optimizeMatching(self):

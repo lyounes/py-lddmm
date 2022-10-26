@@ -392,6 +392,9 @@ class Mesh:
             face_per_vertex[self.faces[k, :]] += 1
         self.vertex_weights /= face_per_vertex
 
+    def rescaleUnits(self, scale):
+        self.updateVertices(self.vertices*scale)
+        self.updateWeights(self.weights/(scale**self.dim))
     # modify vertices without toplogical change
     def updateVertices(self, x0):
         self.vertices = np.copy(x0)
@@ -687,6 +690,8 @@ class Mesh:
                         v.fields['image'] = self.image
                     if not 'weights' in v.scalars.keys():
                         v.scalars['weights'] = self.weights
+                    if not 'volumes' in v.scalars.keys():
+                        v.scalars['volumes'] = self.volumes
                     v.write(fvtkout)
                 elif v.data_type == 'POINT_DATA':
                     point_data = True
@@ -695,7 +700,7 @@ class Mesh:
                     v.write(fvtkout)
             if not cell_data:
                 v = vtkFields('CELL_DATA', self.faces.shape[0], fields = {'image':self.image},
-                              scalars = {'weights':self.weights})
+                              scalars = {'weights':self.weights, 'volumes':self.volumes})
                 v.write(fvtkout)
             if not point_data:
                 v = vtkFields('POINT_DATA', self.vertices.shape[0], scalars = {'vertex_weights':self.vertex_weights})
