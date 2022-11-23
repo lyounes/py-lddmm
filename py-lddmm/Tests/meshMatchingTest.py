@@ -18,18 +18,19 @@ from base.meshes import Mesh
 from base.kernelFunctions import Kernel
 from base.affineRegistration import rigidRegistration
 from base.meshMatching import MeshMatching, MeshMatchingParam
+from base.meshExamples import TwoBalls, TwoDiscs, MoGCircle
 import pykeops
 pykeops.clean_pykeops()
 plt.ion()
 
-model = 'Spheres'
+model = 'GaussCenters'
 
 def compute(model):
     loggingUtils.setup_default_logging('../Output', stdOutput = True)
     sigmaKernel = 5.
     sigmaDist = 5.
     sigmaError = 1.
-    regweight = 0.1
+    regweight = 1.
     if model=='Circles':
         f = Circle(radius = 10., targetSize=250)
         fv0 = Mesh(f, volumeRatio=5000)
@@ -87,6 +88,9 @@ def compute(model):
         fv1.image[:, 1] = 1 - fv1.image[:, 0]
         ftemp = fv0
         ftarg = fv1
+    elif model == 'GaussCenters':
+        ftemp = MoGCircle(largeRadius=10)
+        ftarg = MoGCircle(largeRadius=12, centers=1.2*ftemp.GaussCenters, typeProb=ftemp.typeProb, alpha=ftemp.alpha)
     else:
         return
 
@@ -94,11 +98,11 @@ def compute(model):
     K1 = Kernel(name='gauss', sigma = sigmaKernel)
 
     sm = MeshMatchingParam(timeStep=0.1, algorithm='bfgs', KparDiff=K1, KparDist=('gauss', sigmaDist),
-                              KparIm=('euclidean', 1.), sigmaError=sigmaError)
-    sm.KparDiff.pk_dtype = 'float64'
-    sm.KparDist.pk_dtype = 'float64'
+                              KparIm=('gauss', .1), sigmaError=sigmaError)
+    sm.KparDiff.pk_dtype = 'float32'
+    sm.KparDist.pk_dtype = 'float32'
     f = MeshMatching(Template=ftemp, Target=ftarg, outputDir='../Output/meshMatchingTest/'+model,param=sm,
-                        testGradient=True, regWeight = regweight, maxIter=1000,
+                        testGradient=False, regWeight = regweight, maxIter=1000,
                      affine= 'none', rotWeight=.01, transWeight = .01,
                         scaleWeight=10., affineWeight=100.)
 

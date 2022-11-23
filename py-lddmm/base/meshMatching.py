@@ -352,7 +352,7 @@ class MeshMatching(pointSetMatching.PointSetMatching):
             self.saveHdf5(fileName=self.outputDir + '/output.h5')
 
         (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
-        self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
+        self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]), checkOrientation=True)
         self.param.KparDiff.pk_dtype = self.Kdiff_dtype
         self.param.KparDist.pk_dtype = self.Kdist_dtype
         self.param.KparIm.pk_dtype = self.Kim_dtype
