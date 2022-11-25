@@ -1,9 +1,13 @@
+import os
 from sys import path as sys_path
 sys_path.append('..')
 from base import loggingUtils
 from base.imageMatchingLDDMM import ImageMatching, ImageMatchingParam
 import matplotlib
-matplotlib.use("qt5agg")
+if 'DISPLAY' in os.environ:
+    matplotlib.use('qt5Agg')
+else:
+    matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pyfftw
 

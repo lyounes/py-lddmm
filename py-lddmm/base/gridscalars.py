@@ -263,13 +263,14 @@ def saveImage(img, filename, normalize=False, origin = (0,0,0), resol = (1.,1.,1
     else:
         [u, v] = os.path.splitext(filename)
         if v=='.vtk':
-            saveVTK(img, filename, origin, resol)
+            saveVTK(img, filename, origin=origin, resol=resol)
         else:
             saveAnalyze(img, filename)
 
 def saveVTK(img, filename, scalarName='scalars_', title='lddmm data', origin = (0,0,0), resol = (1.,1.,1.)):
     with open(filename, 'w') as ff:
-        ff.write('# vtk DataFile Version 2.0\n'+title+'\nBINARY\nDATASET STRUCTURED_POINTS\nDIMENSIONS {0: d} {1: d} {2: d}\n'.format(img.shape[0], img.shape[1], img.shape[2]))
+        ff.write('# vtk DataFile Version 2.0\n'+title+
+                 '\nBINARY\nDATASET STRUCTURED_POINTS\nDIMENSIONS {0: d} {1: d} {2: d}\n'.format(img.shape[0], img.shape[1], img.shape[2]))
         nbVox = np.array(img.shape).prod()
         ff.write('ORIGIN {0: f} {1: f} {2: f}\nSPACING {3: f} {4: f} {5: f}\nPOINT_DATA {6: d}\n'.format(origin[0], origin[1], origin[2], resol[0], resol[1], resol[2], nbVox))
         ff.write('SCALARS '+scalarName+' double 1\nLOOKUP_TABLE default\n')

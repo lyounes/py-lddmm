@@ -67,11 +67,11 @@ class ImageMatching(ImageMatchingBase):
         # fig.canvas.flush_events()
 
     def initialSave(self):
-        saveImage(self.im0.data, self.outputDir + '/Template')
-        saveImage(self.im1.data, self.outputDir + '/Target')
-        saveImage(self.KparDiff.K, self.outputDir + '/Kernel', normalize=True)
-        saveImage(self.param.smoothKernel.K, self.outputDir + '/smoothKernel', normalize=True)
-        saveImage(self.mask.min(axis=0), self.outputDir + '/Mask', normalize=True)
+        saveImage(self.im0.data, self.outputDir + '/Template.vtk')
+        saveImage(self.im1.data, self.outputDir + '/Target.vtk')
+        saveImage(self.KparDiff.K, self.outputDir + '/Kernel.vtk', normalize=True)
+        saveImage(self.param.smoothKernel.K, self.outputDir + '/smoothKernel.vtk', normalize=True)
+        saveImage(self.mask.min(axis=0), self.outputDir + '/Mask.vtk', normalize=True)
 
 
 
@@ -246,20 +246,20 @@ class ImageMatching(ImageMatchingBase):
                 self.updateFlow(self.Lv[t,...], 1.0/self.Tsize)
                 if (self.param.saveMovie):
                     I1 = multilinInterp(self.im0, self._psi)
-                    I1.save(self.outputDir + f'/movie{t+1:03d}')
+                    I1.save(self.outputDir + f'/movie{t+1:03d}/vtk')
 
             I1 = multilinInterp(self.im0.data, self._psi)
-            saveImage(I1, self.outputDir + f'/deformedTemplate')
+            saveImage(I1, self.outputDir + f'/deformedTemplate.vtk')
             I2 = multilinInterp(I1, self._phi)
             I1 = multilinInterp(self.im1.data, self._phi)
-            saveImage(I1, self.outputDir + f'/deformedTarget')
-            saveImage(np.squeeze(self.Lv[0,...]), self.outputDir + f'/initialMomentum', normalize=True)
+            saveImage(I1, self.outputDir + f'/deformedTarget.vtk')
+            saveImage(np.squeeze(self.Lv[0,...]), self.outputDir + f'/initialMomentum.vtk', normalize=True)
             dphi = np.log(jacobianDeterminant(self._phi, self.resol))
-            saveImage(dphi, self.outputDir + f'/logJacobian', normalize=True)
+            saveImage(dphi, self.outputDir + f'/logJacobian.vtk', normalize=True)
 
             self.GeodesicDiffeoEvolution(self.Lv[0,...])
             I1 = multilinInterp(self.im0.data, self._psi)
-            saveImage(I1, self.outputDir + f'/EPDiffTemplate')
+            saveImage(I1, self.outputDir + f'/EPDiffTemplate.vtk')
             self.psi = np.copy(self._psi)
       #
       # sprintf(file, "%s/template2targetMap", path) ;

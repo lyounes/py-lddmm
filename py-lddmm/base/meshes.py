@@ -405,6 +405,9 @@ class Mesh:
         self.weights /= scale**self.dim
         self.updateVertices(self.vertices*scale)
         #self.updateWeights(self.weights/())
+        #self.updateWeights(self.weights/(scale**self.dim))
+
+
     # modify vertices without toplogical change
     def updateVertices(self, x0, checkOrientation=False):
         self.vertices = np.copy(x0)

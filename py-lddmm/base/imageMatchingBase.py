@@ -245,8 +245,8 @@ class ImageMatchingBase(Diffeomorphism):
         # fig.canvas.flush_events()
 
     def initialSave(self):
-        saveImage(self.im0.data, self.outputDir + '/Template')
-        saveImage(self.im1.data, self.outputDir + '/Target')
+        saveImage(self.im0.data, self.outputDir + '/Template.vtk')
+        saveImage(self.im1.data, self.outputDir + '/Target.vtk')
         saveImage(self.KparDiff.K, self.outputDir + '/Kernel', normalize=True)
         saveImage(self.param.smoothKernel.K, self.outputDir + '/smoothKernel', normalize=True)
         saveImage(self.mask.min(axis=0), self.outputDir + '/Mask', normalize=True)
