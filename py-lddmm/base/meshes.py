@@ -140,13 +140,15 @@ def computeCentersVolumesNormals__(faces, vertices, weights, checkOrientation= F
     face_per_vertex = np.zeros(vertices.shape[0])
     for k in range(faces.shape[0]):
         for j in range(faces.shape[1]):
-            vertex_weights[faces[k, j]] += weights[k]
-            face_per_vertex[faces[k, j]] += 1
+            vertex_weights[faces[k, j]] += weights[k] * volumes[k]
+            face_per_vertex[faces[k, j]] += volumes[k]
+    mv = volumes.sum()/volumes.shape[0]
     for k in range(face_per_vertex.shape[0]):
-        if face_per_vertex[k] > 0:
+        if face_per_vertex[k] > 1e-10*mv:
             vertex_weights[k] /= face_per_vertex[k]
         else:
-            print('Isolated vertex', k)
+            if checkOrientation:
+                print('Isolated vertex', k, face_per_vertex[k])
 
     return centers, volumes, normals, vertex_weights
 
@@ -260,12 +262,12 @@ class Mesh:
                 self.component = np.zeros(self.faces.shape[0], dtype=int)
                 if weights is None:
                     self.weights = np.ones(self.faces.shape[0], dtype=int)
-                    self.vertex_weights = np.ones(self.vertices.shape[0], dtype=int)
+                    #self.vertex_weights = np.ones(self.vertices.shape[0], dtype=int)
                 elif np.isscalar(weights):
-                    self.vertex_weights = weights*np.ones(self.vertices.shape[0], dtype=int)
+                    #self.vertex_weights = weights*np.ones(self.vertices.shape[0], dtype=int)
                     self.weights = weights*np.ones(self.faces.shape[0], dtype=int)
                 else:
-                    self.updateWeights(weights)
+                    self.weights = np.copy(weights)
                 if image is None:
                     self.image = np.ones((self.faces.shape[0], 1))
                     self.imNames = ['0']
@@ -334,7 +336,7 @@ class Mesh:
                 w=1
             else:
                 w = weights
-            self.vertex_weights = w * np.ones(self.vertices.shape[0], dtype=int)
+            #self.vertex_weights = w * np.ones(self.vertices.shape[0], dtype=int)
             self.weights = w * np.ones(self.faces.shape[0], dtype=int)
             self.computeCentersVolumesNormals()
             self.image = np.ones((self.faces.shape[0], 1))
@@ -391,13 +393,18 @@ class Mesh:
         self.vertex_weights = np.zeros(self.vertices.shape[0])
         face_per_vertex = np.zeros(self.vertices.shape[0], dtype=int)
         for k in range(self.faces.shape[0]):
-            self.vertex_weights[self.faces[k, :]] += self.weights[k]
-            face_per_vertex[self.faces[k, :]] += 1
-        self.vertex_weights /= face_per_vertex
+            for j in range(self.faces.shape[1]):
+                self.vertex_weights[self.faces[k, j]] += self.weights[k] * self.volumes[k]
+                face_per_vertex[self.faces[k, j]] += self.volumes[k]
+        mv = self.volumes.sum()/self.volumes.shape[0]
+        for k in range(face_per_vertex.shape[0]):
+            if face_per_vertex[k] > 1e-10*mv:
+                self.vertex_weights[k] /= face_per_vertex[k]
 
     def rescaleUnits(self, scale):
+        self.weights /= scale**self.dim
         self.updateVertices(self.vertices*scale)
-        self.updateWeights(self.weights/(scale**self.dim))
+        #self.updateWeights(self.weights/())
     # modify vertices without toplogical change
     def updateVertices(self, x0, checkOrientation=False):
         self.vertices = np.copy(x0)
@@ -432,6 +439,16 @@ class Mesh:
             for j in range(df):
                 AV[F[k,j]] += vol[k]
         return AV
+
+    def summary(self):
+        out = f'Number of vertices: {self.vertices.shape[0]}\n'
+        out += f'Number of simplices: {self.faces.shape[0]}\n'
+        out += f'Min-Max-Mean volume: {self.volumes.min():.6f} {self.volumes.max():.6f} {self.volumes.mean():.6f}\n'
+        out += f'Min-Max-Mean weight: {self.weights.min():.6f} {self.weights.max():.6f} {self.weights.mean():.6f}\n'
+        out += f'Min-Max-Mean vertex weight: {self.vertex_weights.min():.6f} {self.vertex_weights.max():.6f} {self.vertex_weights.mean():.6f}\n'
+        vw = self.weights * self.volumes
+        out += f'Min-Max-Mean cells per simplex: {vw.min():.4f} {vw.max():.4f} {vw.mean():.4f}\n'
+        return out
 
     # def computeVertexNormals(self):
     #     self.computeCentersAreas()
@@ -1323,7 +1340,7 @@ def buildMeshFromCentersCounts(centers, cts, resolution=100, radius = None, weig
     newv, newf, newg2, keepface = select_faces2__(newv, newf, threshold=threshold, removeBackground = False, small=10)
     wgts = wgts[keepface]
     newg = np.copy(newg[keepface, :])
-    logging.info(f'Mesh with {newv.shape[0]} vertices and {newf.shape[0]} faces')
+    logging.info(f'Mesh with {newv.shape[0]} vertices and {newf.shape[0]} faces; {wgts.sum()} cells')
     fv0 = Mesh(mesh=(newf, newv), image=newg, weights=wgts)
     fv0.updateWeights(wgts/fv0.volumes)
     return fv0
