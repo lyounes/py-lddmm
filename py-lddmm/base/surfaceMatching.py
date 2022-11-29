@@ -220,6 +220,7 @@ class SurfaceMatching(object):
     def set_sgd(self, control=100, template=100, target=100):
         self.weightSubset = 0.
         self.sgdEpsInit = 1e-4
+
         self.sgdNormalization = 'sdev'
         self.sgdBurnIn = 10000
         self.sgdMeanSelectControl = control
