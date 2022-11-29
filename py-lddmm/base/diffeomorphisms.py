@@ -1,6 +1,7 @@
 import os
 import sys
 import numpy as np
+from numba import jit, prange
 import vtk
 import array
 from PIL import Image
@@ -181,7 +182,7 @@ class Diffeomorphism:
       self.data = np.ndarray(shape=dim, order='F', buffer = v)
 
 
-
+@jit(nopython=True)
 def multilinInterp(img, diffeo):
    if img.ndim > 3:
       print('interpolate only in dimension 1 to 3')
@@ -223,6 +224,7 @@ def multilinInterp(img, diffeo):
    return np.squeeze(res)
 
 
+@jit(nopython=True)
 def gradient(img, resol=None):
    if img.ndim > 3:
       print('gradient only in dimension 1 to 3')
@@ -263,6 +265,7 @@ def gradient(img, resol=None):
       res[img.shape[0]-1] = (img[img.shape[0]-1] - img[img.shape[0]-2])/(resol)
    return res
 
+@jit(nopython=True)
 def jacobianDeterminant(diffeo, resol=[1.,1.,1.], periodic=False):
    if diffeo.ndim > 4:
       print('No jacobian in dimension larger than 3')
@@ -304,6 +307,7 @@ def jacobianDeterminant(diffeo, resol=[1.,1.,1.], periodic=False):
       res =  np.fabs(gradient(np.squeeze(diffeo)))
    return res
 
+@jit(nopython=True)
 def jacobianMatrix(diffeo, resol=[1.,1.,1.], periodic=False):
    if diffeo.ndim > 4:
       print('No jacobian in dimension larger than 3')

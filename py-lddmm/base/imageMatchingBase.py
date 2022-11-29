@@ -40,7 +40,6 @@ class ImageMatchingParam():
         else:
             self.resol = resol
         self.epsMax = 100
-        self.saveMovie = False
         if KparDiff is None:
             self.KparDiff = Kernel(name = self.typeKernel, sigma = self.sigmaKernel, order=order, size=kernelSize,
                                    dim=dim)
@@ -93,6 +92,7 @@ class ImageMatchingBase(Diffeomorphism):
 
         self.set_parameters(maxIter=maxIter, regWeight = regWeight, verb=verb,
                             testGradient=testGradient, saveFile = saveFile)
+        self.saveMovie = True
 
 
     def setOutputDir(self, outputDir, clean=True):
@@ -105,7 +105,7 @@ class ImageMatchingBase(Diffeomorphism):
                 os.makedirs(outputDir)
 
         if clean:
-            fileList = glob.glob(outputDir + '/*.vtk')
+            fileList = glob.glob(outputDir + '/*.*')
             for f in fileList:
                 os.remove(f)
 
@@ -245,11 +245,15 @@ class ImageMatchingBase(Diffeomorphism):
         # fig.canvas.flush_events()
 
     def initialSave(self):
-        saveImage(self.im0.data, self.outputDir + '/Template.vtk')
-        saveImage(self.im1.data, self.outputDir + '/Target.vtk')
-        saveImage(self.KparDiff.K, self.outputDir + '/Kernel', normalize=True)
-        saveImage(self.param.smoothKernel.K, self.outputDir + '/smoothKernel', normalize=True)
-        saveImage(self.mask.min(axis=0), self.outputDir + '/Mask', normalize=True)
+        if len(self.im0.data.shape) == 3:
+            ext = '.vtk'
+        else:
+            ext = ''
+        saveImage(self.im0.data, self.outputDir + '/Template'+ ext)
+        saveImage(self.im1.data, self.outputDir + '/Target' + ext)
+        saveImage(self.KparDiff.K, self.outputDir + '/Kernel' + ext, normalize=True)
+        saveImage(self.param.smoothKernel.K, self.outputDir + '/smoothKernel' + ext, normalize=True)
+        saveImage(self.mask.min(axis=0), self.outputDir + '/Mask' + ext, normalize=True)
 
 
 
