@@ -67,19 +67,14 @@ class SurfaceMatching(object):
                  unreduced=False, unreducedWeight = 1.0,
                  subsampleTargetSize=-1, affineOnly = False,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
-                 testGradient=True, saveFile = 'evolution',
+                 saveFile = 'evolution',
                  saveTrajectories = False, affine = 'none', outputDir = '.',pplot=False):
         if param is None:
             self.param = SurfaceMatchingParam()
         else:
             self.param = param
 
-        if self.param.algorithm == 'cg' and not unreduced:
-             self.euclideanGradient = False
-             self.dotProduct = self.dotProduct_Riemannian
-        else:
-            self.euclideanGradient = True
-            self.dotProduct = self.dotProduct_euclidean
+        self.setDotProduct(unreduced)
 
         if self.param.algorithm == 'sgd':
             self.sgd = True
@@ -134,6 +129,15 @@ class SurfaceMatching(object):
             self.initial_plot()
         if self.param.algorithm == 'sgd':
             self.set_sgd()
+
+
+    def setDotProduct(self, unreduced=False):
+        if self.param.algorithm == 'cg' and not unreduced:
+             self.euclideanGradient = False
+             self.dotProduct = self.dotProduct_Riemannian
+        else:
+            self.euclideanGradient = True
+            self.dotProduct = self.dotProduct_euclidean
 
     def set_passenger(self, passenger):
         self.passenger = passenger
