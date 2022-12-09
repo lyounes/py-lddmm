@@ -3,7 +3,7 @@ import pygalmesh
 from .curveExamples import Circle
 from .surfaceExamples import Sphere
 import loggingUtils
-from .meshes import Mesh
+from .meshes import Mesh, select_faces__
 
 
 class TwoDiscs(Mesh):
@@ -40,12 +40,12 @@ class TwoBalls(Mesh):
 class MoGCircle(Mesh):
     def __init__(self, largeRadius = 10., nregions = 5, ntypes = 5, ngenes=10, density = 10., centers=None, a=1,
                  targetSize=500, cellTypes = True, typeProb = None, geneProb = None, alpha = None):
-        f = Circle(radius=largeRadius, targetSize=targetSize)
+        f = Circle(radius=2*largeRadius, targetSize=targetSize)
         super(MoGCircle, self).__init__(f,volumeRatio=5000)
 
         if centers is None:
             self.nregions = nregions
-            pts = np.random.normal(0, 1, (ntypes, 2))
+            pts = np.random.normal(0, 1, (nregions, 2))
             pts = pts / np.sqrt((pts**2).sum(axis=1))[:,None]
             r = np.sqrt(np.random.uniform(0,1,(nregions,1)))
             self.GaussCenters = largeRadius*r*pts
@@ -65,20 +65,23 @@ class MoGCircle(Mesh):
         else:
             image = np.zeros((self.faces.shape[0], ngenes))
         self.types = np.zeros((self.faces.shape[0], ntypes))
-        for k in range(self.faces.shape[0]):
-            jk = np.argmin(((self.centers[k,:] - self.GaussCenters)**2).sum(axis=1))
-            ## type composition of the simplex
-            self.types[k,:] = np.random.dirichlet(a - 1 + typeProb[jk, :])
-            self.label[k] = jk
-            if not cellTypes:
-                for t in range(ntypes):
-                    image[k, :] += np.random.choice(np.floor(ngenes*self.types[k,t]), p=geneProb[jk, :])
-
         if alpha is None:
             alpha = np.random.poisson(density, nregions)
         weights = np.zeros(self.faces.shape[0])
         for k in range(self.faces.shape[0]):
-            weights[k] = np.random.poisson(alpha[self.label[k]])
+            distk = ((self.centers[k,:] - self.GaussCenters)**2).sum(axis=1)
+            jk = np.argmin(distk)
+            ## type composition of the simplex
+            self.types[k,:] = np.random.dirichlet(a - 1 + typeProb[jk, :])
+            self.label[k] = jk
+            #weights[k] = np.random.poisson(alpha[self.label[k]]) * np.exp(-distk[jk]/(2*(largeRadius/nregions)**2))
+            weights[k] = np.random.poisson(alpha[self.label[k]]) * np.exp(-distk[jk]/(2*(largeRadius/10)**2))
+            if not cellTypes:
+                for t in range(ntypes):
+                    image[k, :] += np.random.choice(np.floor(ngenes*self.types[k,t]), p=geneProb[jk, :])
+
+        # for k in range(self.faces.shape[0]):
+        #     weights[k] = np.random.poisson(alpha[self.label[k]])
         self.typeProb = typeProb
         self.geneProb = geneProb
         self.alpha = alpha
@@ -87,3 +90,14 @@ class MoGCircle(Mesh):
             self.updateImage(self.types)
         else:
             self.updateImage(image)
+
+        newv, newf, newg2, keepface = select_faces__(weights[:, None], self.vertices, self.faces,
+                                                      threshold=.1*density)
+        wgts = self.weights[keepface]
+        newg = np.copy(self.image[keepface, :])
+        self.vertices = newv
+        self.faces = newf
+        self.computeCentersVolumesNormals()
+        self.updateWeights(wgts)
+        self.image = newg
+
