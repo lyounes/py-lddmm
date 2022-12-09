@@ -78,6 +78,9 @@ def ReLUKDiff(u):
 def heaviside(u):
     return (np.sign(u - 1e-8) + np.sign(u + 1e-8) + 2) / 4
 
+
+## Kernel functions for numba
+## Computes K(u,v)a
 @jit(nopython=True)
 def gauss_fun(u_, v_, a_, order):
     uv_ = ((u_ - v_) ** 2).sum() / 2
@@ -107,30 +110,64 @@ def poly_fun(u_, v_, a_, order):
 def const_fun(u_, v_, a_, order):
     return 1
 @jit(nopython=True)
-def const_fun_diff(u_, v_, a_, order):
-    return 0
-@jit(nopython=True)
 def min_fun(u_,v_, a_, order):
     uv_ = np.minimum(u_, v_)
     return ReLUK(uv_) * a_
 
+def makeKij(ys_, xs_, name, order):
+    if 'min' in name:
+        Kij = (ys_ - xs_).ifelse(ys_.relu(), xs_.relu())
+    elif 'gauss' in name:
+        Dij = ((ys_ - xs_) ** 2).sum(-1)
+        Kij = (-0.5 * Dij).exp()
+    elif 'lap' in name:
+        Dij = ((ys_ - xs_) ** 2).sum(-1).sqrt()
+        polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij * Dij * Dij \
+                + c_[order, 4] * Dij * Dij * Dij * Dij
+        Kij = polij * (-Dij).exp()
+    elif 'polyCauchy' in name:
+        Dij = ((ys_ - xs_) ** 2).sum(-1)
+        g = (ys_ * xs_).sum(-1)
+        if order == 1:
+            Kij = 1 + g
+        elif order == 2:
+            Kij = 1 + g + g*g
+        elif order == 3:
+            Kij = 1 + g + g*g + g*g*g
+        elif order == 4:
+            Kij = 1 + g + g*g + g*g*g + g*g*g*g
+        else:
+            Kij = 1 + g + g*g + g*g*g + g*g*g*g + g*g*g*g*g
+        Kij /= (1 + Dij)
+    elif 'poly' in name:
+        g = (ys_ * xs_).sum(-1)
+        if order == 1:
+            Kij = 1 + g
+        elif order == 2:
+            Kij = 1 + g + g*g
+        elif order == 3:
+            Kij = 1 + g + g*g + g*g*g
+        elif order == 4:
+            Kij = 1 + g + g*g + g*g*g + g*g*g*g
+        else:
+            Kij = 1 + g + g*g + g*g*g + g*g*g*g + g*g*g*g*g
+    elif 'constant' in name:
+        # logging.info('constant')
+        Kij = 1
+    else:  # Applying Euclidean kernel
+        Kij = (ys_ * xs_).sum(-1)
+    return Kij
 
-@jit(nopython=True)
-def gauss_fun_diff(u_, v_, a_, order):
-    d_ = u_ - v_
-    uv_ = (d_ ** 2).sum() / 2
-    return - d_ * np.exp(-uv_) * a_.sum()
 
+## Kernel functions: differential
+## compute (d_1K(u,v) * a).sum()
 @jit(nopython=True)
-def lap_fun_diff(u_, v_, a_, order):
-    d_ = u_ - v_
-    uv_ = np.sqrt((d_ ** 2).sum())
-    u1 = lapPolDiff(uv_, order)
-    return  - d_ * (u1 * np.exp(-uv_) * a_.sum())
+def const_fun_diff(u_, v_, a_, order):
+    return 0
 
 @jit(nopython=True)
 def euclidean_fun_diff(u_, v_, a_, order):
-    return v_ * a_.sum()
+    return (v_ * a_).sum()
 
 @jit(nopython=True)
 def poly_fun_diff(u_, v_, a_, order):
@@ -140,13 +177,177 @@ def poly_fun_diff(u_, v_, a_, order):
     for i in range(1, order):
         gk *= g
         res += (i+1) * g
+    return res * (v_ * a_).sum()
+
+# @jit(nopython=True)
+# def min_fun_diffT(u_,v_, a_, order):
+#     uv_ = np.minimum(u_, v_)
+#     # res[k, :] += (heaviside(x[k,:]-y[l,:])*a1[k,:]*a2[l,:])*logcoshKDiff(u)/s
+#     return (heaviside(v_ - u_) * a_) * ReLUKDiff(uv_)
+
+@jit(nopython=True)
+def gauss_fun_diff(u_, v_, a_, order):
+    d_ = u_ - v_
+    uv_ = (d_ ** 2).sum() / 2
+    return - np.exp(-uv_) * (d_*a_).sum()
+
+@jit(nopython=True)
+def lap_fun_diff(u_, v_, a_, order):
+    d_ = u_ - v_
+    uv_ = np.sqrt((d_ ** 2).sum())
+    u1 = lapPolDiff(uv_, order)
+    return  - (u1 * np.exp(-uv_) * (d_*a_).sum())
+
+
+
+
+## Kernel functions: differential transposed
+## compute d_1K(u,v) * a.sum()
+@jit(nopython=True)
+def const_fun_diffT(u_, v_, a_, order):
+    return 0
+
+@jit(nopython=True)
+def euclidean_fun_diffT(u_, v_, a_, order):
+    return v_ * a_.sum()
+
+@jit(nopython=True)
+def poly_fun_diffT(u_, v_, a_, order):
+    g = (u_*v_).sum()
+    gk = 1.
+    res = 1.
+    for i in range(1, order):
+        gk *= g
+        res += (i+1) * g
     return res * v_ * a_.sum()
 
 @jit(nopython=True)
-def min_fun_diff(u_,v_, a_, order):
+def min_fun_diffT(u_,v_, a_, order):
     uv_ = np.minimum(u_, v_)
     # res[k, :] += (heaviside(x[k,:]-y[l,:])*a1[k,:]*a2[l,:])*logcoshKDiff(u)/s
     return (heaviside(v_ - u_) * a_) * ReLUKDiff(uv_)
+
+@jit(nopython=True)
+def gauss_fun_diffT(u_, v_, a_, order):
+    d_ = u_ - v_
+    uv_ = (d_ ** 2).sum() / 2
+    return - d_ * np.exp(-uv_) * a_.sum()
+
+@jit(nopython=True)
+def lap_fun_diffT(u_, v_, a_, order):
+    d_ = u_ - v_
+    uv_ = np.sqrt((d_ ** 2).sum())
+    u1 = lapPolDiff(uv_, order)
+    return  - d_ * (u1 * np.exp(-uv_) * a_.sum())
+
+def makeDiffKij(ys_, xs_, name, order):
+    if name == 'min':
+        Kij = (ys_ - xs_).ifelse(ys_.ifelse(1, 0), 0)
+    elif 'gauss' in name:
+        diffij = ys_ - xs_
+        Dij = (diffij ** 2).sum(-1)
+        Kij = - diffij * (-0.5 * Dij).exp()
+    elif 'lap' in name:
+        # if lddmm:
+        diffij = ys_ - xs_
+        Dij = (diffij ** 2).sum(-1).sqrt()
+        Kij = - diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
+                          + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
+    elif 'polyCauchy' in name:
+        diffij = ys_ - xs_
+        Dij = (diffij ** 2).sum(-1).sqrt()
+        g = (ys_ * xs_).sum(-1)
+        if order == 1:
+            Kij = 1 + g
+            dKij = 1
+        elif order == 2:
+            Kij = 1 + g + g*g
+            dKij = 1 + 2*g
+        elif order == 3:
+            Kij = 1 + g + g*g + g*g*g
+            dKij = 1 + 2*g + 3*g*g
+        elif order == 4:
+            Kij = 1 + g + g*g + g*g*g + g*g*g*g
+            dKij = 1 + 2*g + 3*g*g + 4*g*g*g
+        else:
+            Kij = 1 + g + g*g + g*g*g + g*g*g*g + g*g*g*g*g
+            dKij = 1 + 2*g + 3*g*g + 4*g*g*g + 5*g*g*g*g
+        Kij = LazyTensor(np.ones(ys_.shape)) * xs_*  dKij/(1 + Dij) - 2 * diffij * Kij / (1+Dij)**2
+    elif 'poly' in name:
+        g = (ys_ * xs_).sum(-1)
+        if order == 1:
+            dKij = 1
+        elif order == 2:
+            dKij = 1 + 2*g
+        elif order == 3:
+            dKij = 1 + 2*g + 3*g*g
+        elif order == 4:
+            dKij = 1 + 2*g + 3*g*g + 4*g*g*g
+        else:
+            dKij = 1 + 2*g + 3*g*g + 4*g*g*g + 5*g*g*g*g
+        Kij = LazyTensor(np.ones(ys_.shape)) * xs_ * dKij
+    elif 'constant' in name:
+        Kij = 0
+    else:  # Euclidean kernel
+        Kij = LazyTensor(np.ones(ys_.shape)) * xs_
+    return Kij
+
+## Kernel functions: second derivatives
+@jit(nopython=True)
+def gauss_fun_ddiff(u_, v_, a_, p_, order):
+    d_ = u_ - v_
+    uv_ = (d_ ** 2).sum() / 2
+    h = -np.eye(u_.shape[0])
+    for i in range(u_.shape[0]):
+        for j in range(u_.shape[0]):
+            h[i,j] += d_[i]*d_[j]
+    return ( (d_*p_).sum() *d_ - p_) * np.exp(-uv_) * a_.sum()
+
+@jit(nopython=True)
+def lap_fun_ddiff(u_, v_, a_, p_, order):
+    d_ = u_ - v_
+    uv_ = np.sqrt((d_ ** 2).sum())
+    u1 = -lapPolDiff(uv_, order)
+    u2 = lapPolDiff2(uv_, order)
+    return  (u2 * (d_*p_).sum() * d_ + u1 *p_) * np.exp(-uv_) * a_.sum()
+
+def makeDDiffKij(ys_, xs_, name, order):
+    if 'gauss' in name:
+        diffij = ys_ - xs_
+        Dij = (diffij ** 2).sum(-1)
+        K1ij = (-0.5 * Dij).exp()
+        K2ij = K1ij
+    elif 'lap' in name:
+        diffij = ys_ - xs_
+        Dij = (diffij ** 2).sum(-1).sqrt()
+        K1ij = (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
+                          + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
+        K2ij = (c2_[order,0] + c2_[order,1] * Dij + c2_[order,2] * Dij * Dij) * (-Dij).exp()
+    else:
+        print('unknown kernel type DDiff')
+        K1ij = None
+        K2ij = None
+        diffij = None
+
+    return K1ij, K2ij, diffij
+
+
+
+
+# @jit(nopython=True)
+# def euclidean_fun_diff(u_, v_, a_, order):
+#     return v_ * a_.sum()
+#
+# @jit(nopython=True)
+# def poly_fun_diff(u_, v_, a_, order):
+#     g = (u_*v_).sum()
+#     gk = 1.
+#     res = 1.
+#     for i in range(1, order):
+#         gk *= g
+#         res += (i+1) * g
+#     return res * v_ * a_.sum()
+#
 
 @jit(nopython=True, parallel=True)
 def kernelmatrix(y, x, name, scale, ord, KP=-1):
@@ -189,8 +390,8 @@ def kernelmatrix(y, x, name, scale, ord, KP=-1):
     return f
 
 
-def pick_fun(name, diff = False):
-    if not diff:
+def pick_fun(name, mode = 'base'):
+    if mode == 'base':
         if 'gauss' in name:
             fun = gauss_fun
         elif 'lap' in name:
@@ -203,19 +404,38 @@ def pick_fun(name, diff = False):
             fun = const_fun
         else:
             fun = euclidean_fun
-    else:
+    elif mode == 'DiffT':
+        if 'gauss' in name:
+            fun = gauss_fun_diffT
+        elif 'lap' in name:
+            fun = lap_fun_diffT
+        elif 'min' in name:
+            fun = min_fun_diffT
+        elif 'poly' in name:
+            fun = poly_fun_diffT
+        elif 'constant' in name:
+            fun = const_fun_diffT
+        else:
+            fun = euclidean_fun_diffT
+    elif mode == 'Diff':
         if 'gauss' in name:
             fun = gauss_fun_diff
         elif 'lap' in name:
             fun = lap_fun_diff
-        elif 'min' in name:
-            fun = min_fun_diff
         elif 'poly' in name:
             fun = poly_fun_diff
         elif 'constant' in name:
             fun = const_fun_diff
         else:
             fun = euclidean_fun_diff
+    elif mode == 'DDiff':
+        if 'gauss' in name:
+            fun = gauss_fun_ddiff
+        else:
+            fun = lap_fun_ddiff
+    else:
+        fun = None
+
     return fun
 
 def applyK(y, x, a, name, scale, order, cpu=False, dtype='float64', KP=-1):
@@ -244,35 +464,35 @@ def applyK_numba(y, x, a, fun, scale, order, KP=-1):
     return res
 
 
-def make_Kij_pykeops(y, x, name, scale, order, dtype='float64'):
-    Kij_ = []
-    for s in range(len(scale)):
-        ys = y/scale[s]
-        xs = x/scale[s]
-        ys_ = LazyTensor(ys.astype(dtype)[:, None, :])
-        xs_ = LazyTensor(xs.astype(dtype)[None, :, :])
-        if name == 'min':
-            Kij = (ys_ - xs_).ifelse(ys_.relu(), xs_.relu())
-        elif 'gauss' in name:
-            Dij = ((ys_ - xs_)**2).sum(-1)
-            Kij = (-0.5*Dij).exp()
-        elif 'lap' in name:
-            Dij = ((ys_ - xs_)**2).sum(-1).sqrt()
-            polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij*Dij*Dij\
-                    + c_[order, 4] *Dij*Dij*Dij*Dij
-            Kij = polij * (-Dij).exp()
-        elif 'poly' in name:
-            g = (ys_*xs_).sum(-1)
-            gk = LazyTensor(np.ones(ys_.shape))
-            Kij = LazyTensor(np.ones(ys_.shape))
-            for i in range(order):
-                gk *= g
-                Kij += gk
-        else: #Applying Euclidean kernel
-            Kij = (ys_*xs_).sum(-1)
-        Kij_.append(Kij)
-
-    return Kij_
+# def make_Kij_pykeops(y, x, name, scale, order, dtype='float64'):
+#     Kij_ = []
+#     for s in range(len(scale)):
+#         ys = y/scale[s]
+#         xs = x/scale[s]
+#         ys_ = LazyTensor(ys.astype(dtype)[:, None, :])
+#         xs_ = LazyTensor(xs.astype(dtype)[None, :, :])
+#         if name == 'min':
+#             Kij = (ys_ - xs_).ifelse(ys_.relu(), xs_.relu())
+#         elif 'gauss' in name:
+#             Dij = ((ys_ - xs_)**2).sum(-1)
+#             Kij = (-0.5*Dij).exp()
+#         elif 'lap' in name:
+#             Dij = ((ys_ - xs_)**2).sum(-1).sqrt()
+#             polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij*Dij*Dij\
+#                     + c_[order, 4] *Dij*Dij*Dij*Dij
+#             Kij = polij * (-Dij).exp()
+#         elif 'poly' in name:
+#             g = (ys_*xs_).sum(-1)
+#             gk = LazyTensor(np.ones(ys_.shape))
+#             Kij = LazyTensor(np.ones(ys_.shape))
+#             for i in range(order):
+#                 gk *= g
+#                 Kij += gk
+#         else: #Applying Euclidean kernel
+#             Kij = (ys_*xs_).sum(-1)
+#         Kij_.append(Kij)
+#
+#     return Kij_
 
 def applyK_pykeops(y, x, a, name, scale, order, dtype='float64', KP=-1):
     res = np.zeros((y.shape[0], a.shape[1]))
@@ -285,25 +505,26 @@ def applyK_pykeops(y, x, a, name, scale, order, dtype='float64', KP=-1):
         xs = x/scale[s]
         ys_ = LazyTensor(ys.astype(dtype)[:, None, :])
         xs_ = LazyTensor(xs.astype(dtype)[None, :, :])
-        if name == 'min':
-            Kij = (ys_ - xs_).ifelse(ys_.relu(), xs_.relu())
-        elif 'gauss' in name:
-            Dij = ((ys_ - xs_)**2).sum(-1)
-            Kij = (-0.5*Dij).exp()
-        elif 'lap' in name:
-            Dij = ((ys_ - xs_)**2).sum(-1).sqrt()
-            polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij*Dij*Dij\
-            + c_[order, 4] *Dij*Dij*Dij*Dij
-            Kij = polij * (-Dij).exp()
-        elif 'poly' in name:
-            g = (ys_*xs_).sum(-1)
-            gk = LazyTensor(np.ones(ys_.shape))
-            Kij = LazyTensor(np.ones(ys_.shape))
-            for i in range(order):
-                gk *= g
-                Kij += gk
-        else: #Applying Euclidean kernel
-            Kij = (ys_*xs_).sum(-1)
+        Kij = makeKij(ys_, xs_, name, order)
+        # if name == 'min':
+        #     Kij = (ys_ - xs_).ifelse(ys_.relu(), xs_.relu())
+        # elif 'gauss' in name:
+        #     Dij = ((ys_ - xs_)**2).sum(-1)
+        #     Kij = (-0.5*Dij).exp()
+        # elif 'lap' in name:
+        #     Dij = ((ys_ - xs_)**2).sum(-1).sqrt()
+        #     polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij*Dij*Dij\
+        #     + c_[order, 4] *Dij*Dij*Dij*Dij
+        #     Kij = polij * (-Dij).exp()
+        # elif 'poly' in name:
+        #     g = (ys_*xs_).sum(-1)
+        #     gk = LazyTensor(np.ones(ys_.shape))
+        #     Kij = LazyTensor(np.ones(ys_.shape))
+        #     for i in range(order):
+        #         gk *= g
+        #         Kij += gk
+        # else: #Applying Euclidean kernel
+        #     Kij = (ys_*xs_).sum(-1)
         if name == min:
             res += Kij * a_ * sKP[s]
         else:
@@ -343,100 +564,6 @@ def applyK1K2_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2, 
     return res
 
 
-def makeDiffKij(ys_, xs_, name, order):
-    if 'gauss' in name:
-        diffij = ys_ - xs_
-        Dij = (diffij ** 2).sum(-1)
-        Kij = - diffij * (-0.5 * Dij).exp()
-    elif 'lap' in name:
-        # if lddmm:
-        diffij = ys_ - xs_
-        Dij = (diffij ** 2).sum(-1).sqrt()
-        Kij = - diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
-                          + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
-    elif 'polyCauchy' in name:
-        diffij = ys_ - xs_
-        Dij = (diffij ** 2).sum(-1).sqrt()
-        g = (ys_ * xs_).sum(-1)
-        if order == 1:
-            Kij = 1 + g
-            dKij = 1
-        elif order == 2:
-            Kij = 1 + g + g*g
-            dKij = 1 + 2*g
-        elif order == 3:
-            Kij = 1 + g + g*g + g*g*g
-            Kij = 1 + 2*g + 3*g*g
-        elif order == 4:
-            Kij = 1 + g + g*g + g*g*g + g*g*g*g
-            dKij = 1 + 2*g + 3*g*g + 4*g*g*g 
-        else:
-            Kij = 1 + g + g*g + g*g*g + g*g*g*g + g*g*g*g*g
-            dKij = 1 + 2*g + 3*g*g + 4*g*g*g + 5*g*g*g*g
-        Kij = LazyTensor(np.ones(ys_.shape)) * xs_*  dKij/(1 + Dij) - 2 * diffij * Kij / (1+Dij)**2
-    elif 'poly' in name:
-        g = (ys_ * xs_).sum(-1)
-        if order == 1:
-            dKij = 1
-        elif order == 2:
-            dKij = 1 + 2*g
-        elif order == 3:
-            dKij = 1 + 2*g + 3*g*g
-        elif order == 4:
-            dKij = 1 + 2*g + 3*g*g + 4*g*g*g 
-        else:
-            dKij = 1 + 2*g + 3*g*g + 4*g*g*g + 5*g*g*g*g
-        Kij = LazyTensor(np.ones(ys_.shape)) * xs_ * dKij
-    elif 'constant' in name:
-        Kij = 0
-    else:  # Euclidean kernel
-        Kij = LazyTensor(np.ones(ys_.shape)) * xs_
-    return Kij
-
-
-def makeKij(ys_, xs_, name, order):
-    if 'gauss' in name:
-        Dij = ((ys_ - xs_) ** 2).sum(-1)
-        Kij = (-0.5 * Dij).exp()
-    elif 'lap' in name:
-        Dij = ((ys_ - xs_) ** 2).sum(-1).sqrt()
-        polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij * Dij * Dij \
-                + c_[order, 4] * Dij * Dij * Dij * Dij
-        Kij = polij * (-Dij).exp()
-    elif 'polyCauchy' in name:
-        Dij = ((ys_ - xs_) ** 2).sum(-1)
-        g = (ys_ * xs_).sum(-1)
-        if order == 1:
-            Kij = 1 + g
-        elif order == 2:
-            Kij = 1 + g + g*g
-        elif order == 3:
-            Kij = 1 + g + g*g + g*g*g
-        elif order == 4:
-            Kij = 1 + g + g*g + g*g*g + g*g*g*g
-        else:
-            Kij = 1 + g + g*g + g*g*g + g*g*g*g + g*g*g*g*g
-        Kij /= (1 + Dij)
-    elif 'poly' in name:
-        g = (ys_ * xs_).sum(-1)
-        if order == 1:
-            Kij = 1 + g
-        elif order == 2:
-            Kij = 1 + g + g*g
-        elif order == 3:
-            Kij = 1 + g + g*g + g*g*g
-        elif order == 4:
-            Kij = 1 + g + g*g + g*g*g + g*g*g*g
-        else:
-            Kij = 1 + g + g*g + g*g*g + g*g*g*g + g*g*g*g*g
-    elif 'constant' in name:
-        # logging.info('constant')
-        Kij = 1
-    else:  # Applying Euclidean kernel
-        Kij = (ys_ * xs_).sum(-1)
-    return Kij
-
-
 def applyK1K2_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, a,
                                  dtype='float64', KP=-1):
     res = np.zeros((y1.shape[0], a.shape[1]))
@@ -446,25 +573,6 @@ def applyK1K2_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, orde
     s2KP = scale2**KP
     wsig = s1KP.sum() * s2KP.sum()
     a_ = a.astype(dtype)
-    # def makeKij(ys_, xs_, name, order):
-    #     if 'gauss' in name:
-    #         Dij = ((ys_ - xs_) ** 2).sum(-1)
-    #         Kij = (-0.5 * Dij).exp()
-    #     elif 'lap' in name:
-    #         Dij = ((ys_ - xs_) ** 2).sum(-1).sqrt()
-    #         polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij * Dij * Dij \
-    #                  + c_[order, 4] * Dij * Dij * Dij * Dij
-    #         Kij = polij * (-Dij).exp()
-    #     elif 'poly' in name:
-    #         g = (ys_*xs_).sum(-1)
-    #         gk = LazyTensor(np.ones(ys_.shape))
-    #         Kij = LazyTensor(np.ones(ys_.shape))
-    #         for i in range(order):
-    #             gk *= g
-    #             Kij += gk
-    #     else: #Applying Euclidean kernel
-    #         Kij = (ys_*xs_).sum(-1)
-    #     return Kij
 
     for s1 in range(ns1):
         ys1 = y1/scale1[s1]
@@ -482,11 +590,133 @@ def applyK1K2_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, orde
     res /= wsig
     return res
 
+
+
+
+## Kernel sums: first derivative
+def applyDiffK(x, a1, a2, name, scale, order, cpu=False, dtype='float64', KP=-1, option='1'):
+    if not cpu and pykeops.config.gpu_available:
+        return applyDiffK_pykeops(x, a1, a2, name, scale, order, dtype=dtype, KP=KP, option=option)
+    else:
+        fun = pick_fun(name, mode = 'Diff')
+        return applyDiffK_numba(x, a1, a2, fun, scale, order, KP=KP, option=option)
+
+
+@jit(nopython=True, parallel=True)
+def applyDiffK_numba(x, a1, a2, fun, scale, order, KP=-1, option='1'):
+    res = np.zeros(x.shape)
+    ns = len(scale)
+    sKP1 = scale ** (KP - 1)
+    sKP = scale ** (KP)
+    wsig = sKP.sum()
+
+    for s in range(ns):
+        xs = x / scale[s]
+        if option=='1':
+            for k in prange(x.shape[0]):
+                for l in range(x.shape[0]):
+                    res[k, :] += fun(xs[k, :], xs[l, :], a1[k, :], order) * a2[l, :] * sKP1[s]
+        elif option=='2':
+            for k in prange(x.shape[0]):
+                for l in range(x.shape[0]):
+                    res[k, :] += fun(xs[k, :], xs[l, :], a1[l, :], order) * a2[l, :] * sKP1[s]
+        elif option=='1and2':
+            for k in prange(x.shape[0]):
+                for l in range(x.shape[0]):
+                    res[k, :] += fun(xs[k, :], xs[l, :], a1[k,:] - a1[l, :], order) * a2[l, :] * sKP1[s]
+        else:
+            print('DiffK: unknown option')
+
+    res /= wsig
+    return res
+
+# def makeDiffKij(ys_, xs_, name, order):
+#     if name == 'min':
+#         Kij = (ys_ - xs_).ifelse(ys_.ifelse(1, 0), 0)
+#     elif 'gauss' in name:
+#         diffij = ys_ - xs_
+#         Dij = (diffij ** 2).sum(-1)
+#         Kij = - diffij * (-0.5 * Dij).exp()
+#     elif 'lap' in name:
+#         # if lddmm:
+#         diffij = ys_ - xs_
+#         Dij = (diffij ** 2).sum(-1).sqrt()
+#         Kij = - diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
+#                           + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
+#     elif 'polyCauchy' in name:
+#         diffij = ys_ - xs_
+#         Dij = (diffij ** 2).sum(-1).sqrt()
+#         g = (ys_ * xs_).sum(-1)
+#         if order == 1:
+#             Kij = 1 + g
+#             dKij = 1
+#         elif order == 2:
+#             Kij = 1 + g + g*g
+#             dKij = 1 + 2*g
+#         elif order == 3:
+#             Kij = 1 + g + g*g + g*g*g
+#             dKij = 1 + 2*g + 3*g*g
+#         elif order == 4:
+#             Kij = 1 + g + g*g + g*g*g + g*g*g*g
+#             dKij = 1 + 2*g + 3*g*g + 4*g*g*g
+#         else:
+#             Kij = 1 + g + g*g + g*g*g + g*g*g*g + g*g*g*g*g
+#             dKij = 1 + 2*g + 3*g*g + 4*g*g*g + 5*g*g*g*g
+#         Kij = LazyTensor(np.ones(ys_.shape)) * xs_*  dKij/(1 + Dij) - 2 * diffij * Kij / (1+Dij)**2
+#     elif 'poly' in name:
+#         g = (ys_ * xs_).sum(-1)
+#         if order == 1:
+#             dKij = 1
+#         elif order == 2:
+#             dKij = 1 + 2*g
+#         elif order == 3:
+#             dKij = 1 + 2*g + 3*g*g
+#         elif order == 4:
+#             dKij = 1 + 2*g + 3*g*g + 4*g*g*g
+#         else:
+#             dKij = 1 + 2*g + 3*g*g + 4*g*g*g + 5*g*g*g*g
+#         Kij = LazyTensor(np.ones(ys_.shape)) * xs_ * dKij
+#     elif 'constant' in name:
+#         Kij = 0
+#     else:  # Euclidean kernel
+#         Kij = LazyTensor(np.ones(ys_.shape)) * xs_
+#     return Kij
+
+def applyDiffK_pykeops(x, a1, a2, name, scale, order, dtype='float64', KP=-1, option = '1'):
+    res = np.zeros(x.shape)
+    ns = len(scale)
+    sKP1 = scale**(KP-1)
+    sKP = scale**(KP)
+    wsig = sKP.sum()
+    a1_ = a1.astype(dtype)
+    a2_ = a2.astype(dtype)
+    a1i_ = LazyTensor(a1_[:, None, :])
+    a1j_ = LazyTensor(a1_[None, :, ])
+    a2j_ = LazyTensor(a2_[None, :, :])
+
+    for s in range(ns):
+        xs = x/scale[s]
+        xsi = LazyTensor(xs.astype(dtype)[:, None, :])
+        xsj = LazyTensor(xs.astype(dtype)[None, :, :])
+        Kij = makeDiffKij(xsi, xsj, name, order)
+        if option == '1':
+            res += (sKP1[s]) * ((Kij * a1i_).sum(-1)*a2j_).sum(1)
+        elif option == '2':
+            res += (sKP1[s]) * ((Kij * a1j_).sum(-1) * a2j_).sum(1)
+        elif option == '1and2':
+            res += (sKP1[s]) * ((Kij * (a1i_- a1j_)).sum(-1) * a2j_).sum(1)
+        else:
+            print('DiffK: unknown option')
+    res /= wsig
+    return res
+
+
+##Transposed
 def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., lddmm=False, cpu=False, dtype='float64', KP=-1):
     if not cpu and pykeops.config.gpu_available:
         return applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=regweight, lddmm=lddmm, dtype=dtype, KP=KP)
     else:
-        fun = pick_fun(name, diff=True)
+        fun = pick_fun(name, mode = 'DiffT')
         return applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=regweight, lddmm=lddmm, KP=KP)
 
 @jit(nopython=True, parallel=True)
@@ -509,14 +739,13 @@ def applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=1., lddmm=False, 
     res /= wsig
     return res
 
+
 def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=False, dtype='float64', KP=-1):
     res = np.zeros(y.shape)
     ns = len(scale)
     sKP1 = scale**(KP-1)
     sKP = scale**(KP)
     wsig = sKP.sum()
-    # D = x.shape[1]
-    # Da = a.shape[1]
     p_ = p.astype(dtype)
     a_ = a.astype(dtype)
     pi_ = LazyTensor(p_[:, None, :])
@@ -533,27 +762,28 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
         xs = x/scale[s]
         ys_ = LazyTensor(ys.astype(dtype)[:, None, :])
         xs_ = LazyTensor(xs.astype(dtype)[None, :, :])
-        if name == 'min':
-            Kij = (ys_-xs_).ifelse(ys_.ifelse(1,0), 0)
-        elif 'gauss' in name:
-            diffij = ys_ - xs_
-            Dij = (diffij ** 2).sum(-1)
-            Kij = diffij * (-0.5 * Dij).exp()
-        elif 'lap' in name:
-            diffij = ys_ - xs_
-            Dij = (diffij ** 2).sum(-1).sqrt()
-            Kij = diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
-            + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
-        elif 'poly' in name:
-            g = (ys_ * xs_).sum(-1)
-            gk = LazyTensor(np.ones(ys_.shape))
-            Kij = LazyTensor(np.ones(ys_.shape))
-            for i in range(1, order):
-                gk *= g
-                Kij += (i+1) * gk
-        else: # Euclidean kernel
-            Kij = LazyTensor(np.ones(ys_.shape)) * xs_
-        res += (-sKP1[s]) * (Kij * ap_).sum(1)
+        Kij = makeDiffKij(ys_, xs_, name, order)
+        # if name == 'min':
+        #     Kij = (ys_-xs_).ifelse(ys_.ifelse(1,0), 0)
+        # elif 'gauss' in name:
+        #     diffij = ys_ - xs_
+        #     Dij = (diffij ** 2).sum(-1)
+        #     Kij = diffij * (-0.5 * Dij).exp()
+        # elif 'lap' in name:
+        #     diffij = ys_ - xs_
+        #     Dij = (diffij ** 2).sum(-1).sqrt()
+        #     Kij = diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
+        #     + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
+        # elif 'poly' in name:
+        #     g = (ys_ * xs_).sum(-1)
+        #     gk = LazyTensor(np.ones(ys_.shape))
+        #     Kij = LazyTensor(np.ones(ys_.shape))
+        #     for i in range(1, order):
+        #         gk *= g
+        #         Kij += (i+1) * gk
+        # else: # Euclidean kernel
+        #     Kij = LazyTensor(np.ones(ys_.shape)) * xs_
+        res += (sKP1[s]) * (Kij * ap_).sum(1)
     res /= wsig
     return res
 
@@ -563,7 +793,7 @@ def applyDiffK1K2T(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2,
         return applyDiffK1K2T_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, p, a,
                                  regweight=regweight, lddmm=lddmm, dtype=dtype, KP=KP)
     else:
-        fun1 = pick_fun(name1, diff=True)
+        fun1 = pick_fun(name1, mode='DiffT')
         fun2 = pick_fun(name2)
         return applyDiffK1K2T_numba(y1, x1, fun1, scale1, order1, y2, x2, fun2, scale2, order2, p, a,
                                     regweight=regweight, lddmm=lddmm, KP=KP)
@@ -658,6 +888,758 @@ def applyDiv(y, x, a, name, scale, order, KP=-1):
     return res
 
 
+def applykdiff1(x, a1, a2, name, scale, order, KP=-1):
+    return applyDiffK(x, a1, a2, name, scale, order, KP=-1, option='1')
+
+def applykdiff2(x, a1, a2, name, scale, order, KP=-1):
+    return applyDiffK(x, a1, a2, name, scale, order, KP=-1, option='2')
+
+def applykdiff1and2(x, a1, a2, name, scale, order, KP=-1):
+    return applyDiffK(x, a1, a2, name, scale, order, KP=-1, option='1and2')
+
+@jit(nopython=True, parallel=True)
+def applykdiff1_(x, a1, a2, name, scale, order, KP=-1):
+    num_nodes = x.shape[0]
+    dim = x.shape[1]
+    f = np.zeros((num_nodes, dim))
+    wsig = 0
+    for s in scale:
+        wsig += s ** KP
+
+    if 'gauss' in name:
+        for k in prange(num_nodes):
+            df = np.zeros(dim)
+            for l in range(num_nodes):
+             ut0 = ((x[k,:] - x[l,:])**2).sum()
+             Kh_diff = 0
+             for s in scale:
+                ut = ut0 / s**2
+                if ut < 1e-8:
+                    Kh_diff -= 0.5*s**(KP-2)
+                else:
+                    Kh_diff -= 0.5*np.exp(-0.5*ut)*s**(KP-2)
+                Kh_diff /= wsig
+                df += Kh_diff * 2 * ((x[k, :] - x[l, :]) * a1[k, :]).sum() * a2[l, :]
+            f[k, :] += df
+    elif 'lap' in name:
+        for k in prange(num_nodes):
+            df = np.zeros(dim)
+            for l in range(num_nodes):
+                ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
+                Kh_diff = 0
+                for s in scale:
+                    ut = ut0 / s
+                    if ut < 1e-8:
+                        Kh_diff -= 0.5*lapPolDiff(0,order)*s**(KP-2)
+                    else:
+                        Kh_diff -= 0.5 * lapPolDiff(ut,order) * np.exp(-1.0*ut)*s**(KP-2)
+                Kh_diff /= wsig
+                df += Kh_diff * 2*((x[k,:]-x[l,:])*a1[k,:]).sum() * a2[l,:]
+            f[k, :] += df
+    return f
+
+@jit(nopython=True, parallel=True)
+def applykdiff2_(x, a1, a2, name, scale, order, KP=-1):
+    num_nodes = x.shape[0]
+    dim = x.shape[1]
+    f = np.zeros((num_nodes, dim))
+    wsig = 0
+    for s in scale:
+        wsig += s ** KP
+
+    if 'gauss' in name:
+        for k in prange(num_nodes):
+            df = np.zeros(dim)
+            for l in range(num_nodes):
+                ut0 = ((x[k, :] - x[l, :]) ** 2).sum()
+                Kh_diff = 0
+                for s in scale:
+                    ut = ut0 / s ** 2
+                    if ut < 1e-8:
+                        Kh_diff -= 0.5 * s ** (KP - 2)
+                    else:
+                        Kh_diff -= 0.5 * np.exp(-0.5 * ut) * s ** (KP - 2)
+                    Kh_diff /= wsig
+                    df += Kh_diff * 2 * ((x[k, :] - x[l, :]) * a1[l, :]).sum() * a2[l, :]
+            f[k, :] += df
+    elif 'lap' in name:
+        for k in prange(num_nodes):
+            df = np.zeros(dim)
+            for l in range(num_nodes):
+                ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
+                Kh_diff = 0
+                for s in scale:
+                    ut = ut0 / s
+                    if ut < 1e-8:
+                        Kh_diff -= 0.5 * lapPolDiff(0, order) * s ** (KP - 2)
+                    else:
+                        Kh_diff -= 0.5 * lapPolDiff(ut, order) * np.exp(-1.0 * ut) * s ** (KP - 2)
+                Kh_diff /= wsig
+                df += Kh_diff * 2 * ((x[k, :] - x[l, :]) * a1[l, :]).sum() * a2[l, :]
+            f[k, :] += df
+    return f
+
+@jit(nopython=True, parallel=True)
+def applykdiff1and2_(x, a1, a2, name, scale, order, KP=-1):
+    num_nodes = x.shape[0]
+    dim = x.shape[1]
+    f = np.zeros((num_nodes, dim))
+    wsig = 0
+    for s in scale:
+        wsig += s ** KP
+
+    if 'gauss' in name:
+        for k in prange(num_nodes):
+            df = np.zeros(dim)
+            for l in range(num_nodes):
+                dx = x[k,:] - x[l,:]
+                ut0 = ((x[k, :] - x[l, :]) ** 2).sum()
+                Kh_diff = 0
+                for s in scale:
+                    ut = ut0 / s ** 2
+                    if ut < 1e-8:
+                        Kh_diff -= 0.5 * s ** (KP - 2)
+                    else:
+                        Kh_diff -= 0.5 * np.exp(-0.5 * ut) * s ** (KP - 2)
+                Kh_diff /= wsig
+                df += Kh_diff * 2 * (dx*(a1[k, :] - a1[l, :])).sum() * a2[l, :]
+            f[k, :] += df
+    elif 'lap' in name:
+        for k in prange(num_nodes):
+            df = np.zeros(dim)
+            for l in range(num_nodes):
+                dx = x[k,:] - x[l,:]
+                ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
+                Kh_diff = 0
+                for s in scale:
+                    ut = ut0 / s
+                    if ut < 1e-8:
+                        Kh_diff -= 0.5 * lapPolDiff(0, order) * s ** (KP - 2)
+                    else:
+                        Kh_diff -= 0.5 * lapPolDiff(ut, order) * np.exp(-1.0 * ut) * s ** (KP - 2)
+                Kh_diff /= wsig
+                df += Kh_diff * 2 * (dx*(a1[k, :] - a1[l, :])).sum() * a2[l, :]
+            f[k, :] += df
+    return f
+
+
+## Second derivatives
+def applyDDiffK(x, a1, a2, p, name, scale, order, cpu=False, dtype='float64', KP=-1, option='11'):
+    if not cpu and pykeops.config.gpu_available:
+        return applyDDiffK_pykeops(x, a1, a2, p, name, scale, order, dtype=dtype, KP=KP, option=option)
+    else:
+        fun = pick_fun(name, mode = 'DDiff')
+        return applyDDiffK_numba(x, a1, a2, p, fun, scale, order, KP=KP, option=option)
+
+@jit(nopython=True, parallel=True)
+def applyDDiffK_numba(x, a1, a2, p, fun, scale, order, option = '11and12', KP=-1):
+    num_nodes = x.shape[0]
+    dim = x.shape[1]
+    f = np.zeros((num_nodes, dim))
+    wsig = 0
+    for s in scale:
+        wsig += s ** KP
+
+    if option == '11':
+        for s in scale:
+            xs = x/s
+            KS = s**(KP-2)
+            for k in prange(num_nodes):
+                df = np.zeros(dim)
+                for l in prange(num_nodes):
+                    df += fun(xs[k,:], xs[l,:], a1[k,:] * a2[l,:], p[k,:], order)
+                f[k, :] += df * KS
+    elif option == '12':
+        for s in scale:
+            xs = x/s
+            KS = s**(KP-2)
+            for k in prange(num_nodes):
+                df = np.zeros(dim)
+                for l in prange(num_nodes):
+                    df -= fun(xs[k,:], xs[l,:], a1[k,:] * a2[l,:], p[l,:], order)
+                f[k, :] += df * KS
+    elif option=='11and12':
+        for s in scale:
+            xs = x/s
+            KS = s**(KP-2)
+            for k in prange(num_nodes):
+                df = np.zeros(dim)
+                for l in prange(num_nodes):
+                    df += fun(xs[k,:], xs[l,:], a1[k,:] * a2[l,:], p[k,:]-p[l, :], order)
+                f[k, :] += df * KS
+    else:
+        print('Unknown option in second kernel derivative')
+    return f/wsig
+
+def applyDDiffK_pykeops(x, a1, a2, p, name, scale, order, option = '11and12', dtype='float64', KP=-1):
+    num_nodes = x.shape[0]
+    dim = x.shape[1]
+    res = np.zeros((num_nodes, dim))
+    wsig = 0
+    for s in scale:
+        wsig += s ** KP
+
+    a1_ = a1.astype(dtype)
+    a2_ = a2.astype(dtype)
+    p_ = p.astype(dtype)
+    pi_ = LazyTensor(p_[:, None, :])
+    pj_ = LazyTensor(p_[None, :, ])
+    a1i_ = LazyTensor(a1_[:, None, :])
+    a2j_ = LazyTensor(a2_[None, :, :])
+
+
+    for s in scale:
+        xs = x/s
+        KS = s**(KP-2)
+        xsi = LazyTensor(xs.astype(dtype)[:, None, :])
+        xsj = LazyTensor(xs.astype(dtype)[None, :, :])
+        K1ij, K2ij, Dij = makeDDiffKij(xsi, xsj, name, order)
+        if option == '11':
+            res += (K2ij * (Dij*pi_).sum(-1) * Dij - K1ij*pi_) *(a1i_ * a2j_).sum(-1)* KS
+        elif option == '12':
+            res -= (K2ij * (Dij * pj_).sum(-1) * Dij - K1ij * pj_) * (a1i_ * a2j_).sum(-1) * KS
+        elif option=='11and12':
+            res += (K2ij * (Dij * (pi_ -pj_)).sum(-1) * Dij - K1ij * (pi_-pj_)) * (a1i_ * a2j_).sum(-1) * KS
+        else:
+            print('Unknown option in second kernel derivative')
+            return res
+    return res/wsig
+
+@jit(nopython=True, parallel=True)
+def applykdiff12_numba(x, a1, a2, p, fun, scale, order, KP=-1):
+    num_nodes = x.shape[0]
+    dim = x.shape[1]
+    f = np.zeros((num_nodes, dim))
+    wsig = 0
+    for s in scale:
+        wsig += s ** KP
+
+    for s in scale:
+        xs = x/s
+        KS = s**(KP-2)
+        for k in prange(num_nodes):
+            df = np.zeros(dim)
+            for l in prange(num_nodes):
+                df -= fun(xs[k,:], xs[l,:], a1[k,:] * a2[l,:], p[l,:], order)
+            f[k, :] += df * KS
+    return  f
+
+@jit(nopython=True, parallel=True)
+def applykdiff11and12_numba(x, a1, a2, p, fun, scale, order, KP=-1):
+    num_nodes = x.shape[0]
+    dim = x.shape[1]
+    f = np.zeros((num_nodes, dim))
+    wsig = 0
+    for s in scale:
+        wsig += s ** KP
+
+    for s in scale:
+        xs = x/s
+        KS = s**(KP-2)
+        for k in prange(num_nodes):
+            df = np.zeros(dim)
+            for l in prange(num_nodes):
+                df = fun(xs[k,:], xs[l,:], a1[k,:] * a2[l,:], p[k,:] - p[l,:], order)
+            f[k, :] += df * KS
+    return  f
+
+def applykdiff11(x, a1, a2, p, name, scale, order, KP=-1):
+    return applyDDiffK(x, a1, a2, p, name, scale, order, KP=KP, option='11')
+
+def applykdiff12(x, a1, a2, p, name, scale, order, KP=-1):
+    return applyDDiffK(x, a1, a2, p, name, scale, order, KP=KP, option='12')
+
+def applykdiff11and12(x, a1, a2, p, name, scale, order, KP=-1):
+    return applyDDiffK(x, a1, a2, p, name, scale, order, KP=KP, option='11and12')
+
+
+@jit(nopython=True, parallel=True)
+def applykdiff11_(x, a1, a2, p, name, scale, order, KP=-1):
+    num_nodes = x.shape[0]
+    dim = x.shape[1]
+    f = np.zeros((num_nodes, dim))
+    wsig = 0
+    for s in scale:
+        wsig += s ** KP
+
+    if 'gauss' in name:
+        for k in prange(num_nodes):
+            df = np.zeros(dim)
+            for l in range(num_nodes):
+                ut0 = ((x[k,:] - x[l,:])**2).sum()
+                Kh_diff = 0
+                Kh_diff2 = 0
+                for s in scale:
+                    ut = ut0/s**2
+                    if ut < 1e-8:
+                        Kh_diff -= 0.5*s**(KP-2)
+                        Kh_diff2 += 0.25 * s**(KP-4)
+                    else:
+                        Kh_diff -= 0.5*np.exp(-0.5*ut)*s**(KP-2)
+                        Kh_diff2 += 0.25*np.exp(-0.5*ut)*s**(KP-4)
+                Kh_diff /= wsig
+                Kh_diff2 /= wsig
+                df += Kh_diff2 * 4 * (a1[k, :] * a2[l, :]).sum() \
+                      * ((x[k, :] - x[l, :]) * p[k, :]).sum() * (x[k, :] - x[l, :]) \
+                      + Kh_diff * 2 * (a1[k, :] * a2[l, :]).sum() * p[k, :]
+            f[k, :] += df
+    if 'lap' in name:
+        for k in prange(num_nodes):
+            df = np.zeros(dim)
+            for l in range(num_nodes):
+                ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
+                Kh_diff = 0
+                Kh_diff2 = 0
+                for s in scale:
+                    ut = ut0 / s
+                    if ut < 1e-8:
+                        Kh_diff -= 0.5*lapPolDiff(0, order)*s**(KP-2)
+                        Kh_diff2 += 0.25*lapPolDiff2(0, order)*s**(KP-4)
+                    else:
+                        Kh_diff -= 0.5*lapPolDiff(ut, order) * np.exp(-ut)*s**(KP-2)
+                        Kh_diff2 += 0.25*lapPolDiff2(ut, order) * np.exp(-ut)*s**(KP-4)
+                Kh_diff /= wsig
+                Kh_diff2 /= wsig
+                df += Kh_diff2 * 4*(a1[k,:] * a2[l,:]).sum() \
+                      * ((x[k,:]-x[l,:])*p[k,:]).sum() *(x[k,:]-x[l,:]) \
+                      + Kh_diff * 2 * (a1[k,:] * a2[l,:]).sum() * p[k,:]
+            f[k, :] += df
+
+    return  f
+
+
+
+@jit(nopython=True, parallel=True)
+def applykdiff12_(x, a1, a2, p, name, scale, order, KP=-1):
+    num_nodes = x.shape[0]
+    dim = x.shape[1]
+    f = np.zeros((num_nodes, dim))
+    wsig = 0
+    for s in scale:
+        wsig += s ** KP
+
+    if 'gauss' in name:
+        for k in prange(num_nodes):
+            df = np.zeros(dim)
+            for l in range(num_nodes):
+                ut0 = ((x[k, :] - x[l, :]) ** 2).sum()
+                Kh_diff = 0
+                Kh_diff2 = 0
+                for s in scale:
+                    ut = ut0 / s ** 2
+                    if ut < 1e-8:
+                        Kh_diff -= 0.5 * s ** (KP - 2)
+                        Kh_diff2 += 0.25 * s ** (KP - 4)
+                    else:
+                        Kh_diff -= 0.5 * np.exp(-0.5 * ut) * s ** (KP - 2)
+                        Kh_diff2 += 0.25 * np.exp(-0.5 * ut) * s ** (KP - 4)
+                Kh_diff /= wsig
+                Kh_diff2 /= wsig
+                df += -Kh_diff2 * 4 * (a1[k, :] * a2[l, :]).sum() \
+                      * ((x[k, :] - x[l, :]) * p[l, :]).sum() * (x[k, :] - x[l, :]) \
+                      - Kh_diff * 2 * (a1[k, :] * a2[l, :]).sum() * p[l, :]
+            f[k, :] += df
+    if 'lap' in name:
+        for k in prange(num_nodes):
+            df = np.zeros(dim)
+            for l in range(num_nodes):
+                ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
+                Kh_diff = 0
+                Kh_diff2 = 0
+                for s in scale:
+                    ut = ut0 / s
+                    if ut < 1e-8:
+                        Kh_diff -= 0.5 * lapPolDiff(0, order) * s ** (KP - 2)
+                        Kh_diff2 += 0.25 * lapPolDiff2(0, order) * s ** (KP - 4)
+                    else:
+                        Kh_diff -= 0.5 * lapPolDiff(ut, order) * np.exp(-ut) * s ** (KP - 2)
+                        Kh_diff2 += 0.25 * lapPolDiff2(ut, order) * np.exp(-ut) * s ** (KP - 4)
+                Kh_diff /= wsig
+                Kh_diff2 /= wsig
+                df += -Kh_diff2 * 4 * (a1[k, :] * a2[l, :]).sum() \
+                      * ((x[k, :] - x[l, :]) * p[l, :]).sum() * (x[k, :] - x[l, :]) \
+                      - Kh_diff * 2 * (a1[k, :] * a2[l, :]).sum() * p[l, :]
+            f[k, :] += df
+
+    return f
+
+
+@jit(nopython=True, parallel=True)
+def applykdiff11and12_(x, a1, a2, p, name, scale, order, KP=-1):
+    num_nodes = x.shape[0]
+    dim = x.shape[1]
+    f = np.zeros((num_nodes, dim))
+    wsig = 0
+    for s in scale:
+        wsig += s ** KP
+
+    if 'gauss' in name:
+        for k in prange(num_nodes):
+            df = np.zeros(dim)
+            for l in range(num_nodes):
+                dx = x[k, :] - x[l, :]
+                dp = p[k, :] - p[l, :]
+                ut0 = ((x[k, :] - x[l, :]) ** 2).sum()
+                Kh_diff = 0
+                Kh_diff2 = 0
+                for s in scale:
+                    ut = ut0 / s ** 2
+                    if ut < 1e-8:
+                        Kh_diff -= 0.5 * s ** (KP - 2)
+                        Kh_diff2 += 0.25 * s ** (KP - 4)
+                    else:
+                        Kh_diff -= 0.5 * np.exp(-0.5 * ut) * s ** (KP - 2)
+                        Kh_diff2 += 0.25 * np.exp(-0.5 * ut) * s ** (KP - 4)
+                Kh_diff /= wsig
+                Kh_diff2 /= wsig
+                df += 2 * (a1[k,:]*a2[l,:]).sum() *  (2 * Kh_diff2 *(dx*dp).sum() *dx + Kh_diff * dp)
+            f[k, :] += df
+    if 'lap' in name:
+        for k in prange(num_nodes):
+            df = np.zeros(dim)
+            for l in range(num_nodes):
+                dx = x[k, :] - x[l, :]
+                dp = p[k, :] - p[l, :]
+                ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
+                Kh_diff = 0
+                Kh_diff2 = 0
+                for s in scale:
+                    ut = ut0 / s
+                    if ut < 1e-8:
+                        Kh_diff -= 0.5 * lapPolDiff(0, order) * s ** (KP - 2)
+                        Kh_diff2 += 0.25 * lapPolDiff2(0, order) * s ** (KP - 4)
+                    else:
+                        Kh_diff -= 0.5 * lapPolDiff(ut, order) * np.exp(-ut) * s ** (KP - 2)
+                        Kh_diff2 += 0.25 * lapPolDiff2(ut, order) * np.exp(-ut) * s ** (KP - 4)
+                Kh_diff /= wsig
+                Kh_diff2 /= wsig
+                df += 2 * (a1[k,:]*a2[l,:]).sum() *  (2 * Kh_diff2 *(dx*dp).sum() *dx + Kh_diff * dp)
+            f[k, :] += df
+
+    return f
+
+def applyktensor(y, x, ay, ax, betay, betax, name, scale, order, cpu=False, dtype='float64', KP=-1):
+    if not cpu and pykeops.config.gpu_available:
+       # res1 = applyktensor_numba(y, x, ay, ax, betay, betax, name, scale, order)
+        res2 = applyktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype=dtype, KP=KP)
+        return res2 
+    else:
+        return applyktensor_numba(y, x, ay, ax, betay, betax, name, scale, order, KP=KP)
+
+
+
+def applyktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype='float64', KP=-1):
+    dim = x.shape[1]
+    num_nodes_y = y.shape[0]
+    res = np.zeros(num_nodes_y)
+
+    sKP = scale**KP
+    wsig = sKP.sum()
+    ns = len(scale)
+    ay_ = LazyTensor(ay.astype(dtype)[:, None], axis=0)
+    ax_ = LazyTensor(ax.astype(dtype)[:, None], axis=1)
+    betay_ = LazyTensor(betay.astype(dtype)[:, None, :])
+    betax_ = LazyTensor(betax.astype(dtype)[None, :, :])
+    ayx = (ay_ * ax_).sum(-1)
+#    ayx_n = (ay[:, None, None] * ax[None, :, None]).sum(axis=-1)
+    betayx =  ((betay_ * betax_).sum(axis=2))**2
+#    betayx_n = (betay[:, None, :] * betax[None, :, :]).sum(axis=2)**2
+
+    for s in range(ns):
+        ys = y/scale[s]
+        xs = x/scale[s]
+        ys_ = LazyTensor(ys.astype(dtype)[:, None, :])
+        xs_ = LazyTensor(xs.astype(dtype)[None, :, :])
+        if 'gauss' in name:
+            Dij = ((ys_ - xs_)**2).sum(-1)
+            Kij = (-0.5*Dij).exp()
+        elif 'lap' in name:
+            Dij = ((ys_ - xs_) ** 2).sum(-1).sqrt()
+            polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij * Dij * Dij \
+                    + c_[order, 4] * Dij * Dij * Dij * Dij
+            Kij = polij * (-Dij).exp()
+        else: #Applying Euclidean kernel
+            Kij = (ys_*xs_).sum(-1)
+
+#        Kij_n = np.exp(-((ys[:, None, :] - xs[None, :, :])**2).sum(axis=-1)/2)
+#        dres_n = (Kij_n *(ayx_n + betayx_n)).sum(axis=1)*sKP[s]
+        dres = (Kij * (ayx + betayx)).sum(1) * sKP[s]
+        res += dres[:, 0]
+
+    res /= wsig
+    return np.array(res)
+
+@jit(nopython=True, parallel=True)
+def applyktensor_numba(y, x, ay, ax, betay, betax, name, scale, order, KP=-1):
+    dim = x.shape[1]
+    num_nodes = x.shape[0]
+    num_nodes_y = y.shape[0]
+    dimb = betax.shape[1]
+    f = np.zeros(num_nodes_y)
+
+    sKP = scale**KP
+    wsig = sKP.sum()
+    ns = len(scale)
+
+    for s in range(ns):
+        ys = y/scale[s]
+        xs = x/scale[s]
+        if 'gauss' in name:
+            for k in prange(num_nodes_y):
+                fk = 0
+                for l in range(num_nodes):
+                    u = ((ys[k,:] - xs[l,:])**2).sum()/2
+                    fk += np.exp(-u)*(ay[k]*ax[l] + (betay[k,:]*betax[l, :]).sum()**2)*sKP[s]
+                f[k] += fk
+        elif 'lap' in name:
+            for k in prange(num_nodes_y):
+                fk = 0
+                for l in range(num_nodes):
+                    u = np.sqrt(((ys[k, :] - xs[l, :]) ** 2).sum())
+                    u1 = lapPol(u, order) * np.exp(-u) * sKP[s]
+                    fk += u1*(ay[k]*ax[l] + (betay[k,:]*betax[l, :]).sum()**2)
+                f[k] += fk
+    f /= wsig
+    return f
+
+
+@jit(nopython=True, parallel=True)
+def applykmat(y, x, beta, name, scale, order, KP=-1):
+    dim = x.shape[1]
+    num_nodes = x.shape[0]
+    num_nodes_y = y.shape[0]
+    dimb = beta.shape[2]
+    f = np.zeros((num_nodes_y, dimb))
+
+    sKP = scale**KP
+    wsig = sKP.sum()
+    ns = len(scale)
+
+    for s in range(ns):
+        ys = y/scale[s]
+        xs = x/scale[s]
+        if 'gauss' in name:
+            for k in prange(num_nodes_y):
+                fk = np.zeros(dimb)
+                for l in range(num_nodes):
+                    u = ((ys[k,:] - xs[l,:])**2).sum()/2
+                    fk += np.exp(-u)*beta[k,l,:]*sKP[s]
+                f[k,:] += fk
+        elif 'lap' in name:
+            for k in prange(num_nodes_y):
+                fk = np.zeros(dimb)
+                for l in range(num_nodes):
+                    u = np.sqrt(((ys[k, :] - xs[l, :]) ** 2).sum())
+                    u1 = lapPol(u, order) * np.exp(-u) * sKP[s]
+                    fk += u1*beta[k,l,:]
+                f[k, :] += fk
+    f /= wsig
+    return f
+
+def applydiffktensor(y, x, ay, ax, betay, betax, name, scale, order, cpu=False, dtype='float64', KP=-1):
+    if not cpu and pykeops.config.gpu_available:
+        return applydiffktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype=dtype, KP=KP)
+    else:
+        return applydiffktensor_numba(y, x, ay, ax, betay, betax, name, scale, order, KP=KP)
+
+
+def applydiffktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype='float64', KP=-1):
+    num_nodes = x.shape[0]
+    num_nodes_y = y.shape[0]
+    dim = x.shape[1]
+    res = np.zeros((num_nodes_y, dim))
+    dim = x.shape[1]
+    strdim = str(dim)
+    dimb = betax.shape[1]
+    strdimb = str(dimb)
+
+    sKP = scale**KP
+    sKP1 = scale**(KP-1)
+    wsig = sKP.sum()
+    ns = len(scale)
+    ay_ = LazyTensor(ay.astype(dtype)[:, None, None])
+    ax_ = LazyTensor(ax.astype(dtype)[None, :, None])
+    betay_ = LazyTensor(betay.astype(dtype)[:, None, :])
+    betax_ = LazyTensor(betax.astype(dtype)[None, :, :])
+
+    for s in range(ns):
+        ys = y/scale[s]
+        xs = x/scale[s]
+        ys_ = LazyTensor(ys.astype(dtype)[:, None, :])
+        xs_ = LazyTensor(xs.astype(dtype)[None, :, :])
+        g = np.array([0.5])
+        sKP1s = np.array([sKP1[s]])
+        if 'gauss' in name:
+            diffij = ys_ - xs_
+            Dij = (diffij ** 2).sum(-1)
+            Kij = diffij * (-0.5 * Dij).exp()
+        elif 'lap' in name:
+            diffij = ys_ - xs_
+            Dij = (diffij ** 2).sum(-1).sqrt()
+            Kij = diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
+            + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
+        else: # Euclidean kernel
+            Kij = LazyTensor(np.ones(ys_.shape)) * xs_
+
+        res += (-sKP1[s]) * (Kij * ((ax_*ay_) + (betax_ * betay_).sum(axis=-1)**2 )).sum(1)
+
+
+    res/=wsig
+    return res
+
+
+
+
+@jit(nopython=True, parallel=True)
+def applydiffktensor_numba(y, x, ay, ax, betay, betax, name, scale, order, KP=-1):
+    num_nodes = x.shape[0]
+    num_nodes_y = y.shape[0]
+    dim = x.shape[1]
+    f = np.zeros((num_nodes_y, dim))
+
+    sKP = scale**KP
+    sKP1 = scale**(KP-1)
+    wsig = sKP.sum()
+    ns = len(scale)
+
+    for s in range(ns):
+        ys = y/scale[s]
+        xs = x/scale[s]
+        if 'gauss' in name:
+            for k in prange(num_nodes_y):
+                fk = np.zeros(dim)
+                for l in range(num_nodes):
+                    u = ((ys[k,:] - xs[l,:])**2).sum()/2
+                    fk -= sKP1[s] * np.exp(-u) * (ys[k, :] - xs[l, :]) * (ay[k]*ax[l]+ (betay[k,:]*betax[l, :]).sum()**2)
+                f[k,:] += fk
+        elif 'lap' in name:
+            for k in prange(num_nodes_y):
+                fk = np.zeros(dim)
+                for l in range(num_nodes):
+                    u = np.sqrt(((ys[k, :] - xs[l, :]) ** 2).sum())
+                    u1 = lapPolDiff(u, order) * np.exp(-u) * sKP1[s]
+                    fk -= u1 * (ys[k, :] - xs[l, :]) * (ay[k]*ax[l] + (betay[k,:]*betax[l, :]).sum()**2)
+                f[k, :] += fk
+    f/=wsig
+    return f
+
+
+
+def applykdiffmat(y, x, beta, name, scale, order, cpu=False, dtype='float64', KP=-1):
+    if not cpu and cupy_available and pykeops.config.gpu_available:
+        return applykdiffmat_cupy(y, x, beta, name, scale, order, dtype=dtype, KP=KP)
+    else:
+        return applykdiffmat_numba(y, x, beta, name, scale, order, KP=KP)
+
+
+@jit(nopython=True, parallel=True)
+def applykdiffmat_numba(y, x, beta, name, scale, order, KP=-1):
+    num_nodes = x.shape[0]
+    num_nodes_y = y.shape[0]
+    dim = x.shape[1]
+    f = np.zeros((num_nodes_y, dim))
+
+    sKP = scale**KP
+    sKP1 = scale**(KP-1)
+    wsig = sKP.sum()
+    ns = len(scale)
+
+    for s in range(ns):
+        ys = y/scale[s]
+        xs = x/scale[s]
+        if 'gauss' in name:
+            for k in prange(num_nodes_y):
+                fk = np.zeros(dim)
+                for l in range(num_nodes):
+                    u = ((ys[k,:] - xs[l,:])**2).sum()/2
+                    fk -= sKP1[s] * np.exp(-u) * (ys[k, :] - xs[l, :]) * beta[k,l]
+                f[k,:] += fk
+        elif 'lap' in name:
+            for k in prange(num_nodes_y):
+                fk = np.zeros(dim)
+                for l in range(num_nodes):
+                    u = np.sqrt(((ys[k, :] - xs[l, :]) ** 2).sum())
+                    u1 = lapPolDiff(u, order) * np.exp(-u) * sKP1[s]
+                    fk -= u1 * (ys[k, :] - xs[l, :]) * beta[k,l]
+                f[k, :] += fk
+    f/=wsig
+    return f
+
+def applykdiffmat_pykeops(y, x, beta, name, scale, order, dtype='float64', KP=-1):
+    num_nodes = x.shape[0]
+    num_nodes_y = y.shape[0]
+    dim = x.shape[1]
+    res = np.zeros((num_nodes_y, dim))
+
+    sKP = scale**KP
+    sKP1 = scale**(KP-1)
+    wsig = sKP.sum()
+    ns = len(scale)
+
+    for s in range(ns):
+        ys = y/scale[s]
+        xs = x/scale[s]
+        ys_ = LazyTensor(ys.astype(dtype)[:, None, :])
+        xs_ = LazyTensor(xs.astype(dtype)[None, :, :])
+        g = np.array([0.5])
+        sKP1s = np.array([sKP1[s]])
+        if 'gauss' in name:
+            diffij = ys_ - xs_
+            Dij = (diffij ** 2).sum(-1)
+            Kij = diffij * (-0.5 * Dij).exp()
+        elif 'lap' in name:
+            diffij = ys_ - xs_
+            Dij = (diffij ** 2).sum(-1).sqrt()
+            Kij = diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
+            + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
+        else: # Euclidean kernel
+            Kij = LazyTensor(np.ones(ys_.shape)) * xs_
+
+        print(np.array(Kij))
+        res += (-sKP1[s]) * (Kij * beta).sum(1)
+
+    res/=wsig
+    return res
+
+
+def applykdiffmat_cupy(y, x, beta, name, scale, order, dtype='float64', KP=-1):
+    num_nodes = x.shape[0]
+    num_nodes_y = y.shape[0]
+    dim = x.shape[1]
+    res = cp.zeros((num_nodes_y, dim))
+
+    sKP = scale**KP
+    sKP1 = scale**(KP-1)
+    wsig = sKP.sum()
+    ns = len(scale)
+
+    for s in range(ns):
+        ys = y/scale[s]
+        xs = x/scale[s]
+        ys_ = cp.asarray(ys.astype(dtype)[:, None, :])
+        xs_ = cp.asarray(xs.astype(dtype)[None, :, :])
+        g = np.array([0.5])
+        sKP1s = np.array([sKP1[s]])
+        if 'gauss' in name:
+            diffij = ys_ - xs_
+            Dij = cp.square(diffij).sum(-1)
+            Kij = diffij * cp.exp(-0.5 * Dij)[:,:,None]
+        elif 'lap' in name:
+            diffij = ys_ - xs_
+            Dij = (diffij ** 2).sum(-1).sqrt()
+            Kij = diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
+            + c1_[order, 3] * Dij * Dij * Dij) * cp.exp(-Dij)
+        else: # Euclidean kernel
+            Kij = cp.ones(ys_.shape) * xs_
+
+        res += (-sKP1[s]) * (Kij * cp.asarray(beta[:,:,None])).sum(axis=1)
+
+    res/=wsig
+    return cp.asnumpy(res)
+
+
+
+## Local kernels for machine learning
 def applylocalk(y, x, a, name, scale, order, neighbors, num_neighbors, KP=-1):
     if 'lap' in name:
         return applylocalk_lap(y,x,a,scale,order,neighbors,num_neighbors, KP=KP)
@@ -1044,612 +2026,3 @@ def applylocalk_naivediv(x, y, a, name, scale, order, KP=-1):
                     df -= sqdist[j] * 2*(x[k,j]-y[l,j])* a[l,j]
             f[k] = df
     return f
-
-@jit(nopython=True, parallel=True)
-def applykdiff1(x, a1, a2, name, scale, order, KP=-1):
-    num_nodes = x.shape[0]
-    dim = x.shape[1]
-    f = np.zeros((num_nodes, dim))
-    wsig = 0
-    for s in scale:
-        wsig += s ** KP
-
-    if 'gauss' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-             ut0 = ((x[k,:] - x[l,:])**2).sum()
-             Kh_diff = 0
-             for s in scale:
-                ut = ut0 / s**2
-                if ut < 1e-8:
-                    Kh_diff -= 0.5*s**(KP-2)
-                else:
-                    Kh_diff -= 0.5*np.exp(-0.5*ut)*s**(KP-2)
-                Kh_diff /= wsig
-                df += Kh_diff * 2 * ((x[k, :] - x[l, :]) * a1[k, :]).sum() * a2[l, :]
-            f[k, :] += df
-    elif 'lap' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
-                Kh_diff = 0
-                for s in scale:
-                    ut = ut0 / s
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5*lapPolDiff(0,order)*s**(KP-2)
-                    else:
-                        Kh_diff -= 0.5 * lapPolDiff(ut,order) * np.exp(-1.0*ut)*s**(KP-2)
-                Kh_diff /= wsig
-                df += Kh_diff * 2*((x[k,:]-x[l,:])*a1[k,:]).sum() * a2[l,:]
-            f[k, :] += df
-    return f
-
-@jit(nopython=True, parallel=True)
-def applykdiff2(x, a1, a2, name, scale, order, KP=-1):
-    num_nodes = x.shape[0]
-    dim = x.shape[1]
-    f = np.zeros((num_nodes, dim))
-    wsig = 0
-    for s in scale:
-        wsig += s ** KP
-
-    if 'gauss' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                ut0 = ((x[k, :] - x[l, :]) ** 2).sum()
-                Kh_diff = 0
-                for s in scale:
-                    ut = ut0 / s ** 2
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5 * s ** (KP - 2)
-                    else:
-                        Kh_diff -= 0.5 * np.exp(-0.5 * ut) * s ** (KP - 2)
-                    Kh_diff /= wsig
-                    df += Kh_diff * 2 * ((x[k, :] - x[l, :]) * a1[l, :]).sum() * a2[l, :]
-            f[k, :] += df
-    elif 'lap' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
-                Kh_diff = 0
-                for s in scale:
-                    ut = ut0 / s
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5 * lapPolDiff(0, order) * s ** (KP - 2)
-                    else:
-                        Kh_diff -= 0.5 * lapPolDiff(ut, order) * np.exp(-1.0 * ut) * s ** (KP - 2)
-                Kh_diff /= wsig
-                df += Kh_diff * 2 * ((x[k, :] - x[l, :]) * a1[l, :]).sum() * a2[l, :]
-            f[k, :] += df
-    return f
-
-@jit(nopython=True, parallel=True)
-def applykdiff1and2(x, a1, a2, name, scale, order, KP=-1):
-    num_nodes = x.shape[0]
-    dim = x.shape[1]
-    f = np.zeros((num_nodes, dim))
-    wsig = 0
-    for s in scale:
-        wsig += s ** KP
-
-    if 'gauss' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                dx = x[k,:] - x[l,:]
-                ut0 = ((x[k, :] - x[l, :]) ** 2).sum()
-                Kh_diff = 0
-                for s in scale:
-                    ut = ut0 / s ** 2
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5 * s ** (KP - 2)
-                    else:
-                        Kh_diff -= 0.5 * np.exp(-0.5 * ut) * s ** (KP - 2)
-                Kh_diff /= wsig
-                df += Kh_diff * 2 * (dx*(a1[k, :] - a1[l, :])).sum() * a2[l, :]
-            f[k, :] += df
-    elif 'lap' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                dx = x[k,:] - x[l,:]
-                ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
-                Kh_diff = 0
-                for s in scale:
-                    ut = ut0 / s
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5 * lapPolDiff(0, order) * s ** (KP - 2)
-                    else:
-                        Kh_diff -= 0.5 * lapPolDiff(ut, order) * np.exp(-1.0 * ut) * s ** (KP - 2)
-                Kh_diff /= wsig
-                df += Kh_diff * 2 * (dx*(a1[k, :] - a1[l, :])).sum() * a2[l, :]
-            f[k, :] += df
-    return f
-
-@jit(nopython=True, parallel=True)
-def applykdiff11(x, a1, a2, p, name, scale, order, KP=-1):
-    num_nodes = x.shape[0]
-    dim = x.shape[1]
-    f = np.zeros((num_nodes, dim))
-    wsig = 0
-    for s in scale:
-        wsig += s ** KP
-
-    if 'gauss' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                ut0 = ((x[k,:] - x[l,:])**2).sum()
-                Kh_diff = 0
-                Kh_diff2 = 0
-                for s in scale:
-                    ut = ut0/s**2
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5*s**(KP-2)
-                        Kh_diff2 += 0.25 * s**(KP-4)
-                    else:
-                        Kh_diff -= 0.5*np.exp(-0.5*ut)*s**(KP-2)
-                        Kh_diff2 += 0.25*np.exp(-0.5*ut)*s**(KP-4)
-                Kh_diff /= wsig
-                Kh_diff2 /= wsig
-                df += Kh_diff2 * 4 * (a1[k, :] * a2[l, :]).sum() \
-                      * ((x[k, :] - x[l, :]) * p[k, :]).sum() * (x[k, :] - x[l, :]) \
-                      + Kh_diff * 2 * (a1[k, :] * a2[l, :]).sum() * p[k, :]
-            f[k, :] += df
-    if 'lap' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
-                Kh_diff = 0
-                Kh_diff2 = 0
-                for s in scale:
-                    ut = ut0 / s
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5*lapPolDiff(0, order)*s**(KP-2)
-                        Kh_diff2 += 0.25*lapPolDiff2(0, order)*s**(KP-4)
-                    else:
-                        Kh_diff -= 0.5*lapPolDiff(ut, order) * np.exp(-ut)*s**(KP-2)
-                        Kh_diff2 += 0.25*lapPolDiff2(ut, order) * np.exp(-ut)*s**(KP-4)
-                Kh_diff /= wsig
-                Kh_diff2 /= wsig
-                df += Kh_diff2 * 4*(a1[k,:] * a2[l,:]).sum() \
-                      * ((x[k,:]-x[l,:])*p[k,:]).sum() *(x[k,:]-x[l,:]) \
-                      + Kh_diff * 2 * (a1[k,:] * a2[l,:]).sum() * p[k,:]
-            f[k, :] += df
-
-    return  f
-
-
-@jit(nopython=True, parallel=True)
-def applykdiff12(x, a1, a2, p, name, scale, order, KP=-1):
-    num_nodes = x.shape[0]
-    dim = x.shape[1]
-    f = np.zeros((num_nodes, dim))
-    wsig = 0
-    for s in scale:
-        wsig += s ** KP
-
-    if 'gauss' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                ut0 = ((x[k, :] - x[l, :]) ** 2).sum()
-                Kh_diff = 0
-                Kh_diff2 = 0
-                for s in scale:
-                    ut = ut0 / s ** 2
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5 * s ** (KP - 2)
-                        Kh_diff2 += 0.25 * s ** (KP - 4)
-                    else:
-                        Kh_diff -= 0.5 * np.exp(-0.5 * ut) * s ** (KP - 2)
-                        Kh_diff2 += 0.25 * np.exp(-0.5 * ut) * s ** (KP - 4)
-                Kh_diff /= wsig
-                Kh_diff2 /= wsig
-                df += -Kh_diff2 * 4 * (a1[k, :] * a2[l, :]).sum() \
-                      * ((x[k, :] - x[l, :]) * p[l, :]).sum() * (x[k, :] - x[l, :]) \
-                      - Kh_diff * 2 * (a1[k, :] * a2[l, :]).sum() * p[l, :]
-            f[k, :] += df
-    if 'lap' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
-                Kh_diff = 0
-                Kh_diff2 = 0
-                for s in scale:
-                    ut = ut0 / s
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5 * lapPolDiff(0, order) * s ** (KP - 2)
-                        Kh_diff2 += 0.25 * lapPolDiff2(0, order) * s ** (KP - 4)
-                    else:
-                        Kh_diff -= 0.5 * lapPolDiff(ut, order) * np.exp(-ut) * s ** (KP - 2)
-                        Kh_diff2 += 0.25 * lapPolDiff2(ut, order) * np.exp(-ut) * s ** (KP - 4)
-                Kh_diff /= wsig
-                Kh_diff2 /= wsig
-                df += -Kh_diff2 * 4 * (a1[k, :] * a2[l, :]).sum() \
-                      * ((x[k, :] - x[l, :]) * p[l, :]).sum() * (x[k, :] - x[l, :]) \
-                      - Kh_diff * 2 * (a1[k, :] * a2[l, :]).sum() * p[l, :]
-            f[k, :] += df
-
-    return f
-
-
-@jit(nopython=True, parallel=True)
-def applykdiff11and12(x, a1, a2, p, name, scale, order, KP=-1):
-    num_nodes = x.shape[0]
-    dim = x.shape[1]
-    f = np.zeros((num_nodes, dim))
-    wsig = 0
-    for s in scale:
-        wsig += s ** KP
-
-    if 'gauss' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                dx = x[k, :] - x[l, :]
-                dp = p[k, :] - p[l, :]
-                ut0 = ((x[k, :] - x[l, :]) ** 2).sum()
-                Kh_diff = 0
-                Kh_diff2 = 0
-                for s in scale:
-                    ut = ut0 / s ** 2
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5 * s ** (KP - 2)
-                        Kh_diff2 += 0.25 * s ** (KP - 4)
-                    else:
-                        Kh_diff -= 0.5 * np.exp(-0.5 * ut) * s ** (KP - 2)
-                        Kh_diff2 += 0.25 * np.exp(-0.5 * ut) * s ** (KP - 4)
-                Kh_diff /= wsig
-                Kh_diff2 /= wsig
-                df += 2 * (a1[k,:]*a2[l,:]).sum() *  (2 * Kh_diff2 *(dx*dp).sum() *dx + Kh_diff * dp)
-            f[k, :] += df
-    if 'lap' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                dx = x[k, :] - x[l, :]
-                dp = p[k, :] - p[l, :]
-                ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
-                Kh_diff = 0
-                Kh_diff2 = 0
-                for s in scale:
-                    ut = ut0 / s
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5 * lapPolDiff(0, order) * s ** (KP - 2)
-                        Kh_diff2 += 0.25 * lapPolDiff2(0, order) * s ** (KP - 4)
-                    else:
-                        Kh_diff -= 0.5 * lapPolDiff(ut, order) * np.exp(-ut) * s ** (KP - 2)
-                        Kh_diff2 += 0.25 * lapPolDiff2(ut, order) * np.exp(-ut) * s ** (KP - 4)
-                Kh_diff /= wsig
-                Kh_diff2 /= wsig
-                df += 2 * (a1[k,:]*a2[l,:]).sum() *  (2 * Kh_diff2 *(dx*dp).sum() *dx + Kh_diff * dp)
-            f[k, :] += df
-
-    return f
-
-def applyktensor(y, x, ay, ax, betay, betax, name, scale, order, cpu=False, dtype='float64', KP=-1):
-    if not cpu and pykeops.config.gpu_available:
-       # res1 = applyktensor_numba(y, x, ay, ax, betay, betax, name, scale, order)
-        res2 = applyktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype=dtype, KP=KP)
-        return res2 
-    else:
-        return applyktensor_numba(y, x, ay, ax, betay, betax, name, scale, order, KP=KP)
-
-
-
-def applyktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype='float64', KP=-1):
-    dim = x.shape[1]
-    num_nodes_y = y.shape[0]
-    res = np.zeros(num_nodes_y)
-
-    sKP = scale**KP
-    wsig = sKP.sum()
-    ns = len(scale)
-    ay_ = LazyTensor(ay.astype(dtype)[:, None], axis=0)
-    ax_ = LazyTensor(ax.astype(dtype)[:, None], axis=1)
-    betay_ = LazyTensor(betay.astype(dtype)[:, None, :])
-    betax_ = LazyTensor(betax.astype(dtype)[None, :, :])
-    ayx = (ay_ * ax_).sum(-1)
-#    ayx_n = (ay[:, None, None] * ax[None, :, None]).sum(axis=-1)
-    betayx =  ((betay_ * betax_).sum(axis=2))**2
-#    betayx_n = (betay[:, None, :] * betax[None, :, :]).sum(axis=2)**2
-
-    for s in range(ns):
-        ys = y/scale[s]
-        xs = x/scale[s]
-        ys_ = LazyTensor(ys.astype(dtype)[:, None, :])
-        xs_ = LazyTensor(xs.astype(dtype)[None, :, :])
-        if 'gauss' in name:
-            Dij = ((ys_ - xs_)**2).sum(-1)
-            Kij = (-0.5*Dij).exp()
-        elif 'lap' in name:
-            Dij = ((ys_ - xs_) ** 2).sum(-1).sqrt()
-            polij = c_[order, 0] + c_[order, 1] * Dij + c_[order, 2] * Dij * Dij + c_[order, 3] * Dij * Dij * Dij \
-                    + c_[order, 4] * Dij * Dij * Dij * Dij
-            Kij = polij * (-Dij).exp()
-        else: #Applying Euclidean kernel
-            Kij = (ys_*xs_).sum(-1)
-
-#        Kij_n = np.exp(-((ys[:, None, :] - xs[None, :, :])**2).sum(axis=-1)/2)
-#        dres_n = (Kij_n *(ayx_n + betayx_n)).sum(axis=1)*sKP[s]
-        dres = (Kij * (ayx + betayx)).sum(1) * sKP[s]
-        res += dres[:, 0]
-
-    res /= wsig
-    return np.array(res)
-
-@jit(nopython=True, parallel=True)
-def applyktensor_numba(y, x, ay, ax, betay, betax, name, scale, order, KP=-1):
-    dim = x.shape[1]
-    num_nodes = x.shape[0]
-    num_nodes_y = y.shape[0]
-    dimb = betax.shape[1]
-    f = np.zeros(num_nodes_y)
-
-    sKP = scale**KP
-    wsig = sKP.sum()
-    ns = len(scale)
-
-    for s in range(ns):
-        ys = y/scale[s]
-        xs = x/scale[s]
-        if 'gauss' in name:
-            for k in prange(num_nodes_y):
-                fk = 0
-                for l in range(num_nodes):
-                    u = ((ys[k,:] - xs[l,:])**2).sum()/2
-                    fk += np.exp(-u)*(ay[k]*ax[l] + (betay[k,:]*betax[l, :]).sum()**2)*sKP[s]
-                f[k] += fk
-        elif 'lap' in name:
-            for k in prange(num_nodes_y):
-                fk = 0
-                for l in range(num_nodes):
-                    u = np.sqrt(((ys[k, :] - xs[l, :]) ** 2).sum())
-                    u1 = lapPol(u, order) * np.exp(-u) * sKP[s]
-                    fk += u1*(ay[k]*ax[l] + (betay[k,:]*betax[l, :]).sum()**2)
-                f[k] += fk
-    f /= wsig
-    return f
-
-
-@jit(nopython=True, parallel=True)
-def applykmat(y, x, beta, name, scale, order, KP=-1):
-    dim = x.shape[1]
-    num_nodes = x.shape[0]
-    num_nodes_y = y.shape[0]
-    dimb = beta.shape[2]
-    f = np.zeros((num_nodes_y, dimb))
-
-    sKP = scale**KP
-    wsig = sKP.sum()
-    ns = len(scale)
-
-    for s in range(ns):
-        ys = y/scale[s]
-        xs = x/scale[s]
-        if 'gauss' in name:
-            for k in prange(num_nodes_y):
-                fk = np.zeros(dimb)
-                for l in range(num_nodes):
-                    u = ((ys[k,:] - xs[l,:])**2).sum()/2
-                    fk += np.exp(-u)*beta[k,l,:]*sKP[s]
-                f[k,:] += fk
-        elif 'lap' in name:
-            for k in prange(num_nodes_y):
-                fk = np.zeros(dimb)
-                for l in range(num_nodes):
-                    u = np.sqrt(((ys[k, :] - xs[l, :]) ** 2).sum())
-                    u1 = lapPol(u, order) * np.exp(-u) * sKP[s]
-                    fk += u1*beta[k,l,:]
-                f[k, :] += fk
-    f /= wsig
-    return f
-
-def applydiffktensor(y, x, ay, ax, betay, betax, name, scale, order, cpu=False, dtype='float64', KP=-1):
-    if not cpu and pykeops.config.gpu_available:
-        return applydiffktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype=dtype, KP=KP)
-    else:
-        return applydiffktensor_numba(y, x, ay, ax, betay, betax, name, scale, order, KP=KP)
-
-
-def applydiffktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype='float64', KP=-1):
-    num_nodes = x.shape[0]
-    num_nodes_y = y.shape[0]
-    dim = x.shape[1]
-    res = np.zeros((num_nodes_y, dim))
-    dim = x.shape[1]
-    strdim = str(dim)
-    dimb = betax.shape[1]
-    strdimb = str(dimb)
-
-    sKP = scale**KP
-    sKP1 = scale**(KP-1)
-    wsig = sKP.sum()
-    ns = len(scale)
-    ay_ = LazyTensor(ay.astype(dtype)[:, None, None])
-    ax_ = LazyTensor(ax.astype(dtype)[None, :, None])
-    betay_ = LazyTensor(betay.astype(dtype)[:, None, :])
-    betax_ = LazyTensor(betax.astype(dtype)[None, :, :])
-
-    for s in range(ns):
-        ys = y/scale[s]
-        xs = x/scale[s]
-        ys_ = LazyTensor(ys.astype(dtype)[:, None, :])
-        xs_ = LazyTensor(xs.astype(dtype)[None, :, :])
-        g = np.array([0.5])
-        sKP1s = np.array([sKP1[s]])
-        if 'gauss' in name:
-            diffij = ys_ - xs_
-            Dij = (diffij ** 2).sum(-1)
-            Kij = diffij * (-0.5 * Dij).exp()
-        elif 'lap' in name:
-            diffij = ys_ - xs_
-            Dij = (diffij ** 2).sum(-1).sqrt()
-            Kij = diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
-            + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
-        else: # Euclidean kernel
-            Kij = LazyTensor(np.ones(ys_.shape)) * xs_
-
-        res += (-sKP1[s]) * (Kij * ((ax_*ay_) + (betax_ * betay_).sum(axis=-1)**2 )).sum(1)
-
-
-    res/=wsig
-    return res
-
-
-
-
-@jit(nopython=True, parallel=True)
-def applydiffktensor_numba(y, x, ay, ax, betay, betax, name, scale, order, KP=-1):
-    num_nodes = x.shape[0]
-    num_nodes_y = y.shape[0]
-    dim = x.shape[1]
-    f = np.zeros((num_nodes_y, dim))
-
-    sKP = scale**KP
-    sKP1 = scale**(KP-1)
-    wsig = sKP.sum()
-    ns = len(scale)
-
-    for s in range(ns):
-        ys = y/scale[s]
-        xs = x/scale[s]
-        if 'gauss' in name:
-            for k in prange(num_nodes_y):
-                fk = np.zeros(dim)
-                for l in range(num_nodes):
-                    u = ((ys[k,:] - xs[l,:])**2).sum()/2
-                    fk -= sKP1[s] * np.exp(-u) * (ys[k, :] - xs[l, :]) * (ay[k]*ax[l]+ (betay[k,:]*betax[l, :]).sum()**2)
-                f[k,:] += fk
-        elif 'lap' in name:
-            for k in prange(num_nodes_y):
-                fk = np.zeros(dim)
-                for l in range(num_nodes):
-                    u = np.sqrt(((ys[k, :] - xs[l, :]) ** 2).sum())
-                    u1 = lapPolDiff(u, order) * np.exp(-u) * sKP1[s]
-                    fk -= u1 * (ys[k, :] - xs[l, :]) * (ay[k]*ax[l] + (betay[k,:]*betax[l, :]).sum()**2)
-                f[k, :] += fk
-    f/=wsig
-    return f
-
-
-
-def applykdiffmat(y, x, beta, name, scale, order, cpu=False, dtype='float64', KP=-1):
-    if not cpu and cupy_available and pykeops.config.gpu_available:
-        return applykdiffmat_cupy(y, x, beta, name, scale, order, dtype=dtype, KP=KP)
-    else:
-        return applykdiffmat_numba(y, x, beta, name, scale, order, KP=KP)
-
-
-@jit(nopython=True, parallel=True)
-def applykdiffmat_numba(y, x, beta, name, scale, order, KP=-1):
-    num_nodes = x.shape[0]
-    num_nodes_y = y.shape[0]
-    dim = x.shape[1]
-    f = np.zeros((num_nodes_y, dim))
-
-    sKP = scale**KP
-    sKP1 = scale**(KP-1)
-    wsig = sKP.sum()
-    ns = len(scale)
-
-    for s in range(ns):
-        ys = y/scale[s]
-        xs = x/scale[s]
-        if 'gauss' in name:
-            for k in prange(num_nodes_y):
-                fk = np.zeros(dim)
-                for l in range(num_nodes):
-                    u = ((ys[k,:] - xs[l,:])**2).sum()/2
-                    fk -= sKP1[s] * np.exp(-u) * (ys[k, :] - xs[l, :]) * beta[k,l]
-                f[k,:] += fk
-        elif 'lap' in name:
-            for k in prange(num_nodes_y):
-                fk = np.zeros(dim)
-                for l in range(num_nodes):
-                    u = np.sqrt(((ys[k, :] - xs[l, :]) ** 2).sum())
-                    u1 = lapPolDiff(u, order) * np.exp(-u) * sKP1[s]
-                    fk -= u1 * (ys[k, :] - xs[l, :]) * beta[k,l]
-                f[k, :] += fk
-    f/=wsig
-    return f
-
-def applykdiffmat_pykeops(y, x, beta, name, scale, order, dtype='float64', KP=-1):
-    num_nodes = x.shape[0]
-    num_nodes_y = y.shape[0]
-    dim = x.shape[1]
-    res = np.zeros((num_nodes_y, dim))
-
-    sKP = scale**KP
-    sKP1 = scale**(KP-1)
-    wsig = sKP.sum()
-    ns = len(scale)
-
-    for s in range(ns):
-        ys = y/scale[s]
-        xs = x/scale[s]
-        ys_ = LazyTensor(ys.astype(dtype)[:, None, :])
-        xs_ = LazyTensor(xs.astype(dtype)[None, :, :])
-        g = np.array([0.5])
-        sKP1s = np.array([sKP1[s]])
-        if 'gauss' in name:
-            diffij = ys_ - xs_
-            Dij = (diffij ** 2).sum(-1)
-            Kij = diffij * (-0.5 * Dij).exp()
-        elif 'lap' in name:
-            diffij = ys_ - xs_
-            Dij = (diffij ** 2).sum(-1).sqrt()
-            Kij = diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
-            + c1_[order, 3] * Dij * Dij * Dij) * (-Dij).exp()
-        else: # Euclidean kernel
-            Kij = LazyTensor(np.ones(ys_.shape)) * xs_
-
-        print(np.array(Kij))
-        res += (-sKP1[s]) * (Kij * beta).sum(1)
-
-    res/=wsig
-    return res
-
-
-def applykdiffmat_cupy(y, x, beta, name, scale, order, dtype='float64', KP=-1):
-    num_nodes = x.shape[0]
-    num_nodes_y = y.shape[0]
-    dim = x.shape[1]
-    res = cp.zeros((num_nodes_y, dim))
-
-    sKP = scale**KP
-    sKP1 = scale**(KP-1)
-    wsig = sKP.sum()
-    ns = len(scale)
-
-    for s in range(ns):
-        ys = y/scale[s]
-        xs = x/scale[s]
-        ys_ = cp.asarray(ys.astype(dtype)[:, None, :])
-        xs_ = cp.asarray(xs.astype(dtype)[None, :, :])
-        g = np.array([0.5])
-        sKP1s = np.array([sKP1[s]])
-        if 'gauss' in name:
-            diffij = ys_ - xs_
-            Dij = cp.square(diffij).sum(-1)
-            Kij = diffij * cp.exp(-0.5 * Dij)[:,:,None]
-        elif 'lap' in name:
-            diffij = ys_ - xs_
-            Dij = (diffij ** 2).sum(-1).sqrt()
-            Kij = diffij * (c1_[order, 0] + c1_[order, 1] * Dij + c1_[order, 2] * Dij * Dij
-            + c1_[order, 3] * Dij * Dij * Dij) * cp.exp(-Dij)
-        else: # Euclidean kernel
-            Kij = cp.ones(ys_.shape) * xs_
-
-        res += (-sKP1[s]) * (Kij * cp.asarray(beta[:,:,None])).sum(axis=1)
-
-    res/=wsig
-    return cp.asnumpy(res)
-

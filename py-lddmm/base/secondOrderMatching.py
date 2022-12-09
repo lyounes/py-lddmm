@@ -19,14 +19,15 @@ from .surface_distances import L2Norm, L2Norm0, L2NormGradient
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 
-class Direction:
+class Direction(dict):
     def __init__(self):
-        self.a0 = []
-        self.rhot = []
-        self.aff = []
-        self.a00 = []
-        self.rhot0 = []
-        self.aff0 = []
+        super(Direction, self).__init__()
+        self['a0'] = None
+        self['rhot'] = None
+        self['aff'] = None
+        self['a00'] = None
+        self['rhot0'] = None
+        self['aff0'] = None
 
 
 ## Main class for surface matching
@@ -45,10 +46,10 @@ class Direction:
 #        affine: 'affine', 'similitude', 'euclidean', 'translation' or 'none'
 #        maxIter: max iterations in conjugate gradient
 class SurfaceTimeMatching(SurfaceMatching):
-    def __init__(self, Template=None, Target=None, param=None, initialMomentum=None, times = None,
-                 maxIter=1000, regWeight = 1.0, verb=True, typeRegression='spline2', affine = 'none', controlWeight = 1.0,
+    def __init__(self, Template=None, Target=None, param=None, initialMomentum=None, times = None, mode = "normal",
+                 maxIter=1000, regWeight = 1.0, typeRegression='spline2', affine = 'none', controlWeight = 1.0,
                  affineWeight = 1.0, rotWeight = None, scaleWeight = None, transWeight = None, internalWeight=1.,
-                 subsampleTargetSize=-1, rescaleTemplate=False, testGradient=False, saveFile = 'evolution', outputDir = '.'):
+                 subsampleTargetSize=-1, rescaleTemplate=False, saveFile = 'evolution', outputDir = '.'):
         self.rescaleTemplate = rescaleTemplate
         if times is None:
             self.times = None
@@ -57,10 +58,10 @@ class SurfaceTimeMatching(SurfaceMatching):
         self.nTarg = len(Target)
         self.initialMomentum = initialMomentum
         super().__init__(Template=Template, Target=Target, param=param, maxIter=maxIter,
-                 regWeight = regWeight, affineWeight = affineWeight, internalWeight=internalWeight, verb=verb,
-                 subsampleTargetSize=subsampleTargetSize, affineOnly = False,
+                 regWeight = regWeight, affineWeight = affineWeight, internalWeight=internalWeight,
+                 subsampleTargetSize=subsampleTargetSize, affineOnly = False, mode = mode,
                  rotWeight = rotWeight, scaleWeight = scaleWeight, transWeight = transWeight, symmetric = False,
-                 testGradient=testGradient, saveFile = saveFile,
+                 saveFile = saveFile,
                  saveTrajectories = False, affine = affine, outputDir = outputDir,pplot=False)
 
         self.param.KparDiff0 = self.param.KparDiff
@@ -185,6 +186,10 @@ class SurfaceTimeMatching(SurfaceMatching):
         # else:
         #     self.fv0ori = 1
         #
+
+    def setDotProduct(self, unreduced=False):
+        self.euclideanGradient = True
+        self.dotProduct = self.dotProduct_euclidean
 
     def initialize_variables(self):
         self.x0 = self.fv0.vertices
@@ -394,26 +399,26 @@ class SurfaceTimeMatching(SurfaceMatching):
         #print self.typeRegression
         if self.typeRegression == 'spline':
             a0Try = self.a0
-            rhotTry = self.rhot - eps * dir.rhot
+            rhotTry = self.rhot - eps * dir['rhot']
         elif self.typeRegression == 'geodesic':
-            a0Try = self.a0 - eps * dir.a0
+            a0Try = self.a0 - eps * dir['a0']
             rhotTry = self.rhot
         elif self.typeRegression == "affine":
             a0Try = self.a0
             rhotTry = self.rhot
         else:
-            a0Try = self.a0 - eps * dir.a0
-            rhotTry = self.rhot - eps * dir.rhot
+            a0Try = self.a0 - eps * dir['a0']
+            rhotTry = self.rhot - eps * dir['rhot']
         if self.typeRegression == "affine":
             a00Try = self.a00
             rhot0Try = self.rhot0
         else:
-            a00Try = self.a00 - eps * dir.a00
-            rhot0Try = self.rhot0 - eps * dir.rhot0
+            a00Try = self.a00 - eps * dir['a00']
+            rhot0Try = self.rhot0 - eps * dir['rhot0']
 
         if self.affineDim > 0 and self.typeRegression=="affine":
-            Afft0Try = self.Afft0 - eps * dir.aff0
-            AfftTry = self.Afft - eps * dir.aff
+            Afft0Try = self.Afft0 - eps * dir['aff0']
+            AfftTry = self.Afft - eps * dir['aff']
         else:
             Afft0Try = self.Afft0
             AfftTry = self.Afft
@@ -660,44 +665,44 @@ class SurfaceTimeMatching(SurfaceMatching):
                                        affine=(A0, A), controlWeight=self.controlWeight)
         grd = Direction()
         if self.typeRegression == 'affine':
-            grd.a00 = np.zeros(foo[0][0].shape)
-            grd.rhot0 = np.zeros(foo[0][1].shape)
+            grd['a00'] = np.zeros(foo[0][0].shape)
+            grd['rhot0'] = np.zeros(foo[0][1].shape)
         else:
-            grd.a00 = foo[0][0] / coeff
-            grd.rhot0 = foo[0][1] / coeff
+            grd['a00'] = foo[0][0] / coeff
+            grd['rhot0'] = foo[0][1] / coeff
         
         if self.typeRegression == 'spline':
-            grd.a0 = np.zeros(foo[1][0].shape)
-            grd.rhot = foo[1][1]/(coeff)
+            grd['a0'] = np.zeros(foo[1][0].shape)
+            grd['rhot'] = foo[1][1]/(coeff)
             #grd.rhot = foo[1]/(coeff*self.rhot.shape[0])
         elif self.typeRegression == 'geodesic':
-            grd.a0 = foo[1][0] / coeff
-            grd.rhot = np.zeros(foo[1][1].shape)
+            grd['a0'] = foo[1][0] / coeff
+            grd['rhot'] = np.zeros(foo[1][1].shape)
         elif self.typeRegression == 'affine':
-            grd.a0 = np.zeros(foo[1][0].shape)
-            grd.rhot = np.zeros(foo[1][1].shape)
+            grd['a0'] = np.zeros(foo[1][0].shape)
+            grd['rhot'] = np.zeros(foo[1][1].shape)
         else:
-            grd.a0 = foo[1][0] / coeff
-            grd.rhot = foo[1][1]/(coeff)
+            grd['a0'] = foo[1][0] / coeff
+            grd['rhot'] = foo[1][1]/(coeff)
 
         dim2 = self.dim**2
-        grd.aff = np.zeros(self.Afft.shape)
-        grd.aff0 = np.zeros(self.Afft0.shape)
+        grd['aff'] = np.zeros(self.Afft.shape)
+        grd['aff0'] = np.zeros(self.Afft0.shape)
         if self.affineDim > 0 and self.iter < self.affBurnIn:
             dA0 = foo[0][2]
             db0 = foo[0][3]
             dA = foo[1][2]
             db = foo[1][3]
-            grd.aff0 = np.multiply(self.affineWeight.reshape([1, self.affineDim]), self.Afft0)
+            grd['aff0'] = np.multiply(self.affineWeight.reshape([1, self.affineDim]), self.Afft0)
             for t in range(self.Tsize0):
                dAff = np.dot(self.affineBasis.T, np.vstack([dA0[t].reshape([dim2,1]), db0[t].reshape([self.dim, 1])]))
-               grd.aff0[t] -=  dAff.reshape(grd.aff[t].shape)
-            grd.aff0 *= self.param.timeStep/(self.coeffAff*coeff)
-            grd.aff = np.multiply(self.affineWeight.reshape([1, self.affineDim]), self.Afft)
+               grd['aff0'][t] -=  dAff.reshape(grd['aff'][t].shape)
+            grd['aff0'] *= self.param.timeStep/(self.coeffAff*coeff)
+            grd['aff'] = np.multiply(self.affineWeight.reshape([1, self.affineDim]), self.Afft)
             for t in range(self.Tsize):
                dAff = np.dot(self.affineBasis.T, np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])]))
-               grd.aff[t] -=  dAff.reshape(grd.aff[t].shape)
-            grd.aff *= self.param.timeStep/(self.coeffAff*coeff)
+               grd['aff'][t] -=  dAff.reshape(grd['aff'][t].shape)
+            grd['aff'] *= self.param.timeStep/(self.coeffAff*coeff)
         
         #print (grd.a00**2).sum(),(grd.rhot0**2).sum(),(grd.aff0**2).sum(),(grd.a0**2).sum(),(grd.rhot**2).sum(),(grd.aff**2).sum() 
         return grd
@@ -724,69 +729,59 @@ class SurfaceTimeMatching(SurfaceMatching):
         dir.aff0 = beta * dir1.aff0
         return dir
 
-    def copyDir(self, dir0):
-        dir = Direction()
-        dir.a0 = np.copy(dir0.a0)
-        dir.rhot = np.copy(dir0.rhot)
-        dir.aff = np.copy(dir0.aff)
-        dir.a00 = np.copy(dir0.a00)
-        dir.rhot0 = np.copy(dir0.rhot0)
-        dir.aff0 = np.copy(dir0.aff0)
-        return dir
-
 
     def randomDir(self):
         dirfoo = Direction()
         if self.typeRegression == 'spline':
-            dirfoo.a0 = np.zeros([self.npt, self.dim])
-            dirfoo.rhot = np.random.randn(self.Tsize, self.npt, self.dim)
+            dirfoo['a0'] = np.zeros([self.npt, self.dim])
+            dirfoo['rhot'] = np.random.randn(self.Tsize, self.npt, self.dim)
         elif self.typeRegression == 'geodesic':
-            dirfoo.a0 = np.random.randn(self.npt, self.dim)
-            dirfoo.rhot = np.zeros([self.Tsize, self.npt, self.dim])
+            dirfoo['a0'] = np.random.randn(self.npt, self.dim)
+            dirfoo['rhot'] = np.zeros([self.Tsize, self.npt, self.dim])
         elif self.typeRegression == 'affine':
-            dirfoo.a0 = np.zeros([self.npt, self.dim])
-            dirfoo.rhot = np.zeros([self.Tsize, self.npt, self.dim])
+            dirfoo['a0'] = np.zeros([self.npt, self.dim])
+            dirfoo['rhot'] = np.zeros([self.Tsize, self.npt, self.dim])
         else:
-            dirfoo.a0 = np.random.randn(self.npt, self.dim)
-            dirfoo.rhot = np.random.randn(self.Tsize, self.npt, self.dim)
+            dirfoo['a0'] = np.random.randn(self.npt, self.dim)
+            dirfoo['rhot'] = np.random.randn(self.Tsize, self.npt, self.dim)
 
         if self.typeRegression == 'affine':
-            dirfoo.a00 = np.zeros([self.npt, self.dim])
-            dirfoo.rhot0 = np.zeros([self.Tsize0, self.npt, self.dim])
+            dirfoo['a00'] = np.zeros([self.npt, self.dim])
+            dirfoo['rhot0'] = np.zeros([self.Tsize0, self.npt, self.dim])
         else:
-            dirfoo.a00 = np.random.randn(self.npt, self.dim)
-            dirfoo.rhot0 = np.random.randn(self.Tsize0, self.npt, self.dim)
+            dirfoo['a00'] = np.random.randn(self.npt, self.dim)
+            dirfoo['rhot0'] = np.random.randn(self.Tsize0, self.npt, self.dim)
         
         if self.iter < self.affBurnIn:
-            dirfoo.aff = np.random.randn(self.Tsize, self.affineDim)
-            dirfoo.aff0 = np.random.randn(self.Tsize0, self.affineDim)
+            dirfoo['aff'] = np.random.randn(self.Tsize, self.affineDim)
+            dirfoo['aff0'] = np.random.randn(self.Tsize0, self.affineDim)
         else:
-            dirfoo.aff = np.zeros((self.Tsize, self.affineDim))
-            dirfoo.aff0 = np.zeros((self.Tsize0, self.affineDim))
+            dirfoo['aff'] = np.zeros((self.Tsize, self.affineDim))
+            dirfoo['aff0'] = np.zeros((self.Tsize0, self.affineDim))
         return dirfoo
 
-    def dotProduct(self, g1, g2):
+    def dotProduct_euclidean(self, g1, g2):
         res = np.zeros(len(g2))
-        gg = g1.rhot
-        gga = g1.a0
-        uu = g1.aff
+        gg = g1['rhot']
+        gga = g1['a0']
+        uu = g1['aff']
         ll = 0
         for gr in g2:
-            ggOld = gr.rhot
+            ggOld = gr['rhot']
             res[ll]  = (ggOld*gg).sum()*self.param.timeStep
-            res[ll] += (gr.a0 * gga).sum()
-            res[ll] += (uu * gr.aff).sum() * self.coeffAff
+            res[ll] += (gr['a0'] * gga).sum()
+            res[ll] += (uu * gr['aff']).sum() * self.coeffAff
             ll = ll+1
 
-        gg = g1.rhot0
-        gga = g1.a00
-        uu = g1.aff0
+        gg = g1['rhot0']
+        gga = g1['a00']
+        uu = g1['aff0']
         ll = 0
         for gr in g2:
-            ggOld = gr.rhot0
+            ggOld = gr['rhot0']
             res[ll] += (ggOld*gg).sum()*self.param.timeStep
-            res[ll] += (gr.a00 * gga).sum()
-            res[ll] += (uu * gr.aff0).sum() * self.coeffAff
+            res[ll] += (gr['a00'] * gga).sum()
+            res[ll] += (uu * gr['aff0']).sum() * self.coeffAff
             ll = ll+1
 
         return res
