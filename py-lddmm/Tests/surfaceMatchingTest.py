@@ -67,14 +67,14 @@ def compute(model):
 
         # d = Heart()
         d = Ball1()
-        mesh = pygalmesh.generate_surface_mesh(d, max_facet_distance=0.01, min_facet_angle=30.0,
-                                               max_radius_surface_delaunay_ball=0.01, verbose=False)
+        mesh = pygalmesh.generate_surface_mesh(d, max_facet_distance=0.05, min_facet_angle=30.0,
+                                               max_radius_surface_delaunay_ball=0.05, verbose=False)
         fv1 = Surface(surf=(mesh.cells[0].data, mesh.points))
         fv1.updateVertices(fv1.vertices*100)
 
         d = Ball2()
-        mesh = pygalmesh.generate_surface_mesh(d, max_facet_distance=0.01, min_facet_angle=30.0,
-                                               max_radius_surface_delaunay_ball=0.01, verbose=False)
+        mesh = pygalmesh.generate_surface_mesh(d, max_facet_distance=0.05, min_facet_angle=30.0,
+                                               max_radius_surface_delaunay_ball=0.05, verbose=False)
         fv2 = Surface(surf=(mesh.cells[0].data, mesh.points))
         fv2.updateVertices(fv2.vertices*100)
 
@@ -187,11 +187,12 @@ def compute(model):
     sm.KparDiff.pk_dtype = 'float64'
     sm.KparDist.pk_dtype = 'float64'
     f = SurfaceMatching(Template=ftemp, Target=ftarg, outputDir='../Output/surfaceMatchingTest/'+model +'_'+typeCost,
-                        param=sm, testGradient=False, regWeight = regweight, Landmarks = landmarks,
-                        unreduced=True, unreducedWeight= 0.,
+                        param=sm, regWeight = regweight, Landmarks = landmarks,
+                        unreduced=False, unreducedWeight= 0.,
                         #subsampleTargetSize = 500,
                         internalWeight=internalWeight, maxIter=20, affine= 'none', rotWeight=.01, transWeight = .01,
                         scaleWeight=10., affineWeight=100.)
+    f.testGradient = True
     f.optimizeMatching()
     for k in range(20):
         f.unreducedWeight += 0.1 * f.ds
