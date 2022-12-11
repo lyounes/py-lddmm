@@ -78,9 +78,6 @@ class MeshMatching(pointSetMatching.PointSetMatching):
                  testGradient=testGradient, saveFile=saveFile,
                  saveTrajectories=saveTrajectories, affine=affine, outputDir=outputDir, pplot=pplot)
 
-        self.reset = False
-        self.Kdiff_dtype = self.param.KparDiff.pk_dtype
-        self.Kdist_dtype = self.param.KparDist.pk_dtype
         self.Kim_dtype = self.param.KparIm.pk_dtype
 
 
@@ -238,57 +235,72 @@ class MeshMatching(pointSetMatching.PointSetMatching):
     #         else:
     #             pxt[M-t-1, :, :] = px + timeStep * zpx
     #     return pxt, xt
-    
 
-    def getGradient(self, coeff=1.0, update=None):
-        if update is None:
-            at = None
-            Afft = self.Afft
-            endPoint = self.fvDef
-            A = self.affB.getTransforms(self.Afft)
-            xt = self.xt
+    def setUpdate(self, update):
+        at = self.at - update[1] * update[0].diff
+
+        Afft = self.Afft - update[1] * update[0].aff
+        if len(update[0].aff) > 0:
+            A = self.affB.getTransforms(Afft)
         else:
-            at = self.at - update[1] * update[0].diff
-            Afft = self.Afft - update[1]*update[0].aff
-            if len(update[0].aff) > 0:
-                A = self.affB.getTransforms(Afft)
-            else:
-                A = None
-            xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
-            endPoint = meshes.Mesh(mesh=self.fv0)
-            endPoint.updateVertices(xt[-1, :, :])
+            A = None
+        xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
+        endPoint = meshes.Mesh(mesh=self.fv0)
+        endPoint.updateVertices(xt[-1, :, :])
 
-        dim2 = self.dim**2
-        px1 = -self.endPointGradient(endPoint=endPoint)
-        foo = self.hamiltonianGradient(px1, at=at, affine=A)
-        grd = Direction()
-        if self.euclideanGradient:
-            grd.diff = np.zeros(foo[0].shape)
-            for t in range(self.Tsize):
-                z = xt[t, :, :]
-                grd.diff[t,:,:] = self.param.KparDiff.applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
-        else:
-            grd.diff = foo[0]/(coeff*self.Tsize)
-        grd.aff = np.zeros(self.Afft.shape)
-        if self.affineDim > 0:
-            dA = foo[1]
-            db = foo[2]
-            grd.aff = 2*self.affineWeight.reshape([1, self.affineDim])*Afft
-            #grd.aff = 2 * self.Afft
-            for t in range(self.Tsize):
-               dAff = np.dot(self.affineBasis.T, np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])]))
-               #grd.aff[t] -=  np.divide(dAff.reshape(grd.aff[t].shape), self.affineWeight.reshape(grd.aff[t].shape))
-               grd.aff[t] -=  dAff.reshape(grd.aff[t].shape)
-            grd.aff /= (self.coeffAff*coeff*self.Tsize)
-            #            dAfft[:,0:self.dim**2]/=100
-        return grd
+        return at, Afft, xt, endPoint
 
+    # def getGradient(self, coeff=1.0, update=None):
+    #     if update is None:
+    #         at = None
+    #         Afft = self.Afft
+    #         endPoint = self.fvDef
+    #         A = self.affB.getTransforms(self.Afft)
+    #         xt = self.xt
+    #     else:
+    #         at = self.at - update[1] * update[0].diff
+    #         Afft = self.Afft - update[1]*update[0].aff
+    #         if len(update[0].aff) > 0:
+    #             A = self.affB.getTransforms(Afft)
+    #         else:
+    #             A = None
+    #         xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
+    #         endPoint = meshes.Mesh(mesh=self.fv0)
+    #         endPoint.updateVertices(xt[-1, :, :])
+    #
+    #     dim2 = self.dim**2
+    #     px1 = -self.endPointGradient(endPoint=endPoint)
+    #     foo = self.hamiltonianGradient(px1, at=at, affine=A)
+    #     grd = Direction()
+    #     if self.euclideanGradient:
+    #         grd.diff = np.zeros(foo[0].shape)
+    #         for t in range(self.Tsize):
+    #             z = xt[t, :, :]
+    #             grd.diff[t,:,:] = self.param.KparDiff.applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
+    #     else:
+    #         grd.diff = foo[0]/(coeff*self.Tsize)
+    #     grd.aff = np.zeros(self.Afft.shape)
+    #     if self.affineDim > 0:
+    #         dA = foo[1]
+    #         db = foo[2]
+    #         grd.aff = 2*self.affineWeight.reshape([1, self.affineDim])*Afft
+    #         #grd.aff = 2 * self.Afft
+    #         for t in range(self.Tsize):
+    #            dAff = np.dot(self.affineBasis.T, np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])]))
+    #            #grd.aff[t] -=  np.divide(dAff.reshape(grd.aff[t].shape), self.affineWeight.reshape(grd.aff[t].shape))
+    #            grd.aff[t] -=  dAff.reshape(grd.aff[t].shape)
+    #         grd.aff /= (self.coeffAff*coeff*self.Tsize)
+    #         #            dAfft[:,0:self.dim**2]/=100
+    #     return grd
 
     def startOfIteration(self):
         if self.reset:
             logging.info('Switching to 64 bits')
             self.param.KparDiff.pk_dtype = 'float64'
             self.param.KparDist.pk_dtype = 'float64'
+            self.param.KparIm.pk_dtype = 'float64'
+
+
 
     def endOfIteration(self, endP=False):
         self.iter += 1
@@ -340,9 +352,10 @@ class MeshMatching(pointSetMatching.PointSetMatching):
             self.saveHdf5(fileName=self.outputDir + '/output.h5')
 
         (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
-        self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
+        self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]), checkOrientation=True)
         self.param.KparDiff.pk_dtype = self.Kdiff_dtype
         self.param.KparDist.pk_dtype = self.Kdist_dtype
+        self.param.KparIm.pk_dtype = self.Kim_dtype
 
     def endOfProcedure(self):
         self.endOfIteration(endP=True)

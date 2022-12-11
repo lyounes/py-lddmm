@@ -376,27 +376,33 @@ class Surface:
             c2 = -(x12*x23).sum()/(n12*n23)
             c3 = (x13*x23).sum()/(n13*n23)
             AF[k] = np.sqrt((np.cross(x12, x13)**2).sum())/2
+            cot1 = c1 / np.sqrt(1 - c1 ** 2)
+            cot2 = c2 / np.sqrt(1 - c2 ** 2)
+            cot3 = c3 / np.sqrt(1 - c3 ** 2)
             if (c1 < 0):
                 #face obtuse at vertex 1
-                AV[F[k,0]] += AF[k]/2
-                AV[F[k,1]] += AF[k]/4
-                AV[F[k,2]] += AF[k]/4
+                u2 = (x12**2).sum() * cot2 / 8
+                u3 = (x13**2).sum() * cot3 / 8
+                AV[F[k,0]] += (x12 * x23).sum() * cot1 / 2 - u2 - u3
+                AV[F[k,1]] += u2
+                AV[F[k,2]] += u3
             elif (c2 < 0):
                 #face obuse at vertex 2
-                AV[F[k,0]] += AF[k]/4
-                AV[F[k,1]] += AF[k]/2
-                AV[F[k,2]] += AF[k]/4
+                u1 = (x12**2).sum() * cot1 / 8
+                u3 = (x23**2).sum() * cot3 / 8
+                AV[F[k,0]] += u1
+                AV[F[k,1]] += - (x12*x23).sum() * cot2/2 -u1 - u3
+                AV[F[k,2]] += u3
             elif (c3 < 0):
                 #face obtuse at vertex 3
-                AV[F[k,0]] += AF[k]/4
-                AV[F[k,1]] += AF[k]/4
-                AV[F[k,2]] += AF[k]/2
+                u1 = -(x13**2).sum() * cot1 / 8
+                u2 = - (x23**2).sum() * cot2 / 8
+                AV[F[k,0]] += u1
+                AV[F[k,1]] += u2
+                AV[F[k,2]] += (x13 * x23).sum() * cot3 / 2 - u1 - u2
             else:
                 #non obtuse face
-                cot1 = c1 / np.sqrt(1-c1**2) 
-                cot2 = c2 / np.sqrt(1-c2**2) 
-                cot3 = c3 / np.sqrt(1-c3**2) 
-                AV[F[k,0]] += ((x12**2).sum() * cot3 + (x13**2).sum() * cot2)/8 
+                AV[F[k,0]] += ((x12**2).sum() * cot3 + (x13**2).sum() * cot2)/8
                 AV[F[k,1]] += ((x12**2).sum() * cot3 + (x23**2).sum() * cot1)/8 
                 AV[F[k,2]] += ((x13**2).sum() * cot2 + (x23**2).sum() * cot1)/8 
 
@@ -596,7 +602,7 @@ class Surface:
 
 
     def Isosurface_ski(self, data, value=0.5, step = 1):
-        verts,faces,n,v = measure.marching_cubes_lewiner(data, allow_degenerate=False, level=value,step_size=step)
+        verts,faces,n,v = measure.marching_cubes(data, allow_degenerate=False, level=value,step_size=step)
         self.__init__(surf=(faces,verts))
 
 
@@ -1969,6 +1975,7 @@ class Surface:
             # self.surfel = np.cross(xDef2 - xDef1, xDef3 - xDef1) / 2
             self.computeCentersAreas()
             self.component = np.zeros(self.faces.shape[0], dtype=int)
+            print(f'STL file: {self.vertices.shape[0]} vertices, {self.faces.shape[0]} faces')
         else:
             raise Exception('Cannot run readSTL without VTK')
 

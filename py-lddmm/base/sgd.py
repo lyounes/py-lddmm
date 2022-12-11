@@ -18,7 +18,7 @@ from copy import deepcopy
 # epsInit: initial gradient step
 # rate: SGD rate
 
-def sgd(opt, verb = True, maxIter=1000, burnIn = 100, epsInit=1., rate = 0.01, adam = True):
+def sgd(opt, verb = True, maxIter=1000, burnIn = 100, epsInit=1., rate = 0.01, normalization = 'sdev'):
     if not hasattr(opt, 'addProd') or not hasattr(opt, 'getGradient'):
         logging.error('Error: required functions for SGD are not provided')
         return
@@ -53,10 +53,16 @@ def sgd(opt, verb = True, maxIter=1000, burnIn = 100, epsInit=1., rate = 0.01, a
                     varGrd[k] += (grd[k]**2 - varGrd[k])/(it+1)
 
         grd_ = deepcopy(grd)
-        for k in grd.keys():
-            if grd[k] is not None:
-                grd_[k] /= epsInit + np.sqrt(varGrd[k] + 1e-10)
+        if normalization == 'sdev':
+            for k in grd.keys():
+                if grd[k] is not None:
+                    grd_[k] /= epsInit + np.sqrt(varGrd[k] + 1e-10)
                 #grd_[k] /= epsInit + np.sqrt(varGrd[k] - meanGrd[k] ** 2 + 1e-10)
+        elif normalization == 'var':
+            for k in grd.keys():
+                if grd[k] is not None:
+                    grd_[k] /= epsInit + varGrd[k]
+
         eps = epsInit / (1 + rate*max(0, it - burnIn))
         opt.update(grd_, eps)
         if verb:

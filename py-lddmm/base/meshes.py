@@ -89,7 +89,7 @@ def computeCentersVolumesNormals__(faces, vertices, weights, checkOrientation= F
         if checkOrientation:
             if volumes.min() < -1e-12:
                 if volumes.max() > 1e-12:
-                    print('Warning: mesh has inconsistent orientation')
+                    print('Warning: mesh has inconsistent orientation', volumes.min(), volumes.max())
                 else:
                     f_ = np.copy(faces[:,1])
                     faces[:, 1] = np.copy(faces[:,2])
@@ -187,7 +187,7 @@ def get_edges_(faces):
         #for j in range(dim):
         edges[k, :] = I
 
-    print(edges.shape, edges.max(), faces.shape, faces.max())
+    #print(edges.shape, edges.max(), faces.shape, faces.max())
     # edgi = dict()
     # ne = 0
     # # edgi = csr_matrix(shp, dtype=int64)
@@ -198,7 +198,7 @@ def get_edges_(faces):
     #     else:
     #         edgi[edges[k, 0], edges[k, 1], edges[k,2]] = k
 
-    faceEdges = np.zeros(faces.shape, dtype=int64)
+    edgesOfFaces = np.zeros(faces.shape, dtype=int64)
     for k in range(faces.shape[0]):
         for j in range(dim+1):
             indx = list(faces[k, :])
@@ -206,11 +206,11 @@ def get_edges_(faces):
             indx.sort()
             indx = tuple(indx)
             #if dim==2:
-            faceEdges[k,j] = edgi[indx] #edg0[indx[0], indx[1]]
+            edgesOfFaces[k,j] = edgi[indx] #edg0[indx[0], indx[1]]
             #else:
-            #    faceEdges[k,j] = edg0[indx[0], indx[1], indx[2]]
+            #    edgesOfFaces[k,j] = edg0[indx[0], indx[1], indx[2]]
 
-    edgeFaces = - np.ones((ne, 2), dtype=int64)
+    facesOfEdges = - np.ones((ne, 2), dtype=int64)
     if dim == 2:
         for k in range(faces.shape[0]):
             i0 = faces[k, 0]
@@ -218,10 +218,10 @@ def get_edges_(faces):
             i2 = faces[k, 2]
             for f in ([i0, i1], [i1, i2], [i2, i0]):
                 kk = edgi[(min(f[0], f[1]), max(f[0],f[1]))]
-                if edgeFaces[kk, 0] >= 0:
-                    edgeFaces[kk, 1] = k
+                if facesOfEdges[kk, 0] >= 0:
+                    facesOfEdges[kk, 1] = k
                 else:
-                    edgeFaces[kk, 0] = k
+                    facesOfEdges[kk, 0] = k
     else:
         for k in range(faces.shape[0]):
             i0 = faces[k, 0]
@@ -231,16 +231,16 @@ def get_edges_(faces):
             for f in ([i0, i1, i2], [i2, i1, i3], [i0, i2, i3], [i1, i0, i3]):
                 f.sort()
                 kk = edgi[(f[0], f[1], f[2])]
-                if edgeFaces[kk, 0] >= 0:
-                    edgeFaces[kk, 1] = k
+                if facesOfEdges[kk, 0] >= 0:
+                    facesOfEdges[kk, 1] = k
                 else:
-                    edgeFaces[kk, 0] = k
+                    facesOfEdges[kk, 0] = k
 
     bdry = np.zeros(edges.shape[0], dtype=int64)
     for k in range(edges.shape[0]):
-        if edgeFaces[k, 1] < 0:
+        if facesOfEdges[k, 1] < 0:
             bdry[k] = 1
-    return edges, edgeFaces, faceEdges, bdry
+    return edges, facesOfEdges, edgesOfFaces, bdry
 
 
 class Mesh:
@@ -357,8 +357,8 @@ class Mesh:
             self.dim = 0
 
         self.edges = None
-        self.edgeFaces = None
-        self.faceEdges = None
+        self.facesOfEdges = None
+        self.edgesOfFaces = None
         self.bdry_indices = None
         self.bdry = None
 
@@ -384,7 +384,10 @@ class Mesh:
             computeCentersVolumesNormals__(self.faces, self.vertices, self.weights, checkOrientation=checkOrientation)
 
     def updateWeights(self, w0):
-        self.weights = np.copy(w0)
+        if np.isscalar(w0):
+            self.weights = w0 * np.ones(self.faces.shape[0])
+        else:
+            self.weights = np.copy(w0)
         self.vertex_weights = np.zeros(self.vertices.shape[0])
         face_per_vertex = np.zeros(self.vertices.shape[0], dtype=int)
         for k in range(self.faces.shape[0]):
@@ -392,12 +395,16 @@ class Mesh:
             face_per_vertex[self.faces[k, :]] += 1
         self.vertex_weights /= face_per_vertex
 
+    def rescaleUnits(self, scale):
+        self.updateVertices(self.vertices*scale)
+        self.updateWeights(self.weights/(scale**self.dim))
+
     # modify vertices without toplogical change
-    def updateVertices(self, x0):
+    def updateVertices(self, x0, checkOrientation=False):
         self.vertices = np.copy(x0)
         if self.bdry is not None:
             self.bdry.updateVertices(x0[self.bdry_indices])
-        self.computeCentersVolumesNormals()
+        self.computeCentersVolumesNormals(checkOrientation=checkOrientation)
 
     def updateImage(self, img):
         self.image = np.copy(img)
@@ -415,7 +422,6 @@ class Mesh:
                                            self.faces[:,2]))).transpose(copy=False)
 
     def computeVertexVolume(self):
-        # compute areas of faces and vertices
         V = self.vertices
         F = self.faces
         nv = V.shape[0]
@@ -456,7 +462,7 @@ class Mesh:
 
     # Computes edges from vertices/faces
     def getEdges(self):
-        self.edges, self.edgeFaces, self.faceEdges, bdry = get_edges_(self.faces)
+        self.edges, self.facesOfEdges, self.edgesOfFaces, bdry = get_edges_(self.faces)
         I = np.nonzero(bdry)[0]
         J = np.zeros(self.vertices.shape[0], dtype=int)
         for k in I:
@@ -687,6 +693,8 @@ class Mesh:
                         v.fields['image'] = self.image
                     if not 'weights' in v.scalars.keys():
                         v.scalars['weights'] = self.weights
+                    if not 'volumes' in v.scalars.keys():
+                        v.scalars['volumes'] = self.volumes
                     v.write(fvtkout)
                 elif v.data_type == 'POINT_DATA':
                     point_data = True
@@ -695,7 +703,7 @@ class Mesh:
                     v.write(fvtkout)
             if not cell_data:
                 v = vtkFields('CELL_DATA', self.faces.shape[0], fields = {'image':self.image},
-                              scalars = {'weights':self.weights})
+                              scalars = {'weights':self.weights, 'volumes':self.volumes})
                 v.write(fvtkout)
             if not point_data:
                 v = vtkFields('POINT_DATA', self.vertices.shape[0], scalars = {'vertex_weights':self.vertex_weights})
@@ -920,7 +928,7 @@ class Mesh:
     #                                                         edge_info = None)
     #         else:
     #             F, J, E, FE, EF = extract_components_(comp, self.vertices.shape[0], self.faces, self.component,
-    #                                                         edge_info = (self.edges, self.faceEdges, self.edgeFaces))
+    #                                                         edge_info = (self.edges, self.edgesOfFaces, self.facesOfEdges))
     #     else:
     #         res = Surface
     #         J = np.zeros(self.vertices.shape[0], dtype=bool)
@@ -931,8 +939,8 @@ class Mesh:
     #     res = Surface(surf=(F,V), weights=w)
     #     if self.edges is not None:
     #         res.edges = E
-    #         res.faceEdges = FE
-    #         res.edgeFaces = EF
+    #         res.edgesOfFaces = FE
+    #         res.facesOfEdges = EF
     #
     #     #print(f'End of extraction: vertices: {res.vertices.shape[0]} faces: {res.faces.shape[0]}')
     #     return res, J
@@ -1058,15 +1066,17 @@ def select_faces__(g, points, simplices, threshold = 1e-10):
     g = np.copy(g[keepface, :])
     return newv, newf, g, keepface
 
-def select_faces2__(g, points, simplices, threshold = 1e-10):
+def select_faces2__(points, simplices, threshold = 1e-10, g=None, removeBackground = True, small = 0):
     int64 = 'int'
-    edges, edgeFaces, faceEdges, bdry = get_edges_(simplices)
+    edges, facesOfEdges, edgesOfFaces, bdry = get_edges_(simplices)
+    if g is None:
+        g = np.ones((simplices.shape[0],1))
     gsum = np.fabs(g).sum(axis=1) > threshold
     N = simplices.shape[0]
     A = lil_matrix((N, N), dtype=int)
-    for k in range(edgeFaces.shape[0]):
-        f0 = edgeFaces[k,0]
-        f1 = edgeFaces[k,1]
+    for k in range(facesOfEdges.shape[0]):
+        f0 = facesOfEdges[k,0]
+        f1 = facesOfEdges[k,1]
         if f0>=0 and f1>=0 and ((gsum[f0] and gsum[f1]) or (not gsum[f0] and not gsum[f1])):
             A[f0, f1] = 1
             A[f1, f0] = 1
@@ -1080,9 +1090,16 @@ def select_faces2__(g, points, simplices, threshold = 1e-10):
     for j in range(simplices.shape[1]):
         centers += points[simplices[:,j], :]
     centers /= simplices.shape[1]
-    diag = centers.sum(axis=1)
-    k = np.argmin(diag)
-    background = labels[k]
+    if removeBackground:
+        diag = centers.sum(axis=1)
+        k = np.argmin(diag)
+        background = labels[k]
+    else:
+        background = -1
+    for j in range(nc):
+        I = np.nonzero(labels==j)[0]
+        if len(I) < small:
+            labels[I] = background
     keepface = np.nonzero(np.fabs(labels - background))[0]
     newf_ = np.zeros((keepface.shape[0], simplices.shape[1]), dtype=int64)
     for k in range(keepface.shape[0]):
@@ -1170,7 +1187,7 @@ def buildMeshFromFullListHR(x0, y0, genes, radius = 20, threshold = 1e-10):
 
     logging.info('face selection')
     #newv, newf, newg, foo = select_faces__(g, tri.points, tri.simplices, threshold=threshold)
-    newv, newf, newg, foo = select_faces2__(g, tri.points, tri.simplices, threshold=threshold)
+    newv, newf, newg, foo = select_faces2__(tri.points, tri.simplices, threshold=threshold, g=g)
     # keepface = np.nonzero((g ** 2).sum(axis=1) > 1e-10)[0]
     # newf = tri.simplices[keepface, :]
     # keepvert = np.zeros(tri.points.shape[0], dtype=bool)
@@ -1301,9 +1318,12 @@ def buildMeshFromCentersCounts(centers, cts, resolution=100, radius = None, weig
 
         #weights /= 25
 
-    newv, newf, newg, keepface = select_faces2__(g, tri.points, tri.simplices, threshold=threshold)
+    newv, newf, newg, keepface = select_faces2__(tri.points, tri.simplices, threshold=threshold, g=g,
+                                                 removeBackground=True, small = 0)
     wgts = wgts[keepface]
-
+    newv, newf, newg2, keepface = select_faces2__(newv, newf, threshold=threshold, removeBackground = False, small=10)
+    wgts = wgts[keepface]
+    newg = np.copy(newg[keepface, :])
     logging.info(f'Mesh with {newv.shape[0]} vertices and {newf.shape[0]} faces')
     fv0 = Mesh(mesh=(newf, newv), image=newg, weights=wgts)
     fv0.updateWeights(wgts/fv0.volumes)

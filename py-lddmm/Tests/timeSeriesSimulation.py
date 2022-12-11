@@ -18,10 +18,10 @@ outputDir = '../Output/timeSeriesNoAtrophy'
 
 K1 = Kernel(name='laplacian', sigma = 6.5, order=4)
 sm = surfaceMatching.SurfaceMatchingParam(timeStep=0.1, KparDiff=K1, KparDist=('gauss', 2.5),
-                                          sigmaError=.5, errorType='current')
+                                          sigmaError=.5, algorithm='bfgs', errorType='current')
 
 f = match.SurfaceTimeMatching(Template=fv0, Target=fv1, outputDir=outputDir, param=sm, regWeight=.1,
-                        affine='euclidean', testGradient=False, affineWeight=.1,  maxIter=1000)
+                        affine='euclidean', testGradient=True, affineWeight=.1,  maxIter=1000)
 
 f.optimizeMatching()
 
