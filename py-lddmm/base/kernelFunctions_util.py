@@ -1152,171 +1152,171 @@ def applykdiff12(x, a1, a2, p, name, scale, order, KP=-1):
 def applykdiff11and12(x, a1, a2, p, name, scale, order, KP=-1):
     return applyDDiffK(x, a1, a2, p, name, scale, order, KP=KP, option='11and12')
 
-
-@jit(nopython=True, parallel=True)
-def applykdiff11_(x, a1, a2, p, name, scale, order, KP=-1):
-    num_nodes = x.shape[0]
-    dim = x.shape[1]
-    f = np.zeros((num_nodes, dim))
-    wsig = 0
-    for s in scale:
-        wsig += s ** KP
-
-    if 'gauss' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                ut0 = ((x[k,:] - x[l,:])**2).sum()
-                Kh_diff = 0
-                Kh_diff2 = 0
-                for s in scale:
-                    ut = ut0/s**2
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5*s**(KP-2)
-                        Kh_diff2 += 0.25 * s**(KP-4)
-                    else:
-                        Kh_diff -= 0.5*np.exp(-0.5*ut)*s**(KP-2)
-                        Kh_diff2 += 0.25*np.exp(-0.5*ut)*s**(KP-4)
-                Kh_diff /= wsig
-                Kh_diff2 /= wsig
-                df += Kh_diff2 * 4 * (a1[k, :] * a2[l, :]).sum() \
-                      * ((x[k, :] - x[l, :]) * p[k, :]).sum() * (x[k, :] - x[l, :]) \
-                      + Kh_diff * 2 * (a1[k, :] * a2[l, :]).sum() * p[k, :]
-            f[k, :] += df
-    if 'lap' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
-                Kh_diff = 0
-                Kh_diff2 = 0
-                for s in scale:
-                    ut = ut0 / s
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5*lapPolDiff(0, order)*s**(KP-2)
-                        Kh_diff2 += 0.25*lapPolDiff2(0, order)*s**(KP-4)
-                    else:
-                        Kh_diff -= 0.5*lapPolDiff(ut, order) * np.exp(-ut)*s**(KP-2)
-                        Kh_diff2 += 0.25*lapPolDiff2(ut, order) * np.exp(-ut)*s**(KP-4)
-                Kh_diff /= wsig
-                Kh_diff2 /= wsig
-                df += Kh_diff2 * 4*(a1[k,:] * a2[l,:]).sum() \
-                      * ((x[k,:]-x[l,:])*p[k,:]).sum() *(x[k,:]-x[l,:]) \
-                      + Kh_diff * 2 * (a1[k,:] * a2[l,:]).sum() * p[k,:]
-            f[k, :] += df
-
-    return  f
-
-
-
-@jit(nopython=True, parallel=True)
-def applykdiff12_(x, a1, a2, p, name, scale, order, KP=-1):
-    num_nodes = x.shape[0]
-    dim = x.shape[1]
-    f = np.zeros((num_nodes, dim))
-    wsig = 0
-    for s in scale:
-        wsig += s ** KP
-
-    if 'gauss' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                ut0 = ((x[k, :] - x[l, :]) ** 2).sum()
-                Kh_diff = 0
-                Kh_diff2 = 0
-                for s in scale:
-                    ut = ut0 / s ** 2
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5 * s ** (KP - 2)
-                        Kh_diff2 += 0.25 * s ** (KP - 4)
-                    else:
-                        Kh_diff -= 0.5 * np.exp(-0.5 * ut) * s ** (KP - 2)
-                        Kh_diff2 += 0.25 * np.exp(-0.5 * ut) * s ** (KP - 4)
-                Kh_diff /= wsig
-                Kh_diff2 /= wsig
-                df += -Kh_diff2 * 4 * (a1[k, :] * a2[l, :]).sum() \
-                      * ((x[k, :] - x[l, :]) * p[l, :]).sum() * (x[k, :] - x[l, :]) \
-                      - Kh_diff * 2 * (a1[k, :] * a2[l, :]).sum() * p[l, :]
-            f[k, :] += df
-    if 'lap' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
-                Kh_diff = 0
-                Kh_diff2 = 0
-                for s in scale:
-                    ut = ut0 / s
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5 * lapPolDiff(0, order) * s ** (KP - 2)
-                        Kh_diff2 += 0.25 * lapPolDiff2(0, order) * s ** (KP - 4)
-                    else:
-                        Kh_diff -= 0.5 * lapPolDiff(ut, order) * np.exp(-ut) * s ** (KP - 2)
-                        Kh_diff2 += 0.25 * lapPolDiff2(ut, order) * np.exp(-ut) * s ** (KP - 4)
-                Kh_diff /= wsig
-                Kh_diff2 /= wsig
-                df += -Kh_diff2 * 4 * (a1[k, :] * a2[l, :]).sum() \
-                      * ((x[k, :] - x[l, :]) * p[l, :]).sum() * (x[k, :] - x[l, :]) \
-                      - Kh_diff * 2 * (a1[k, :] * a2[l, :]).sum() * p[l, :]
-            f[k, :] += df
-
-    return f
-
-
-@jit(nopython=True, parallel=True)
-def applykdiff11and12_(x, a1, a2, p, name, scale, order, KP=-1):
-    num_nodes = x.shape[0]
-    dim = x.shape[1]
-    f = np.zeros((num_nodes, dim))
-    wsig = 0
-    for s in scale:
-        wsig += s ** KP
-
-    if 'gauss' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                dx = x[k, :] - x[l, :]
-                dp = p[k, :] - p[l, :]
-                ut0 = ((x[k, :] - x[l, :]) ** 2).sum()
-                Kh_diff = 0
-                Kh_diff2 = 0
-                for s in scale:
-                    ut = ut0 / s ** 2
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5 * s ** (KP - 2)
-                        Kh_diff2 += 0.25 * s ** (KP - 4)
-                    else:
-                        Kh_diff -= 0.5 * np.exp(-0.5 * ut) * s ** (KP - 2)
-                        Kh_diff2 += 0.25 * np.exp(-0.5 * ut) * s ** (KP - 4)
-                Kh_diff /= wsig
-                Kh_diff2 /= wsig
-                df += 2 * (a1[k,:]*a2[l,:]).sum() *  (2 * Kh_diff2 *(dx*dp).sum() *dx + Kh_diff * dp)
-            f[k, :] += df
-    if 'lap' in name:
-        for k in prange(num_nodes):
-            df = np.zeros(dim)
-            for l in range(num_nodes):
-                dx = x[k, :] - x[l, :]
-                dp = p[k, :] - p[l, :]
-                ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
-                Kh_diff = 0
-                Kh_diff2 = 0
-                for s in scale:
-                    ut = ut0 / s
-                    if ut < 1e-8:
-                        Kh_diff -= 0.5 * lapPolDiff(0, order) * s ** (KP - 2)
-                        Kh_diff2 += 0.25 * lapPolDiff2(0, order) * s ** (KP - 4)
-                    else:
-                        Kh_diff -= 0.5 * lapPolDiff(ut, order) * np.exp(-ut) * s ** (KP - 2)
-                        Kh_diff2 += 0.25 * lapPolDiff2(ut, order) * np.exp(-ut) * s ** (KP - 4)
-                Kh_diff /= wsig
-                Kh_diff2 /= wsig
-                df += 2 * (a1[k,:]*a2[l,:]).sum() *  (2 * Kh_diff2 *(dx*dp).sum() *dx + Kh_diff * dp)
-            f[k, :] += df
-
-    return f
+#
+# @jit(nopython=True, parallel=True)
+# def applykdiff11_(x, a1, a2, p, name, scale, order, KP=-1):
+#     num_nodes = x.shape[0]
+#     dim = x.shape[1]
+#     f = np.zeros((num_nodes, dim))
+#     wsig = 0
+#     for s in scale:
+#         wsig += s ** KP
+#
+#     if 'gauss' in name:
+#         for k in prange(num_nodes):
+#             df = np.zeros(dim)
+#             for l in range(num_nodes):
+#                 ut0 = ((x[k,:] - x[l,:])**2).sum()
+#                 Kh_diff = 0
+#                 Kh_diff2 = 0
+#                 for s in scale:
+#                     ut = ut0/s**2
+#                     if ut < 1e-8:
+#                         Kh_diff -= 0.5*s**(KP-2)
+#                         Kh_diff2 += 0.25 * s**(KP-4)
+#                     else:
+#                         Kh_diff -= 0.5*np.exp(-0.5*ut)*s**(KP-2)
+#                         Kh_diff2 += 0.25*np.exp(-0.5*ut)*s**(KP-4)
+#                 Kh_diff /= wsig
+#                 Kh_diff2 /= wsig
+#                 df += Kh_diff2 * 4 * (a1[k, :] * a2[l, :]).sum() \
+#                       * ((x[k, :] - x[l, :]) * p[k, :]).sum() * (x[k, :] - x[l, :]) \
+#                       + Kh_diff * 2 * (a1[k, :] * a2[l, :]).sum() * p[k, :]
+#             f[k, :] += df
+#     if 'lap' in name:
+#         for k in prange(num_nodes):
+#             df = np.zeros(dim)
+#             for l in range(num_nodes):
+#                 ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
+#                 Kh_diff = 0
+#                 Kh_diff2 = 0
+#                 for s in scale:
+#                     ut = ut0 / s
+#                     if ut < 1e-8:
+#                         Kh_diff -= 0.5*lapPolDiff(0, order)*s**(KP-2)
+#                         Kh_diff2 += 0.25*lapPolDiff2(0, order)*s**(KP-4)
+#                     else:
+#                         Kh_diff -= 0.5*lapPolDiff(ut, order) * np.exp(-ut)*s**(KP-2)
+#                         Kh_diff2 += 0.25*lapPolDiff2(ut, order) * np.exp(-ut)*s**(KP-4)
+#                 Kh_diff /= wsig
+#                 Kh_diff2 /= wsig
+#                 df += Kh_diff2 * 4*(a1[k,:] * a2[l,:]).sum() \
+#                       * ((x[k,:]-x[l,:])*p[k,:]).sum() *(x[k,:]-x[l,:]) \
+#                       + Kh_diff * 2 * (a1[k,:] * a2[l,:]).sum() * p[k,:]
+#             f[k, :] += df
+#
+#     return  f
+#
+#
+#
+# @jit(nopython=True, parallel=True)
+# def applykdiff12_(x, a1, a2, p, name, scale, order, KP=-1):
+#     num_nodes = x.shape[0]
+#     dim = x.shape[1]
+#     f = np.zeros((num_nodes, dim))
+#     wsig = 0
+#     for s in scale:
+#         wsig += s ** KP
+#
+#     if 'gauss' in name:
+#         for k in prange(num_nodes):
+#             df = np.zeros(dim)
+#             for l in range(num_nodes):
+#                 ut0 = ((x[k, :] - x[l, :]) ** 2).sum()
+#                 Kh_diff = 0
+#                 Kh_diff2 = 0
+#                 for s in scale:
+#                     ut = ut0 / s ** 2
+#                     if ut < 1e-8:
+#                         Kh_diff -= 0.5 * s ** (KP - 2)
+#                         Kh_diff2 += 0.25 * s ** (KP - 4)
+#                     else:
+#                         Kh_diff -= 0.5 * np.exp(-0.5 * ut) * s ** (KP - 2)
+#                         Kh_diff2 += 0.25 * np.exp(-0.5 * ut) * s ** (KP - 4)
+#                 Kh_diff /= wsig
+#                 Kh_diff2 /= wsig
+#                 df += -Kh_diff2 * 4 * (a1[k, :] * a2[l, :]).sum() \
+#                       * ((x[k, :] - x[l, :]) * p[l, :]).sum() * (x[k, :] - x[l, :]) \
+#                       - Kh_diff * 2 * (a1[k, :] * a2[l, :]).sum() * p[l, :]
+#             f[k, :] += df
+#     if 'lap' in name:
+#         for k in prange(num_nodes):
+#             df = np.zeros(dim)
+#             for l in range(num_nodes):
+#                 ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
+#                 Kh_diff = 0
+#                 Kh_diff2 = 0
+#                 for s in scale:
+#                     ut = ut0 / s
+#                     if ut < 1e-8:
+#                         Kh_diff -= 0.5 * lapPolDiff(0, order) * s ** (KP - 2)
+#                         Kh_diff2 += 0.25 * lapPolDiff2(0, order) * s ** (KP - 4)
+#                     else:
+#                         Kh_diff -= 0.5 * lapPolDiff(ut, order) * np.exp(-ut) * s ** (KP - 2)
+#                         Kh_diff2 += 0.25 * lapPolDiff2(ut, order) * np.exp(-ut) * s ** (KP - 4)
+#                 Kh_diff /= wsig
+#                 Kh_diff2 /= wsig
+#                 df += -Kh_diff2 * 4 * (a1[k, :] * a2[l, :]).sum() \
+#                       * ((x[k, :] - x[l, :]) * p[l, :]).sum() * (x[k, :] - x[l, :]) \
+#                       - Kh_diff * 2 * (a1[k, :] * a2[l, :]).sum() * p[l, :]
+#             f[k, :] += df
+#
+#     return f
+#
+#
+# @jit(nopython=True, parallel=True)
+# def applykdiff11and12_(x, a1, a2, p, name, scale, order, KP=-1):
+#     num_nodes = x.shape[0]
+#     dim = x.shape[1]
+#     f = np.zeros((num_nodes, dim))
+#     wsig = 0
+#     for s in scale:
+#         wsig += s ** KP
+#
+#     if 'gauss' in name:
+#         for k in prange(num_nodes):
+#             df = np.zeros(dim)
+#             for l in range(num_nodes):
+#                 dx = x[k, :] - x[l, :]
+#                 dp = p[k, :] - p[l, :]
+#                 ut0 = ((x[k, :] - x[l, :]) ** 2).sum()
+#                 Kh_diff = 0
+#                 Kh_diff2 = 0
+#                 for s in scale:
+#                     ut = ut0 / s ** 2
+#                     if ut < 1e-8:
+#                         Kh_diff -= 0.5 * s ** (KP - 2)
+#                         Kh_diff2 += 0.25 * s ** (KP - 4)
+#                     else:
+#                         Kh_diff -= 0.5 * np.exp(-0.5 * ut) * s ** (KP - 2)
+#                         Kh_diff2 += 0.25 * np.exp(-0.5 * ut) * s ** (KP - 4)
+#                 Kh_diff /= wsig
+#                 Kh_diff2 /= wsig
+#                 df += 2 * (a1[k,:]*a2[l,:]).sum() *  (2 * Kh_diff2 *(dx*dp).sum() *dx + Kh_diff * dp)
+#             f[k, :] += df
+#     if 'lap' in name:
+#         for k in prange(num_nodes):
+#             df = np.zeros(dim)
+#             for l in range(num_nodes):
+#                 dx = x[k, :] - x[l, :]
+#                 dp = p[k, :] - p[l, :]
+#                 ut0 = np.sqrt(((x[k, :] - x[l, :]) ** 2).sum())
+#                 Kh_diff = 0
+#                 Kh_diff2 = 0
+#                 for s in scale:
+#                     ut = ut0 / s
+#                     if ut < 1e-8:
+#                         Kh_diff -= 0.5 * lapPolDiff(0, order) * s ** (KP - 2)
+#                         Kh_diff2 += 0.25 * lapPolDiff2(0, order) * s ** (KP - 4)
+#                     else:
+#                         Kh_diff -= 0.5 * lapPolDiff(ut, order) * np.exp(-ut) * s ** (KP - 2)
+#                         Kh_diff2 += 0.25 * lapPolDiff2(ut, order) * np.exp(-ut) * s ** (KP - 4)
+#                 Kh_diff /= wsig
+#                 Kh_diff2 /= wsig
+#                 df += 2 * (a1[k,:]*a2[l,:]).sum() *  (2 * Kh_diff2 *(dx*dp).sum() *dx + Kh_diff * dp)
+#             f[k, :] += df
+#
+#     return f
 
 def applyktensor(y, x, ay, ax, betay, betax, name, scale, order, cpu=False, dtype='float64', KP=-1):
     if not cpu and pykeops.config.gpu_available:

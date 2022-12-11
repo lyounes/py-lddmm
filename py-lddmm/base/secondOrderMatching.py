@@ -65,127 +65,19 @@ class SurfaceTimeMatching(SurfaceMatching):
                  saveTrajectories = False, affine = affine, outputDir = outputDir,pplot=False)
 
         self.param.KparDiff0 = self.param.KparDiff
-
-        # if Template==None:
-        #     if fileTempl==None:
-        #         print('Please provide a template surface')
-        #         return
-        #     else:
-        #         self.fv0 = surfaces.Surface(surf=fileTempl)
-        # else:
-        #     self.fv0 = surfaces.Surface(surf=Template)
-        #
-        # if Targets==None:
-        #     if fileTarg==None:
-        #         print('Please provide a list of target surfaces')
-        #         return
-        #     else:
-        #         self.fv1 = []
-        #         if self.param.errorType == 'L2Norm':
-        #             for f in fileTarg:
-        #                 fv1 = surfaces.Surface()
-        #                 fv1.readFromImage(f)
-        #                 self.fv1.append(fv1)
-        #         else:
-        #             for f in fileTarg:
-        #                 self.fv1.append(surfaces.Surface(surf=f))
-        # else:
-        #     self.fv1 = []
-        #     if self.param.errorType == 'L2Norm':
-        #         for s in Targets:
-        #             fv1 = surfaces.Surface()
-        #             fv1.readFromImage(s)
-        #             self.fv1.append(fv1)
-        #     else:
-        #         for s in Targets:
-        #             self.fv1.append(surfaces.Surface(surf=s))
-
-        # if rescaleTemplate:
-        #     f0 = np.fabs(self.fv0.surfVolume())
-        #     f1 = np.fabs(self.fv1[0].surfVolume())
-        #     self.fv0.updateVertices(self.fv0.vertices * (f1/f0)**(1./3))
-        #     m0 = np.mean(self.fv0.vertices, axis = 0)
-        #     m1 = np.mean(self.fv1[0].vertices, axis = 0)
-        #     self.fv0.updateVertices(self.fv0.vertices + (m1-m0))
-
         self.saveRate = 10
-        # self.iter = 0
-        # self.outputDir = outputDir
-        # if not os.access(outputDir, os.W_OK):
-        #     if os.access(outputDir, os.F_OK):
-        #         print('Cannot save in ' + outputDir)
-        #         return
-        #     else:
-        #         os.mkdir(outputDir)
-        #
-        # self.dim = self.fv0.vertices.shape[1]
-        # self.maxIter = maxIter
-        # self.verb = verb
-        # self.testGradient = testGradient
-        # self.regweight = regWeight
-        # self.affine = affine
         if self.affine=='euclidean' or self.affine=='translation':
             self.saveCorrected = True
         else:
             self.saveCorrected = False
-        #
-        # self.affB = AffineBasis(self.dim, affine)
-        # self.affineDim = self.affB.affineDim
-        # self.affineBasis = self.affB.basis
-        # self.affineWeight = affineWeight * np.ones(self.affineDim)
-        # if (len(self.affB.rotComp) > 0) & (rotWeight != None):
-        #     self.affineWeight[self.affB.rotComp] = rotWeight
-        # if (len(self.affB.simComp) > 0) & (scaleWeight != None):
-        #     self.affineWeight[self.affB.simComp] = scaleWeight
-        # if (len(self.affB.transComp) > 0) & (transWeight != None):
-        #     self.affineWeight[self.affB.transComp] = transWeight
-        # self.affw = affineWeight
-        #
         self.controlWeight = controlWeight
+
         if self.affine == 'none':
             self.typeRegression = typeRegression
         else:
             self.typeRegression = 'affine'
 
         self.typeRegressionSave = typeRegression
-        # self.affBurnIn = 50
-        # self.coeffAff1 = 1
-        # self.coeffAff2 = 10.
-        # self.coeffAff = self.coeffAff1
-
-
-        # self.fv0Fine = surfaces.Surface(surf=self.fv0)
-        # if (subsampleTargetSize > 0):
-        #     self.fv0.Simplify(subsampleTargetSize)
-        #     print('simplified template', self.fv0.vertices.shape[0])
-        #
-        # v0 = self.fv0.surfVolume()
-        # #print 'v0', v0
-        # if self.param.errorType == 'L2Norm' and v0 < 0:
-        #     #print 'flip'
-        #     self.fv0.flipFaces()
-        #     v0 = -v0
-        # for s in self.fv1:
-        #     v1 = s.surfVolume()
-        #     #print 'v1', v1
-        #     if (v0*v1 < 0):
-        #         #print 'flip1'
-        #         s.flipFaces()
-        #
-        # #self.x0 = self.fv0.vertices
-        # self.obj = None
-        # self.objTry = None
-        # self.gradCoeff = self.fv0.vertices.shape[0]
-        # self.saveFile = saveFile
-        # self.fv0.saveVTK(self.outputDir+'/Template.vtk')
-        # for k,s in enumerate(self.fv1):
-        #     s.saveVTK(self.outputDir+'/Target'+str(k)+'.vtk')
-        # z= self.fv0.surfVolume()
-        # if (z < 0):
-        #     self.fv0ori = -1
-        # else:
-        #     self.fv0ori = 1
-        #
 
     def setDotProduct(self, unreduced=False):
         self.euclideanGradient = True
@@ -299,7 +191,7 @@ class SurfaceTimeMatching(SurfaceMatching):
         logging.info('orientation: {0:d}'.format(self.fv0ori))
 
 
-    def dataTerm(self, _fvDef, fv1=None, fvInit = None):
+    def dataTerm(self, _fvDef, fv1=None, fvInit = None, _lmk_def = None, lmk1 = None):
         obj = 0
         if fv1 is None:
             fv1 = self.fv1
@@ -434,7 +326,7 @@ class SurfaceTimeMatching(SurfaceMatching):
             print('Warning: nan in updateTry')
             return 1e500
 
-        if (objRef == None) | (objTry < objRef):
+        if (objRef == None) or (objTry < objRef):
             self.a00Try = a00Try
             self.rhot0Try = rhot0Try
             self.Afft0Try = Afft0Try
@@ -505,7 +397,8 @@ class SurfaceTimeMatching(SurfaceMatching):
     
             # a1 = np.concatenate((px_[np.newaxis,...], a[np.newaxis,...]))
             # a2 = np.concatenate((a[np.newaxis,...], px_[np.newaxis,...]))
-            zpx = KparDiff.applyDiffKT(x, px_, a) + KparDiff.applyDiffKT(x, a, px_) - KparDiff.applyDDiffK11and12(x, a, a, pa_)
+            zpx = KparDiff.applyDiffKT(x, px_, a) + KparDiff.applyDiffKT(x, a, px_) \
+                  - KparDiff.applyDDiffK11and12(x, a, a, pa_)
             zpa = KparDiff.applyK(x, px_) - KparDiff.applyDiffK1and2(x, pa_, a)
     
             pxt[T-t-1, :, :] = px_ + timeStep * zpx
@@ -638,14 +531,14 @@ class SurfaceTimeMatching(SurfaceMatching):
             if len(self.Afft0) > 0:
                 A0 = self.affB.getTransforms(self.Afft0)
         else:
-            a0 = self.a0 - update[1] * update[0].a0
-            a00 = self.a0 - update[1] * update[0].a00
-            rhot = self.rhot - update[1] * update[0].rhot
-            rhot0 = self.rhot0 - update[1] * update[0].rhot0
-            if len(update[0].aff0) > 0:
-                A0 = self.affB.getTransforms(self.Afft0 - update[1]*update[0].aff0)
-            if len(update[0].aff) > 0:
-                A = self.affB.getTransforms(self.Afft - update[1]*update[0].aff)
+            a0 = self.a0 - update[1] * update[0]['a0']
+            a00 = self.a0 - update[1] * update[0]['a00']
+            rhot = self.rhot - update[1] * update[0]['rhot']
+            rhot0 = self.rhot0 - update[1] * update[0]['rhot0']
+            if len(update[0]['aff0']) > 0:
+                A0 = self.affB.getTransforms(self.Afft0 - update[1]*update[0]['aff0'])
+            if len(update[0]['aff']) > 0:
+                A = self.affB.getTransforms(self.Afft - update[1]*update[0]['aff'])
             (xt0, at0)  = evol.secondOrderEvolution(self.x0, a00, rhot0, self.param.KparDiff0,
                                                               self.param.timeStep)
             (xt, at)  = evol.secondOrderEvolution(xt0[-1,...], a0, rhot, self.param.KparDiff,
@@ -707,27 +600,19 @@ class SurfaceTimeMatching(SurfaceMatching):
         #print (grd.a00**2).sum(),(grd.rhot0**2).sum(),(grd.aff0**2).sum(),(grd.a0**2).sum(),(grd.rhot**2).sum(),(grd.aff**2).sum() 
         return grd
 
-
-
     def addProd(self, dir1, dir2, beta):
-        dir = Direction()
-        dir.a0 = dir1.a0 + beta * dir2.a0
-        dir.rhot = dir1.rhot + beta * dir2.rhot
-        dir.aff = dir1.aff + beta * dir2.aff
-        dir.a00 = dir1.a00 + beta * dir2.a00
-        dir.rhot0 = dir1.rhot0 + beta * dir2.rhot0
-        dir.aff0 = dir1.aff0 + beta * dir2.aff0
-        return dir
+        dr = Direction()
+        for k in dir1.keys():
+            if dir1[k] is not None:
+                dr[k] = dir1[k] + beta * dir2[k]
+        return dr
 
     def prod(self, dir1, beta):
-        dir = Direction()
-        dir.a0 = beta * dir1.a0
-        dir.rhot = beta * dir1.rhot
-        dir.aff = beta * dir1.aff
-        dir.a00 = beta * dir1.a00
-        dir.rhot0 = beta * dir1.rhot0
-        dir.aff0 = beta * dir1.aff0
-        return dir
+        dr = Direction()
+        for k in dir1.keys():
+            if dir1[k] is not None:
+                dr[k] = beta * dir1[k]
+        return dr
 
 
     def randomDir(self):
@@ -973,7 +858,8 @@ class SurfaceTimeMatching(SurfaceMatching):
         self.cgBurnIn = self.affBurnIn
         
         if self.param.algorithm == 'cg':
-            cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=0.01)
+            cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=0.01,
+                  Wolfe=self.param.wolfe)
         elif self.param.algorithm == 'bfgs':
             bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=1.,
                       Wolfe=self.param.wolfe, memory=25)

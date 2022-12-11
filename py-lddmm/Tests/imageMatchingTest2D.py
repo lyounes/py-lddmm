@@ -12,8 +12,10 @@ pyfftw.config.NUM_THREADS = -1
 loggingUtils.setup_default_logging('', stdOutput = True)
 
 ## Object kernel
-ftemp = '../TestData/Images/2D/l2nr011.tif'
-ftarg = '../TestData/Images/2D/l2nr013.tif'
+# ftemp = '../TestData/Images/2D/l2nr011.tif'
+# ftarg = '../TestData/Images/2D/l2nr013.tif'
+ftemp = '../TestData/Images/2D/Hand_0000002.jpg'
+ftarg = '../TestData/Images/2D/Hand_0000008.jpg'
 
 sm = ImageMatchingParam(dim=2, timeStep=0.1, algorithm='bfgs', sigmaKernel = 5, order=3,
                         kernelSize=25, typeKernel='laplacian', sigmaError=50., rescaleFactor=.1, padWidth = 15,
