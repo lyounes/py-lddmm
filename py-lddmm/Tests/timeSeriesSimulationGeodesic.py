@@ -1,6 +1,14 @@
 from sys import path as sys_path
 sys_path.append('..')
 sys_path.append('../base')
+import os
+import matplotlib
+if 'DISPLAY' in os.environ:
+    matplotlib.use('qt5Agg')
+else:
+    matplotlib.use("Agg")
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+
 from base.loggingUtils import setup_default_logging
 from base.kernelFunctions import Kernel
 from base import surfaceMatching

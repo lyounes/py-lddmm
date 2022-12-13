@@ -1086,7 +1086,7 @@ def applyDDiffK_pykeops(x, a1, a2, p, name, scale, order, option = '11and12', dt
     pj_ = LazyTensor(p_[None, :, ])
     a1i_ = LazyTensor(a1_[:, None, :])
     a2j_ = LazyTensor(a2_[None, :, :])
-
+    aij = (a1i_*a2j_).sum(-1)
 
     for s in scale:
         xs = x/s
@@ -1094,6 +1094,9 @@ def applyDDiffK_pykeops(x, a1, a2, p, name, scale, order, option = '11and12', dt
         xsi = LazyTensor(xs.astype(dtype)[:, None, :])
         xsj = LazyTensor(xs.astype(dtype)[None, :, :])
         K1ij, K2ij, Dij = makeDDiffKij(xsi, xsj, name, order)
+        print('Tensors 1', K2ij * (Dij * (pi_ -pj_)).sum(-1) * Dij)
+        print('Tensors 2', K1ij * (pi_-pj_))
+        print('Tensors 3', (K2ij * (Dij * (pi_ -pj_)).sum(-1) * Dij - K1ij * (pi_-pj_)) * (a1i_ * a2j_).sum(-1) * KS)
         if option == '11':
             res += (K2ij * (Dij*pi_).sum(-1) * Dij - K1ij*pi_) *(a1i_ * a2j_).sum(-1)* KS
         elif option == '12':
