@@ -67,11 +67,15 @@ class ImageMatching(ImageMatchingBase):
         # fig.canvas.flush_events()
 
     def initialSave(self):
-        saveImage(self.im0.data, self.outputDir + '/Template.vtk')
-        saveImage(self.im1.data, self.outputDir + '/Target.vtk')
-        saveImage(self.KparDiff.K, self.outputDir + '/Kernel.vtk', normalize=True)
-        saveImage(self.param.smoothKernel.K, self.outputDir + '/smoothKernel.vtk', normalize=True)
-        saveImage(self.mask.min(axis=0), self.outputDir + '/Mask.vtk', normalize=True)
+        if len(self.im0.data.shape) == 3:
+            ext = '.vtk'
+        else:
+            ext = ''
+        saveImage(self.im0.data, self.outputDir + '/Template' + ext)
+        saveImage(self.im1.data, self.outputDir + '/Target' + ext)
+        saveImage(self.KparDiff.K, self.outputDir + '/Kernel' + ext, normalize=True)
+        saveImage(self.param.smoothKernel.K, self.outputDir + '/smoothKernel' + ext, normalize=True)
+        saveImage(self.mask.min(axis=0), self.outputDir + '/Mask' + ext, normalize=True)
 
 
 
@@ -239,27 +243,31 @@ class ImageMatching(ImageMatchingBase):
 
     def endOfIteration(self):
         self.nbIter += 1
+        if len(self.im0.data.shape) == 3:
+            ext = '.vtk'
+        else:
+            ext = ''
         if self.nbIter % 10 == 0:
             _psi = np.copy(self.psi)
             self.initFlow()
             for t in range(self.Tsize):
                 self.updateFlow(self.Lv[t,...], 1.0/self.Tsize)
-                if (self.param.saveMovie):
-                    I1 = multilinInterp(self.im0, self._psi)
-                    I1.save(self.outputDir + f'/movie{t+1:03d}/vtk')
+                if (self.saveMovie):
+                    I1 = multilinInterp(self.im0.data, self._psi)
+                    saveImage(I1, self.outputDir + f'/movie{t+1:03d}' + ext)
 
             I1 = multilinInterp(self.im0.data, self._psi)
-            saveImage(I1, self.outputDir + f'/deformedTemplate.vtk')
+            saveImage(I1, self.outputDir + f'/deformedTemplate' + ext)
             I2 = multilinInterp(I1, self._phi)
             I1 = multilinInterp(self.im1.data, self._phi)
-            saveImage(I1, self.outputDir + f'/deformedTarget.vtk')
-            saveImage(np.squeeze(self.Lv[0,...]), self.outputDir + f'/initialMomentum.vtk', normalize=True)
+            saveImage(I1, self.outputDir + f'/deformedTarget' + ext)
+            saveImage(np.squeeze(self.Lv[0,...]), self.outputDir + f'/initialMomentum' + ext, normalize=True)
             dphi = np.log(jacobianDeterminant(self._phi, self.resol))
-            saveImage(dphi, self.outputDir + f'/logJacobian.vtk', normalize=True)
+            saveImage(dphi, self.outputDir + f'/logJacobian' + ext, normalize=True)
 
             self.GeodesicDiffeoEvolution(self.Lv[0,...])
             I1 = multilinInterp(self.im0.data, self._psi)
-            saveImage(I1, self.outputDir + f'/EPDiffTemplate.vtk')
+            saveImage(I1, self.outputDir + f'/EPDiffTemplate' + ext)
             self.psi = np.copy(self._psi)
       #
       # sprintf(file, "%s/template2targetMap", path) ;
@@ -318,7 +326,8 @@ class ImageMatching(ImageMatchingBase):
         self.epsMax = 5.
         logging.info('Gradient lower bound: %f' % (self.gradEps))
         if self.param.algorithm == 'cg':
-            cg.cg(self, verb=self.verb, maxIter=self.maxIter, TestGradient=self.testGradient, epsInit=0.1)
+            cg.cg(self, verb=self.verb, maxIter=self.maxIter, TestGradient=self.testGradient, epsInit=0.1,
+                  Wolfe=self.param.wolfe, )
         elif self.param.algorithm == 'bfgs':
             bfgs.bfgs(self, verb=self.verb, maxIter=self.maxIter, TestGradient=self.testGradient, epsInit=1.,
                       Wolfe=self.param.wolfe, memory=50)
