@@ -21,7 +21,7 @@ setup_default_logging('../Output/Temp', fileName='info', stdOutput = True)
 rdir = '../TestData/AtrophyLargeNoise/'
 fv0 = surfaces.Surface(surf=rdir + 'baseline.vtk')
 fv1 = [fv0]
-for k in range(2):
+for k in range(5):
     fv1 += [surfaces.Surface(surf=rdir + 'followUp' + str(2 * k + 1) + '.vtk')]
 outputDir = '../Output/timeSeriesNoAtrophy'
 

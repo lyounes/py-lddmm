@@ -27,7 +27,12 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from matplotlib.colors import LightSource
 from matplotlib import colors
 from matplotlib import pyplot as plt
-import pygalmesh
+try:
+    from pygalmesh import DomainBase, generate_surface_mesh
+    gotPygalmesh=True
+except ImportError:
+    print('could not import Pygalmesh functions')
+    gotPygalmesh = False
 
 from . import diffeo
 import scipy.linalg as spLA
@@ -1140,6 +1145,9 @@ class Surface:
         return res, np.nonzero(selectv)[0]
 
     def createFlatApproximation(self, thickness=None, M=50):
+        if ~gotPygalmesh:
+            raise Exception('Cannot run function without pygalmesh')
+
         # Compute center
         a = self.computeVertexArea()[0]
         A = a.sum()
@@ -1159,7 +1167,7 @@ class Surface:
         else:
             w0 = (thickness/2)**2
 
-        class Pancake(pygalmesh.DomainBase):
+        class Pancake(DomainBase):
             def __init__(self):
                 super().__init__()
 
@@ -1175,7 +1183,7 @@ class Surface:
 
         # d = Heart()
         d = Pancake()
-        mesh = pygalmesh.generate_surface_mesh(d, max_facet_distance=1.0, min_facet_angle=30.0,
+        mesh = generate_surface_mesh(d, max_facet_distance=1.0, min_facet_angle=30.0,
                                                max_radius_surface_delaunay_ball=2/M)
         # [x,y,z] = np.mgrid[0:2*M+1, 0:2*M+1, 0:2*M+1] / M
         # x = emax*(x-1)
