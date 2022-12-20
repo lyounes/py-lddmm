@@ -27,20 +27,20 @@ model = 'GaussCenters'
 
 def compute(model):
     loggingUtils.setup_default_logging('../Output', stdOutput = True)
-    sigmaKernel = 5.
+    sigmaKernel = 1.
     sigmaDist = 5.
-    sigmaError = 1.
+    sigmaError = .5
     regweight = 1.
     if model=='Circles':
-        f = Circle(radius = 10., targetSize=250)
-        fv0 = Mesh(f, volumeRatio=5000)
+        f = Circle(radius = 10., targetSize=1000)
+        fv0 = Mesh(f, volumeRatio=1000)
         # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
         imagev = np.array(((fv0.vertices - np.array(f.center)[None, :]) ** 2).sum(axis=1) < 20, dtype=float)
         fv0.image = np.zeros((fv0.faces.shape[0], 2))
         fv0.image[:, 0] = (imagev[fv0.faces[:, 0]] + imagev[fv0.faces[:, 1]] + imagev[fv0.faces[:, 2]]) / 3
         fv0.image[:, 1] = 1 - fv0.image[:, 0]
 
-        f = Circle(radius = 12, targetSize=250)
+        f = Circle(radius = 12, targetSize=1000)
         fv1 = Mesh(f, volumeRatio=5000)
         # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
         imagev = np.array(((fv1.vertices - np.array(f.center)[None, :]) ** 2).sum(axis=1) < 10, dtype=float)
@@ -89,10 +89,18 @@ def compute(model):
         ftemp = fv0
         ftarg = fv1
     elif model == 'GaussCenters':
-        ftemp = MoGCircle(largeRadius=10)
-        ftarg = MoGCircle(largeRadius=12, centers=1.2*ftemp.GaussCenters, typeProb=ftemp.typeProb, alpha=ftemp.alpha)
+        ftemp = MoGCircle(largeRadius=10, nregions=50)
+        centers = ftemp.GaussCenters + .5 * np.random.normal(0,1,ftemp.GaussCenters.shape)
+        ftarg = MoGCircle(largeRadius=12, centers=1.2*centers, typeProb=ftemp.typeProb, alpha=ftemp.alpha)
     else:
         return
+
+    ## Transform image
+    epsilon = 0.95
+    alpha = np.sqrt(1 - epsilon)
+    beta = (np.sqrt(1 - epsilon + ftemp.image.shape[1] * epsilon) - alpha) / np.sqrt(ftemp.image.shape[1])
+    ftemp.updateImage(alpha * ftemp.image + beta * ftemp.image.sum(axis=1)[:, None])
+    ftarg.updateImage(alpha * ftarg.image + beta * ftarg.image.sum(axis=1)[:, None])
 
     ## Object kernel
     K1 = Kernel(name='gauss', sigma = sigmaKernel)

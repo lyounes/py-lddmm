@@ -123,9 +123,10 @@ class MeshMatching(pointSetMatching.PointSetMatching):
     def objectiveFun(self):
         if self.obj == None:
             self.obj0 = self.fun_obj0(self.fv1, self.param.KparDist, self.param.KparIm) / (self.param.sigmaError ** 2)
-            (self.obj, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
+            (self.objDef, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
-            self.obj += self.obj0 + self.dataTerm(self.fvDef)
+            self.objData = self.dataTerm(self.fvDef)
+            self.obj = self.obj0 + self.objData + self.objDef
         return self.obj
 
 
@@ -356,6 +357,7 @@ class MeshMatching(pointSetMatching.PointSetMatching):
         self.param.KparDiff.pk_dtype = self.Kdiff_dtype
         self.param.KparDist.pk_dtype = self.Kdist_dtype
         self.param.KparIm.pk_dtype = self.Kim_dtype
+        logging.info(f'Objective function components: Def={self.objDef:.04f} Data={self.objData+ self.obj0:0.4f}')
 
     def endOfProcedure(self):
         self.endOfIteration(endP=True)

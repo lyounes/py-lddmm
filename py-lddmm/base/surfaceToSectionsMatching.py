@@ -34,38 +34,24 @@ from .surfaceSection import SurfaceSection, Surf2SecDist, Surf2SecGrad, Hyperpla
 #        maxIter: max iterations in conjugate gradient
 class SurfaceToSectionsMatching(SurfaceMatching):
     def __init__(self, Template=None, Target=None, param=None, maxIter=1000, passenger = None, componentMap=None,
-                 regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
+                 regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, mode="normal",
                  subsampleTargetSize=-1, affineOnly = False,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
-                 testGradient=True, saveFile = 'evolution', select_planes = None, forceClosed = False,
+                 saveFile = 'evolution', select_planes = None, forceClosed = False,
                  saveTrajectories = False, affine = 'none', outputDir = '.',pplot=True):
-        if param is None:
-            self.param = SurfaceMatchingParam()
-        else:
-            self.param = param
-
-        if self.param.algorithm == 'cg':
-             self.euclideanGradient = False
-        else:
-            self.euclideanGradient = True
-
-        self.setOutputDir(outputDir)
-        self.fv0 = None
-        self.fv1 = None
-        self.fvInit = None
-        self.dim = 0
-        self.fun_obj = None
-        self.fun_obj0 = None
-        self.fun_objGrad = None
-        self.obj0 = 0
-        self.coeffAff = 1
-        self.obj = 0
-        self.xt = None
-        self.hyperplanes = None
         self.forceClosed = forceClosed
+        self.colors = ('b', 'm', 'g', 'r', 'y', 'k')
+        super().__init__(Template=Template, Target=Target, param=param, maxIter=maxIter, passenger = passenger,
+                 regWeight = regWeight, affineWeight = affineWeight, internalWeight=internalWeight, mode=mode,
+                 subsampleTargetSize=subsampleTargetSize, affineOnly = affineOnly,
+                 rotWeight = rotWeight, scaleWeight = scaleWeight, transWeight = transWeight, symmetric = symmetric,
+                 saveFile = saveFile,
+                 saveTrajectories = saveTrajectories, affine = affine, outputDir = outputDir, pplot=pplot)
+
+        self.hyperplanes = None
 
         self.set_fun(self.param.errorType)
-        self.set_template_and_target(Template, Target, subsampleTargetSize, select_planes, componentMap)
+        self.set_template_and_target(Template, Target, subsampleTargetSize, misc = [select_planes, componentMap])
         self.match_landmarks = False
         self.def_lmk = None
         print(f'Template has {self.fv0.vertices.shape[0]} vertices')
@@ -73,27 +59,13 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         print(f'There are {len(self.fv1)} target curves')
 
 
-
-        self.set_parameters(maxIter=maxIter, regWeight = regWeight, affineWeight = affineWeight,
-                            internalWeight=internalWeight, verb=verb, affineOnly = affineOnly,
-                            rotWeight = rotWeight, scaleWeight = scaleWeight, transWeight = transWeight,
-                            symmetric = symmetric, testGradient=testGradient, saveFile = saveFile,
-                            saveTrajectories = saveTrajectories, affine = affine)
-        self.initialize_variables()
-        self.gradCoeff = self.x0.shape[0]
-        self.set_passenger(passenger)
-
         #print(self.componentMap)
-        self.pplot = pplot
-        self.colors = ('b', 'm', 'g', 'r', 'y', 'k')
-        if self.pplot:
-            self.initial_plot()
         self.saveRate = 25
-        self.forceLineSearch = False
+        # self.forceLineSearch = False
 
 
 
-    def set_template_and_target(self, Template, Target, subsampleTargetSize=-1, select_planes=None, componentMap=None):
+    def set_template_and_target(self, Template, Target, subsampleTargetSize=-1, misc = None):
         if Template is None:
             logging.error('Please provide a template surface')
             return
@@ -132,6 +104,13 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         #         cv = Curve(curve=c[i])
         #         h = Hyperplane(u=self.hyperplanes[i,:3], offset=self.hyperplanes[3])
         #         self.fv1.append(SurfaceSection(curve=cv, hyperplane=h, hypLabel=i))
+
+        if misc is None:
+            select_planes = None
+            componentMap = None
+        else:
+            select_planes = misc[0]
+            componentMap = misc[1]
 
         if select_planes is not None:
             self.selectPlanes((select_planes))
@@ -269,7 +248,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
     #             f.normals *= -1
     #
 
-    def fix_orientation(self):
+    def fix_orientation(self, fv1=None):
         self.fv0ori = 1
         self.fv1ori = 1
 
@@ -290,7 +269,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         ax.set_zlim(lim1[2][0], lim1[2][1])
         fig.canvas.flush_events()
 
-    def set_fun(self, errorType):
+    def set_fun(self, errorType, vfun=None):
         self.param.errorType = errorType
         if errorType == 'current':
             #print('Running Current Matching')
@@ -377,6 +356,9 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         ax.set_ylim(lim1[1][0], lim1[1][1])
         ax.set_zlim(lim1[2][0], lim1[2][1])
         fig.canvas.flush_events()
+
+    def saveHdf5(self, fileName):
+        pass
 
 
     def endOfIteration(self, forceSave=False):

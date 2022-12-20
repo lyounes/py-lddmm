@@ -245,7 +245,7 @@ class SurfaceMatching(object):
         self.stateSubset = None
 
 
-    def set_template_and_target(self, Template, Target, subsampleTargetSize=-1):
+    def set_template_and_target(self, Template, Target, subsampleTargetSize=-1, misc=None):
         if Template is None:
             logging.error('Please provide a template surface')
             return
