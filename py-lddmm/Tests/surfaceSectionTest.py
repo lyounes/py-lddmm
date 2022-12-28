@@ -116,7 +116,7 @@ for ti in range(1, 15):
 
     f.optimizeMatching()
     fv0 = f.fvDef
-    fv0.saveVTK(outputDir + f'/defomed_template{ti:02d}.vtk')
+    fv0.saveVTK(outputDir + f'/deformed_template{ti:02d}.vtk')
 plt.ioff()
 plt.show()
 

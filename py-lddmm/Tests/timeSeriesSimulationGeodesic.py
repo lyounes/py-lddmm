@@ -1,6 +1,14 @@
 from sys import path as sys_path
 sys_path.append('..')
 sys_path.append('../base')
+import os
+import matplotlib
+if 'DISPLAY' in os.environ:
+    matplotlib.use('qt5Agg')
+else:
+    matplotlib.use("Agg")
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+
 from base.loggingUtils import setup_default_logging
 from base.kernelFunctions import Kernel
 from base import surfaceMatching
@@ -13,7 +21,7 @@ setup_default_logging('../Output/Temp', fileName='info', stdOutput = True)
 rdir = '../TestData/AtrophyLargeNoise/'
 fv0 = surfaces.Surface(surf=rdir + 'baseline.vtk')
 fv1 = [fv0]
-for k in range(2):
+for k in range(5):
     fv1 += [surfaces.Surface(surf=rdir + 'followUp' + str(2 * k + 1) + '.vtk')]
 outputDir = '../Output/timeSeriesNoAtrophy'
 

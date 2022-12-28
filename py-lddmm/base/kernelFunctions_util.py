@@ -1134,7 +1134,7 @@ def applyDDiffK_pykeops(x, a1, a2, p, name, scale, order, option = '11and12', dt
     pj_ = LazyTensor(p_[None, :, ])
     a1i_ = LazyTensor(a1_[:, None, :])
     a2j_ = LazyTensor(a2_[None, :, :])
-
+    aij = (a1i_*a2j_).sum(-1)
 
     for s in scale:
         xs = x/s
@@ -1142,12 +1142,17 @@ def applyDDiffK_pykeops(x, a1, a2, p, name, scale, order, option = '11and12', dt
         xsi = LazyTensor(xs.astype(dtype)[:, None, :])
         xsj = LazyTensor(xs.astype(dtype)[None, :, :])
         K1ij, K2ij, Dij = makeDDiffKij(xsi, xsj, name, order)
+        # print(K1ij.shape, K2ij.shape, Dij.shape)
+        # print('Tensors 1', (K2ij * (Dij * (pi_ -pj_)).sum(-1) * Dij).shape)
+        # print('Tensors 2', K1ij * (pi_-pj_))
+        # print('Tensors 3', ((K2ij * (Dij * (pi_ -pj_)).sum(-1) * Dij - K1ij * (pi_-pj_)) * (a1i_ * a2j_).sum(-1) * KS).shape)
         if option == '11':
-            res += (K2ij * (Dij*pi_).sum(-1) * Dij - K1ij*pi_) *(a1i_ * a2j_).sum(-1)* KS
+            res += ((K2ij * (Dij*pi_).sum(-1) * Dij - K1ij*pi_) *(a1i_ * a2j_).sum(-1)).sum(axis=1)* KS
         elif option == '12':
-            res -= (K2ij * (Dij * pj_).sum(-1) * Dij - K1ij * pj_) * (a1i_ * a2j_).sum(-1) * KS
+            res -= ((K2ij * (Dij * pj_).sum(-1) * Dij - K1ij * pj_) * (a1i_ * a2j_).sum(-1)).sum(axis=1) * KS
         elif option=='11and12':
-            res += (K2ij * (Dij * (pi_ -pj_)).sum(-1) * Dij - K1ij * (pi_-pj_)) * (a1i_ * a2j_).sum(-1) * KS
+            dres = (K2ij * (Dij * (pi_ -pj_)).sum(-1) * Dij - K1ij * (pi_-pj_)) * (a1i_ * a2j_).sum(-1) * KS
+            res = res + dres.sum(axis=1)
         else:
             print('Unknown option in second kernel derivative')
             return res

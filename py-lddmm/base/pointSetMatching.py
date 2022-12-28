@@ -74,7 +74,12 @@ class PointSetMatching(object):
         self.fun_objGrad = None
         self.obj0 = 0
         self.coeffAff = 1
-        self.obj = 0
+        self.obj = None
+        self.objDef = 0
+        self.objData = 0
+        self.objTry = None
+        self.objTryDef = 0
+        self.objTryData = 0
         self.xt = None
         self.setOutputDir(outputDir)
         self.set_template_and_target(Template, Target)
@@ -269,9 +274,10 @@ class PointSetMatching(object):
                 self.obj0 = self.fun_obj0(self.fv1, self.param.KparDist) / (self.param.sigmaError ** 2)
             else:
                 self.obj0 = self.fun_obj0(self.fv1) / (self.param.sigmaError**2)
-            (self.obj, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
+            (self.objDef, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
             self.fvDef.points = np.copy(np.squeeze(self.xt[-1, :, :]))
-            self.obj += self.obj0 + self.dataTerm(self.fvDef)
+            self.objData = self.dataTerm(self.fvDef)
+            self.obj = self.obj0 + self.objData + self.objDef
         return self.obj
 
     def getVariable(self):
@@ -286,9 +292,10 @@ class PointSetMatching(object):
             AfftTry = self.Afft
 
         foo = self.objectiveFunDef(atTry, AfftTry, withTrajectory=True)
-        objTry += foo[0]
+        objTryDef = foo[0]
         ff = self.makeTryInstance(np.squeeze(foo[1][-1, :, :]))
-        objTry += self.dataTerm(ff)
+        objTryData = self.dataTerm(ff)
+        objTry = self.obj0 + objTryData + objTryDef
 
         if np.isnan(objTry):
             logging.info('Warning: nan in updateTry')
@@ -297,6 +304,8 @@ class PointSetMatching(object):
         if (objRef is None) or (objTry < objRef):
             self.atTry = atTry
             self.objTry = objTry
+            self.objTryData = objTryData
+            self.objTryDef = objTryDef
             self.AfftTry = AfftTry
             #print 'objTry=',objTry, dir.diff.sum()
 
@@ -491,6 +500,8 @@ class PointSetMatching(object):
 
     def acceptVarTry(self):
         self.obj = self.objTry
+        self.objDef = self.objTryDef
+        self.objData = self.objTryData
         self.at = np.copy(self.atTry)
         self.Afft = np.copy(self.AfftTry)
         #print self.at
