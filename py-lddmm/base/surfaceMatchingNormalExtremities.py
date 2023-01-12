@@ -400,8 +400,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             Afft = self.Afft
             #A = self.affB.getTransforms(self.Afft)
         else:
-            if update[0].aff is not None:
-                Afft = self.Afft - update[1]*update[0].aff
+            if update[0]['aff'] is not None:
+                Afft = self.Afft - update[1]*update[0]['aff']
                 A = self.affB.getTransforms(Afft)
             else:
                 Afft = None
