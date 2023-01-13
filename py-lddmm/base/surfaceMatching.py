@@ -6,6 +6,7 @@ import numpy.linalg as la
 import logging
 import h5py
 import glob
+from warnings import warn
 from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, bfgs, sgd
 from . import surfaces, surface_distances as sd
 from . import pointSets, pointset_distances as psd
@@ -65,7 +66,7 @@ class SurfaceMatching(object):
                  param=None, maxIter=1000, passenger = None,
                  regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, mode='normal',
                  unreduced=False, unreducedWeight = 1.0,
-                 subsampleTargetSize=-1, affineOnly = False,
+                 subsampleTargetSize=-1, affineOnly = False, testGradient = None,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
                  saveFile = 'evolution',
                  saveTrajectories = False, affine = 'none', outputDir = '.',pplot=False):
@@ -73,6 +74,10 @@ class SurfaceMatching(object):
             self.param = SurfaceMatchingParam()
         else:
             self.param = param
+
+        if testGradient is not None:
+            logging.warning('Warning: testGradient has no effect on SurfaceMatching Initialization and is deprecated.\n'+
+                 '        Use testGradient = False | True after initialization to set this parameter.')
 
         self.setDotProduct(unreduced)
 
@@ -1304,7 +1309,7 @@ class SurfaceMatching(object):
         fn = []
         if type(fileName) is str:
             for kk in range(self.Tsize + 1):
-                fn.append(fileName + f'{kk:03d}')
+                fn.append(fileName + f'_corrected{kk:03d}')
         else:
             fn = fileName
         vt = None

@@ -591,6 +591,53 @@ def applyK1K2_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, orde
     return res
 
 
+def applyDiv(y, x, a, name, scale, order, cpu=False, dtype='float64', KP=-1):
+    if not cpu and pykeops.config.gpu_available:
+        return applyDiv_pykeops(y, x, a, name, scale, order, dtype=dtype, KP=KP)
+    else:
+        fun = pick_fun(name, mode = 'Diff')
+        return applyDiv_numba(y, x, a, fun, scale, order, KP=KP)
+
+
+
+@jit(nopython=True, parallel=True)
+def applyDiv_numba(y, x, a, fun, scale, order, KP=-1):
+    res = np.zeros((y.shape[0], 1))
+    ns = len(scale)
+    sKP1 = scale ** (KP - 1)
+    sKP = scale ** (KP)
+    wsig = sKP.sum()
+
+    for s in range(ns):
+        xs = x / scale[s]
+        ys = y / scale[s]
+        for k in prange(y.shape[0]):
+            for l in range(x.shape[0]):
+                res[k,0] += fun(ys[k, :], xs[l, :], a[l, :], order)* sKP1[s]
+    res /= wsig
+    return res
+
+def applyDiv_pykeops(y, x, a, name, scale, order, dtype='float64', KP=-1, option = '1'):
+    res = np.zeros((y.shape[0], 1))
+    ns = len(scale)
+    sKP1 = scale**(KP-1)
+    sKP = scale**(KP)
+    wsig = sKP.sum()
+    a_ = a.astype(dtype)
+    #ai_ = LazyTensor(a_[:, None, :])
+    aj_ = LazyTensor(a_[None, :, ])
+
+    for s in range(ns):
+        xs = x/scale[s]
+        ys = y/scale[s]
+        ysi = LazyTensor(ys.astype(dtype)[:, None, :])
+        xsj = LazyTensor(xs.astype(dtype)[None, :, :])
+        Kij = makeDiffKij(ysi, xsj, name, order)
+        res += (sKP1[s]) * ((Kij * aj_).sum(-1)).sum(1)
+    res /= wsig
+    return res
+
+
 
 
 ## Kernel sums: first derivative
@@ -629,6 +676,7 @@ def applyDiffK_numba(x, a1, a2, fun, scale, order, KP=-1, option='1'):
 
     res /= wsig
     return res
+
 
 # def makeDiffKij(ys_, xs_, name, order):
 #     if name == 'min':
@@ -862,7 +910,7 @@ def applyDiffK1K2T_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2,
 
 
 @jit(nopython=True, parallel=True)
-def applyDiv(y, x, a, name, scale, order, KP=-1):
+def applyDiv_(y, x, a, name, scale, order, KP=-1):
     res = np.zeros((y.shape[0], 1))
     sc = scale**(KP-1)
     if name == 'min':
@@ -1147,6 +1195,47 @@ def applykdiff11and12_numba(x, a1, a2, p, fun, scale, order, KP=-1):
                 df = fun(xs[k,:], xs[l,:], a1[k,:] * a2[l,:], p[k,:] - p[l,:], order)
             f[k, :] += df * KS
     return  f
+
+@jit(nopython=True, parallel=True)
+def applyDDivK_numba(x, a1, a2, p, fun, scale, order, option = '11and12', KP=-1):
+    num_nodes = x.shape[0]
+    dim = x.shape[1]
+    f = np.zeros((num_nodes, dim))
+    wsig = 0
+    for s in scale:
+        wsig += s ** KP
+
+    if option == '11':
+        for s in scale:
+            xs = x/s
+            KS = s**(KP-2)
+            for k in prange(num_nodes):
+                df = np.zeros(dim)
+                for l in prange(num_nodes):
+                    df += fun(xs[k,:], xs[l,:], a1[k,:] * a2[l,:], p[k,:], order)
+                f[k, :] += df * KS
+    elif option == '12':
+        for s in scale:
+            xs = x/s
+            KS = s**(KP-2)
+            for k in prange(num_nodes):
+                df = np.zeros(dim)
+                for l in prange(num_nodes):
+                    df -= fun(xs[k,:], xs[l,:], a1[k,:] * a2[l,:], p[l,:], order)
+                f[k, :] += df * KS
+    elif option=='11and12':
+        for s in scale:
+            xs = x/s
+            KS = s**(KP-2)
+            for k in prange(num_nodes):
+                df = np.zeros(dim)
+                for l in prange(num_nodes):
+                    df += fun(xs[k,:], xs[l,:], a1[k,:] * a2[l,:], p[k,:]-p[l, :], order)
+                f[k, :] += df * KS
+    else:
+        print('Unknown option in second kernel derivative')
+    return f/wsig
+
 
 def applykdiff11(x, a1, a2, p, name, scale, order, KP=-1):
     return applyDDiffK(x, a1, a2, p, name, scale, order, KP=KP, option='11')

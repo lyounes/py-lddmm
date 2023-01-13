@@ -6,7 +6,7 @@ from . import pointSets
 # import pointEvolution_fort as evol_omp
 from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils, bfgs
 from . import surfaceMatching
-from .affineBasis import *
+from .affineBasis import AffineBasis, getExponential, gradExponential
 #import examples
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -63,17 +63,19 @@ class SurfaceMatchingParam(surfaceMatching.SurfaceMatchingParam):
 #        maxIter_al: max interation for augmented lagrangian
 
 class SurfaceMatching(surfaceMatching.SurfaceMatching):
-    def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, mode="normal",
-                 internalWeight=0.0, regWeight=1.0, affineWeight=1.0,
+    def __init__(self, Template=None, Target=None, param=None, mode="normal",
+                 internalWeight=0.0, regWeight=1.0, affineWeight=1.0, testGradient=None,
                  mu=0.1, outputDir='.', saveFile='evolution', affine='none', saveTrajectories=False,
                  rotWeight=None, scaleWeight=None, transWeight=None, symmetric=False, pplot = True, maxIter_cg=1000,
                  maxIter_al=100):
+        if affine != 'none':
+            logging.warning('Warning: Affine transformations should not be used with this function.')
         super(SurfaceMatching, self).__init__(Template=Template, Target=Target, param=param, maxIter=maxIter_cg,
                                               regWeight=regWeight,
                                               internalWeight=internalWeight, affineWeight=affineWeight,
                                               mode=mode, subsampleTargetSize=-1, rotWeight=rotWeight,
                                               scaleWeight=scaleWeight, transWeight=transWeight,
-                                              symmetric=symmetric, pplot = pplot,
+                                              symmetric=symmetric, pplot = pplot, testGradient=testGradient,
                                               saveFile=saveFile, saveTrajectories=saveTrajectories, affine=affine,
                                               outputDir=outputDir)
 
@@ -337,7 +339,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             else:
                 zpx += self.param.KparDiff.applyDiffKT(z, px, a*self.ds, regweight=self.regweight, lddmm=True)
             if self.affineDim > 0:
-                pxt[M - t - 1, :, :] = np.dot(px, self.affB.getExponential(timeStep * A[0][M - t - 1])) + timeStep * zpx
+                pxt[M - t - 1, :, :] = np.dot(px, getExponential(timeStep * A[0][M - t - 1])) + timeStep * zpx
             else:
                 pxt[M - t - 1, :, :] = px + timeStep * zpx
 
@@ -380,7 +382,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             for t in range(self.Tsize):
                 AB = np.dot(self.affineBasis, Afft[t])
                 A = AB[0:self.dim ** 2].reshape([self.dim, self.dim])
-                dA = self.affB.gradExponential(timeStep * A, pxt[t + 1], xt[t]).reshape([self.dim ** 2, 1])
+                dA = gradExponential(timeStep * A, pxt[t + 1], xt[t]).reshape([self.dim ** 2, 1])
                 db = pxt[t + 1].sum(axis=0).reshape([self.dim, 1])
                 dAff = np.dot(self.affineBasis.T, np.vstack([dA, db]))
                 dAfft[t] -= dAff.reshape(dAfft[t].shape)
@@ -400,8 +402,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             Afft = self.Afft
             #A = self.affB.getTransforms(self.Afft)
         else:
-            if update[0].aff is not None:
-                Afft = self.Afft - update[1]*update[0].aff
+            if update[0]['aff'] is not None:
+                Afft = self.Afft - update[1]*update[0]['aff']
                 A = self.affB.getTransforms(Afft)
             else:
                 Afft = None
@@ -463,8 +465,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             vf.vectors.append('velocity')
             vf.vectors.append(velocity[kkm, :])
             if kk > 0:
-                area_displ[kk, :] = area_displ[kk - 1, :] + dt * ((AV + 1) * (v * nu).sum(axis=1))[np.newaxis, :]
-            fvDef.saveVTK2(self.outputDir + '/' + fileName + str(kk) + '.vtk', vf)
+                area_displ[kk, :] = area_displ[kk - 1, :] + dt * np.fabs((AV) * np.sqrt((v * v).sum(axis=1)))[np.newaxis, :]
+            #fvDef.saveVTK2(self.outputDir + '/' + fileName + str(kk) + '.vtk', vf)
             displ += dt * (v * nu).sum(axis=1)
             vf.scalars.append('area_displacement')
             vf.scalars.append(area_displ[kk,:])
@@ -472,16 +474,16 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             vf.scalars.append(constraint[kkm, :])
             vf.vectors.append('normals')
             vf.vectors.append(normals[kkm, :])
-            self.fvDef.saveVTK2(self.outputDir + '/' + self.saveFile + str(kk) + '.vtk', vf)
+            fvDef.saveVTK2(self.outputDir + '/' + self.saveFile + str(kk) + '.vtk', vf)
             #
-        adisp = area_displ / area_displ[-1, :][np.newaxis,:]
+        adisp = area_displ / np.maximum(area_displ[-1, :][np.newaxis,:], 1e-10)
         fvDef = surfaces.Surface(surf=fv0)
         fvDef.saveVTK(self.outputDir + '/' + self.saveFile +'_bok0' + '.vtk')
         x = np.zeros((npt, self.dim))
         for kk in range(1, self.Tsize+1):
-            Inext = ((adisp - float(kk)/(self.Tsize))>-1e-10).argmax(axis=0)
+            Inext = ((adisp - kk/self.Tsize)>-1e-10).argmax(axis=0)
             for jj in range(npt):
-                r = (adisp[Inext[jj], jj] - float(kk)/(self.Tsize))/(adisp[Inext[jj], jj] - adisp[Inext[jj]-1, jj])
+                r = (adisp[Inext[jj], jj] - kk/self.Tsize)/np.maximum(adisp[Inext[jj], jj] - adisp[Inext[jj]-1, jj], 1e-10)
                 x[jj] = r*self.xt[Inext[jj]-1,jj,:] + (1-r)*self.xt[Inext[jj],jj,:]
             fvDef.updateVertices(x)
             fvDef.saveVTK(self.outputDir + '/' + self.saveFile + '_bok' + str(kk) + '.vtk')
@@ -504,7 +506,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 pointSets.saveTrajectories(self.outputDir + '/' + self.saveFile + 'curves.vtk', self.xt)
 
             if self.affine == 'euclidean' or self.affine == 'translation':
-                self.saveCorrectedEvolution(self.fvInit, self.xt, self.Afft, self.at, fileName=self.saveFile,
+                self.saveCorrectedEvolution(self.fvInit, self.xt, self.at, self.Afft, fileName=self.saveFile,
                                             Jacobian=Jt)
             self.saveEvolution(self.fvInit, self.xt, Jacobian=Jt, fileName=self.saveFile)
 
@@ -513,7 +515,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             # nu = self.fv0ori * self.fvInit.computeVertexNormals()
             # v = self.v[0, ...]
             # # displ = np.zeros(self.npt)
-            # area_displ = np.zeros((self.Tsize+1, self.npt))
+            # area_dis0pl = np.zeros((self.Tsize+1, self.npt))
             # dt = 1.0 / self.Tsize
             # # # n1 = self.xt.shape[1] ;
             # # for kk in range(self.Tsize):

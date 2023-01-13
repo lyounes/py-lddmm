@@ -89,7 +89,7 @@ def computeCentersVolumesNormals__(faces, vertices, weights, checkOrientation= F
         if checkOrientation:
             if volumes.min() < -1e-12:
                 if volumes.max() > 1e-12:
-                    print('Warning: mesh has inconsistent orientation', volumes.min(), volumes.max())
+                    print('Warning: mesh has inconsistent orientation', (volumes<0).sum(), (volumes>0).sum())
                 else:
                     f_ = np.copy(faces[:,1])
                     faces[:, 1] = np.copy(faces[:,2])
@@ -144,11 +144,11 @@ def computeCentersVolumesNormals__(faces, vertices, weights, checkOrientation= F
             face_per_vertex[faces[k, j]] += volumes[k]
     mv = volumes.sum()/volumes.shape[0]
     for k in range(face_per_vertex.shape[0]):
-        if face_per_vertex[k] > 1e-10*mv:
+        if np.fabs(face_per_vertex[k]) > 1e-10*mv:
             vertex_weights[k] /= face_per_vertex[k]
-        else:
-            if checkOrientation:
-                print('Isolated vertex', k, face_per_vertex[k])
+        # else:
+        #     if checkOrientation:
+        #         print('Isolated vertex', k, face_per_vertex[k])
 
     return centers, volumes, normals, vertex_weights
 
