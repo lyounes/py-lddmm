@@ -360,7 +360,7 @@ class Surface:
                                           (range(self.faces.shape[0]),
                                            self.faces[:,2]))).transpose(copy=False)
 
-    def computeVertexArea(self):
+    def computeVertexArea(self, simpleMethod = False):
         # compute areas of faces and vertices
         V = self.vertices
         F = self.faces
@@ -368,53 +368,74 @@ class Surface:
         nf = F.shape[0]
         AF = np.zeros(nf)
         AV = np.zeros(nv)
-        for k in range(nf):
-            # determining if face is obtuse
-            x12 = V[F[k,1], :] - V[F[k,0], :]
-            x13 = V[F[k,2], :] - V[F[k,0], :]
-            n12 = np.sqrt((x12**2).sum())
-            n13 = np.sqrt((x13**2).sum())
-            c1 = (x12*x13).sum()/(n12*n13)
-            x23 = V[F[k,2], :] - V[F[k,1], :]
-            n23 = np.sqrt((x23**2).sum())
-            #n23 = norm(x23) ;
-            c2 = -(x12*x23).sum()/(n12*n23)
-            c3 = (x13*x23).sum()/(n13*n23)
-            AF[k] = np.sqrt((np.cross(x12, x13)**2).sum())/2
-            cot1 = c1 / np.sqrt(1 - c1 ** 2)
-            cot2 = c2 / np.sqrt(1 - c2 ** 2)
-            cot3 = c3 / np.sqrt(1 - c3 ** 2)
-            if (c1 < 0):
-                #face obtuse at vertex 1
-                u2 = (x12**2).sum() * cot2 / 8
-                u3 = (x13**2).sum() * cot3 / 8
-                AV[F[k,0]] += (x12 * x23).sum() * cot1 / 2 - u2 - u3
-                AV[F[k,1]] += u2
-                AV[F[k,2]] += u3
-            elif (c2 < 0):
-                #face obuse at vertex 2
-                u1 = (x12**2).sum() * cot1 / 8
-                u3 = (x23**2).sum() * cot3 / 8
-                AV[F[k,0]] += u1
-                AV[F[k,1]] += - (x12*x23).sum() * cot2/2 -u1 - u3
-                AV[F[k,2]] += u3
-            elif (c3 < 0):
-                #face obtuse at vertex 3
-                u1 = -(x13**2).sum() * cot1 / 8
-                u2 = - (x23**2).sum() * cot2 / 8
-                AV[F[k,0]] += u1
-                AV[F[k,1]] += u2
-                AV[F[k,2]] += (x13 * x23).sum() * cot3 / 2 - u1 - u2
-            else:
-                #non obtuse face
-                AV[F[k,0]] += ((x12**2).sum() * cot3 + (x13**2).sum() * cot2)/8
-                AV[F[k,1]] += ((x12**2).sum() * cot3 + (x23**2).sum() * cot1)/8 
-                AV[F[k,2]] += ((x13**2).sum() * cot2 + (x23**2).sum() * cot1)/8 
+        if simpleMethod:
+            for k in range(nf):
+                x12 = V[F[k, 1], :] - V[F[k, 0], :]
+                x13 = V[F[k, 2], :] - V[F[k, 0], :]
+                AF[k] = np.sqrt((np.cross(x12, x13) ** 2).sum()) / 2
+                AV[F[k, 0]] += AF[k] / 3
+                AV[F[k, 1]] += AF[k] / 3
+                AV[F[k, 2]] += AF[k] / 3
+        else:
+            for k in range(nf):
+                # determining if face is obtuse
+                x12 = V[F[k,1], :] - V[F[k,0], :]
+                x13 = V[F[k,2], :] - V[F[k,0], :]
+                n12 = np.sqrt((x12**2).sum())
+                n13 = np.sqrt((x13**2).sum())
+                c1 = (x12*x13).sum()/(n12*n13)
+                x23 = V[F[k,2], :] - V[F[k,1], :]
+                n23 = np.sqrt((x23**2).sum())
+                #n23 = norm(x23) ;
+                c2 = -(x12*x23).sum()/(n12*n23)
+                c3 = (x13*x23).sum()/(n13*n23)
+                AF[k] = np.sqrt((np.cross(x12, x13)**2).sum())/2
+                s1 = np.sqrt(1 - c1 ** 2)
+                s2 = np.sqrt(1 - c2 ** 2)
+                s3 = np.sqrt(1 - c3 ** 2)
+                cot1 = c1 / s1
+                cot2 = c2 / s2
+                cot3 = c3 / s3
+                if (c1 < 0):
+                    #face obtuse at vertex 1
+                    u2 = (x12 ** 2).sum() / (8 * cot2)
+                    u3 = (x13 ** 2).sum() / (8 * cot3)
+                    u1 = AF[k] - u2 - u3
+                    AV[F[k, 0]] += u1
+                    AV[F[k, 1]] += u2
+                    AV[F[k, 2]] += u3
+                    if u1 < 0 or u2 < 0 or u3 < 0:
+                        print('error')
+                elif (c2 < 0):
+                    #face obuse at vertex 2
+                    u1 = (x12 ** 2).sum() / (8 * cot1)
+                    u3 = (x23 ** 2).sum() / (8 * cot3)
+                    u2 = AF[k] - u1 - u3
+                    AV[F[k, 0]] += u1
+                    AV[F[k, 1]] += u2
+                    AV[F[k, 2]] += u3
+                    if u1 < 0 or u2 < 0 or u3 < 0:
+                        print('error')
+                elif (c3 < 0):
+                    #face obtuse at vertex 3
+                    u1 = (x13 ** 2).sum() / (8 * cot1)
+                    u2 = (x23 ** 2).sum() / (8 * cot2)
+                    u3 = AF[k] - u1 - u2
+                    AV[F[k, 0]] += u1
+                    AV[F[k, 1]] += u2
+                    AV[F[k, 2]] += u3
+                    if u1 < 0 or u2 < 0 or u3 < 0:
+                        print('error')
+                else:
+                    #non obtuse face
+                    AV[F[k,0]] += ((x12**2).sum() * cot3 + (x13**2).sum() * cot2)/8
+                    AV[F[k,1]] += ((x12**2).sum() * cot3 + (x23**2).sum() * cot1)/8
+                    AV[F[k,2]] += ((x13**2).sum() * cot2 + (x23**2).sum() * cot1)/8
 
         for k in range(nv):
             if (np.fabs(AV[k]) <1e-10):
                 logging.info('Warning: vertex {0:1} has no face; use removeIsolated'.format(k))
-        #print 'sum check area:', AF.sum(), AV.sum()
+        #print('sum check area:', AF.sum(), AV.sum())
         return AV, AF
 
     def computeVertexNormals(self):
