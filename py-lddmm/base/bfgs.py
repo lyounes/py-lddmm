@@ -1,6 +1,6 @@
 import numpy as np
 import logging
-from .linesearch import line_search_wolfe
+from .linesearch import line_search_wolfe, line_search_weak_wolfe, line_search_goldstein_price
 
 # added comment to test git, 4-26-19
 
@@ -105,7 +105,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
     if hasattr(opt, 'burnIn'):
         burnIn = opt.burnIn
     else:
-        burnIn = 20
+        burnIn = 0
     eps = epsInit
     epsMin = 1e-10
     opt.converged = False
@@ -248,9 +248,9 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
         if not stopBFGS:
             __Wolfe = True
             if Wolfe:
-                eps, fc, gc, phi_star, old_fval, gval = line_search_wolfe(opt, dir0, gfk=grd, old_fval=obj,
+                eps, fc, gc, phi_star, old_fval, gval = line_search_goldstein_price(opt, dir0, gfk=grd, old_fval=obj,
                                    old_old_fval=obj_old, c1=1e-4, c2=0.9, amax=None,
-                                   maxiter=10)
+                                   maxiter=100)
                 if eps is not None:
                     diffVar = prod(dir0, -eps)
                     obj_old = obj

@@ -1,4 +1,120 @@
+import logging
 from scipy.optimize.linesearch import  scalar_search_wolfe2, scalar_search_wolfe1
+
+def line_search_goldstein_price(opt, pk, gfk=None, old_fval=None,
+                       old_old_fval=None, c1=0.001, c2=0.9, amax=None,
+                       maxiter=100, euclidean = True):
+    fc = [0]
+    gc = [0]
+    gval = [None]
+    gval_alpha = [None]
+
+
+    def phi(alpha):
+        fc[0] += 1
+        return opt.updateTry(pk, alpha)
+
+
+    if gfk is None:
+        gfk = opt.getGradient(opt.gradCoeff)
+    if euclidean:
+        derphi0 = -opt.dotProduct_euclidean(gfk, [pk])[0]
+    else:
+        derphi0 = -opt.dotProduct(gfk, [pk])[0]
+
+    it = 0
+    # if amax is None:
+    amax = 0
+    amin = 0
+    if old_fval is None:
+        old_fval = phi(0)
+    if old_old_fval is not None:
+        t = 2*(old_fval - old_old_fval)/derphi0
+    else:
+        t = 0.01
+
+    fval = phi(t)
+    logging.info(f'derphi0={derphi0}')
+    while it < maxiter:
+        r = (fval - old_fval)/t
+        logging.info(f'{t}, {fval}, {old_fval + t * c1 * derphi0}, {old_fval + t * c2 * derphi0}')
+        if r <  c1*derphi0:
+            if r > c2*derphi0:
+                logging.info('break')
+                logging.info(f'{t}, {fval}, {old_fval + t * c1 * derphi0}, {old_fval + t * c2 * derphi0}')
+                break
+            else:
+                amin = t
+        else:
+            amax = t
+        if amax < 1e-10:
+            t += 0.01
+        else:
+            t = (amax+amin)/2
+        fval = phi(t)
+        logging.info(f'{it} {t}, {fval}, {old_fval + t * c1 * derphi0}, {old_fval + t * c2 * derphi0}')
+        it += 1
+
+    logging.info(f'{t}, {fval}, {old_fval + t * derphi0}, {old_fval + t * c1 * derphi0}')
+    logging.info(f'Goldstein Price: {it} iterations')
+
+    return t, fc[0], gc[0], fval, old_fval, gval[0]
+
+
+def line_search_weak_wolfe(opt, pk, gfk=None, old_fval=None,
+                           old_old_fval=None, c1=0.001, c2=0.9, amax=None,
+                           maxiter=100, euclidean=True):
+    fc = [0]
+    gc = [0]
+    gval = [None]
+    gval_alpha = [None]
+
+    def phi(alpha):
+        fc[0] += 1
+        return opt.updateTry(pk, alpha)
+
+    def derphi(alpha):
+        gc[0] += 1
+        gval[0] = opt.getGradient(opt.gradCoeff, update=[pk, alpha])  # store for later use
+        gval_alpha[0] = alpha
+        if euclidean:
+            return -opt.dotProduct_euclidean(gval[0], [pk])[0]
+        else:
+            return -opt.dotProduct(gval[0], [pk])[0]
+
+    if gfk is None:
+        gfk = opt.getGradient(opt.gradCoeff)
+    if euclidean:
+        derphi0 = -opt.dotProduct_euclidean(gfk, [pk])[0]
+    else:
+        derphi0 = -opt.dotProduct(gfk, [pk])[0]
+
+    it = 0
+    if amax is None:
+        amax = 1
+    amin = 0
+    t = (amax + amin) / 2
+    if old_fval is None:
+        old_fval = phi(0)
+
+    df = derphi(t)
+    fval = phi(t)
+    while it < maxiter:
+        if fval < old_fval + c1 * t * derphi0:
+            if df > c2 * derphi0:
+                break
+            else:
+                amin = t
+        else:
+            amax = t
+        t = (amax + amin) / 2
+        df = derphi(t)
+        fval = phi(t)
+        it += 1
+    print(f'Weak Wolfe condition: {it} iterations')
+    if it == maxiter:
+        print('Weak Wolfe condition: maximum number of iterations attained')
+    return t, fc[0], gc[0], fval, old_fval, gval[0]
 
 
 def line_search_wolfe(opt, pk, gfk=None, old_fval=None,

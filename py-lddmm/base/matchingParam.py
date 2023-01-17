@@ -9,7 +9,7 @@ from . import kernelFunctions as kfun
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 class MatchingParam:
-    def __init__(self, timeStep = .1, algorithm = 'bfgs', Wolfe = False, KparDiff = None, KparDist = None,
+    def __init__(self, timeStep = .1, algorithm = 'bfgs', Wolfe = True, KparDiff = None, KparDist = None,
                  sigmaError=1.0, errorType = 'measure', vfun = None):
         self.timeStep = timeStep
         self.sigmaKernel = 6.5
