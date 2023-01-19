@@ -37,18 +37,17 @@ def line_search_goldstein_price(opt, pk, gfk=None, old_fval=None,
     logging.info(f'derphi0={derphi0}')
     while it < maxiter:
         r = (fval - old_fval)/t
-        logging.info(f'{t}, {fval}, {old_fval + t * c1 * derphi0}, {old_fval + t * c2 * derphi0}')
+        logging.info(f'{t}, {amin}, {amax}, {fval}, {old_fval + t * c1 * derphi0}, {old_fval + t * c2 * derphi0}')
         if r <  c1*derphi0:
             if r > c2*derphi0:
                 logging.info('break')
-                logging.info(f'{t}, {fval}, {old_fval + t * c1 * derphi0}, {old_fval + t * c2 * derphi0}')
                 break
             else:
                 amin = t
         else:
             amax = t
         if amax < 1e-10:
-            t += 0.01
+            t *= 2
         else:
             t = (amax+amin)/2
         fval = phi(t)
@@ -90,12 +89,21 @@ def line_search_weak_wolfe(opt, pk, gfk=None, old_fval=None,
         derphi0 = -opt.dotProduct(gfk, [pk])[0]
 
     it = 0
-    if amax is None:
-        amax = 1
+    amax = 0
     amin = 0
-    t = (amax + amin) / 2
     if old_fval is None:
         old_fval = phi(0)
+    t = 1.
+    # if old_old_fval is not None:
+    #     t = 2*(old_fval - old_old_fval)/derphi0
+    # else:
+    #     t = 0.01
+    # if amax is None:
+    #     amax = 1
+    # amin = 0
+    # t = (amax + amin) / 2
+    # if old_fval is None:
+    #     old_fval = phi(0)
 
     df = derphi(t)
     fval = phi(t)
@@ -107,13 +115,18 @@ def line_search_weak_wolfe(opt, pk, gfk=None, old_fval=None,
                 amin = t
         else:
             amax = t
-        t = (amax + amin) / 2
+        if amax < 1e-10:
+            t *= 2
+        else:
+            t = (amax+amin)/2
         df = derphi(t)
         fval = phi(t)
         it += 1
-    print(f'Weak Wolfe condition: {it} iterations')
+
     if it == maxiter:
-        print('Weak Wolfe condition: maximum number of iterations attained')
+        logging.warning('Weak Wolfe condition: maximum number of iterations attained')
+        t = None
+
     return t, fc[0], gc[0], fval, old_fval, gval[0]
 
 
