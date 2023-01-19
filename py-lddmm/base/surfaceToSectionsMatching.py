@@ -35,7 +35,7 @@ from .surfaceSection import SurfaceSection, Surf2SecDist, Surf2SecGrad, Hyperpla
 class SurfaceToSectionsMatching(SurfaceMatching):
     def __init__(self, Template=None, Target=None, param=None, maxIter=1000, passenger = None, componentMap=None,
                  regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, mode="normal",
-                 subsampleTargetSize=-1, affineOnly = False,
+                 subsampleTargetSize=-1, affineOnly = False, testGradient = None,
                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
                  saveFile = 'evolution', select_planes = None, forceClosed = False,
                  saveTrajectories = False, affine = 'none', outputDir = '.',pplot=True):
@@ -43,7 +43,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         self.colors = ('b', 'm', 'g', 'r', 'y', 'k')
         super().__init__(Template=Template, Target=Target, param=param, maxIter=maxIter, passenger = passenger,
                  regWeight = regWeight, affineWeight = affineWeight, internalWeight=internalWeight, mode=mode,
-                 subsampleTargetSize=subsampleTargetSize, affineOnly = affineOnly,
+                 subsampleTargetSize=subsampleTargetSize, affineOnly = affineOnly, testGradient=testGradient,
                  rotWeight = rotWeight, scaleWeight = scaleWeight, transWeight = transWeight, symmetric = symmetric,
                  saveFile = saveFile,
                  saveTrajectories = saveTrajectories, affine = affine, outputDir = outputDir, pplot=pplot)
