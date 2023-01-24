@@ -160,12 +160,12 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=None,
 
 
 
-def landmarkHamiltonianCovector(x0, at, px1, Kpardiff, regweight, affine=None):
+def landmarkHamiltonianCovector(x0, at, px1, Kpardiff, regweight, affine=None, extraTerm = None):
     if not (affine is None or len(affine[0]) == 0):
-        withaff = True
+        #withaff = True
         A = affine[0]
     else:
-        withaff = False
+        #withaff = False
         A = np.zeros((1, 1, 1))
 
     N = x0.shape[0]
@@ -182,7 +182,15 @@ def landmarkHamiltonianCovector(x0, at, px1, Kpardiff, regweight, affine=None):
         px = np.squeeze(pxt[M - t, :, :])
         z = np.squeeze(xt[M - t - 1, :, :])
         a = np.squeeze(at[M - t - 1, :, :])
-        zpx = Kpardiff.applyDiffKT(z, px, a, regweight=regweight, lddmm=True)
+        if extraTerm is not None:
+            grd = extraTerm['grad'](z, Kpardiff.applyK(z,a))
+            Lv = - extraTerm['coeff'] * grd[0]
+            DLv = extraTerm['coeff'] * grd[1]
+            zpx = Kpardiff.applyDiffKT(z, px, a, regweight=regweight, lddmm=True,
+                                       extra_term=Lv) - DLv
+        else:
+            zpx = Kpardiff.applyDiffKT(z, px, a, regweight=regweight, lddmm=True)
+
         if not (affine is None):
             pxt[M - t - 1, :, :] = np.dot(px, affineBasis.getExponential(timeStep * A[M - t - 1, :, :])) + timeStep * zpx
         else:
@@ -191,7 +199,7 @@ def landmarkHamiltonianCovector(x0, at, px1, Kpardiff, regweight, affine=None):
 
 
 # Computes gradient after covariant evolution for deformation cost a^TK(x,x) a
-def landmarkHamiltonianGradient(x0, at, px1, KparDiff, regweight, getCovector = False, affine = None):
+def landmarkHamiltonianGradient(x0, at, px1, KparDiff, regweight, getCovector = False, affine = None, extraTerm = None):
     (pxt, xt) = landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine=affine)
     dat = np.zeros(at.shape)
     timeStep = 1.0/at.shape[0]
@@ -201,9 +209,14 @@ def landmarkHamiltonianGradient(x0, at, px1, KparDiff, regweight, getCovector = 
         db = np.zeros(affine[1].shape)
     for k in range(at.shape[0]):
         a = np.squeeze(at[k, :, :])
+        x = np.squeeze(xt[k, :, :])
         px = np.squeeze(pxt[k+1, :, :])
         #print 'testgr', (2*a-px).sum()
         dat[k, :, :] = (2*regweight*a-px)
+        if extraTerm is not None:
+            Lv = extraTerm['grad'](x, KparDiff.applyK(x,a), variables='phi')
+            #Lv = -foo.laplacian(v)
+            dat[k, :, :] += extraTerm['coeff'] * Lv
         if not (affine is None):
             dA[k] = affineBasis.gradExponential(A[k] * timeStep, pxt[k + 1], xt[k]) #.reshape([self.dim**2, 1])/timeStep
             db[k] = pxt[k+1].sum(axis=0) #.reshape([self.dim,1]) 

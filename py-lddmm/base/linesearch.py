@@ -28,19 +28,18 @@ def line_search_goldstein_price(opt, pk, gfk=None, old_fval=None,
     amin = 0
     if old_fval is None:
         old_fval = phi(0)
-    if old_old_fval is not None:
-        t = 2*(old_fval - old_old_fval)/derphi0
-    else:
-        t = 0.01
+    # if old_old_fval is not None:
+    #     t = 2*(old_fval - old_old_fval)/derphi0
+    # else:
+    #     t = 0.01
 
+    t = 1.
     fval = phi(t)
-    logging.info(f'derphi0={derphi0}')
+    r = (fval - old_fval) / t
+    # logging.info(f'derphi0={derphi0}')
     while it < maxiter:
-        r = (fval - old_fval)/t
-        logging.info(f'{t}, {amin}, {amax}, {fval}, {old_fval + t * c1 * derphi0}, {old_fval + t * c2 * derphi0}')
         if r <  c1*derphi0:
             if r > c2*derphi0:
-                logging.info('break')
                 break
             else:
                 amin = t
@@ -51,11 +50,15 @@ def line_search_goldstein_price(opt, pk, gfk=None, old_fval=None,
         else:
             t = (amax+amin)/2
         fval = phi(t)
-        logging.info(f'{it} {t}, {fval}, {old_fval + t * c1 * derphi0}, {old_fval + t * c2 * derphi0}')
+        r = (fval - old_fval)/t
         it += 1
 
-    logging.info(f'{t}, {fval}, {old_fval + t * derphi0}, {old_fval + t * c1 * derphi0}')
-    logging.info(f'Goldstein Price: {it} iterations')
+    # logging.info(f'{t}, {fval}, {old_fval + 2*t * c2 * derphi0}, {old_fval + t * c1 * derphi0}')
+    # logging.info(f'Goldstein Price: {it} iterations')
+
+    if it == maxiter:
+        logging.warning('Goldstein Price condition: maximum number of iterations attained')
+        t = None
 
     return t, fc[0], gc[0], fval, old_fval, gval[0]
 

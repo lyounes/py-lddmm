@@ -4,6 +4,7 @@ import numpy as np
 import h5py
 import scipy.linalg as la
 import logging
+from functools import partial
 from . import matchingParam
 from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils, bfgs
 from .pointSets import PointSet
@@ -64,7 +65,7 @@ class MeshMatching(pointSetMatching.PointSetMatching):
     def __init__(self, Template, Target, param=None, maxIter=1000,
                  regWeight = 1.0, affineWeight = 1.0, verb=True,
                  rotWeight = None, scaleWeight = None, transWeight = None,
-                 testGradient=True, saveFile = 'evolution',
+                 testGradient=True, saveFile = 'evolution', internalCost = None, internalWeight = 1.,
                  saveTrajectories = False, affine = 'none', outputDir = '.',pplot=True):
 
         if param is None:
@@ -72,6 +73,8 @@ class MeshMatching(pointSetMatching.PointSetMatching):
         else:
             self.param = param
 
+        self.internalCost = internalCost
+        self.internalWeight = internalWeight
         pointSetMatching.PointSetMatching.__init__(self, Template=Template, Target=Target, param=param, maxIter=maxIter,
                  regWeight=regWeight, affineWeight=affineWeight, verb=verb,
                  rotWeight=rotWeight, scaleWeight=scaleWeight, transWeight=transWeight,
@@ -108,6 +111,13 @@ class MeshMatching(pointSetMatching.PointSetMatching):
         self.fun_obj0 = msd.varifoldNorm0
         self.fun_obj = msd.varifoldNormDef
         self.fun_objGrad = msd.varifoldNormGradient
+        if self.internalCost == 'divergence':
+            self.extraTerm = {}
+            self.extraTerm['fun'] = partial(msd.square_divergence, faces=self.fv0.faces)
+            self.extraTerm['grad'] = partial(msd.square_divergence_grad, faces=self.fv0.faces)
+            self.extraTerm['coeff'] = self.internalWeight
+        else:
+            self.extraTerm = None
 
 
     def dataTerm(self, _fvDef, _fvInit = None):

@@ -43,10 +43,15 @@ except ImportError:
 # from scipy.sparse import coo_matrix
 # import glob
 import logging
+from pointSets_util import det2D, det3D
 
-@jit(nopython=True)
-def det3D(x1, x2, x3):
-    return (x1 * np.cross(x2, x3)).sum(axis = 1)
+# @jit(nopython=True)
+# def det2D(x1, x2):
+#     return x1[:,0]*x2[:,1] - x2[:,0]*x1[:,1]
+#
+# @jit(nopython=True)
+# def det3D(x1, x2, x3):
+#     return (x1 * np.cross(x2, x3)).sum(axis = 1)
 
 
 def twelve_vertexes(dimension=3):
@@ -85,7 +90,7 @@ def computeCentersVolumesNormals__(faces, vertices, weights, checkOrientation= F
         centers = (xDef1 + xDef2 + xDef3) / 3 ##
         x12 = xDef2-xDef1
         x13 = xDef3-xDef1
-        volumes =  (x12[:,0] * x13[:,1] - x12[:,1]*x13[:,0])/2
+        volumes =  det2D(x12, x13)/2
         if checkOrientation:
             if volumes.min() < -1e-12:
                 if volumes.max() > 1e-12:

@@ -1,6 +1,8 @@
+import logging
+
 import numpy as np
 from .kernelFunctions_util import applyK1K2, applyDiffK1K2T
-
+from pointSets_util import det2D, det3D, rot90
 
 
 def varifoldNorm0(fv1, KparDist, KparIm, imKernel = None):
@@ -14,29 +16,6 @@ def varifoldNorm0(fv1, KparDist, KparIm, imKernel = None):
     return ((applyK1K2(c2, c2, KparDist.name, KparDist.sigma, KparDist.order,
                      A1, fv1.image, KparIm.name, KparIm.sigma, KparIm.order, a2[:, None], cpu=False))*a2[:, None]).sum()
 
-# def varifoldNorm0_old(fv1, KparDist, imKernel = None):
-#     c2 = fv1.centers
-#     a2 = fv1.weights * fv1.volumes
-#     if imKernel is None:
-#         A1 = fv1.image
-#     else:
-#         A1 = np.dot(fv1.image, imKernel)
-#
-#     return  (betax*KparDist.applyK(c2, betay)).sum()
-
-
-# def varifoldNorm0_old(fv1, KparDist, imKernel = None):
-#     c2 = fv1.centers
-#     a2 = fv1.weights * fv1.volumes
-#     if imKernel is None:
-#         cr2cr2 = (fv1.image[:, None, :] * fv1.image[None, :, :]).sum(axis=2)
-#     else:
-#         A1 = np.dot(fv1.image, imKernel)
-#         cr2cr2 = (A1[:, None, :] * fv1.image[None, :, :]).sum(axis=2)
-#
-#     a2a2 = a2[:, None] * a2[None, :]
-#     beta2 = cr2cr2 * a2a2
-#     return KparDist.applyK(c2, beta2[..., np.newaxis], matrixWeights=True).sum()
 
 # Computes |fvDef|^2 - 2 fvDef * fv1 with current dot product
 def varifoldNormDef(fvDef, fv1, KparDist, KparIm, imKernel = None):
@@ -240,3 +219,116 @@ def varifoldNormGradient_old(fvDef, fv1, KparDist, with_weights=False, imKernel=
         for k in range(I.size):
             px[I[k], :] = px[I[k], :] + dz1[k, :] + z1[i, k, :]
     return 2*px
+
+########
+##Internal costs
+########
+
+def square_divergence(x, v, faces):
+    dim = x.shape[1]
+    nf = faces.shape[0]
+    vol = np.zeros(nf)
+    div = np.zeros(nf)
+    if dim==2:
+        x0 = x[faces[:, 0], :]
+        x1 = x[faces[:, 1], :]
+        x2 = x[faces[:, 2], :]
+        v0 = v[faces[:, 0], :]
+        v1 = v[faces[:, 1], :]
+        v2 = v[faces[:, 2], :]
+        vol = np.fabs(det2D(x1-x0, x2-x0))
+        div = det2D(v2, x0-x1) + det2D(v0, x1-x2) + det2D(v1, x2-x0)
+    elif dim == 2:
+        x0 = x[faces[:, 0], :]
+        x1 = x[faces[:, 1], :]
+        x2 = x[faces[:, 2], :]
+        x3 = x[faces[:, 3], :]
+        v0 = v[faces[:, 0], :]
+        v1 = v[faces[:, 1], :]
+        v2 = v[faces[:, 2], :]
+        v3 = v[faces[:, 3], :]
+        vol = np.fabs(det3D(x1-x0, x2-x0, x3-x0))
+        div = det3D(v3, x0-x1, x0-x2) + det3D(v0, x1-x2, x1-x3) + det3D(v1, x2-x3, x2-x0) + det3D(v2, x3-x0, x3-x1)
+    else:
+        logging.warning('square divergence: unrecognized dimension')
+    return (div ** 2).sum()/np.maximum(vol, 1e-10)
+
+def square_divergence_grad(x, v, faces, variables = 'both'):
+    dim = x.shape[1]
+    nf = faces.shape[0]
+    vol = np.zeros(nf)
+    div = np.zeros(nf)
+    gradx = np.zeros(x.shape)
+    gradphi = np.zeros(v.shape)
+    if dim==2:
+        x0 = x[faces[:, 0], :]
+        x1 = x[faces[:, 1], :]
+        x2 = x[faces[:, 2], :]
+        v0 = v[faces[:, 0], :]
+        v1 = v[faces[:, 1], :]
+        v2 = v[faces[:, 2], :]
+        vol = np.fabs(det2D(x1-x0, x2-x0))
+        div = det2D(v2, x0-x1) + det2D(v0, x1-x2) + det2D(v1, x2-x0)
+        if variables == 'phi' or variables == 'both':
+            c = 2*div/vol
+            dphi2 = rot90(x0-x1) * c
+            dphi0 = rot90(x1-x2) * c
+            dphi1 = rot90(x2-x0) * c
+            for k, f in enumerate(faces):
+                gradphi[f[0], :] += dphi0[k, :]
+                gradphi[f[1], :] += dphi1[k, :]
+                gradphi[f[2], :] += dphi2[k, :]
+        if variables == 'x' or variables == 'both':
+            c1 = 2 * div / vol
+            c2 = (div/vol)**2
+            dx0 = rot90(v1 - v2) * c1 - rot90(x1-x2)*c2
+            dx1 = rot90(v2 - v0) * c1 - rot90(x2-x0)*c2
+            dx2 = rot90(v0 - v1) * c1 - rot90(x0-x1)*c2
+            for k, f in enumerate(faces):
+                gradx[f[0], :] += dx0[k, :]
+                gradx[f[1], :] += dx1[k, :]
+                gradx[f[2], :] += dx2[k, :]
+    elif dim == 3:
+        x0 = x[faces[:, 0], :]
+        x1 = x[faces[:, 1], :]
+        x2 = x[faces[:, 2], :]
+        x3 = x[faces[:, 3], :]
+        v0 = v[faces[:, 0], :]
+        v1 = v[faces[:, 1], :]
+        v2 = v[faces[:, 2], :]
+        v3 = v[faces[:, 3], :]
+        vol = np.fabs(det3D(x1-x0, x2-x0, x3-x0))
+        div = det3D(v3, x0-x1, x0-x2) + det3D(v0, x1-x2, x1-x3) + det3D(v1, x2-x3, x2-x0) + det3D(v2, x3-x0, x3-x1)
+        c1 = 2 * div / vol
+        if variables == 'phi' or variables == 'both':
+            dphi0 = np.cross(x1-x2, x1-x3) * c1
+            dphi1 = np.cross(x2-x3, x2-x0) * c1
+            dphi2 = np.cross(x3-x0, x3-x1) * c1
+            dphi3 = np.cross(x0-x1, x0-x2) * c1
+            for k, f in enumerate(faces):
+                gradphi[f[0], :] += dphi0[k, :]
+                gradphi[f[1], :] += dphi1[k, :]
+                gradphi[f[2], :] += dphi2[k, :]
+                gradphi[f[3], :] += dphi3[k, :]
+
+        if variables == 'x' or variables == 'both':
+            c2 = (div/vol)**2
+            dx0 = (np.cross(v1, x3-x2) + np.cross(v2, x3-x1) + np.cross(v3, x2-x1)) * c1 - c2 * np.cross(x1-x3, x2-x3)
+            dx1 = (np.cross(v2, x0-x3) + np.cross(v3, x0-x2) + np.cross(v0, x3-x2)) * c1 - c2 * np.cross(x2-x0, x3-x0)
+            dx2 = (np.cross(v3, x1-x0) + np.cross(v0, x1-x3) + np.cross(v1, x0-x3)) * c1 - c2 * np.cross(x3-x1, x0-x1)
+            dx3 = (np.cross(v0, x2-x1) + np.cross(v1, x2-x0) + np.cross(v2, x1-x0)) * c1 - c2 * np.cross(x0-x2, x1-x2)
+            for k, f in enumerate(faces):
+                gradx[f[0], :] += dx0[k, :]
+                gradx[f[1], :] += dx1[k, :]
+                gradx[f[2], :] += dx2[k, :]
+                gradx[f[3], :] += dx3[k, :]
+    else:
+        logging.warning('square divergence grad: unrecognized dimension')
+    if variables == 'both':
+        return (gradphi, gradx)
+    elif variables == 'phi':
+        return gradphi
+    elif variables == 'x':
+        return gradx
+    else:
+        logging.info('Incorrect option in square_divergence_grad')

@@ -50,12 +50,23 @@ def __copyDir(x):
 def __stopCondition():
     return True
 
-def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, memory=25, Wolfe = True):
+def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, memory=25, Wolfe = True, lineSearch = line_search_weak_wolfe):
 
     if (hasattr(opt, 'getVariable')==False or hasattr(opt, 'objectiveFun')==False or hasattr(opt, 'updateTry')==False
             or hasattr(opt, 'acceptVarTry')==False or hasattr(opt, 'getGradient')==False):
         logging.error('Error: required functions are not provided')
         return
+
+    if lineSearch == "Wolfe":
+        line_search = line_search_wolfe
+    elif lineSearch == "Goldstein_Price":
+        line_search = line_search_goldstein_price
+    elif lineSearch == "Weak_Wolfe":
+        line_search = line_search_weak_wolfe
+    else:
+        logging.warning('Unrecognized line search: using weak wolfe condition')
+        line_search = line_search_weak_wolfe
+
 
     if hasattr(opt, 'dotProduct_euclidean'):
         dotProduct = opt.dotProduct_euclidean
@@ -248,7 +259,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
         if not stopBFGS:
             __Wolfe = True
             if Wolfe:
-                eps, fc, gc, phi_star, old_fval, gval = line_search_weak_wolfe(opt, dir0, gfk=grd, old_fval=obj,
+                eps, fc, gc, phi_star, old_fval, gval = line_search(opt, dir0, gfk=grd, old_fval=obj,
                                    old_old_fval=obj_old, c1=1e-4, c2=0.9, amax=None,
                                    maxiter=100)
                 if eps is not None:
