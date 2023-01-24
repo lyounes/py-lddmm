@@ -255,7 +255,7 @@ class PointSetMatching(object):
             obj = obj + regWeight*timeStep*(a*ra).sum()
 
             if self.extraTerm is not None:
-                obj += self.extraTerm['Coeff'] * self.extraTerm['fun'](z, a)
+                obj += self.extraTerm['coeff'] * self.extraTerm['fun'](z, a)
             if self.affineDim > 0:
                 obj1 +=  timeStep * (self.affineWeight.reshape(Afft[t].shape) * Afft[t]**2).sum()
             #print xt.sum(), at.sum(), obj
@@ -406,6 +406,7 @@ class PointSetMatching(object):
             xt = self.xt
         else:
             at, Afft, xt, endPoint = self.setUpdate(update)
+            A = self.affB.getTransforms(Afft)
 
         dim2 = self.dim**2
         px1 = -self.endPointGradient(endPoint=endPoint)

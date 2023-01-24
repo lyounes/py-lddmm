@@ -50,7 +50,8 @@ def __copyDir(x):
 def __stopCondition():
     return True
 
-def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, memory=25, Wolfe = True, lineSearch = line_search_weak_wolfe):
+def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, memory=25, Wolfe = True,
+         lineSearch = 'Weak_Wolfe'):
 
     if (hasattr(opt, 'getVariable')==False or hasattr(opt, 'objectiveFun')==False or hasattr(opt, 'updateTry')==False
             or hasattr(opt, 'acceptVarTry')==False or hasattr(opt, 'getGradient')==False):

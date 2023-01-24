@@ -251,7 +251,7 @@ def square_divergence(x, v, faces):
         div = det3D(v3, x0-x1, x0-x2) + det3D(v0, x1-x2, x1-x3) + det3D(v1, x2-x3, x2-x0) + det3D(v2, x3-x0, x3-x1)
     else:
         logging.warning('square divergence: unrecognized dimension')
-    return (div ** 2).sum()/np.maximum(vol, 1e-10)
+    return ((div ** 2)/np.maximum(vol, 1e-10)).sum()
 
 def square_divergence_grad(x, v, faces, variables = 'both'):
     dim = x.shape[1]
@@ -269,18 +269,17 @@ def square_divergence_grad(x, v, faces, variables = 'both'):
         v2 = v[faces[:, 2], :]
         vol = np.fabs(det2D(x1-x0, x2-x0))
         div = det2D(v2, x0-x1) + det2D(v0, x1-x2) + det2D(v1, x2-x0)
+        c1 = 2 * (div / vol)[:, None]
         if variables == 'phi' or variables == 'both':
-            c = 2*div/vol
-            dphi2 = rot90(x0-x1) * c
-            dphi0 = rot90(x1-x2) * c
-            dphi1 = rot90(x2-x0) * c
+            dphi2 = rot90(x0-x1) * c1
+            dphi0 = rot90(x1-x2) * c1
+            dphi1 = rot90(x2-x0) * c1
             for k, f in enumerate(faces):
                 gradphi[f[0], :] += dphi0[k, :]
                 gradphi[f[1], :] += dphi1[k, :]
                 gradphi[f[2], :] += dphi2[k, :]
         if variables == 'x' or variables == 'both':
-            c1 = 2 * div / vol
-            c2 = (div/vol)**2
+            c2 = ((div/vol)**2)[:, None]
             dx0 = rot90(v1 - v2) * c1 - rot90(x1-x2)*c2
             dx1 = rot90(v2 - v0) * c1 - rot90(x2-x0)*c2
             dx2 = rot90(v0 - v1) * c1 - rot90(x0-x1)*c2
@@ -299,7 +298,7 @@ def square_divergence_grad(x, v, faces, variables = 'both'):
         v3 = v[faces[:, 3], :]
         vol = np.fabs(det3D(x1-x0, x2-x0, x3-x0))
         div = det3D(v3, x0-x1, x0-x2) + det3D(v0, x1-x2, x1-x3) + det3D(v1, x2-x3, x2-x0) + det3D(v2, x3-x0, x3-x1)
-        c1 = 2 * div / vol
+        c1 = 2 * (div / vol)[:, None]
         if variables == 'phi' or variables == 'both':
             dphi0 = np.cross(x1-x2, x1-x3) * c1
             dphi1 = np.cross(x2-x3, x2-x0) * c1
@@ -312,7 +311,7 @@ def square_divergence_grad(x, v, faces, variables = 'both'):
                 gradphi[f[3], :] += dphi3[k, :]
 
         if variables == 'x' or variables == 'both':
-            c2 = (div/vol)**2
+            c2 = ((div/vol)**2)[:, None]
             dx0 = (np.cross(v1, x3-x2) + np.cross(v2, x3-x1) + np.cross(v3, x2-x1)) * c1 - c2 * np.cross(x1-x3, x2-x3)
             dx1 = (np.cross(v2, x0-x3) + np.cross(v3, x0-x2) + np.cross(v0, x3-x2)) * c1 - c2 * np.cross(x2-x0, x3-x0)
             dx2 = (np.cross(v3, x1-x0) + np.cross(v0, x1-x3) + np.cross(v1, x0-x3)) * c1 - c2 * np.cross(x3-x1, x0-x1)
