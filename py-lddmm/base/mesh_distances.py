@@ -238,7 +238,7 @@ def square_divergence(x, v, faces):
         v2 = v[faces[:, 2], :]
         vol = np.fabs(det2D(x1-x0, x2-x0))
         div = det2D(v2, x0-x1) + det2D(v0, x1-x2) + det2D(v1, x2-x0)
-    elif dim == 2:
+    elif dim == 3:
         x0 = x[faces[:, 0], :]
         x1 = x[faces[:, 1], :]
         x2 = x[faces[:, 2], :]
