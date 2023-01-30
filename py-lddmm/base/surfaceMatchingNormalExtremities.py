@@ -408,7 +408,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             else:
                 Afft = None
                 A = None
-            at = self.at - update[1] *update[0].diff
+            at = self.at - update[1] *update[0]['diff']
             xt = evol.landmarkDirectEvolutionEuler(self.x0, at*self.ds, self.param.KparDiff, affine=A)
             endPoint = surfaces.Surface(surf=self.fv0)
             endPoint.updateVertices(xt[-1, :, :])
@@ -599,7 +599,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             # self.coeffZ = max(1.0, self.mu)
             if self.param.algorithm == 'bfgs':
                 bfgs.bfgs(self, verb=self.verb, maxIter=self.maxIter_cg, TestGradient=self.testGradient, epsInit=1.,
-                          Wolfe=self.param.wolfe, memory=25)
+                          lineSearch=self.lineSearch, memory=25)
             else:
                 cg.cg(self, verb=self.verb, maxIter=self.maxIter_cg, TestGradient=self.testGradient, epsInit=0.1)
             self.coeffAff = self.coeffAff2

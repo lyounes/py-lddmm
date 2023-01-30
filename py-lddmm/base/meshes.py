@@ -1,11 +1,13 @@
 import matplotlib
 import os
+
+import matplotlib.pyplot as plt
 import numpy as np
 from numba import jit, int64
 import pandas as pd
 from scipy.interpolate import LinearNDInterpolator
 from scipy.spatial import Delaunay
-import scipy as sp
+import scipy as scp
 import scipy.linalg as LA
 from scipy.sparse import csr_matrix, lil_matrix
 from .curves import Curve
@@ -43,10 +45,15 @@ except ImportError:
 # from scipy.sparse import coo_matrix
 # import glob
 import logging
+from pointSets_util import det2D, det3D
 
-@jit(nopython=True)
-def det3D(x1, x2, x3):
-    return (x1 * np.cross(x2, x3)).sum(axis = 1)
+# @jit(nopython=True)
+# def det2D(x1, x2):
+#     return x1[:,0]*x2[:,1] - x2[:,0]*x1[:,1]
+#
+# @jit(nopython=True)
+# def det3D(x1, x2, x3):
+#     return (x1 * np.cross(x2, x3)).sum(axis = 1)
 
 
 def twelve_vertexes(dimension=3):
@@ -85,7 +92,7 @@ def computeCentersVolumesNormals__(faces, vertices, weights, checkOrientation= F
         centers = (xDef1 + xDef2 + xDef3) / 3 ##
         x12 = xDef2-xDef1
         x13 = xDef3-xDef1
-        volumes =  (x12[:,0] * x13[:,1] - x12[:,1]*x13[:,0])/2
+        volumes =  det2D(x12, x13)/2
         if checkOrientation:
             if volumes.min() < -1e-12:
                 if volumes.max() > 1e-12:
@@ -117,7 +124,7 @@ def computeCentersVolumesNormals__(faces, vertices, weights, checkOrientation= F
         if checkOrientation:
             if volumes.min() < -1e-12:
                 if volumes.max() > 1e-12:
-                    print('Warning: mesh has inconsistent orientation')
+                    print('Warning: mesh has inconsistent orientation', (volumes<0).sum(), (volumes>0).sum())
                 else:
                     f_ = np.copy(faces[:,2])
                     faces[:, 2] = np.copy(faces[:,3])
@@ -153,26 +160,30 @@ def computeCentersVolumesNormals__(faces, vertices, weights, checkOrientation= F
     return centers, volumes, normals, vertex_weights
 
 
-#@jit(nopython=True)
-def get_edges_(faces):
+@jit(nopython=True)
+def get_edges_(faces, parallel=True):
     int64 = "int64"
     nv = faces.max() + 1
-    nf = faces.shape[0]
     dim = faces.shape[1] - 1
-    shp = (nv,)*dim
+    nf = faces.shape[0]
 
     #edg0 = csr_matrix(shape=shp, dtype=int64)
     edgi = dict()
     ne = 0
     #edg0 = np.zeros(shp, dtype=int64)
+    edges = np.zeros(((dim+1)*nf, dim), dtype=int64)
     for k in range(faces.shape[0]):
         for j in range(dim+1):
             indx = list(faces[k, :])
             indx.remove(faces[k,j])
             indx.sort()
-            indx = tuple(indx)
-            if indx not in edgi:
-                edgi[indx] = ne
+            inds = ''
+            for s in indx:
+                inds += str(s) + '-'
+            #indx = str(indx)
+            if inds not in edgi:
+                edgi[inds] = ne
+                edges[ne, :] = indx
                 ne += 1
             # if dim==2:
             #     edg0 |= {(indx[0], indx[1])}
@@ -184,10 +195,11 @@ def get_edges_(faces):
     #J = np.nonzero(edg0)
     # ne = J[0].shape[0]
     # ne = len(edg0)
-    edges = np.zeros((ne, dim), dtype=int64)
-    for k,I in enumerate(edgi):
-        #for j in range(dim):
-        edges[k, :] = I
+    edges = edges[:ne,:]
+    # edges = np.zeros((ne, dim), dtype=int64)
+    # for k,I in enumerate(edgi):
+    #     #for j in range(dim):
+    #     edges[k, :] = I
 
     #print(edges.shape, edges.max(), faces.shape, faces.max())
     # edgi = dict()
@@ -206,9 +218,12 @@ def get_edges_(faces):
             indx = list(faces[k, :])
             indx.remove(faces[k,j])
             indx.sort()
-            indx = tuple(indx)
+            inds = ''
+            for s in indx:
+                inds += str(s) + '-'
+            # indx = str(indx)
             #if dim==2:
-            edgesOfFaces[k,j] = edgi[indx] #edg0[indx[0], indx[1]]
+            edgesOfFaces[k,j] = edgi[inds] #edg0[indx[0], indx[1]]
             #else:
             #    edgesOfFaces[k,j] = edg0[indx[0], indx[1], indx[2]]
 
@@ -219,7 +234,8 @@ def get_edges_(faces):
             i1 = faces[k, 1]
             i2 = faces[k, 2]
             for f in ([i0, i1], [i1, i2], [i2, i0]):
-                kk = edgi[(min(f[0], f[1]), max(f[0],f[1]))]
+                kk = edgi[str(min(f[0], f[1]))+'-'+str(max(f[0],f[1])) +'-']
+                #kk = edgi[str([min(f[0], f[1]), max(f[0],f[1])])]
                 if facesOfEdges[kk, 0] >= 0:
                     facesOfEdges[kk, 1] = k
                 else:
@@ -232,7 +248,7 @@ def get_edges_(faces):
             i3 = faces[k, 3]
             for f in ([i0, i1, i2], [i2, i1, i3], [i0, i2, i3], [i1, i0, i3]):
                 f.sort()
-                kk = edgi[(f[0], f[1], f[2])]
+                kk = edgi[str(f[0])+'-'+str(f[1])+'-'+str(f[2])+'-']
                 if facesOfEdges[kk, 0] >= 0:
                     facesOfEdges[kk, 1] = k
                 else:
@@ -421,13 +437,13 @@ class Mesh:
         self.imageDim = img.shape[1]
 
     def computeSparseMatrices(self):
-        self.v2f0 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]),
+        self.v2f0 = scp.sparse.csc_matrix((np.ones(self.faces.shape[0]),
                                           (range(self.faces.shape[0]),
                                            self.faces[:,0]))).transpose(copy=False)
-        self.v2f1 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]),
+        self.v2f1 = scp.sparse.csc_matrix((np.ones(self.faces.shape[0]),
                                           (range(self.faces.shape[0]),
                                            self.faces[:,1]))).transpose(copy=False)
-        self.v2f2 = sp.sparse.csc_matrix((np.ones(self.faces.shape[0]),
+        self.v2f2 = scp.sparse.csc_matrix((np.ones(self.faces.shape[0]),
                                           (range(self.faces.shape[0]),
                                            self.faces[:,2]))).transpose(copy=False)
 
@@ -1056,7 +1072,7 @@ class Mesh:
 @jit(nopython=True)
 def count__(g, sp, inv):
     g_ = g
-    for k in range(sp.shape[0]):
+    for k in range(scp.shape[0]):
         g_[sp[k], inv[k]] += 1
     return g_
 
@@ -1102,10 +1118,10 @@ def select_faces2__(points, simplices, threshold = 1e-10, g=None, removeBackgrou
             A[f0, f1] = 1
             A[f1, f0] = 1
     nc, labels = connected_components(A, directed=False)
-    m_ = Mesh(mesh=(simplices, points), weights=labels)
+    m_ = Mesh(mesh=(simplices, points), weights=labels, image=gsum[:,None])
     rd = np.random.permutation(nc)
     labels = rd[labels]
-    m_.saveVTK(f'full_mesh{nc}.vtk')
+    # m_.saveVTK(f'full_mesh{nc}.vtk')
     logging.info(f'found {nc} connected components')
     centers = np.zeros((simplices.shape[0], points.shape[1]))
     for j in range(simplices.shape[1]):
@@ -1276,17 +1292,23 @@ def buildMeshFromFullList(x0, y0, genes, resolution=100, HRradius=20, HRthreshol
 
 ## Builds a mesh structure from cell centers and multivariate counts
 ## If radius is not none: creates small triangles around each center
-def buildMeshFromCentersCounts(centers, cts, resolution=100, radius = None, weights=None, threshold = 1e-10):
+def buildMeshFromCentersCounts(centers, cts, resolution=100, radius = None, weights=None, minCounts = 1e-10,
+                               minComponentSize = 1,
+                               threshold = None):
+
+    if threshold is not None:
+        logging.warning('buildMeshFromCentersCounts: threshold is deprecated. Use minCounts instead')
+        minCounts = threshold
 
     ## Create extended domain
     dim = centers.shape[1]
-    dx = np.zeros(dim)
+    deltax = np.zeros(dim)
     minx = np.zeros(dim)
     maxx = np.zeros(dim)
     for i in range(dim):
-        dx[i] =  (centers[:, i].max()- centers[:, i].min())/20
-        minx[i] = centers[:, i].min() - dx[i]
-        maxx[i] = centers[:, i].max() + dx[i]
+        deltax[i] =  (centers[:, i].max()- centers[:, i].min())/20
+        minx[i] = centers[:, i].min() - deltax[i]
+        maxx[i] = centers[:, i].max() + deltax[i]
     # dy =  (centers[:, 1].max()- centers[:, 1].min())/20
     # miny = centers[:, 1].min() - dy
     # maxy = centers[:, 1].max() + dy
@@ -1337,43 +1359,138 @@ def buildMeshFromCentersCounts(centers, cts, resolution=100, radius = None, weig
         pts +=  np.outer(allts[:,i], v[i,:])
     # pts = ul[None, :] + x[:, None] * v0[None, :] + y[:, None] * v1[None, :]
 
-    tri = Delaunay(pts)
-    vert = np.zeros((tri.points.shape[0], dim+1))
-    vert[:,:dim] = tri.points
+    if dim == 2:
+        cube = np.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype='float')
+        tri = Delaunay(cube, qhull_options='Qc Qz')
+        ns0 = tri.simplices.shape[0]
+        #tri = Delaunay(cube)
+        ncubes = np.prod(npt - 1)
+        cubes = np.zeros((ncubes, 4), dtype=int)
+        u1 = 1
+        u0 = npt[1]
+        template = np.array([0, u1, u0, u1 + u0], dtype=int)
+        c=0
+        for i0 in range(npt[0]-1):
+            for i1 in range(npt[1]-1):
+                cubes[c, :] = i0*u0 + i1 + template
+                c += 1
 
-    g = np.zeros((tri.simplices.shape[0], cts.shape[1]))
-    sp = tri.find_simplex(centers)
-    wgts = np.zeros(tri.simplices.shape[0])
-    nc = np.zeros(tri.simplices.shape[0], dtype=int)
+        dx = pts[npt[1], 0] - pts[0, 0]
+        dy = pts[1, 1] - pts[0, 1]
+        alld = np.array([dx, dy])
+        rk = np.floor((centers-pts[0,:])/alld[None,:]).astype(int)
+        resid = (centers-pts[0,:])/alld[None, :] - rk
+        sp0 = tri.find_simplex(resid)
+        sp = ns0 * (rk[:, 0] * (u0-1) + rk[:, 1] * u1) + sp0
+
+        faces = np.zeros((ns0*ncubes, 3), dtype=int)
+        cc = np.arange(ncubes, dtype = int)
+        for j in range(tri.simplices.shape[0]):
+            x0 = tri.points[tri.simplices[j, 0], :]
+            x1 = tri.points[tri.simplices[j, 1], :]
+            x2 = tri.points[tri.simplices[j, 2], :]
+            vol = np.cross(x1 - x0, x2 - x0)
+            if vol < 0:
+                k = tri.simplices[j, -2]
+                tri.simplices[j, -2] = tri.simplices[j, -1]
+                tri.simplices[j, -1] = k
+        for j in range(ns0):
+            for q in range(dim+1):
+                faces[ns0 * cc + j, q] = cubes[cc, tri.simplices[j, q]]
+
+
+    else:
+        cube = np.array([[0, 0, 0], [0, 0, 1], [0, 1, 0], [1, 0, 0], [0, 1, 1], [1, 0, 1], [1, 1, 0], [1, 1, 1]],
+                        dtype='float')
+        tri = Delaunay(cube, qhull_options='Qc Qz')
+        ns0 = tri.simplices.shape[0]
+        ncubes = np.prod(npt-1)
+        cubes = np.zeros((ncubes, 8), dtype=int)
+        u2 = 1
+        u1 = npt[2]
+        u0 = npt[1]*npt[2]
+        uu1 = npt[2]-1
+        uu0 = (npt[1]-1)*(npt[2]-1)
+        template = np.array([0, u2, u1, u0, u2+u1, u2+u0, u1+u0, u2+u1+u0], dtype=int)
+        c=0
+        for i0 in range(npt[0]-1):
+            for i1 in range(npt[1]-1):
+                for i2 in range(npt[2]-1):
+                    cubes[c, :] = i0*u0 + i1*u1 + i2 + template
+                    c += 1
+        # for c in range(ncubes):
+        #     cubes[c, :] = c + template
+
+
+        dx = pts[npt[1] * npt[2], 0] - pts[0, 0]
+        dy = pts[npt[2], 1] - pts[0, 1]
+        dz = pts[1, 2] - pts[0, 2]
+        alld = np.array([dx,dy,dz])
+        rk = np.floor((centers-pts[0,:])/alld[None,:]).astype(int)
+        resid = (centers-pts[0,:])/alld[None, :] - rk
+        sp0 = tri.find_simplex(resid)
+        u2 = 1
+        sp = ns0 * (rk[:, 0] * uu0 + rk[:,1] * uu1 + rk[:,2] * u2) + sp0
+
+        faces = np.zeros((ns0*ncubes, 4), dtype=int)
+        cc = np.arange(ncubes, dtype = int)
+        for j in range(ns0):
+            x0 = tri.points[tri.simplices[j, 0], :]
+            x1 = tri.points[tri.simplices[j, 1], :]
+            x2 = tri.points[tri.simplices[j, 2], :]
+            x3 = tri.points[tri.simplices[j, 3], :]
+            vol = ((x1-x0)*np.cross(x2 - x0, x3 - x0)).sum()
+            if vol < 0:
+                k = tri.simplices[j, -2]
+                tri.simplices[j, -2] = tri.simplices[j, -1]
+                tri.simplices[j, -1] = k
+        for j in range(ns0):
+            for q in range(dim+1):
+                faces[ns0 * cc + j, q] = cubes[cc, tri.simplices[j, q]]
+
+
+
+    vert = np.zeros((pts.shape[0], 3))
+    vert[:,:dim] = pts
+
+    g = np.zeros((faces.shape[0], cts.shape[1]))
+    # sp = tri.find_simplex(centers)
+    wgts = np.zeros(faces.shape[0])
+    nc = np.zeros(faces.shape[0], dtype=int)
     for k in range(centers.shape[0]):
         g[sp[k], :] += cts[k, :]
         nc[sp[k]] += 1
         wgts[sp[k]] += weights[k]
-    if radius is not None:
-        ico = twelve_vertexes(dimension=dim)
-        for j in range(12):
-            sp = tri.find_simplex(centers + 0.5*radius*ico[j,:])
-            for k in range(centers.shape[0]):
-                g[sp[k], :] += cts[k, :]
-                nc[sp[k]] += 1
-                wgts[sp[k]] += weights[k]
-            sp = tri.find_simplex(centers + radius * ico[j, :])
-            for k in range(centers.shape[0]):
-                g[sp[k], :] += cts[k, :]
-                nc[sp[k]] += 1
-                wgts[sp[k]] += weights[k]
+
+    # if radius is not None:
+    #     ico = twelve_vertexes(dimension=dim)
+    #     for j in range(12):
+    #         sp = tri.find_simplex(centers + 0.5*radius*ico[j,:])
+    #         for k in range(centers.shape[0]):
+    #             g[sp[k], :] += cts[k, :]
+    #             nc[sp[k]] += 1
+    #             wgts[sp[k]] += weights[k]
+    #         sp = tri.find_simplex(centers + radius * ico[j, :])
+    #         for k in range(centers.shape[0]):
+    #             g[sp[k], :] += cts[k, :]
+    #             nc[sp[k]] += 1
+    #             wgts[sp[k]] += weights[k]
 
     ## g contains average count values per simplex
     ## wgts: number of centers per simplex
     g /= np.maximum(1e-10, nc[:, None])
 
+    # Mesh(mesh=(faces,pts), image=g).save('meshTemp.vtk')
+
+
     ## First cleaning pass: remove background
-    newv, newf, newg, keepface = select_faces2__(tri.points, tri.simplices, threshold=threshold, g=g,
+    newv, newf, newg, keepface = select_faces2__(pts, faces, threshold=minCounts, g=g,
                                                  removeBackground=True, small = 0)
     wgts = wgts[keepface]
 
     ## Second cleaning pass: remove small components
-    newv, newf, newg2, keepface = select_faces2__(newv, newf, threshold=threshold, removeBackground = False, small=10)
+    newv, newf, newg2, keepface = select_faces2__(newv, newf, threshold=minCounts, removeBackground = False,
+                                                  small=minComponentSize)
     wgts = wgts[keepface]
     newg = np.copy(newg[keepface, :])
     logging.info(f'Mesh with {newv.shape[0]} vertices and {newf.shape[0]} faces; {wgts.sum()} cells')

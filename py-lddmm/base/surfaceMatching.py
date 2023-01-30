@@ -164,6 +164,7 @@ class SurfaceMatching(object):
                  saveTrajectories = False, affine = 'none'):
         self.saveRate = 10
         self.gradEps = -1
+        self.lineSearch = "Weak_Wolfe"
         self.randomInit = False
         self.iter = 0
         self.maxIter = maxIter
@@ -1617,7 +1618,7 @@ class SurfaceMatching(object):
                       Wolfe=self.param.wolfe)
             elif self.param.algorithm == 'bfgs':
                 bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=1.,
-                          Wolfe=self.param.wolfe, memory=50)
+                          lineSearch=self.lineSearch, memory=50)
         elif self.param.algorithm == 'sgd':
             logging.info('Running stochastic gradient descent')
             sgd.sgd(self, verb=self.verb, maxIter=self.maxIter, burnIn=self.sgdBurnIn, epsInit=self.sgdEpsInit, normalization = self.sgdNormalization)

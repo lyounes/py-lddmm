@@ -151,6 +151,8 @@ class PointSetMatching(object):
         else:
             logging.error('Unknown error Type: ' + self.param.errorType)
 
+        self.extraTerm = None
+
     def set_parameters(self, maxIter=1000,
                  regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, verb=True,
                  affineOnly = False,
@@ -252,6 +254,8 @@ class PointSetMatching(object):
                 self.v[t, :] = ra
             obj = obj + regWeight*timeStep*(a*ra).sum()
 
+            if self.extraTerm is not None:
+                obj += self.extraTerm['coeff'] * self.extraTerm['fun'](z, a)
             if self.affineDim > 0:
                 obj1 +=  timeStep * (self.affineWeight.reshape(Afft[t].shape) * Afft[t]**2).sum()
             #print xt.sum(), at.sum(), obj
@@ -377,7 +381,7 @@ class PointSetMatching(object):
         if kernel is None:
             kernel  = self.param.KparDiff
         return evol.landmarkHamiltonianGradient(x0, at, px1, kernel, regWeight, affine=affine,
-                                                getCovector=True)
+                                                getCovector=True, extraTerm=self.extraTerm)
                                                     
     def setUpdate(self, update):
         at = self.at - update[1] * update[0].diff
@@ -402,6 +406,7 @@ class PointSetMatching(object):
             xt = self.xt
         else:
             at, Afft, xt, endPoint = self.setUpdate(update)
+            A = self.affB.getTransforms(Afft)
 
         dim2 = self.dim**2
         px1 = -self.endPointGradient(endPoint=endPoint)
