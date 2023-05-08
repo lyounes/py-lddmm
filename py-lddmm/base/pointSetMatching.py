@@ -242,7 +242,7 @@ class PointSetMatching(BasicMatching):
             obj = obj + regWeight*timeStep*(a*ra).sum()
 
             if self.extraTerm is not None:
-                obj += self.extraTerm['coeff'] * self.extraTerm['fun'](z, a)
+                obj += self.extraTerm['coeff'] * self.extraTerm['fun'](z, ra)
             if self.affineDim > 0:
                 obj1 +=  timeStep * (self.affineWeight.reshape(Afft[t].shape) * Afft[t]**2).sum()
             #print xt.sum(), at.sum(), obj
