@@ -5,15 +5,19 @@ import numpy.linalg as la
 import logging
 import h5py
 from . import conjugateGradient as cg, bfgs, sgd
-from . import surfaces, surface_distances as sd
-from . import pointSets, pointset_distances as psd
+from . surfaces import Surface, vtkFields
+from .surface_distances import currentNorm0, currentNormGradient, currentMagnitude, currentMagnitudeGradient, currentNormDef
+from .surface_distances import measureNorm0, measureNormGradient, measureNormDef, varifoldNormGradient, varifoldNormDef, varifoldNorm0
+from .surface_distances import measureNormPS0, measureNormPSDef, measureNormPSGradient, L2NormGradient, L2Norm0, L2Norm
+from .surface_distances import normGrad, elasticNorm, diffNormGrad, diffElasticNorm
+from . pointSets import PointSet, saveTrajectories, savePoints
+import pointset_distances as psd
 from .pointSetMatching import PointSetMatching
 from .affineBasis import getExponential, gradExponential
 from . import pointEvolution as evol
 from functools import partial
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-
 from numpy.random import default_rng
 rng = default_rng()
 
@@ -69,8 +73,8 @@ class State(dict):
 #        maxIter: max iterations in conjugate gradient
 class SurfaceMatching(PointSetMatching):
     def __init__(self, Template=None, Target=None, options=None):
-        if Target is not None and (issubclass(type(Target), pointSets.PointSet) or
-                                   (type(Target) in (tuple, list) and issubclass(type(Target[0]), pointSets.PointSet))):
+        if Target is not None and (issubclass(type(Target), PointSet) or
+                                   (type(Target) in (tuple, list) and issubclass(type(Target[0]), PointSet))):
             if options is None:
                 options = {'errorType':'PointSet'}
             else:
@@ -93,14 +97,7 @@ class SurfaceMatching(PointSetMatching):
             self.ds = 1.
         else:
             self.ds = self.fv0.surfArea() /  self.fv0.vertices.shape[0]
-        #else:
-        #    self.ds = 1.
 
-        # maxIter=maxIter, regWeight = regWeight, affineWeight = affineWeight,
-        #                     internalWeight=internalWeight, mode=mode,  affineOnly = affineOnly,
-        #                     rotWeight = rotWeight, scaleWeight = scaleWeight, transWeight = transWeight,
-        #                     symmetric = symmetric, saveFile = saveFile,
-        #                     saveTrajectories = saveTrajectories, affine = affine)
         if self.options['algorithm'] == 'sgd':
             self.set_sgd()
 
@@ -115,7 +112,7 @@ class SurfaceMatching(PointSetMatching):
 
     def set_passenger(self, passenger):
         self.passenger = passenger
-        if isinstance(self.passenger, surfaces.Surface):
+        if isinstance(self.passenger, Surface):
             self.passenger_points = self.passenger.vertices
         elif self.passenger is not None:
             self.passenger_points = self.passenger
@@ -134,11 +131,11 @@ class SurfaceMatching(PointSetMatching):
         self.reset = True
 
         if self.options['internalCost'] == 'h1':
-            self.internalCost = sd.normGrad
-            self.internalCostGrad = sd.diffNormGrad
+            self.internalCost = normGrad
+            self.internalCostGrad = diffNormGrad
         elif self.options['internalCost'] == 'elastic':
-            self.internalCost = sd.elasticNorm
-            self.internalCostGrad = sd.diffElasticNorm
+            self.internalCost = elasticNorm
+            self.internalCostGrad = diffElasticNorm
         else:
             if self.options['internalCost'] is not None:
                 logging.info(f"unknown {self.options['internalCost']:.04f}")
@@ -176,7 +173,7 @@ class SurfaceMatching(PointSetMatching):
             logging.error('Please provide a template surface')
             return
         else:
-            self.fv0 = surfaces.Surface(surf=Template)
+            self.fv0 = Surface(surf=Template)
 
         if self.options['errorType'] != 'currentMagnitude':
             if Target is None:
@@ -184,15 +181,15 @@ class SurfaceMatching(PointSetMatching):
                 return
             else:
                 if self.options['errorType'] == 'L2Norm':
-                    self.fv1 = surfaces.Surface()
+                    self.fv1 = Surface()
                     self.fv1.readFromImage(Target)
                 elif self.options['errorType'] == 'PointSet':
-                    self.fv1 = pointSets.PointSet(data=Target)
+                    self.fv1 = PointSet(data=Target)
                 else:
-                    self.fv1 = surfaces.Surface(surf=Target)
+                    self.fv1 = Surface(surf=Target)
         else:
             self.fv1 = None
-        self.fvInit = surfaces.Surface(surf=self.fv0)
+        self.fvInit = Surface(surf=self.fv0)
         self.fix_orientation()
         if misc is not None and 'subsampleTargetSize' in misc and misc['subsampleTargetSize'] > 0:
             self.fvInit.Simplify(misc['subsampleTargetSize'])
@@ -213,13 +210,13 @@ class SurfaceMatching(PointSetMatching):
 
         self.match_landmarks = True
         tmpl_lmk, targ_lmk, self.wlmk = landmarks
-        self.tmpl_lmk = pointSets.PointSet(data=tmpl_lmk)
-        self.targ_lmk = pointSets.PointSet(data=targ_lmk)
+        self.tmpl_lmk = PointSet(data=tmpl_lmk)
+        self.targ_lmk = PointSet(data=targ_lmk)
 
     def fix_orientation(self, fv1=None):
         if fv1 is None:
             fv1 = self.fv1
-        if issubclass(type(fv1), surfaces.Surface):
+        if issubclass(type(fv1), Surface):
             self.fv0.getEdges()
             fv1.getEdges()
             self.closed = self.fv0.bdry.max() == 0 and fv1.bdry.max() == 0
@@ -249,7 +246,7 @@ class SurfaceMatching(PointSetMatching):
         else:
             self.fv0ori = 1
             self.fv1ori = 1
-        #self.fv0Fine = surfaces.Surface(surf=self.fv0)
+        #self.fv0Fine = Surface(surf=self.fv0)
         logging.info('orientation: {0:d}'.format(self.fv0ori))
 
 
@@ -265,9 +262,9 @@ class SurfaceMatching(PointSetMatching):
         if self.options['symmetric']:
             self.control['x0'] = np.copy(self.control['x0'])
             self.controlTry['x0'] = np.copy(self.control['x0'])
-        self.fvDef = surfaces.Surface(surf=self.fvInit)
+        self.fvDef = Surface(surf=self.fvInit)
         if self.match_landmarks:
-            self.def_lmk = pointSets.PointSet(data=self.tmpl_lmk)
+            self.def_lmk = PointSet(data=self.tmpl_lmk)
         self.npt = self.control['x0'].shape[0]
 
         self.control['at'] = np.zeros([self.Tsize, self.control['x0'].shape[0], self.control['x0'].shape[1]])
@@ -327,37 +324,37 @@ class SurfaceMatching(PointSetMatching):
         self.options['errorType'] = errorType
         if errorType == 'current':
             #print('Running Current Matching')
-            self.fun_obj0 = partial(sd.currentNorm0, KparDist=self.options['KparDist'], weight=1.)
-            self.fun_obj = partial(sd.currentNormDef, KparDist=self.options['KparDist'], weight=1.)
-            self.fun_objGrad = partial(sd.currentNormGradient, KparDist=self.options['KparDist'], weight=1.)
+            self.fun_obj0 = partial(currentNorm0, KparDist=self.options['KparDist'], weight=1.)
+            self.fun_obj = partial(currentNormDef, KparDist=self.options['KparDist'], weight=1.)
+            self.fun_objGrad = partial(currentNormGradient, KparDist=self.options['KparDist'], weight=1.)
         elif errorType == 'currentMagnitude':
             #print('Running Current Matching')
             self.fun_obj0 = lambda fv1 : 0
-            self.fun_obj = partial(sd.currentMagnitude, KparDist=self.options['KparDist'])
-            self.fun_objGrad = partial(sd.currentMagnitudeGradient, KparDist=self.options['KparDist'])
+            self.fun_obj = partial(currentMagnitude, KparDist=self.options['KparDist'])
+            self.fun_objGrad = partial(currentMagnitudeGradient, KparDist=self.options['KparDist'])
             # self.fun_obj0 = curves.currentNorm0
             # self.fun_obj = curves.currentNormDef
             # self.fun_objGrad = curves.currentNormGradient
         elif errorType=='measure':
             #print('Running Measure Matching')
-            self.fun_obj0 = partial(sd.measureNorm0, KparDist=self.options['KparDist'])
-            self.fun_obj = partial(sd.measureNormDef,KparDist=self.options['KparDist'])
-            self.fun_objGrad = partial(sd.measureNormGradient,KparDist=self.options['KparDist'])
+            self.fun_obj0 = partial(measureNorm0, KparDist=self.options['KparDist'])
+            self.fun_obj = partial(measureNormDef,KparDist=self.options['KparDist'])
+            self.fun_objGrad = partial(measureNormGradient,KparDist=self.options['KparDist'])
         elif errorType=='varifold':
-            self.fun_obj0 = partial(sd.varifoldNorm0, KparDist=self.options['KparDist'], fun=vfun,
+            self.fun_obj0 = partial(varifoldNorm0, KparDist=self.options['KparDist'], fun=vfun,
                                     dtype=self.options['KparDist'].pk_dtype)
-            self.fun_obj = partial(sd.varifoldNormDef, KparDist=self.options['KparDist'], fun=vfun,
+            self.fun_obj = partial(varifoldNormDef, KparDist=self.options['KparDist'], fun=vfun,
                                    dtype=self.options['KparDist'].pk_dtype)
-            self.fun_objGrad = partial(sd.varifoldNormGradient, KparDist=self.options['KparDist'], fun=vfun,
+            self.fun_objGrad = partial(varifoldNormGradient, KparDist=self.options['KparDist'], fun=vfun,
                                        dtype=self.options['KparDist'].pk_dtype)
         elif errorType == 'L2Norm':
             self.fun_obj0 = None
             self.fun_obj = None
             self.fun_objGrad = None
         elif errorType == 'PointSet':
-            self.fun_obj0 = partial(sd.measureNormPS0, KparDist=self.options['KparDist'])
-            self.fun_obj = partial(sd.measureNormPSDef, KparDist=self.options['KparDist'])
-            self.fun_objGrad = partial(sd.measureNormPSGradient, KparDist=self.options['KparDist'])
+            self.fun_obj0 = partial(measureNormPS0, KparDist=self.options['KparDist'])
+            self.fun_obj = partial(measureNormPSDef, KparDist=self.options['KparDist'])
+            self.fun_objGrad = partial(measureNormPSGradient, KparDist=self.options['KparDist'])
         else:
             logging.info(f"Unknown error Type:  {self.options['errorType']}")
 
@@ -383,7 +380,7 @@ class SurfaceMatching(PointSetMatching):
             fv1 = self.fv1
 
         if self.options['errorType'] == 'L2Norm':
-            obj = sd.L2Norm(_fvDef, fv1.vfld) / (self.options['sigmaError'] ** 2)
+            obj = L2Norm(_fvDef, fv1.vfld) / (self.options['sigmaError'] ** 2)
         else:
             obj = self.fun_obj(_fvDef, fv1) / (self.options['sigmaError']**2)
             if 'fvInit' in var:
@@ -400,9 +397,7 @@ class SurfaceMatching(PointSetMatching):
         #print 'dataterm = ', obj + self.obj0
         return obj
 
-    def  objectiveFunDef(self, control, var = None, withTrajectory = True, withJacobian=False):
-        #Afft=None, kernel = None, withTrajectory = True, withJacobian=False,
-        #                 fv0 = None, regWeight = None):
+    def objectiveFunDef(self, control, var = None, withTrajectory = True, withJacobian=False):
         if var is None or 'fv0' not in var:
             fv0 = self.fv0
         else:
@@ -431,13 +426,7 @@ class SurfaceMatching(PointSetMatching):
         timeStep = 1.0/self.Tsize
         if 'Afft' in control:
             Afft = control['Afft']
-            dim2 = self.dim**2
-            A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-            if self.affineDim > 0:
-                for t in range(self.Tsize):
-                    AB = np.dot(self.affineBasis, Afft[t])
-                    A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-                    A[1][t] = AB[dim2:dim2+self.dim]
+            A = self.affB.getTransforms(Afft)
         else:
             A = None
 
@@ -456,7 +445,6 @@ class SurfaceMatching(PointSetMatching):
             st['xt'] = xt
             st['Jt'] = Jt
         else:
-            Jt = None
             if self.unreduced:
                 xt = evol.landmarkSemiReducedEvolutionEuler(x0, ct, at*self.ds, kernel, affine=A)
             else:
@@ -468,19 +456,15 @@ class SurfaceMatching(PointSetMatching):
         obj1 = 0
         obj2 = 0
         obj3 = 0
-        foo = surfaces.Surface(surf=fv0)
+        foo = Surface(surf=fv0)
         for t in range(self.Tsize):
             z = xt[t, :, :]
-            # if self.unreduced:
-            #     z2 = (z + xt[t+1, :, :])/2
-            # else:
-            #     z2 = None
             a = at[t, :, :]
             if self.unreduced:
                 c = ct[t,:,:]
             else:
                 c = None
-            #rzz = kfun.kernelMatrix(param.KparDiff, z)
+
             if self.unreduced:
                 ca = kernel.applyK(c,a)
                 ra = kernel.applyK(c, a, firstVar=z)
@@ -496,7 +480,7 @@ class SurfaceMatching(PointSetMatching):
                 obj1 += self.options['internalWeight']*self.internalCost(foo, ra*self.ds)*timeStep
 
             if self.affineDim > 0:
-                obj2 +=  timeStep * np.multiply(self.affineWeight.reshape(Afft[t].shape), Afft[t]**2).sum()
+                obj2 +=  timeStep * (self.affineWeight.reshape(Afft[t].shape) * Afft[t]**2).sum()
             #print xt.sum(), at.sum(), obj
         if self.options['mode'] == 'debug':
             logging.info(f'LDDMM: {obj:.4f}, unreduced penalty: {obj3:.4f}, internal cost: {obj1:.4f}, Affine cost: {obj2:.4f}')
@@ -511,7 +495,7 @@ class SurfaceMatching(PointSetMatching):
     def objectiveFun(self):
         if self.obj is None:
             if self.options['errorType'] == 'L2Norm':
-                self.obj0 = sd.L2Norm0(self.fv1) / (self.options['sigmaError'] ** 2)
+                self.obj0 = L2Norm0(self.fv1) / (self.options['sigmaError'] ** 2)
             else:
                 self.obj0 = self.fun_obj0(self.fv1) / (self.options['sigmaError']**2)
             if self.options['symmetric']:
@@ -522,8 +506,8 @@ class SurfaceMatching(PointSetMatching):
             #     (self.obj, self.state) = self.objectiveFunDef(self.control, withTrajectory=True)
             # else:
             self.obj, self.state = self.objectiveFunDef(self.control, withTrajectory=True)
-            #foo = surfaces.Surface(surf=self.fvDef)
-            self.fvDef.updateVertices(np.squeeze(self.state['xt'][-1, :self.nvert, :]))
+            #foo = Surface(surf=self.fvDef)
+            self.fvDef.updateVertices(self.state['xt'][-1, :self.nvert, :])
             if self.match_landmarks:
                 self.def_lmk.points = self.state['xt'][-1, self.nvert:, :]
             if self.options['symmetric']:
@@ -543,25 +527,6 @@ class SurfaceMatching(PointSetMatching):
         for k in dr.keys():
             if dr[k] is not None:
                 self.state[k] -= dr[k]
-        # self.at -= eps * dr['diff']
-        # if self.unreduced:
-        #     self.ct -= eps * dr['pts']
-        # if self.options['symmetric']:
-        #     self.x0 -= eps * dr['initx']
-        # if self.affineDim > 0:
-        #     self.Afft -= eps*dr['aff']
-
-    # def getVariable(self):
-    #     if self.unreduced:
-    #         if self.options['symmetric']:
-    #             return [self.ct, self.at, self.Afft, self.x0]
-    #         else:
-    #             return [self.ct, self.at, self.Afft, None]
-    #     else:
-    #         if self.options['symmetric']:
-    #             return [self.at, self.Afft, self.x0]
-    #         else:
-    #             return [self.at, self.Afft, None]
 
     def updateTry(self, dr, eps, objRef=None):
         objTry = self.obj0
@@ -570,39 +535,23 @@ class SurfaceMatching(PointSetMatching):
             if dr[k] is not None:
                 controlTry[k] = self.control[k] - eps * dr[k]
 
-        # atTry = self.at - eps * dr['diff']
-        # if self.unreduced:
-        #     ctTry = self.ct - eps*dr['pts']
-        # else:
-        #     ctTry = None
-        # if self.affineDim > 0:
-        #     AfftTry = self.Afft - eps * dr['aff']
-        # else:
-        #     AfftTry = self.Afft
 
-        fv0 = surfaces.Surface(surf=self.fv0)
+        fv0 = Surface(surf=self.fv0)
         if self.options['symmetric']:
-            # x0Try = self.x0 - eps * dr['initx']
             fv0.updateVertices(controlTry['x0'])
-        # else:
-        #     x0Try = None
 
-        # if self.unreduced:
-        #     foo = self.objectiveFunDef({'ct':ctTry, 'at': atTry, 'Afft': AfftTry}, var = {'fv0': fv0},
-        #                                withTrajectory=True)
-        # else:
         obj_, stateTry = self.objectiveFunDef(controlTry, var = {'fv0': fv0}, withTrajectory=True)
         objTry += obj_
 
-        ff = surfaces.Surface(surf=self.fvDef)
+        ff = Surface(surf=self.fvDef)
         ff.updateVertices(stateTry['xt'][-1, :self.nvert, :])
         if self.match_landmarks:
-            pp = pointSets.PointSet(data=self.def_lmk)
+            pp = PointSet(data=self.def_lmk)
             pp.updatePoints(np.squeeze(stateTry['xt'][-1, self.nvert:, :]))
         else:
             pp = None
         if self.options['symmetric']:
-            ffI = surfaces.Surface(surf=self.fvInit)
+            ffI = Surface(surf=self.fvInit)
             ffI.updateVertices(controlTry['x0'])
             objTry += self.dataTerm(ff, {'fvInit': ffI, 'lmk_def':pp})
         else:
@@ -614,21 +563,12 @@ class SurfaceMatching(PointSetMatching):
         if (objRef is None) or (objTry < objRef):
             self.controlTry = controlTry
             self.stateTry = stateTry
-            # self.atTry = atTry
             self.objTry = objTry
-            # self.AfftTry = AfftTry
-            # self.xtTry = xtTry
-            # if self.options['symmetric']:
-            #     self.x0Try = x0Try
-            # if self.unreduced:
-            #     self.ctTry = ctTry
-            #print 'objTry=',objTry, dir.diff.sum()
 
         return objTry
 
 
     def testEndpointGradient(self):
-        # c0 = self.dataTerm(self.fvDef, _lmk_def=self.def_lmk)
         dff = np.random.normal(size=self.fvDef.vertices.shape)
         if self.match_landmarks:
             dpp = np.random.normal(size=self.def_lmk.points.shape)
@@ -639,10 +579,10 @@ class SurfaceMatching(PointSetMatching):
         c = []
         eps0 = 1e-6
         for eps in [-eps0, eps0]:
-            ff = surfaces.Surface(surf=self.fvDef)
+            ff = Surface(surf=self.fvDef)
             ff.updateVertices(ff.vertices+eps*dff)
             if self.match_landmarks:
-                pp = pointSets.PointSet(data=self.def_lmk)
+                pp = PointSet(data=self.def_lmk)
                 pp.updatePoints(pp.points + eps * dpp)
             else:
                 pp = None
@@ -662,7 +602,7 @@ class SurfaceMatching(PointSetMatching):
         else:
             endPoint_lmk = None
         if self.options['errorType'] == 'L2Norm':
-            px = sd.L2NormGradient(endPoint, self.fv1.vfld)
+            px = L2NormGradient(endPoint, self.fv1.vfld)
         else:
             if self.fv1:
                 px = self.fun_objGrad(endPoint, self.fv1)
@@ -683,23 +623,12 @@ class SurfaceMatching(PointSetMatching):
             fv0 = self.fvInit
         if control is None:
             control = self.control
-            # at = self.at
-            # if self.unreduced:
-            #     ct = self.ct
-            # else:
-            #     ct = None
             current_at = True
             if self.varCounter == self.trajCounter:
                 computeTraj = False
             else:
                 computeTraj = True
         else:
-            # if self.unreduced:
-            #     ct = control['ct']
-            #     at = control['at']
-            # else:
-            #     ct = None
-            #     at = control['at']
             current_at = False
             computeTraj = True
         if self.match_landmarks:
@@ -723,7 +652,6 @@ class SurfaceMatching(PointSetMatching):
         else:
             xt = self.state['xt']
 
-        # affine = self.affB.getTransforms(control['Afft'])
         if affine is not None:
             A0 = affine[0]
             A = np.zeros([T,dim,dim])
@@ -736,7 +664,7 @@ class SurfaceMatching(PointSetMatching):
         pxt[T, :, :] = px1
         # if self.unreduced:
         #     pxt[T-1, :, :] -= self.unreducedWeight * ((xt[T, :, :] + xt[T-1, :, :])/2 - ct[T-1, :, :])*timeStep
-        foo = surfaces.Surface(surf=fv0)
+        foo = Surface(surf=fv0)
         for t in range(T):
             px = pxt[T-t, :, :]
             z = xt[T-t-1, :, :]
@@ -751,7 +679,7 @@ class SurfaceMatching(PointSetMatching):
             foo.updateVertices(z)
             if self.internalCost:
                 grd = self.internalCostGrad(foo, v)
-                Lv =  grd[0]
+                Lv = grd[0]
                 DLv = self.options['internalWeight']*grd[1]
                 if self.unreduced:
                     zpx = KparDiff.applyDiffKT(c, px - self.options['internalWeight']*Lv, a*self.ds,
@@ -766,8 +694,8 @@ class SurfaceMatching(PointSetMatching):
                 else:
                     zpx = KparDiff.applyDiffKT(z, px, a*self.ds, regweight=self.options['regWeight'], lddmm=True)
 
-            if not (affine is None):
-                pxt[T-t-1, :, :] = np.dot(px, A[T-t-1]) + timeStep * zpx
+            if affine is not None:
+                pxt[T-t-1, :, :] = px @ A[T-t-1, :, :] + timeStep * zpx
             else:
                 pxt[T-t-1, :, :] = px + timeStep * zpx
         return pxt, xt
@@ -782,28 +710,11 @@ class SurfaceMatching(PointSetMatching):
         x0 = fv0.vertices
         if control is None:
             control = self.control
-            # if self.unreduced:
-            #     control = {'ct':self.ct, 'at':self.at}
-            #     ct = self.ct
-            #     at = self.at
-            # else:
-            #     control = {'at':self.at}
-            #     at = self.at
-            #     ct = None
-        #else:
-            # if self.unreduced:
-            #     ct = control['ct']
-            #     at = control['at']
-            # else:
-            #     ct = None
-            #     at = control['at']
+
         if kernel is None:
             kernel  = self.options['KparDiff']
-        # if not self.internalCost:
-        #     return evol.landmarkHamiltonianGradient(x0, at, px1, kernel, regWeight, affine=affine,
-        #                                             getCovector=True)
-        #
-        foo = surfaces.Surface(surf=fv0)
+
+        foo = Surface(surf=fv0)
         foo.updateVertices(x0)
         (pxt, xt) = self.hamiltonianCovector(px1, kernel, regWeight, fv0=foo, control = control)
 
@@ -813,27 +724,22 @@ class SurfaceMatching(PointSetMatching):
         else:
             dct = None
         timeStep = 1.0/control['at'].shape[0]
-        foo = surfaces.Surface(surf=fv0)
+        foo = Surface(surf=fv0)
         nvert = foo.vertices.shape[0]
         affine = self.affB.getTransforms(control['Afft'])
-        if not (affine is None):
+        if affine is not None:
             A = affine[0]
             dA = np.zeros(affine[0].shape)
             db = np.zeros(affine[1].shape)
         for t in range(control['at'].shape[0]):
             z = xt[t,:,:]
-            # if self.unreduced:
-            #     z2 = (z+xt[t+1,:,:])/2
-            # else:
-            #     z2 = None
-            foo.updateVertices(z[:nvert, :])
             a = control['at'][t, :, :]
             if self.unreduced:
                 c = control['ct'][t,:,:]
             else:
                 c = None
             px = pxt[t+1, :, :]
-            #print 'testgr', (2*a-px).sum()
+
             if not self.affineOnly:
                 if self.unreduced:
                     dat[t, :, :] = 2 * regWeight * kernel.applyK(c, a) * self.ds**2 - kernel.applyK(z, px, firstVar=c) * self.ds
@@ -846,10 +752,10 @@ class SurfaceMatching(PointSetMatching):
                     dat[t, :, :] = 2 * regWeight * a * self.ds**2 - px * self.ds
                     v = kernel.applyK(z,a)*self.ds
                 if self.internalCost:
+                    foo.updateVertices(z[:nvert, :])
                     Lv = self.internalCostGrad(foo, v, variables='phi')
                     if self.unreduced:
                         dat[t, :, :] += self.options['internalWeight'] * kernel.applyK(z, Lv, firstVar=c) * self.ds
-                        #if k> 0:
                         dct[t, :, :] += self.options['internalWeight'] * kernel.applyDiffKT(z, a, Lv, firstVar=c)*self.ds
                     else:
                         dat[t, :, :] += self.options['internalWeight'] * Lv * self.ds
@@ -857,20 +763,22 @@ class SurfaceMatching(PointSetMatching):
                 if not self.unreduced and self.euclideanGradient:
                     dat[t, :, :] = kernel.applyK(z, dat[t, :, :])
 
-            if not (affine is None):
-                dA[t] = gradExponential(A[t]*timeStep, px, xt[t, :, :]) #.reshape([self.dim**2, 1])/timeStep
-                db[t] = px.sum(axis=0) #.reshape([self.dim,1])
+            if affine is not None:
+                dA[t] = gradExponential(A[t]*timeStep, px, z)
+                db[t] = px.sum(axis=0)
 
+        res = {}
         if self.unreduced:
             if self.options['mode'] == 'debug':
                 logging.info(f'gradient {np.fabs(dct).max()} {np.fabs(dat).max()}')
-            output = [dct]
-        else:
-            output = []
-        if affine is None:
-            return output + [dat, xt, pxt]
-        else:
-            return output + [dat, dA, db, xt, pxt]
+            res['dct'] = dct
+        res['dat'] = dat
+        res['xt'] = xt
+        res['pxt'] = pxt
+        if affine is not None:
+            res['dA'] = dA
+            res['db'] = db
+        return res
 
 
     def endPointGradientSGD(self):
@@ -897,7 +805,7 @@ class SurfaceMatching(PointSetMatching):
         self.stateSubset = I0
         xt = evol.landmarkSemiReducedEvolutionEuler(fv0.vertices, self.control['ct'], self.control['at'], self.options['KparDiff'],
                                                     affine=self.control['Afft'])
-        endPoint = surfaces.Surface(surf=fv0)
+        endPoint = Surface(surf=fv0)
         endPoint.updateVertices(xt[-1, :, :])
         endPoint.face_weights /= sqp0
         # endPoint.updateWeights(endPoint.weights / sqp0)
@@ -911,7 +819,7 @@ class SurfaceMatching(PointSetMatching):
         # self.SGDSelectionCost = [I0, I1]
 
         if self.options['errorType'] == 'L2Norm':
-            px_ = sd.L2NormGradient(endPoint, self.fv1.vfld)
+            px_ = L2NormGradient(endPoint, self.fv1.vfld)
         else:
             px_ = self.fun_objGrad(endPoint, fv1)
             ## Correction for diagonal term
@@ -936,17 +844,11 @@ class SurfaceMatching(PointSetMatching):
                     pc[fv0.faces[k, 2], :] += dz2[k, :]
                 px_ -= s1 * s0 * pc / 2
 
-        # if self.match_landmarks:
-        #     pxl = self.wlmk*self.lmk_objGrad(endPoint_lmk.points, self.targ_lmk.points)
-        #     px = np.concatenate((px, pxl), axis=0)
-
-        # px = np.zeros(self.fvDef.vertices.shape)
-        # px[I0] = px_
         self.state['xt'][:, I0, :] = xt
         return px_ / self.options['sigmaError'] ** 2, xt
 
     def checkSGDEndpointGradient(self):
-        endPoint = surfaces.Surface(surf=self.fv0)
+        endPoint = Surface(surf=self.fv0)
         xt = evol.landmarkSemiReducedEvolutionEuler(self.fv0.vertices, self.control['ct'], self.control['at'], self.options['KparDiff'],
                                                     affine=self.control['Afft'])
         endPoint.updateVertices(xt[-1, :, :])
@@ -991,15 +893,12 @@ class SurfaceMatching(PointSetMatching):
             dA = foo[2]
             db = foo[3]
             grd['Afft'] = 2*self.affineWeight.reshape([1, self.affineDim])*self.control['Afft']
-            #grd.aff = 2 * self.Afft
             for t in range(self.Tsize):
-               dAff = np.dot(self.affineBasis.T, np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])]))
-               #grd.aff[t] -=  np.divide(dAff.reshape(grd.aff[t].shape), self.affineWeight.reshape(grd.aff[t].shape))
+               dAff = self.affineBasis.T @ np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])])
                grd['Afft'][t] -=  dAff.reshape(grd['Afft'][t].shape)
             grd['Afft'] /= (self.coeffAff*coeff*self.Tsize)
         else:
             grd['Afft'] = None
-            #            dAfft[:,0:self.dim**2]/=100
         return grd
 
 
@@ -1010,7 +909,6 @@ class SurfaceMatching(PointSetMatching):
 
         if update is None:
             control = self.control
-            # Afft = self.control['Afft']
             if self.match_landmarks:
                 endPoint = (self.fvDef, self.def_lmk)
             else:
@@ -1030,12 +928,12 @@ class SurfaceMatching(PointSetMatching):
 
 
             if self.match_landmarks:
-                endPoint0 = surfaces.Surface(surf=self.fv0)
+                endPoint0 = Surface(surf=self.fv0)
                 endPoint0.updateVertices(xt[-1, :self.nvert, :])
-                endPoint1 = pointSets.PointSet(data=xt[-1, self.nvert:,:])
+                endPoint1 = PointSet(data=xt[-1, self.nvert:,:])
                 endPoint = (endPoint0, endPoint1)
             else:
-                endPoint = surfaces.Surface(surf=self.fv0)
+                endPoint = Surface(surf=self.fv0)
                 endPoint.updateVertices(xt[-1, :, :])
 
 
@@ -1043,59 +941,33 @@ class SurfaceMatching(PointSetMatching):
         dim2 = self.dim**2
         foo = self.hamiltonianGradient(px1, control=control)
         grd = Control()
-        # if self.euclideanGradient:
-        #     grd['diff'] = np.zeros(foo[0].shape)
-        #     for t in range(self.Tsize):
-        #         z = xt[t, :, :]
-        #         grd['diff'][t,:,:] = self.param.KparDiff.applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
-        # else:
 
         if self.unreduced:
-            grd['ct'] = foo[0]/(coeff*self.Tsize)
-            grd['at'] = foo[1] / (coeff * self.Tsize)
+            grd['ct'] = foo['dct']/(coeff*self.Tsize)
+            grd['at'] = foo['dat'] / (coeff * self.Tsize)
         else:
-            grd['at'] = foo[0]/(coeff*self.Tsize)
+            grd['at'] = foo['dat']/(coeff*self.Tsize)
+
         if self.affineDim > 0:
             grd['Afft'] = np.zeros(self.control['Afft'].shape)
-            dA = foo[1]
-            db = foo[2]
+            dA = foo['dA']
+            db = foo['db']
             grd['Afft'] = 2*self.affineWeight.reshape([1, self.affineDim])*control['Afft']
-            #grd.aff = 2 * self.Afft
             for t in range(self.Tsize):
-               dAff = self.affineBasis.T @ np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])])
-               #grd.aff[t] -=  np.divide(dAff.reshape(grd.aff[t].shape), self.affineWeight.reshape(grd.aff[t].shape))
-               if not self.euclideanGradient:
-                   grd['Afft'][t] /=  dAff.reshape(grd['Afft'][t].shape)
-            grd['Afft'] /= (self.coeffAff*coeff*self.Tsize)
-            #            dAfft[:,0:self.dim**2]/=100
+                dAff = self.affineBasis.T @ np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])])
+                grd['Afft'][t] -=  dAff.reshape(grd['Afft'][t].shape)
+            if not self.euclideanGradient:
+                grd['Afft'] /= (self.coeffAff*coeff*self.Tsize)
+            else:
+                grd['Afft'] /= coeff * self.Tsize
+
         if self.options['symmetric']:
-            grd['x0'] = (self.initPointGradient() - foo[-1][0,...])/(self.coeffInitx * coeff)
+            grd['x0'] = (self.initPointGradient() - foo['pxt'][0,...])/(self.coeffInitx * coeff)
         else:
             grd['x0'] = np.zeros((self.npt, self.dim))
         return grd
 
 
-
-    # def addProd(self, dir1, dir2, beta):
-    #     dr = Direction()
-    #     for k in dir1.keys():
-    #         if k != 'aff' and dir1[k] is not None:
-    #             dr[k] = dir1[k] + beta * dir2[k]
-    #     if self.affineDim > 0:
-    #         dr['aff'] = dir1['aff'] + beta * dir2['aff']
-    #     return dr
-
-    # def prod(self, dir1, beta):
-    #     dr = Direction()
-    #     for k in dir1.keys():
-    #         if k != 'aff' and dir1[k] is not None:
-    #             dr[k] = beta * dir1[k]
-    #     if self.affineDim > 0:
-    #         dr['aff'] = beta * dir1['aff']
-    #     return dr
-
-    # def copyDir(self, dir0):
-    #     return deepcopy(dir0)
 
 
     def randomDir(self):
@@ -1121,7 +993,6 @@ class SurfaceMatching(PointSetMatching):
             z = np.squeeze(self.state['xt'][t, :, :])
             gg = np.squeeze(g1['at'][t, :, :])
             u = self.options['KparDiff'].applyK(z, gg)
-            #uu = np.multiply(g1.aff[t], self.affineWeight.reshape(g1.aff[t].shape))
             if self.affineDim > 0:
                 uu = g1['Afft'][t]
             else:
@@ -1153,26 +1024,15 @@ class SurfaceMatching(PointSetMatching):
         self.obj = self.objTry
         self.control = deepcopy(self.controlTry)
         self.state = deepcopy(self.stateTry)
-        # self.at = np.copy(self.atTry)
-        # if self.unreduced:
-        #     self.ct = np.copy(self.ctTry)
-        # if self.affineDim > 0:
-        #     self.Afft = np.copy(self.AfftTry)
-        # self.xt = np.copy(self.xtTry)
-        # self.varCounter += 1
-        # self.trajCounter = self.varCounter
-        # if self.options['symmetric']:
-        #     self.x0 = np.copy(self.x0Try)
-        #print self.at
 
     def saveCorrectedTarget(self, X0, X1):
         U = la.inv(X0[-1])
-        f = surfaces.Surface(surf=self.fv1)
+        f = Surface(surf=self.fv1)
         yyt = np.dot(f.vertices - X1[-1,...], U)
         f.updateVertices(yyt)
         f.saveVTK(self.outputDir + '/TargetCorrected.vtk')
         if self.match_landmarks:
-            p = pointSets.PointSet(data=self.targ_lmk)
+            p = PointSet(data=self.targ_lmk)
             yyt = np.dot(p.points - X1[-1,...], U)
             p.updatePoints(yyt)
             p.saveVTK(self.outputDir + '/TargetLandmarkCorrected.vtk')
@@ -1180,9 +1040,9 @@ class SurfaceMatching(PointSetMatching):
 
     def saveCorrectedEvolution(self, fv0, state, control, fileName='evolution'):
         Jacobian = state['Jt']
-        f = surfaces.Surface(surf=fv0)
+        f = Surface(surf=fv0)
         if self.match_landmarks:
-            p = pointSets.PointSet(data=self.tmpl_lmk)
+            p = PointSet(data=self.tmpl_lmk)
         else:
             p = None
         X = self.affB.integrateFlow(control['Afft'])
@@ -1206,7 +1066,7 @@ class SurfaceMatching(PointSetMatching):
             if self.match_landmarks:
                 p.updatePoints(yyt[self.nvert:, :])
                 p.saveVTK(self.outputDir + '/' + fn[t] + '_lmk.vtk')
-            vf = surfaces.vtkFields()
+            vf = vtkFields()
             if Jacobian is not None:
                 vf.scalars.append('Jacobian')
                 vf.scalars.append(np.exp(Jacobian[t, :self.nvert, 0]))
@@ -1235,7 +1095,7 @@ class SurfaceMatching(PointSetMatching):
             fn = fileName
 
 
-        fvDef = surfaces.Surface(surf=fv0)
+        fvDef = Surface(surf=fv0)
         AV0 = fvDef.computeVertexArea()
         nu = orientation * fv0.computeVertexNormals()
         nvert = fv0.vertices.shape[0]
@@ -1248,7 +1108,7 @@ class SurfaceMatching(PointSetMatching):
             fvDef.updateVertices(np.squeeze(xt[kk, :nvert, :]))
             AV = fvDef.computeVertexArea()
             AV = (AV[0] / AV0[0])
-            vf = surfaces.vtkFields()
+            vf = vtkFields()
             if Jacobian is not None:
                 vf.scalars.append('Jacobian')
                 vf.scalars.append(np.exp(Jacobian[kk, :nvert, 0]))
@@ -1271,14 +1131,14 @@ class SurfaceMatching(PointSetMatching):
             fvDef.saveVTK2(self.outputDir + '/' + fn[kk] + '.vtk', vf)
             displ += dt * (v * nu).sum(axis=1)
             if passenger is not None and passenger[0] is not None:
-                if isinstance(passenger[0], surfaces.Surface):
-                    fvp = surfaces.Surface(surf=passenger[0])
+                if isinstance(passenger[0], Surface):
+                    fvp = Surface(surf=passenger[0])
                     fvp.updateVertices(passenger[1][kk,...])
                     fvp.saveVTK(self.outputDir+'/'+fn[kk]+'_passenger.vtk')
                 else:
-                    pointSets.savePoints(self.outputDir+'/'+fn[kk]+'_passenger.vtk', passenger[1][kk,...])
+                    savePoints(self.outputDir+'/'+fn[kk]+'_passenger.vtk', passenger[1][kk,...])
             if self.match_landmarks:
-                pp = pointSets.PointSet(data=xt[kk,nvert:,:])
+                pp = PointSet(data=xt[kk,nvert:,:])
                 pp.saveVTK(self.outputDir+'/'+fn[kk]+'_lmk.vtk')
 
     def saveEPDiff(self, fv0, at, fileName='evolution'):
@@ -1288,7 +1148,7 @@ class SurfaceMatching(PointSetMatching):
             x0 = fv0.vertices
         xtEPDiff, atEPdiff = evol.landmarkEPDiff(at.shape[0], x0,
                                                  np.squeeze(at[0, :, :]), self.options['KparDiff'])
-        fvDef = surfaces.Surface(surf=fv0)
+        fvDef = Surface(surf=fv0)
         nvert = fv0.vertices.shape[0]
         fvDef.updateVertices(np.squeeze(xtEPDiff[-1, :nvert, :]))
         fvDef.saveVTK(self.outputDir + '/' + fileName + 'EPDiff.vtk')
@@ -1320,9 +1180,9 @@ class SurfaceMatching(PointSetMatching):
         if forceSave or self.iter % self.saveRate == 0:
             # self.xt = evol.landmarkSemiReducedEvolutionEuler(self.x0, self.ct, self.at, self.param.KparDiff,
             #                                                  affine=self.Afft)
-            pointSets.saveTrajectories(self.outputDir + '/' + self.options['saveFile'] + 'curvesSGDState.vtk',
+            saveTrajectories(self.outputDir + '/' + self.options['saveFile'] + 'curvesSGDState.vtk',
                                        self.state['xt'])
-            pointSets.saveTrajectories(self.outputDir + '/' + self.options['saveFile'] + 'curvesSGDControl.vtk',
+            saveTrajectories(self.outputDir + '/' + self.options['saveFile'] + 'curvesSGDControl.vtk',
                                        self.control['ct'])
             #self.updateEndPoint(self.xt)
             #self.ct = np.copy(self.xt[:-1, :, :])
@@ -1334,8 +1194,6 @@ class SurfaceMatching(PointSetMatching):
             # f.at = np.zeros(f.at.shape)
             self.controlTry['ct'] = np.copy(self.control['ct'])
 
-        #else:
-            #self.updateEndPoint(self.xt)
 
     def startOfIteration(self):
         if self.options['algorithm'] != 'sgd':
@@ -1389,7 +1247,7 @@ class SurfaceMatching(PointSetMatching):
                                                                         self.options['KparDiff'], affine=A,
                                                                         withPointSet=self.passenger_points,
                                                                         withJacobian=True)
-                if isinstance(self.passenger, surfaces.Surface):
+                if isinstance(self.passenger, Surface):
                     self.passengerDef.updateVertices(yt[-1,...])
                 else:
                     self.passengerDef = deepcopy(yt[-1,...])
@@ -1404,7 +1262,7 @@ class SurfaceMatching(PointSetMatching):
                 logging.info('EPDiff difference %f' % (np.fabs(self.control['xt'][-1, :, :] - xtEPDiff[-1, :, :]).sum()))
 
             if self.options['saveTrajectories']:
-                pointSets.saveTrajectories(self.outputDir + '/' + self.options['saveFile'] + 'curves.vtk', self.state['xt'])
+                saveTrajectories(self.outputDir + '/' + self.options['saveFile'] + 'curves.vtk', self.state['xt'])
 
 
             self.updateEndPoint(self.state['xt'])
@@ -1415,9 +1273,9 @@ class SurfaceMatching(PointSetMatching):
             self.saveEvolution(self.fvInit, self.state, fileName=self.saveFileList,
                                passenger = (self.passenger, yt))
             if self.unreduced:
-                pointSets.saveTrajectories(self.outputDir + '/' + self.options['saveFile'] + 'curvesSGDState.vtk',
+                saveTrajectories(self.outputDir + '/' + self.options['saveFile'] + 'curvesSGDState.vtk',
                                            self.state['xt'])
-                pointSets.saveTrajectories(self.outputDir + '/' + self.options['saveFile'] + 'curvesSGDControl.vtk',
+                saveTrajectories(self.outputDir + '/' + self.options['saveFile'] + 'curvesSGDControl.vtk',
                                            self.control['ct'])
             self.saveHdf5(fileName=self.outputDir + '/output.h5')
         else:
@@ -1463,10 +1321,10 @@ class SurfaceMatching(PointSetMatching):
         template.create_dataset('vertices', data=self.fv0.vertices)
         template.create_dataset('faces', data=self.fv0.faces)
         target = LDDMMResult.create_group('target')
-        if isinstance(self.fv1, surfaces.Surface):
+        if isinstance(self.fv1, Surface):
             target.create_dataset('vertices', data=self.fv1.vertices)
             target.create_dataset('faces', data=self.fv1.faces)
-        elif isinstance(self.fv1, pointSets.PointSet):
+        elif isinstance(self.fv1, PointSet):
             target.create_dataset('vertices', data=self.fv1.points)
         deformedTemplate = LDDMMResult.create_group('deformedTemplate')
         deformedTemplate.create_dataset('vertices', data=self.fvDef.vertices)
@@ -1502,8 +1360,6 @@ class SurfaceMatching(PointSetMatching):
             self.endOfIteration(forceSave=True)
 
     def optimizeMatching(self):
-        #print 'dataterm', self.dataTerm(self.fvDef)
-        #print 'obj fun', self.objectiveFun(), self.obj0
         if self.unreduced:
             print(f"Unreduced weight: {self.options['unreducedWeight']:0.4f}")
 
