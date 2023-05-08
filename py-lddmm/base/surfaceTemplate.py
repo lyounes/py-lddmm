@@ -78,6 +78,7 @@ class SurfaceTemplate(SurfaceMatching):
         self.fv0.saveVTK(self.outputDir +'/'+ 'HyperTemplate.vtk')
         for kk in range(self.Ntarg):
             self.fv1[kk].saveVTK(self.outputDir +'/'+ 'Target'+str(kk)+'.vtk')
+        self.dim = self.fv0.vertices.shape[1]
 
             
     def initialize_variables(self):
