@@ -125,14 +125,14 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=None,
     for t in range(T):
         if withaff:
             Rk = affineBasis.getExponential(timeStep * A[t,:,:])
-            xt[t+1,:,:] = np.dot(xt[t,:,:], Rk.T) + timeStep * b[t,None,:]
+            xt[t+1,:,:] = xt[t,:,:] @ Rk.T + timeStep * b[t,None,:]
         else:
             xt[t+1, :,:] = xt[t, :,:]
         xt[t+1,:,:] += timeStep*KparDiff.applyK(xt[t,:,:], at[t,:,:])
 
         if withPointSet is not None:
             if withaff:
-                yt[t+1,:,:] = np.dot(yt[t, :,:], Rk.T) + timeStep * b[t,None, :]
+                yt[t+1,:,:] = yt[t, :,:] @ Rk.T + timeStep * b[t,None, :]
             else:
                 yt[t+1,:,:] = yt[t, :,:]
             yt[t + 1, :,:] += timeStep * KparDiff.applyK(xt[t, :,:], at[t, :,:], firstVar=yt[t, :,:])
@@ -145,7 +145,7 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=None,
         if withNormals is not None:
             nt[t+1, :,:] = nt[t, :,:] - timeStep * KparDiff.applyDiffKT(xt[t,:,:], nt[t, :, :], at[t, :, :])
             if withaff:
-                nt[t + 1, :, :] -= timeStep * np.dot(nt[t, :, :], A[t])
+                nt[t + 1, :, :] -= timeStep * (nt[t, :, :] @ A[t])
 
     if simpleOutput:
         return xt
@@ -163,11 +163,9 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=None,
 
 def landmarkHamiltonianCovector(x0, at, px1, Kpardiff, regweight, affine=None, extraTerm = None):
     if not (affine is None or len(affine[0]) == 0):
-        #withaff = True
         A = affine[0]
     else:
-        #withaff = False
-        A = np.zeros((1, 1, 1))
+        A = None
 
     N = x0.shape[0]
     dim = x0.shape[1]
@@ -180,9 +178,9 @@ def landmarkHamiltonianCovector(x0, at, px1, Kpardiff, regweight, affine=None, e
     pxt[M, :, :] = px1
 
     for t in range(M):
-        px = np.squeeze(pxt[M - t, :, :])
-        z = np.squeeze(xt[M - t - 1, :, :])
-        a = np.squeeze(at[M - t - 1, :, :])
+        px = pxt[M - t, :, :]
+        z = xt[M - t - 1, :, :]
+        a = at[M - t - 1, :, :]
         if extraTerm is not None:
             grd = extraTerm['grad'](z, Kpardiff.applyK(z,a))
             Lv = -extraTerm['coeff'] * grd[0]
@@ -192,8 +190,8 @@ def landmarkHamiltonianCovector(x0, at, px1, Kpardiff, regweight, affine=None, e
         else:
             zpx = Kpardiff.applyDiffKT(z, px, a, regweight=regweight, lddmm=True)
 
-        if not (affine is None):
-            pxt[M - t - 1, :, :] = np.dot(px, affineBasis.getExponential(timeStep * A[M - t - 1, :, :])) + timeStep * zpx
+        if affine is not None:
+            pxt[M - t - 1, :, :] = px @ affineBasis.getExponential(timeStep * A[M - t - 1, :, :]) + timeStep * zpx
         else:
             pxt[M - t - 1, :, :] = px + timeStep * zpx
     return pxt, xt
@@ -204,14 +202,14 @@ def landmarkHamiltonianGradient(x0, at, px1, KparDiff, regweight, getCovector = 
     (pxt, xt) = landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine=affine, extraTerm=extraTerm)
     dat = np.zeros(at.shape)
     timeStep = 1.0/at.shape[0]
-    if not (affine is None):
+    if affine is not None:
         A = affine[0]
         dA = np.zeros(affine[0].shape)
         db = np.zeros(affine[1].shape)
     for k in range(at.shape[0]):
-        a = np.squeeze(at[k, :, :])
-        x = np.squeeze(xt[k, :, :])
-        px = np.squeeze(pxt[k+1, :, :])
+        a = at[k, :, :]
+        x = xt[k, :, :]
+        px = pxt[k+1, :, :]
         #print 'testgr', (2*a-px).sum()
         dat[k, :, :] = (2*regweight*a-px)
         if extraTerm is not None:
@@ -219,8 +217,8 @@ def landmarkHamiltonianGradient(x0, at, px1, KparDiff, regweight, getCovector = 
             #Lv = -foo.laplacian(v)
             dat[k, :, :] += extraTerm['coeff'] * Lv
         if not (affine is None):
-            dA[k] = affineBasis.gradExponential(A[k] * timeStep, pxt[k + 1], xt[k]) #.reshape([self.dim**2, 1])/timeStep
-            db[k] = pxt[k+1].sum(axis=0) #.reshape([self.dim,1]) 
+            dA[k] = affineBasis.gradExponential(A[k] * timeStep, px, x) #.reshape([self.dim**2, 1])/timeStep
+            db[k] = px.sum(axis=0) #.reshape([self.dim,1])
 
     if affine is None:
         if getCovector == False:

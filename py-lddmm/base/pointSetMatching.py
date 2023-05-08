@@ -214,13 +214,16 @@ class PointSetMatching(BasicMatching):
         at = control['at']
         st = State()
         timeStep = 1.0/self.Tsize
-        dim2 = self.dim**2
-        A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-        if self.affineDim > 0:
-            for t in range(self.Tsize):
-                AB = np.dot(self.affineBasis, Afft[t])
-                A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-                A[1][t] = AB[dim2:dim2+self.dim]
+        # dim2 = self.dim**2
+        A = self.affB.getTransforms(Afft)
+        # if self.affineDim > 0:
+        #     A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+        #     for t in range(self.Tsize):
+        #         AB = np.dot(self.affineBasis, Afft[t])
+        #         A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
+        #         A[1][t] = AB[dim2:dim2+self.dim]
+        # else:
+        #     A = None
         if withJacobian:
             (xt,Jt)  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A, withJacobian=True)
             st['xt'] = xt
@@ -275,11 +278,6 @@ class PointSetMatching(BasicMatching):
         for k in dr.keys():
             if dr[k] is not None:
                 controlTry[k] = self.control[k] - eps * dr[k]
-        # atTry = self.at - eps * dr['diff']
-        # if self.affineDim > 0:
-        #     AfftTry = self.Afft - eps * dr['aff']
-        # else:
-        #     AfftTry = self.Afft
 
         objTryDef, st = self.objectiveFunDef(controlTry, withTrajectory=True)
         ff = self.makeTryInstance(st)
@@ -373,13 +371,10 @@ class PointSetMatching(BasicMatching):
             dA = foo[1]
             db = foo[2]
             grd['Afft'] = 2*self.affineWeight.reshape([1, self.affineDim])*control['Afft']
-            #grd.aff = 2 * self.Afft
             for t in range(self.Tsize):
                dAff = np.dot(self.affineBasis.T, np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])]))
-               #grd.aff[t] -=  np.divide(dAff.reshape(grd.aff[t].shape), self.affineWeight.reshape(grd.aff[t].shape))
                grd['Afft'][t] -=  dAff.reshape(grd['Afft'][t].shape)
             grd['Afft'] /= (self.coeffAff*coeff*self.Tsize)
-            #            dAfft[:,0:self.dim**2]/=100
         return grd
 
     def startOfIteration(self):
@@ -455,12 +450,13 @@ class PointSetMatching(BasicMatching):
 
             self.fvDef.points = np.copy(np.squeeze(self.state['xt'][-1, :, :]))
             dim2 = self.dim**2
-            A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-            if self.affineDim > 0:
-                for t in range(self.Tsize):
-                    AB = np.dot(self.affineBasis, self.control['Afft'][t])
-                    A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-                    A[1][t] = AB[dim2:dim2+self.dim]
+            A = self.affB.getTransforms(self.control['Afft'])
+            # A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+            # if self.affineDim > 0:
+            #     for t in range(self.Tsize):
+            #         AB = np.dot(self.affineBasis, self.control['Afft'][t])
+            #         A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
+            #         A[1][t] = AB[dim2:dim2+self.dim]
             xt, Jt  = evol.landmarkDirectEvolutionEuler(self.x0, self.control['at'], self.options['KparDiff'], affine=A,
                                                               withJacobian=True)
             if self.options['affine']=='euclidean' or self.options['affine']=='translation':
@@ -469,7 +465,7 @@ class PointSetMatching(BasicMatching):
                 dt = 1.0 /self.Tsize
                 for t in range(self.Tsize+1):
                     U = la.inv(X[0][t])
-                    yyt = np.dot(self.control['xt'][t,...] - X[1][t, ...], U.T)
+                    yyt = np.dot(self.state['xt'][t,...] - X[1][t, ...], U.T)
                     f = np.copy(yyt)
                     pointSets.savelmk(f, self.outputDir + '/' + self.options['saveFile'] + 'Corrected' + str(t) + '.lmk')
                 f = np.copy(self.fv1)
