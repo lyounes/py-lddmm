@@ -104,12 +104,6 @@ def compute(model):
 
     ## Object kernel
     K1 = Kernel(name='gauss', sigma = sigmaKernel)
-
-    # sm = MeshMatchingParam(timeStep=0.1, algorithm='bfgs', KparDiff=K1, KparDist=('gauss', sigmaDist),
-    #                           KparIm=('gauss', .1), sigmaError=sigmaError)
-    # sm.KparDiff.pk_dtype = 'float32'
-    # sm.KparDist.pk_dtype = 'float32'
-
     options = {
         'outputDir': '../Output/meshMatchingTest/'+model,
         'mode': 'debug',
@@ -125,6 +119,8 @@ def compute(model):
         'sigmaError': sigmaError,
         'errorType': 'measure',
         'algorithm': 'bfgs',
+        'internalCost': 'divergence',
+        'internalWeight': 10.0,
         'pk_dtype': 'float32'
     }
 

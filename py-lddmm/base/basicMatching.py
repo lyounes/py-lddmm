@@ -148,14 +148,16 @@ class BasicMatching(object):
         pass
 
     def set_parameters(self):
-        if self.options['mode'] in ('normal', 'debug'):
+        if self.options['mode'] == 'debug':
             self.options['verb'] = True
-            if self.options['mode'] == 'debug':
-                self.options['testGradient'] = True
-            else:
-                self.options['testGradient'] = False
-        else:
+            self.options['testGradient'] = True
+            self.options['pk_dtype'] = 'float64'
+        elif self.options['mode'] == 'quiet':
             self.options['verb'] = False
+            self.options['testGradient'] = False
+        else:
+            self.options['testGradient'] = False
+            self.options['verb'] = True
 
         self.saveRate = self.options['saveRate']
         self.gradEps = -1

@@ -762,7 +762,6 @@ class SecondOrderSurfaceTimeMatching(SurfaceTimeMatching):
         return res
 
     def acceptVarTry(self):
-        logging.info(f'accepting {self.objTry:.4f}')
         self.obj = self.objTry
         self.a0 = np.copy(self.a0Try)
         self.rhot = np.copy(self.rhotTry)
@@ -782,8 +781,8 @@ class SecondOrderSurfaceTimeMatching(SurfaceTimeMatching):
             logging.info('Saving surfaces...')
             control = {'a00': self.a00, 'rhot0': self.rhot0, 'Afft0':self.Afft0,
                        'a0': self.a0, 'rhot': self.rhot, 'Afft':self.Afft}
-            (obj1, self.xt0, self.at0, self.xt, self.at) = self.objectiveFunDef(control,
-                                                                                withTrajectory=True, display=True)
+            (obj1, self.xt0, self.at0, self.xt, self.at) = \
+                self.objectiveFunDef(control, withTrajectory=True, display=self.options['verb'])
             for k in range(self.nTarg):
                 self.fvDef[k].updateVertices(np.squeeze(self.xt[self.jumpIndex[k], :, :]))
             dim2 = self.dim**2

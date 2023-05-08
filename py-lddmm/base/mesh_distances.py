@@ -259,6 +259,7 @@ def square_divergence_grad(x, v, faces, variables = 'both'):
     gradx = np.zeros(x.shape)
     gradphi = np.zeros(v.shape)
     test = True
+    logging.info(f"dim = {dim}, variables = {variables}")
     if dim==2:
         x0 = x[faces[:, 0], :]
         x1 = x[faces[:, 1], :]
@@ -277,6 +278,7 @@ def square_divergence_grad(x, v, faces, variables = 'both'):
                 gradphi[f[0], :] += dphi0[k, :]
                 gradphi[f[1], :] += dphi1[k, :]
                 gradphi[f[2], :] += dphi2[k, :]
+            gradphi = -gradphi
             if test == True:
                 eps = 1e-10
                 h = np.random.normal(0,1,v.shape)
@@ -292,12 +294,13 @@ def square_divergence_grad(x, v, faces, variables = 'both'):
                 gradx[f[0], :] += dx0[k, :]
                 gradx[f[1], :] += dx1[k, :]
                 gradx[f[2], :] += dx2[k, :]
+            gradx = -gradx
             if test == True:
                 eps = 1e-10
                 h = np.random.normal(0, 1, x.shape)
                 fp = square_divergence(x + eps * h, v, faces)
                 fm = square_divergence(x - eps * h, v, faces)
-                logging.info(f'test sqdiv v: {(gradx*h).sum():.4f} {(fp - fm) / (2 * eps):.4f}')
+                logging.info(f'test sqdiv x: {(gradx*h).sum():.4f} {(fp - fm) / (2 * eps):.4f}')
     elif dim == 3:
         x0 = x[faces[:, 0], :]
         x1 = x[faces[:, 1], :]

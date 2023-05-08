@@ -57,7 +57,7 @@ def compute(createImages=True):
         'sigmaError':10.,
         'outputDir': '../Output/ImageDiffeons',
         'algorithm': 'bfgs',
-        'mode': 'debug',
+        'mode': 'normal',
         'subsampleTemplate': 1,
         'zeroVar': False,
         'targetMargin': 0,

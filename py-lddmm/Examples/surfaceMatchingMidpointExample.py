@@ -39,7 +39,7 @@ vfun = (lambda u: 1+u, lambda u: np.ones(u.shape))
 
 options = {
     'outputDir': '../Output/surfaceMatchingMidpoint/MidpointBalls',
-    'mode': 'debug',
+    'mode': 'normal',
     'maxIter': 1000,
     'affine': 'none',
     'regWeight': regweight,

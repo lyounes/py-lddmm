@@ -1,5 +1,7 @@
+import logging
 from sys import path as sys_path
 sys_path.append('..')
+sys_path.append('../base')
 #import numpy as np
 #import logging
 from base.surfaces import Surface
@@ -52,7 +54,7 @@ def compute(createsurfaces=True):
         'sigmaError':1.,
         'errorType': 'varifold',
         'algorithm': 'cg',
-        'mode': 'debug',
+        'mode': 'normal',
         'subsampleTemplate': 1,
         'zeroVar': False,
         'subsampleTargetSize': 500,
@@ -76,6 +78,7 @@ def compute(createsurfaces=True):
         f = SurfaceMatchingDiffeons(Template=fv1, Target=fv2, options = options)
 
     loggingUtils.setup_default_logging(options['outputDir'], fileName='info', stdOutput=True)
+    #logging.info(f"pk_dtype {f.options['pk_dtype']}, {f.options['KparDiff'].pk_dtype} {f.options['KparDist'].pk_dtype}")
     f.optimizeMatching()
     return f
     #f.maxIter = 200

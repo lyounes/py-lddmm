@@ -63,6 +63,7 @@ class PointSetMatching(BasicMatching):
         else:
             self.euclideanGradient = True
 
+
         self.Kdiff_dtype = self.options['pk_dtype']
         self.Kdist_dtype = self.options['pk_dtype']
 

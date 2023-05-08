@@ -22,7 +22,7 @@ pykeops.clean_pykeops()
 plt.ion()
 
 model = 'Balls'
-typeCost = 'LDDMM'
+typeCost = 'elastic'
 
 def compute(model):
     loggingUtils.setup_default_logging('../Output', stdOutput = True)
@@ -170,7 +170,7 @@ def compute(model):
     # sm.KparDist.pk_dtype = 'float64'
     options = {
         'outputDir': '../Output/surfaceMatchingExample/' + model,
-        'mode': 'normal',
+        'mode': 'debug',
         'maxIter': 2000,
         'affine': 'euclidean',
         'regWeight': regweight,
@@ -183,8 +183,7 @@ def compute(model):
         'KparDist': ('gauss', sigmaDist),
         'sigmaError': sigmaError,
         'errorType': 'varifold',
-        'algorithm': 'bfgs',
-        'pk_dtype': 'float64',
+        'algorithm': 'cg',
         'unreduced': False,
         'internalWeight': internalWeight,
         'internalCost': internalCost,

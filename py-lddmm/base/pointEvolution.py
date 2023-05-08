@@ -185,7 +185,7 @@ def landmarkHamiltonianCovector(x0, at, px1, Kpardiff, regweight, affine=None, e
         a = np.squeeze(at[M - t - 1, :, :])
         if extraTerm is not None:
             grd = extraTerm['grad'](z, Kpardiff.applyK(z,a))
-            Lv = - extraTerm['coeff'] * grd[0]
+            Lv = -extraTerm['coeff'] * grd[0]
             DLv = extraTerm['coeff'] * grd[1]
             zpx = Kpardiff.applyDiffKT(z, px, a, regweight=regweight, lddmm=True,
                                        extra_term=Lv) - DLv
@@ -201,7 +201,7 @@ def landmarkHamiltonianCovector(x0, at, px1, Kpardiff, regweight, affine=None, e
 
 # Computes gradient after covariant evolution for deformation cost a^TK(x,x) a
 def landmarkHamiltonianGradient(x0, at, px1, KparDiff, regweight, getCovector = False, affine = None, extraTerm = None):
-    (pxt, xt) = landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine=affine)
+    (pxt, xt) = landmarkHamiltonianCovector(x0, at, px1, KparDiff, regweight, affine=affine, extraTerm=extraTerm)
     dat = np.zeros(at.shape)
     timeStep = 1.0/at.shape[0]
     if not (affine is None):

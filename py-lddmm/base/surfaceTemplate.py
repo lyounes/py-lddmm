@@ -691,7 +691,7 @@ class SurfaceTemplate(SurfaceMatching):
                 self.epsMax = 10./(self.options['sgd']*(k+1))
                 self.reset = True
                 meanObj += self.objectiveFun()
-                cg.cg(self, verb=self.options['verb'], maxIter=10, TestGradient=True,
+                cg.cg(self, verb=self.options['verb'], maxIter=10, TestGradient=self.options['testGradient'],
                       epsInit=0.01, Wolfe=False)
                 # else:
                 #     bfgs.bfgs(self, verb=self.options['verb'], maxIter=10, TestGradient=True,

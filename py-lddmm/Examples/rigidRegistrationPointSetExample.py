@@ -1,5 +1,9 @@
+from sys import path as sys_path
+sys_path.append('..')
+sys_path.append('../base')
+
 import numpy as np
-import scipy as sp
+import scipy.stats as spstats
 from base.affineRegistration import rigidRegistration_varifold
 import matplotlib.pyplot as plt
 from base import loggingUtils
@@ -33,17 +37,17 @@ else:
     R0 = np.array([[np.cos(theta), -np.sin(theta), 0], [np.sin(theta), np.cos(theta), 0],
                    [0,0,1]])
 SVS = S@V@S
-x1 = sp.stats.multivariate_normal.rvs(m1, V, size = N)
-x2 = sp.stats.multivariate_normal.rvs(m2, V, size = N)
+x1 = spstats.multivariate_normal.rvs(m1, V, size = N)
+x2 = spstats.multivariate_normal.rvs(m2, V, size = N)
 x = np.concatenate((x1, x2), axis = 0)
 if exact:
     ys = x@S.T + b
     y = np.concatenate((x, ys), axis=0)
 else:
-    y1 = sp.stats.multivariate_normal.rvs(m1, V, size = N)
-    y2 = sp.stats.multivariate_normal.rvs(m2, V, size = N)
-    ys1 = sp.stats.multivariate_normal.rvs(S@m1 + b, SVS, size=N)
-    ys2 = sp.stats.multivariate_normal.rvs(S@m2+b, SVS, size=N)
+    y1 = spstats.multivariate_normal.rvs(m1, V, size = N)
+    y2 = spstats.multivariate_normal.rvs(m2, V, size = N)
+    ys1 = spstats.multivariate_normal.rvs(S@m1 + b, SVS, size=N)
+    ys2 = spstats.multivariate_normal.rvs(S@m2+b, SVS, size=N)
     y = np.concatenate((y1, y2, ys1, ys2), axis = 0)
 
 x = x @ R0.T + T0

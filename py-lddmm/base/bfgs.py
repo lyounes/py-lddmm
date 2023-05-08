@@ -53,7 +53,6 @@ def __stopCondition():
 
 def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, memory=25, Wolfe = True,
          lineSearch = 'Weak_Wolfe'):
-
     if (hasattr(opt, 'getVariable')==False or hasattr(opt, 'objectiveFun')==False or hasattr(opt, 'updateTry')==False
             or hasattr(opt, 'acceptVarTry')==False or hasattr(opt, 'getGradient')==False):
         logging.error('Error: required functions are not provided')

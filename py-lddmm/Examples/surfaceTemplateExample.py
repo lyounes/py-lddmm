@@ -21,7 +21,7 @@ def main():
     K2 = Kernel(name='gauss', sigma = 1.0)
 
     options = {
-        'mode': 'debug',
+        'mode': 'normal',
         'timeStep': 0.1,
         'KparDiff': K1,
         'KparDist': K2,
