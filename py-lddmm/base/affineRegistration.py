@@ -124,9 +124,8 @@ def objective_and_gradient_varifold(u, x, ys, wxy, sigma, test=True):
         ct = np.cos(u[0])
         st = np.sin(u[0])
         R = np.array([[ct, -st], [st, ct]])
-        Rx = x @ R.T
         T = u[1:]
-        xx = (Rx + T) / sigma
+        xx = (x @ R.T + T) / sigma
         xy = np.expand_dims(xx, 1) - np.expand_dims(ys, 0)
         dxy = (xy ** 2).sum(axis=2)
         Kxy = np.exp(-dxy / 2) * wxy
@@ -146,48 +145,209 @@ def objective_and_gradient_varifold(u, x, ys, wxy, sigma, test=True):
         # du[:3] = (du[:3] * u[:3]).sum() * u[:3] / t**2
         obj1, foo = objective_and_gradient_varifold(u+eps*du, x, ys, wxy, sigma, test=False)
         obj2, foo = objective_and_gradient_varifold(u - eps * du, x, ys, wxy, sigma, test=False)
-        #print(f'test gradient {(obj1 - obj2)/(2*eps):.6f}, {(du*grad).sum():.6f}')
+        # print(f'test gradient {(obj1 - obj2)/(2*eps):.6f}, {(du*grad).sum():.6f}')
+    return obj, grad
+
+@jit(nopython=True)
+def objective_and_gradient_varifold_with_symmetry(u, x, ys, wxx, wxy, sigma, S, b, test=True):
+    grad = np.zeros(u.shape)
+    dimn = x.shape[1]
+    xsym = x @ S.T + np.expand_dims(b, 0)
+    if dimn == 3:
+        ur = u[:3]
+        T = u[3:]
+        t = np.sqrt((ur ** 2).sum())
+        if t > 1e-10:
+            st = np.sin(t)
+            ct = np.cos(t)
+            a1 = st / t
+            a2 = (1 - ct) / t
+            unorm = ur / t
+        else:
+            st = 0
+            ct = 1
+            a1 = 1
+            a2 = 0
+            unorm = np.zeros(3)
+        ucx = np.cross(np.expand_dims(unorm, 0), x)
+        udx = (np.expand_dims(unorm, 0) * x).sum(axis=1)
+        Rx = ct * x + st * ucx + (1-ct) * np.expand_dims(udx, 1) * np.expand_dims(unorm, 0)
+        Rx = Rx + T
+        SRx = Rx @ S.T + b
+        Rx /= sigma
+        SRx /= sigma
+        d_x_x = np.expand_dims(Rx, 1) - np.expand_dims(Rx, 0)
+        dist_x_x = (d_x_x ** 2).sum(axis=2)
+        d_y_y = np.expand_dims(ys, 1) - np.expand_dims(ys, 0)
+        dist_y_y = (d_y_y ** 2).sum(axis=2)
+        d_Rx_SRx = np.expand_dims(Rx, 1) - np.expand_dims(SRx, 0)
+        dist_Rx_SRx = (d_Rx_SRx ** 2).sum(axis=2)
+        d_Rx_y = np.expand_dims(Rx, 1) - np.expand_dims(ys, 0)
+        dist_Rx_y = (d_Rx_y ** 2).sum(axis=2)
+        d_SRx_y = np.expand_dims(SRx, 1) - np.expand_dims(ys, 0)
+        dist_SRx_y = (d_SRx_y ** 2).sum(axis=2)
+
+        K_x_x = np.exp(-dist_x_x / 2) * wxx
+        K_y_y = np.exp(-dist_y_y / 2)
+        K_Rx_SRx = np.exp(-dist_Rx_SRx / 2) * wxx
+        K_Rx_y = np.exp(-dist_Rx_y / 2) * wxy
+        K_SRx_y = np.exp(-dist_SRx_y / 2) * wxy
+        obj = -K_Rx_y.sum() - K_SRx_y.sum() + K_Rx_SRx.sum()  + K_x_x.sum() + 0.5 * K_y_y.sum()
+
+        dK_Rx_y = - np.sum(np.expand_dims(K_Rx_y, 2) * d_Rx_y, axis=1)
+        dK_SRx_y = - np.sum(np.expand_dims(K_SRx_y, 2) * d_SRx_y, axis=1) @ S.T
+        dK_Rx_SRx = - np.sum(np.expand_dims(K_Rx_SRx + K_Rx_SRx.T, 2) * d_Rx_SRx, axis=1)
+
+        # da1 = (t * ct - st) / (t ** 2)
+        # da2 = (t * st - 2 * (1 - ct)) / (t ** 2)
+        da1 = ct - a1
+        da2 = st - 2 * a2
+        dKxy = - dK_Rx_y - dK_SRx_y + dK_Rx_SRx
+        dKxyx = (dKxy * x).sum()
+        dKxyu = dKxy[:,0] * unorm[0] + dKxy[:,1] * unorm[1] + dKxy[:,2] * unorm[2]
+        #(dKxy * np.expand_dims(ur, (0,1))).sum(axis=2)
+        dRx = (da1 * (dKxy * ucx).sum() - st * dKxyx + da2 * (dKxyu * udx).sum()) * unorm \
+              + a1 * np.sum(np.cross(x, dKxy), axis=0) \
+              + a2 * ((np.expand_dims(dKxyu, 1) * x + dKxy * np.expand_dims(udx, 1)).sum(axis=0))
+        dRx /= sigma
+        dT = np.sum(dKxy, axis=0)/sigma
+        # else:
+        #     xx = (x + T) / sigma
+        #     xy = np.expand_dims(xx, 1) - np.expand_dims(ys, 0)
+        #     dxy = (xy ** 2).sum(axis=2)
+        #     Kxy = np.exp(-dxy / 2) * wxy
+        #     obj = -Kxy.sum()
+        #     dKxy = - np.sum(np.expand_dims(Kxy, 2) * xy, axis = 1)
+        #     dRx = -np.sum(np.sum(np.cross(np.expand_dims(x, 1), dKxy), axis=0), axis=0)/sigma
+        #     dT = - np.sum(dKxy, axis=0) / sigma
+        grad[:3] = dRx
+        grad[3:] = dT
+        #print(f'obj={obj:.4f}; grad = {np.fabs(grad).max():.4f}')
+    else:
+        ct = np.cos(u[0])
+        st = np.sin(u[0])
+        R = np.array([[ct, -st], [st, ct]])
+        T = u[1:]
+        Rx = (x @ R.T + T)
+        SRx = Rx @ S.T + b
+        Rx /= sigma
+        SRx /= sigma
+        d_Rx_SRx = np.expand_dims(Rx, 1) - np.expand_dims(SRx, 0)
+        dist_Rx_SRx = (d_Rx_SRx ** 2).sum(axis=2)
+        d_Rx_y = np.expand_dims(Rx, 1) - np.expand_dims(ys, 0)
+        dist_Rx_y = (d_Rx_y ** 2).sum(axis=2)
+        d_SRx_y = np.expand_dims(SRx, 1) - np.expand_dims(ys, 0)
+        dist_SRx_y = (d_SRx_y ** 2).sum(axis=2)
+        K_Rx_SRx = np.exp(-dist_Rx_SRx / 2) * wxx
+        K_Rx_y = np.exp(-dist_Rx_y / 2) * wxy
+        K_SRx_y = np.exp(-dist_SRx_y / 2) * wxy
+
+        d_x_x = np.expand_dims(Rx, 1) - np.expand_dims(Rx, 0)
+        dist_x_x = (d_x_x ** 2).sum(axis=2)
+        d_y_y = np.expand_dims(ys, 1) - np.expand_dims(ys, 0)
+        dist_y_y = (d_y_y ** 2).sum(axis=2)
+        K_x_x = np.exp(-dist_x_x / 2) * wxx
+        K_y_y = np.exp(-dist_y_y / 2)
+        obj = -K_Rx_y.sum() - K_SRx_y.sum() + K_Rx_SRx.sum() + K_x_x.sum() + 0.5 * K_y_y.sum()
+
+        dK_Rx_y = - np.expand_dims(K_Rx_y, 2) * d_Rx_y
+        Ktmp = - (np.expand_dims(K_SRx_y, 2) * d_SRx_y)
+        dK_SRx_y = np.zeros(Ktmp.shape)
+        for i in range(dimn):
+            for j in range(dimn):
+                dK_SRx_y[:,:,i] += Ktmp[:,:,j] * S[j,i]
+        # dK_SRx_y = - (np.expand_dims(K_SRx_y, 2) * d_SRx_y) @ S
+        dK_Rx_SRx = - np.expand_dims(K_Rx_SRx + K_Rx_SRx.T, 2) * d_Rx_SRx  #@(np.eye(2) - S)
+        # dK_Rx_y = - np.sum(np.expand_dims(K_Rx_y, 2) * d_Rx_y, axis=1)
+        # dK_SRx_y = - np.sum(np.expand_dims(K_SRx_y, 2) * d_SRx_y, axis=1) @ S
+        # dK_Rx_SRx = - np.sum(np.expand_dims(K_Rx_SRx, 2)
+        #                      * (d_Rx_SRx + np.transpose(d_Rx_SRx, axes=(1,0,2))), axis=1) #@(np.eye(2) - S)
+
+        # dKxy = - dK_Rx_y - dK_SRx_y + dK_Rx_SRx
+        # dKxyx = (dKxy * x).sum()
+        # dKxyu = dKxy[:,0] * unorm[0] + dKxy[:,1] * unorm[1] + dKxy[:,2] * unorm[2]
+
+        dR = np.array([[-st, -ct], [ct, -st]])
+        dRx = x@dR.T
+        # dRx = (dKxy * np.expand_dims((x @ dR.T), 1)).sum()
+        dRx = - ((dK_Rx_y + dK_SRx_y) * np.expand_dims(dRx, 1)).sum() + (dK_Rx_SRx * np.expand_dims(dRx, 1)).sum()
+        dT = - np.sum(np.sum(dK_Rx_y + dK_SRx_y, axis=0), axis=0) + np.sum(np.sum(dK_Rx_SRx, axis=0), axis=0)
+        # dT = np.sum(np.sum(dKxy, axis=0), axis=0)
+        grad[:1] = dRx / sigma
+        grad[1:] = dT / sigma
+        #print(f'theta = {u[0]:.4f}, obj={obj:.4f}; grad = {np.fabs(grad).max():.4f}')
+
+    if test:
+        eps = 1e-8
+        du = np.random.normal(0,1, u.shape)
+        #du[1:] = 0
+        # t = np.sqrt((u[:3] ** 2).sum())
+        # du[:3] = (du[:3] * u[:3]).sum() * u[:3] / t**2
+        obj1, foo = objective_and_gradient_varifold_with_symmetry(u+eps*du, x, ys, wxx, wxy, sigma, S, b, test=False)
+        obj2, foo = objective_and_gradient_varifold_with_symmetry(u-eps*du, x, ys, wxx, wxy, sigma, S, b, test=False)
+        # print(f'test gradient {(obj1 - obj2)/(2*eps):.6f}, {(du*grad).sum():.6f}')
     return obj, grad
 
 
-def rigidRegistration_varifold(surfaces, weights=None, sigma = 1., ninit=1):
-    x = surfaces[0]
-    y = surfaces[1]
+def getRotation(u):
+    if len(u) == 6:
+        ur = u[:3]
+        t = np.sqrt((ur ** 2).sum())
+        if t <1e-10:
+            R = np.eye(3)
+        else:
+            A = np.array([[0, -ur[2], ur[1]], [ur[2], 0, -ur[0]], [-ur[1], ur[0], 0]])
+            R = np.eye(3) + ((1 - np.cos(t)) / (t ** 2)) * (np.dot(A, A)) + (np.sin(t) / t) * A
+        T = u[3:]
+    else:
+        ct = np.cos(u[0])
+        st = np.sin(u[0])
+        R = np.array([[ct, -st], [st, ct]])
+        T = u[1:]
+    return R, T
+
+debug = False
+def rigidRegistration_varifold(x, y, wxx=None, wxy = None, sigma = 1., ninit=1, symmetry = None):
+    # x = surfaces[0]
+    # y = surfaces[1]
     Nsurf = x.shape[0]
     Msurf = y.shape[0]
     dimn = x.shape[1]
-    if weights is None:
-        wxy = np.ones((Nsurf, Msurf))
-    else:
-        wxy = weights
 
     ys = y/sigma
-
-    def getRotation(u):
-        if dimn == 3:
-            ur = u[:3]
-            t = np.sqrt((ur ** 2).sum())
-            if t <1e-10:
-                R = np.eye(3)
-            else:
-                A = np.array([[0, -ur[2], ur[1]], [ur[2], 0, -ur[0]], [-ur[1], ur[0], 0]])
-                R = np.eye(3) + ((1 - np.cos(t)) / (t ** 2)) * (np.dot(A, A)) + (np.sin(t) / t) * A
-            T = u[3:]
-        else:
-            ct = np.cos(u[0])
-            st = np.sin(u[0])
-            R = np.array([[ct, -st], [st, ct]])
-            T = u[1:]
-        return R, T
 
     if dimn == 2:
         bestx = np.zeros(3)
     else:
         bestx = np.zeros(6)
-    bestobj, foo = objective_and_gradient_varifold(bestx, x, ys, wxy, sigma, test=False)
+
+    if wxy is None:
+        wxy = np.ones((Nsurf, Msurf))
+
+    if symmetry is not None:
+        if wxx is None:
+            wxx = np.ones((Nsurf, Nsurf))
+        o_g = objective_and_gradient_varifold_with_symmetry
+        S = symmetry[0]
+        b = symmetry[1]
+        args = (x, ys, wxx, wxy, sigma, S, b, debug)
+        bestobj, foo = o_g(bestx, x, ys, wxx, wxy, sigma, S, b, debug)
+    else:
+        o_g = objective_and_gradient_varifold
+        args = (x, ys, wxy, sigma, debug)
+        bestobj, foo = o_g(bestx, x, ys, wxy, sigma, test=debug)
 
     mx = np.mean(x,axis=0)
-    my = np.mean(y,axis=0)
+    if symmetry is not None:
+        [D, V] = np.linalg.eig(S)
+        j = np.argmin(D)
+        v = V[:,j]
+        yv = y @ v
+        q = np.median(yv)
+        my = np.mean(y[yv<q, :], axis = 0)
+    else:
+        my = np.mean(y,axis=0)
+
     x00 = []
     if dimn == 2:
         for k in range(ninit):
@@ -219,8 +379,9 @@ def rigidRegistration_varifold(surfaces, weights=None, sigma = 1., ninit=1):
                         x00.append(x0)
     for k, x0 in enumerate(x00):
         logging.info(f'Rigid registration Initialization {k + 1}')
-        res = minimize(objective_and_gradient_varifold, x0, args= (x, ys, wxy, sigma, False),
-                       method='BFGS', jac=True, options={'maxiter':10000})
+        # res = minimize(objective_and_gradient_varifold, x0, args= (x, ys, wxy, sigma, False),
+        #                method='BFGS', jac=True, options={'maxiter':10000})
+        res = minimize(o_g, x0, args= args, method='BFGS', jac=True, options={'maxiter':10000})
         if res.fun < bestobj:
             logging.info(f'found better solution {bestobj:0.4f} {res.fun:0.4f}')
             bestx = np.copy(res.x)

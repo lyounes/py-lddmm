@@ -1,6 +1,6 @@
 import numpy as np
 import logging
-from .linesearch import line_search_wolfe
+from .linesearch import line_search_wolfe, line_search_weak_wolfe, line_search_goldstein_price
 
 # Class running nonlinear conjugate gradient
 # opt is an optimizable class that must provide the following functions:
@@ -50,7 +50,8 @@ def __stopCondition():
 
 
 
-def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPar=None, Wolfe=True):
+def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPar=None, Wolfe=True,
+       lineSearch = 'Weak_Wolfe'):
 
     if (hasattr(opt, 'getVariable')==False or hasattr(opt, 'objectiveFun')==False or hasattr(opt, 'updateTry')==False
             or hasattr(opt, 'acceptVarTry')==False or hasattr(opt, 'getGradient')==False):
@@ -63,8 +64,17 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
     #     dotProduct = opt.dotProduct
     # else:
     #     dotProduct = __dotProduct
+    if lineSearch == "Wolfe":
+        line_search = line_search_wolfe
+    elif lineSearch == "Goldstein_Price":
+        line_search = line_search_goldstein_price
+    elif lineSearch == "Weak_Wolfe":
+        line_search = line_search_weak_wolfe
+    else:
+        logging.warning('Unrecognized line search: using weak wolfe condition')
+        line_search = line_search_weak_wolfe
 
-    elif hasattr(opt, 'dotProduct'):
+    if hasattr(opt, 'dotProduct'):
         dotProduct = opt.dotProduct
     else:
         dotProduct = __dotProduct
@@ -75,6 +85,8 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
 
     if hasattr(opt, 'gradEps'):
         gradEps = opt.gradEps
+    elif hasattr(opt, 'options') and 'gradEps' in opt.options.keys():
+        gradEps = opt.options['gradEps']
     else:
         gradEps = None
 
@@ -117,7 +129,6 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
         opt.obj = None
 
     obj = opt.objectiveFun()
-    opt.objIni = obj
     opt.reset = False
     #obj = opt.objectiveFun()
     logging.info('iteration 0: obj = {0: .5f}'.format(obj))
@@ -154,10 +165,10 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
             else:
                 dirfoo = np.random.normal(size=grd.shape)
             epsfoo = 1e-8
-            objfoo = opt.updateTry(dirfoo, epsfoo, obj-1e10)
-            objfoo2 = opt.updateTry(dirfoo, 0, obj-1e10)
+            objfoo1 = opt.updateTry(dirfoo, epsfoo, obj-1e10)
+            objfoo2 = opt.updateTry(dirfoo, -epsfoo, obj-1e10)
             [grdfoo] = opt.dotProduct(grd, [dirfoo])
-            logging.info('Test Gradient: %.6f %.6f' %((objfoo - obj)/epsfoo, -grdfoo * gradCoeff ))
+            logging.info('Test Gradient: %.6f %.6f' %((objfoo1 - objfoo2)/(2*epsfoo), -grdfoo * gradCoeff ))
         if sgd:
             eps = epsInit / (1 + sgdRate*max(0, it - sgdBurnIn))
             objTry = opt.updateTry(grd, eps, obj+1e10)
@@ -221,16 +232,16 @@ def cg(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, sgdPa
             __Wolfe = True
             if Wolfe:
                 objTry = opt.updateTry(dir0, eps, obj)
-                eps, fc, gc, phi_star, old_fval, gval = line_search_wolfe(opt, dir0, gfk=grd, old_fval=obj,
+                eps, fc, gc, phi_star, old_fval, gval = line_search(opt, dir0, gfk=grd, old_fval=obj,
                                    old_old_fval=obj_old, c1=1e-4, c2=0.9, amax=None,
-                                   maxiter=10)
+                                   maxiter=20, t_init=epsInit, euclidean=False)
                 if eps is not None:
                     obj_old = obj
                     opt.acceptVarTry()
                     obj = phi_star
                 else:
                     eps = _eps
-                    logging.info('Wolfe search unsuccessful')
+                    logging.info('Line search unsuccessful')
                     __Wolfe = False
 
             if not Wolfe or not __Wolfe:

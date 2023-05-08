@@ -1,49 +1,11 @@
-import os
 from copy import deepcopy
 import numpy as np
 import h5py
-import scipy.linalg as la
 import logging
 from functools import partial
-from . import matchingParam
 from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils, bfgs
-from .pointSets import PointSet
 from . import meshes, mesh_distances as msd
-from .affineBasis import AffineBasis, getExponential
 from . import pointSetMatching
-import matplotlib
-
-## Parameter class for matching
-#      timeStep: time discretization
-#      KparDiff: object kernel: if not specified, use typeKernel with width sigmaKernel
-#      KparDist: kernel in current/measure space: if not specified, use gauss kernel with width sigmaDist
-#      sigmaError: normlization for error term
-#      errorType: 'measure' or 'current'
-#      typeKernel: 'gauss' or 'laplacian'
-class MeshMatchingParam(matchingParam.MatchingParam):
-    def __init__(self, timeStep = .1, algorithm='cg', Wolfe=True, KparDiff = None, KparDist = None,
-                 KparIm = None, sigmaError = 1.0):
-        super().__init__(timeStep=timeStep, algorithm = algorithm, Wolfe=Wolfe,
-                         KparDiff = KparDiff, KparDist = KparDist, sigmaError=sigmaError)
-        self.typeKIm = 'gauss'
-        self.sigmaKIm = 1.
-        self.orderKIm = 3
-        if type(KparIm) in (list,tuple):
-            self.typeKIm = KparIm[0]
-            self.sigmaKIm = KparIm[1]
-            if len(KparIm) > 2:
-                self.orderKIm = KparIm[2]
-            self.KparIm = kfun.Kernel(name = self.typeKIm, sigma = self.sigmaKIm,
-                                      order=self.orderKIm)
-        else:
-            self.KparIm = KparIm
-        self.sigmaError = sigmaError
-
-
-class Direction:
-    def __init__(self):
-        self.diff = []
-        self.aff = []
 
 
 ## Main class for image varifold matching
@@ -62,43 +24,67 @@ class Direction:
 #        affine: 'affine', 'similitude', 'euclidean', 'translation' or 'none'
 #        maxIter: max iterations in conjugate gradient
 class MeshMatching(pointSetMatching.PointSetMatching):
-    def __init__(self, Template, Target, param=None, maxIter=1000,
-                 regWeight = 1.0, affineWeight = 1.0, verb=True,
-                 rotWeight = None, scaleWeight = None, transWeight = None,
-                 testGradient=True, saveFile = 'evolution', internalCost = None, internalWeight = 1.,
-                 saveTrajectories = False, affine = 'none', outputDir = '.',pplot=True):
+    def __init__(self, Template, Target, options=None):
+        # param=None, maxIter=1000,
+        #          regWeight = 1.0, affineWeight = 1.0, verb=True,
+        #          rotWeight = None, scaleWeight = None, transWeight = None,
+        #          testGradient=True, saveFile = 'evolution', internalCost = None, internalWeight = 1.,
+        #          saveTrajectories = False, affine = 'none', outputDir = '.',pplot=True):
 
-        if param is None:
-            self.param = MeshMatchingParam()
-        else:
-            self.param = param
+        # if param is None:
+        #     self.param = MeshMatchingParam()
+        # else:
+        #     self.param = param
 
-        self.internalCost = internalCost
-        self.internalWeight = internalWeight
-        pointSetMatching.PointSetMatching.__init__(self, Template=Template, Target=Target, param=param, maxIter=maxIter,
-                 regWeight=regWeight, affineWeight=affineWeight, verb=verb,
-                 rotWeight=rotWeight, scaleWeight=scaleWeight, transWeight=transWeight,
-                 testGradient=testGradient, saveFile=saveFile,
-                 saveTrajectories=saveTrajectories, affine=affine, outputDir=outputDir, pplot=pplot)
+        super().__init__(Template, Target, options)
+        # self.setInitialOptions(options)
+        # self.internalCost = internalCost
+        # self.internalWeight = internalWeight
+        # pointSetMatching.PointSetMatching.__init__(self, Template=Template, Target=Target, param=param, maxIter=maxIter,
+        #          regWeight=regWeight, affineWeight=affineWeight, verb=verb,
+        #          rotWeight=rotWeight, scaleWeight=scaleWeight, transWeight=transWeight,
+        #          testGradient=testGradient, saveFile=saveFile,
+        #          saveTrajectories=saveTrajectories, affine=affine, outputDir=outputDir, pplot=pplot)
 
-        self.Kim_dtype = self.param.KparIm.pk_dtype
+        self.Kim_dtype = self.options['pk_dtype']
 
+
+
+    def getDefaultOptions(self):
+        options = super().getDefaultOptions()
+        options['KparIm'] = None
+        return options
+
+    def set_parameters(self):
+        super().set_parameters()
+        sigmaKim = 6.5
+        orderKim = 3
+        typeKim = 'gauss'
+        if type(self.options['KparIm']) in (list,tuple):
+            typeKim = self.options['KparIm'][0]
+            sigmaKim = self.options['KparIm'][1]
+            if typeKim == 'laplacian' and len(self.options['KparIm']) > 2:
+                orderKim = self.options['KparIm'][2]
+            self.options['KparIm'] = None
+
+        if self.options['KparIm'] is None:
+            self.options['KparIm'] = kfun.Kernel(name = typeKim, sigma = sigmaKim, order= orderKim)
 
     def initialize_variables(self):
         self.x0 = np.copy(self.fv0.vertices)
         self.fvDef = deepcopy(self.fv0)
         self.npt = self.x0.shape[0]
 
-        self.Tsize = int(round(1.0/self.param.timeStep))
-        self.at = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
-        self.atTry = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
-        self.Afft = np.zeros([self.Tsize, self.affineDim])
-        self.AfftTry = np.zeros([self.Tsize, self.affineDim])
-        self.xt = np.tile(self.x0, [self.Tsize+1, 1, 1])
+        self.Tsize = int(round(1.0/self.options['timeStep']))
+        self.control['at'] = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
+        self.controlTry['at'] = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
+        self.control['Afft'] = np.zeros([self.Tsize, self.affineDim])
+        self.controlTry['Afft'] = np.zeros([self.Tsize, self.affineDim])
+        self.state['xt'] = np.tile(self.x0, [self.Tsize+1, 1, 1])
         self.v = np.zeros([self.Tsize+1, self.npt, self.dim])
 
 
-    def set_template_and_target(self, Template, Target):
+    def set_template_and_target(self, Template, Target, misc=None):
         self.fv0 = meshes.Mesh(mesh=Template)
         self.fv1 = meshes.Mesh(mesh=Target)
 
@@ -106,16 +92,16 @@ class MeshMatching(pointSetMatching.PointSetMatching):
         self.fv1.save(self.outputDir + '/Target.vtk')
         self.dim = self.fv0.vertices.shape[1]
 
-    def set_fun(self, errorType):
-        self.param.errorType = errorType
+    def set_fun(self, errorType, vfun=None):
+        self.options['errorType'] = errorType
         self.fun_obj0 = msd.varifoldNorm0
         self.fun_obj = msd.varifoldNormDef
         self.fun_objGrad = msd.varifoldNormGradient
-        if self.internalCost == 'divergence':
+        if self.options['internalCost'] == 'divergence':
             self.extraTerm = {}
             self.extraTerm['fun'] = partial(msd.square_divergence, faces=self.fv0.faces)
             self.extraTerm['grad'] = partial(msd.square_divergence_grad, faces=self.fv0.faces)
-            self.extraTerm['coeff'] = self.internalWeight
+            self.extraTerm['coeff'] = self.options['internalWeight']
         else:
             self.extraTerm = None
 
@@ -126,15 +112,15 @@ class MeshMatching(pointSetMatching.PointSetMatching):
         #     obj = pointSets.LogisticScoreL2(_fvDef, self.fv1, self.u, w=self.wTr, intercept=self.intercept, l1Cost=self.l1Cost) \
         #           / (self.param.sigmaError**2)
         #     #obj = pointSets.LogisticScore(_fvDef, self.fv1, self.u) / (self.param.sigmaError**2)
-        obj = self.fun_obj(_fvDef, self.fv1, self.param.KparDist, self.param.KparIm) / (self.param.sigmaError ** 2)
+        obj = self.fun_obj(_fvDef, self.fv1, self.options['KparDist'], self.options['KparIm']) / (self.options['sigmaError'] ** 2)
         return obj
 
 
     def objectiveFun(self):
         if self.obj == None:
-            self.obj0 = self.fun_obj0(self.fv1, self.param.KparDist, self.param.KparIm) / (self.param.sigmaError ** 2)
-            (self.objDef, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
-            self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
+            self.obj0 = self.fun_obj0(self.fv1, self.options['KparDist'], self.options['KparIm']) / (self.options['sigmaError'] ** 2)
+            self.objDef, self.state = self.objectiveFunDef(self.control, withTrajectory=True)
+            self.fvDef.updateVertices(self.state['xt'][-1, :, :])
             self.objData = self.dataTerm(self.fvDef)
             self.obj = self.obj0 + self.objData + self.objDef
         return self.obj
@@ -145,15 +131,15 @@ class MeshMatching(pointSetMatching.PointSetMatching):
         LDDMMResult = fout.create_group('LDDMM Results')
         parameters = LDDMMResult.create_group('parameters')
         parameters.create_dataset('Time steps', data=self.Tsize)
-        parameters.create_dataset('Deformation Kernel type', data = self.param.KparDiff.name)
-        parameters.create_dataset('Deformation Kernel width', data = self.param.KparDiff.sigma)
-        parameters.create_dataset('Deformation Kernel order', data = self.param.KparDiff.order)
-        parameters.create_dataset('Spatial Varifold Kernel type', data = self.param.KparDist.name)
-        parameters.create_dataset('Spatial Varifold width', data = self.param.KparDist.sigma)
-        parameters.create_dataset('Spatial Varifold order', data = self.param.KparDist.order)
-        parameters.create_dataset('Image Varifold Kernel type', data = self.param.KparIm.name)
-        parameters.create_dataset('Image Varifold width', data = self.param.KparIm.sigma)
-        parameters.create_dataset('Image Varifold order', data = self.param.KparIm.order)
+        parameters.create_dataset('Deformation Kernel type', data = self.options['KparDiff'].name)
+        parameters.create_dataset('Deformation Kernel width', data = self.options['KparDiff'].sigma)
+        parameters.create_dataset('Deformation Kernel order', data = self.options['KparDiff'].order)
+        parameters.create_dataset('Spatial Varifold Kernel type', data = self.options['KparDist'].name)
+        parameters.create_dataset('Spatial Varifold width', data = self.options['KparDist'].sigma)
+        parameters.create_dataset('Spatial Varifold order', data = self.options['KparDist'].order)
+        parameters.create_dataset('Image Varifold Kernel type', data = self.options['KparIm'].name)
+        parameters.create_dataset('Image Varifold width', data = self.options['KparIm'].sigma)
+        parameters.create_dataset('Image Varifold order', data = self.options['KparIm'].order)
         template = LDDMMResult.create_group('template')
         template.create_dataset('vertices', data=self.fv0.vertices)
         template.create_dataset('faces', data=self.fv0.faces)
@@ -165,21 +151,24 @@ class MeshMatching(pointSetMatching.PointSetMatching):
         deformedTemplate = LDDMMResult.create_group('deformedTemplate')
         deformedTemplate.create_dataset('vertices', data=self.fvDef.vertices)
         variables = LDDMMResult.create_group('variables')
-        variables.create_dataset('alpha', data=self.at)
-        if self.Afft is not None:
-            variables.create_dataset('affine', data=self.Afft)
+        variables.create_dataset('alpha', data=self.control['at'])
+        if self.control['Afft'] is not None:
+            variables.create_dataset('affine', data=self.control['Afft'])
         else:
             variables.create_dataset('affine', data='None')
         descriptors = LDDMMResult.create_group('descriptors')
 
-        A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-        dim2 = self.dim**2
         if self.affineDim > 0:
+            A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+            dim2 = self.dim**2
             for t in range(self.Tsize):
-                AB = np.dot(self.affineBasis, self.Afft[t])
+                AB = np.dot(self.affineBasis, self.control['Afft'][t])
                 A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
                 A[1][t] = AB[dim2:dim2 + self.dim]
-        (xt, Jt) = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
+        else:
+            A = None
+
+        (xt, Jt) = evol.landmarkDirectEvolutionEuler(self.x0, self.control['at'], self.options['KparDiff'], affine=A,
                                                      withJacobian=True)
 
         AV0 = self.fv0.computeVertexVolume()
@@ -191,9 +180,9 @@ class MeshMatching(pointSetMatching.PointSetMatching):
         fout.close()
 
 
-    def makeTryInstance(self, pts):
+    def makeTryInstance(self, state):
         ff = meshes.Mesh(mesh=self.fvDef)
-        ff.updateVertices(pts)
+        ff.updateVertices(state['xt'][-1,:,:])
         return ff
 
 
@@ -201,8 +190,8 @@ class MeshMatching(pointSetMatching.PointSetMatching):
     def endPointGradient(self, endPoint= None):
         if endPoint is None:
             endPoint = self.fvDef
-        px = self.fun_objGrad(endPoint, self.fv1, self.param.KparDist, self.param.KparIm)
-        return px / self.param.sigmaError**2
+        px = self.fun_objGrad(endPoint, self.fv1, self.options['KparDist'], self.options['KparIm'])
+        return px / self.options['sigmaError']**2
     
     def testEndpointGradient(self):
         c0 = self.dataTerm(self.fvDef)
@@ -214,125 +203,56 @@ class MeshMatching(pointSetMatching.PointSetMatching):
         grd = self.endPointGradient()
         logging.info("test endpoint gradient: {0:.5f} {1:.5f}".format((c1-c0)/eps, (grd*dff).sum()) )
 
-    # def hamiltonianCovector(self, x0, at, px1, KparDiff, regWeight, affine = None):
-    #     N = x0.shape[0]
-    #     dim = x0.shape[1]
-    #     M = at.shape[0]
-    #     timeStep = 1.0/M
-    #     xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
-    #     if not(affine is None):
-    #         A0 = affine[0]
-    #         A = np.zeros([M,dim,dim])
-    #         for k in range(A0.shape[0]):
-    #             A[k,...] = getExponential(timeStep*A0[k])
-    #     else:
-    #         A = np.zeros([M,dim,dim])
-    #         for k in range(M):
-    #             A[k,...] = np.eye(dim)
-    #
-    #     pxt = np.zeros([M+1, N, dim])
-    #     pxt[M, :, :] = px1
-    #     for t in range(M):
-    #         px = np.squeeze(pxt[M-t, :, :])
-    #         z = np.squeeze(xt[M-t-1, :, :])
-    #         a = np.squeeze(at[M-t-1, :, :])
-    #         a1 = np.concatenate((px[np.newaxis,...], a[np.newaxis,...], -2*regWeight*a[np.newaxis,...]))
-    #         a2 = np.concatenate((a[np.newaxis,...], px[np.newaxis,...], a[np.newaxis,...]))
-    #         zpx = KparDiff.applyDiffKT(z, px, a, lddmm=True)
-    #
-    #
-    #         if not (affine is None):
-    #             pxt[M-t-1, :, :] = np.dot(px, A[M-t-1]) + timeStep * zpx
-    #         else:
-    #             pxt[M-t-1, :, :] = px + timeStep * zpx
-    #     return pxt, xt
 
     def setUpdate(self, update):
-        at = self.at - update[1] * update[0].diff
+        control = pointSetMatching.Control()
+        for k in update[0].keys():
+            if update[0][k] is not None:
+                control[k] = self.control[k] - update[1] * update[0][k]
 
-        Afft = self.Afft - update[1] * update[0].aff
-        if len(update[0].aff) > 0:
-            A = self.affB.getTransforms(Afft)
+        if control['Afft'] is not None:
+            A = self.affB.getTransforms(control['Afft'])
         else:
             A = None
-        xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
+        xt = evol.landmarkDirectEvolutionEuler(self.x0, control['at'], self.options['KparDiff'], affine=A)
         endPoint = meshes.Mesh(mesh=self.fv0)
         endPoint.updateVertices(xt[-1, :, :])
+        st = pointSetMatching.State()
+        st['xt'] = xt
+        return control, st, endPoint
 
-        return at, Afft, xt, endPoint
-
-    # def getGradient(self, coeff=1.0, update=None):
-    #     if update is None:
-    #         at = None
-    #         Afft = self.Afft
-    #         endPoint = self.fvDef
-    #         A = self.affB.getTransforms(self.Afft)
-    #         xt = self.xt
-    #     else:
-    #         at = self.at - update[1] * update[0].diff
-    #         Afft = self.Afft - update[1]*update[0].aff
-    #         if len(update[0].aff) > 0:
-    #             A = self.affB.getTransforms(Afft)
-    #         else:
-    #             A = None
-    #         xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine=A)
-    #         endPoint = meshes.Mesh(mesh=self.fv0)
-    #         endPoint.updateVertices(xt[-1, :, :])
-    #
-    #     dim2 = self.dim**2
-    #     px1 = -self.endPointGradient(endPoint=endPoint)
-    #     foo = self.hamiltonianGradient(px1, at=at, affine=A)
-    #     grd = Direction()
-    #     if self.euclideanGradient:
-    #         grd.diff = np.zeros(foo[0].shape)
-    #         for t in range(self.Tsize):
-    #             z = xt[t, :, :]
-    #             grd.diff[t,:,:] = self.param.KparDiff.applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
-    #     else:
-    #         grd.diff = foo[0]/(coeff*self.Tsize)
-    #     grd.aff = np.zeros(self.Afft.shape)
-    #     if self.affineDim > 0:
-    #         dA = foo[1]
-    #         db = foo[2]
-    #         grd.aff = 2*self.affineWeight.reshape([1, self.affineDim])*Afft
-    #         #grd.aff = 2 * self.Afft
-    #         for t in range(self.Tsize):
-    #            dAff = np.dot(self.affineBasis.T, np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])]))
-    #            #grd.aff[t] -=  np.divide(dAff.reshape(grd.aff[t].shape), self.affineWeight.reshape(grd.aff[t].shape))
-    #            grd.aff[t] -=  dAff.reshape(grd.aff[t].shape)
-    #         grd.aff /= (self.coeffAff*coeff*self.Tsize)
-    #         #            dAfft[:,0:self.dim**2]/=100
-    #     return grd
 
     def startOfIteration(self):
         if self.reset:
             logging.info('Switching to 64 bits')
-            self.param.KparDiff.pk_dtype = 'float64'
-            self.param.KparDist.pk_dtype = 'float64'
-            self.param.KparIm.pk_dtype = 'float64'
+            self.options['KparDiff'].pk_dtype = 'float64'
+            self.options['KparDist'].pk_dtype = 'float64'
+            self.options['KparIm'].pk_dtype = 'float64'
 
 
 
     def endOfIteration(self, endP=False):
         self.iter += 1
-        if self.testGradient:
+        if self.options['testGradient']:
             self.testEndpointGradient()
 
         if self.iter >= self.affBurnIn:
             self.coeffAff = self.coeffAff2
         if (self.iter % self.saveRate == 0 or endP) :
             logging.info('Saving Points...')
-            (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
+            (obj1, self.state) = self.objectiveFunDef(self.control, withTrajectory=True)
 
-            self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
+            self.fvDef.updateVertices(self.state['xt'][-1, :, :])
             dim2 = self.dim**2
-            A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-            if self.affineDim > 0:
+            if self.control['Afft'] is not None:
+                A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
                 for t in range(self.Tsize):
-                    AB = np.dot(self.affineBasis, self.Afft[t])
+                    AB = np.dot(self.affineBasis, self.control['Afft'][t])
                     A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
                     A[1][t] = AB[dim2:dim2+self.dim]
-            (xt, Jt)  = evol.landmarkDirectEvolutionEuler(self.x0, self.at, self.param.KparDiff, affine=A,
+            else:
+                A = None
+            (xt, Jt)  = evol.landmarkDirectEvolutionEuler(self.x0, self.control['at'], self.options['KparDiff'], affine=A,
                                                               withJacobian=True)
             # if self.affine=='euclidean' or self.affine=='translation':
             #     X = self.affB.integrateFlow(self.Afft)
@@ -358,37 +278,16 @@ class MeshMatching(pointSetMatching.PointSetMatching):
             for kk in range(self.Tsize+1):
                 fvDef = meshes.Mesh(mesh=self.fvDef)
                 fvDef.updateVertices(xt[kk, :, :])
-                fvDef.save(self.outputDir + '/' + self.saveFile + str(kk) + '.vtk')
+                fvDef.save(self.outputDir + '/' + self.options['saveFile'] + str(kk) + '.vtk')
 
             self.saveHdf5(fileName=self.outputDir + '/output.h5')
 
-        (obj1, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
-        self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]), checkOrientation=True)
-        self.param.KparDiff.pk_dtype = self.Kdiff_dtype
-        self.param.KparDist.pk_dtype = self.Kdist_dtype
-        self.param.KparIm.pk_dtype = self.Kim_dtype
+        (obj1, self.state) = self.objectiveFunDef(self.control, withTrajectory=True)
+        self.fvDef.updateVertices(np.squeeze(self.state['xt'][-1, :, :]), checkOrientation=True)
+        self.options['KparDiff'].pk_dtype = self.Kdiff_dtype
+        self.options['KparDist'].pk_dtype = self.Kdist_dtype
+        self.options['KparIm'].pk_dtype = self.Kim_dtype
         logging.info(f'Objective function components: Def={self.objDef:.04f} Data={self.objData+ self.obj0:0.4f}')
 
     def endOfProcedure(self):
         self.endOfIteration(endP=True)
-
-    # def optimizeMatching(self):
-    #     #print 'dataterm', self.dataTerm(self.fvDef)
-    #     #print 'obj fun', self.objectiveFun(), self.obj0
-    #     self.coeffAff = self.coeffAff2
-    #     grd = self.getGradient(self.gradCoeff)
-    #     [grd2] = self.dotProduct(grd, [grd])
-    #
-    #     self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
-    #     logging.info('Gradient lower bound: %f' %(self.gradEps))
-    #     self.coeffAff = self.coeffAff1
-    #     #self.restartRate = self.relearnRate
-    #     if self.param.algorithm == 'cg':
-    #         cg.cg(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=0.1,)
-    #     elif self.param.algorithm == 'bfgs':
-    #         bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter, TestGradient=self.testGradient, epsInit=1.,
-    #                   Wolfe=self.param.wolfe, memory=50)
-    #     #bfgs.bfgs(self, verb = self.verb, maxIter = self.maxIter,TestGradient=self.testGradient, epsInit=0.1)
-    #     #return self.at, self.xt
-    #
-    #

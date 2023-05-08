@@ -2,6 +2,7 @@ import os
 import numpy as np
 import logging
 import glob
+from .basicMatching import BasicMatching 
 from .gridscalars import GridScalars, saveImage
 from .diffeo import DiffeoParam, Diffeomorphism, Kernel
 from skimage.transform import resize as imresize, AffineTransform, EuclideanTransform, warp
@@ -25,111 +26,108 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 #      sigmaError: normlization for error term
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
-class ImageMatchingParam():
-    def __init__(self, dim=3, timeStep = .1, KparDiff = None, sigmaKernel = 6.5, order = -1,
-                 kernelSize=50, typeKernel='gauss', resol=1., algorithm='cg', Wolfe=True, sigmaError = 1.0,
-                 rescaleFactor = 1., padWidth = 0, metaDirection = 'FWD', sigmaSmooth = 0.01, affineAlign=None):
-        self.timeStep = timeStep
-        self.sigmaKernel = sigmaKernel
-        self.typeKernel = typeKernel
-        self.kernelNormalization = 1.
-        self.maskMargin = 2
-        self.dim = dim
-        if np.isscalar(resol):
-            self.resol = (resol,)*self.dim
+# class ImageMatchingParam():
+#     def __init__(self, ):
+#         self.timeStep = timeStep
+#         self.sigmaKernel = sigmaKernel
+#         self.typeKernel = typeKernel
+#         self.kernelNormalization = 1.
+#         self.maskMargin = 2
+#         self.dim = dim
+#         if np.isscalar(resol):
+#             self.resol = (resol,)*self.dim
+#         else:
+#             self.resol = resol
+#         self.epsMax = 100
+#         if KparDiff is None:
+#             self.KparDiff = Kernel(name = self.typeKernel, sigma = self.sigmaKernel, order=order, size=kernelSize,
+#                                    dim=dim)
+#         else:
+#             self.KparDiff = KparDiff
+#         # self.diffeoPar = DiffeoParam(dim, timeStep, KparDiff, sigmaKernel, order, kernelSize, typeKernel, resol)
+#         self.sigmaError = sigmaError
+#         self.algorithm = algorithm
+#         self.wolfe = Wolfe
+#         if sigmaSmooth > 0:
+#             self.smoothKernel = Kernel(name = 'gauss', sigma = sigmaSmooth, size=25, dim=dim)
+#             self.smoothKernel.K /= self.smoothKernel.K.sum()
+#         else:
+#             self.smoothKernel = None
+#         self.rescaleFactor = rescaleFactor
+#         self.padWidth = padWidth
+#         self.metaDirection = metaDirection
+#         self.affineAlign = affineAlign
+
+
+class ImageMatchingBase(BasicMatching, Diffeomorphism):
+    def __init__(self, Template=None, Target=None, options = None):
+        if options is None:
+            options = dict()
+        if 'dim' not in options.keys():
+            logging.error('Options must include a dimension; pursuing with dim=2 -- no guarantees')
+            options['dim'] = 2
+        self.dim = options['dim']
+        super().__init__(Template, Target, options)
+        # super().__init__()
+        #          regWeight = 1.0, verb=True,
+        #          testGradient=True, saveFile = 'evolution',
+        #          outputDir = '.',pplot=True):
+
+        # self.set_template_and_target(Template, Target, misc = {'affineAlign': self.options['affineAlign']})#, subsampleTargetSize)
+        if np.isscalar(self.options['resol']):
+            self.options['resol'] = (self.options['resol'],) * self.dim
+
+        self.init(self.im0.data.shape, self.options)
+        self.shape = self.im0.data.shape
+        self.saveMovie = self.options['saveMovie']
+        self.pplot = self.options['pplot']
+        if self.pplot:
+            self.initial_plot()
+
+
+    def getDefaultOptions(self):
+        options = super().getDefaultOptions()
+        options['dim'] = 3
+        options['order'] = -1,
+        options['kernelSize'] = 50
+        options['typeKernel'] = 'gauss'
+        options['resol'] = 1.
+        options['rescaleFactor'] = 1.
+        options['padWidth'] = 0
+        options['metaDirection'] = 'FWD'
+        options['sigmaSmooth'] = 0.01
+        options['affineAlign'] = None
+        options['saveMovie'] = True
+        options['epsMax'] = 100
+        return options
+
+
+    def setDotProduct(self, unreduced=False):
+        if self.options['algorithm'] == 'cg':
+             self.euclideanGradient = False
+             self.dotProduct = self.dotProduct_Riemannian
         else:
-            self.resol = resol
-        self.epsMax = 100
-        if KparDiff is None:
-            self.KparDiff = Kernel(name = self.typeKernel, sigma = self.sigmaKernel, order=order, size=kernelSize,
-                                   dim=dim)
-        else:
-            self.KparDiff = KparDiff
-        # self.diffeoPar = DiffeoParam(dim, timeStep, KparDiff, sigmaKernel, order, kernelSize, typeKernel, resol)
-        self.sigmaError = sigmaError
-        self.algorithm = algorithm
-        self.wolfe = Wolfe
-        if sigmaSmooth > 0:
-            self.smoothKernel = Kernel(name = 'gauss', sigma = sigmaSmooth, size=25, dim=dim)
+            self.euclideanGradient = True
+            self.dotProduct = self.dotProduct_euclidean
+
+    def set_parameters(self):
+        super().set_parameters()
+        # self.saveRate = 10
+        # self.gradEps = -1
+        # self.randomInit = False
+        # self.iter = 0
+        self.resol = self.options['resol']
+
+        if self.options['sigmaSmooth'] > 0:
+            self.smoothKernel = Kernel(name = 'gauss', sigma = self.options['sigmaSmooth'], size=25, dim=self.options['dim'])
             self.smoothKernel.K /= self.smoothKernel.K.sum()
         else:
             self.smoothKernel = None
-        self.rescaleFactor = rescaleFactor
-        self.padWidth = padWidth
-        self.metaDirection = metaDirection
-        self.affineAlign = affineAlign
-
-
-class ImageMatchingBase(Diffeomorphism):
-    def __init__(self, param,
-                 Template=None, Target=None, maxIter=1000,
-                 regWeight = 1.0, verb=True,
-                 testGradient=True, saveFile = 'evolution',
-                 outputDir = '.',pplot=True):
-
-        if param is None:
-            self.param = ImageMatchingParam()
-        else:
-            self.param = param
-
-        self.nbIter = 0
-
-        self.dim = self.param.dim
-        self.set_template_and_target(Template, Target, affineAlign=param.affineAlign)#, subsampleTargetSize)
-        super(ImageMatchingBase, self).__init__(self.im0.data.shape, self.param)
-
-        if self.param.algorithm == 'cg':
-             self.euclideanGradient = False
-        else:
-            self.euclideanGradient = True
-
-        self.setOutputDir(outputDir)
-
-        self.initialSave()
-        self.shape = self.im0.data.shape
-
-
-
-        self.set_parameters(maxIter=maxIter, regWeight = regWeight, verb=verb,
-                            testGradient=testGradient, saveFile = saveFile)
-        self.saveMovie = True
-
-
-    def setOutputDir(self, outputDir, clean=True):
-        self.outputDir = outputDir
-        if not os.access(outputDir, os.W_OK):
-            if os.access(outputDir, os.F_OK):
-                logging.error('Cannot save in ' + outputDir)
-                return
-            else:
-                os.makedirs(outputDir)
-
-        if clean:
-            fileList = glob.glob(outputDir + '/*.*')
-            for f in fileList:
-                os.remove(f)
-
-
-    def set_parameters(self, maxIter=1000, regWeight = 1.0, verb=True, testGradient=True, saveFile = 'evolution'):
-        self.saveRate = 10
-        self.gradEps = -1
-        self.randomInit = False
-        self.iter = 0
-        self.maxIter = maxIter
-        self.verb = verb
-        self.testGradient = testGradient
-        self.regweight = regWeight
-        self.resol = self.param.resol
-
-
-        self.obj = None
-        self.objTry = None
-        self.saveFile = saveFile
 
     def AffineRegister(self, affineAlign = None, tolerance = None):
         if tolerance is None:
-            tolerance = self.param.padWidth
-        Afb = AffineBasis(dim=self.dim, affine=affineAlign)
+            tolerance = self.options['padWidth']
+        Afb = AffineBasis(dim=self.options['dim'], affine=affineAlign)
         #padWidth = max(np.max(self.im0.data.shape), np.max(self.im1.data.shape))//2
         # start = (padWidth,) * self.dim
         # end = tuple(np.array(start, dtype=int) + np.array(self.im1.data.shape, dtype=int))
@@ -176,24 +174,26 @@ class ImageMatchingBase(Diffeomorphism):
         self.im1.data =  affine_transform(im1, A, b, order=1, mode='nearest')
         # self.im1.data = im1[slices]
 
-    def set_template_and_target(self, Template, Target, subsampleTargetSize=-1, affineAlign=None):
+    def set_template_and_target(self, Template, Target, misc = None): #subsampleTargetSize=-1, affineAlign=None):
+        affineAlign = self.options['affineAlign']
+
         if Template==None:
             logging.error('Please provide a template surface')
             return
         else:
-            self.im0 = GridScalars(grid=Template, dim=self.dim)
-            if self.param.padWidth > 0:
-                self.im0.data = np.pad(self.im0.data, self.param.padWidth, mode='edge')
+            self.im0 = GridScalars(grid=Template, dim=self.options['dim'])
+            if self.options['padWidth'] > 0:
+                self.im0.data = np.pad(self.im0.data, self.options['padWidth'], mode='edge')
             self.im0.data = imresize(self.im0.data,
-                                     np.floor(np.array(self.im0.data.shape)*self.param.rescaleFactor).astype(int))
+                                     np.floor(np.array(self.im0.data.shape)*self.options['rescaleFactor']).astype(int))
 
         if Target==None:
             logging.error('Please provide a target surface')
             return
         else:
-            self.im1 = GridScalars(grid=Target, dim=self.dim)
-            if self.param.padWidth > 0:
-                self.im1.data = np.pad(self.im1.data, self.param.padWidth, mode='edge')
+            self.im1 = GridScalars(grid=Target, dim=self.options['dim'])
+            if self.options['padWidth'] > 0:
+                self.im1.data = np.pad(self.im1.data, self.options['padWidth'], mode='edge')
             self.im1.data = imresize(self.im1.data, self.im0.data.shape)
             if affineAlign:
                 self.AffineRegister(affineAlign=affineAlign)
@@ -215,9 +215,6 @@ class ImageMatchingBase(Diffeomorphism):
                 # tform3.estimate(src, dest)
                 # self.im1.data = warp(self.im1.data, tform3, output_shape=self.im0.data.shape)
 
-        if self.param.smoothKernel:
-            self.im0.data = self.param.smoothKernel.ApplyToImage(self.im0.data)
-            self.im1.data = self.param.smoothKernel.ApplyToImage(self.im1.data)
 
         # if (subsampleTargetSize > 0):
         #     self.fvInit.Simplify(subsampleTargetSize)
@@ -227,7 +224,9 @@ class ImageMatchingBase(Diffeomorphism):
 
 
     def initialize_variables(self):
-        pass
+        if self.smoothKernel:
+            self.im0.data = self.smoothKernel.ApplyToImage(self.im0.data)
+            self.im1.data = self.smoothKernel.ApplyToImage(self.im1.data)
 
 
     def initial_plot(self):
@@ -252,7 +251,8 @@ class ImageMatchingBase(Diffeomorphism):
         saveImage(self.im0.data, self.outputDir + '/Template'+ ext)
         saveImage(self.im1.data, self.outputDir + '/Target' + ext)
         saveImage(self.KparDiff.K, self.outputDir + '/Kernel' + ext, normalize=True)
-        saveImage(self.param.smoothKernel.K, self.outputDir + '/smoothKernel' + ext, normalize=True)
+        if self.smoothKernel:
+            saveImage(self.smoothKernel.K, self.outputDir + '/smoothKernel' + ext, normalize=True)
         saveImage(self.mask.min(axis=0), self.outputDir + '/Mask' + ext, normalize=True)
 
 

@@ -65,7 +65,7 @@ def line_search_goldstein_price(opt, pk, gfk=None, old_fval=None,
 
 def line_search_weak_wolfe(opt, pk, gfk=None, old_fval=None,
                            old_old_fval=None, c1=0.001, c2=0.9, amax=None,
-                           maxiter=100, euclidean=True):
+                           maxiter=100, euclidean=True, t_init = 1.):
     fc = [0]
     gc = [0]
     gval = [None]
@@ -92,11 +92,13 @@ def line_search_weak_wolfe(opt, pk, gfk=None, old_fval=None,
         derphi0 = -opt.dotProduct(gfk, [pk])[0]
 
     it = 0
+    itGrad = 0
     amax = 0
     amin = 0
     if old_fval is None:
         old_fval = phi(0)
-    t = 1.
+    t = t_init
+    maxiter2 = 100
     # if old_old_fval is not None:
     #     t = 2*(old_fval - old_old_fval)/derphi0
     # else:
@@ -108,10 +110,14 @@ def line_search_weak_wolfe(opt, pk, gfk=None, old_fval=None,
     # if old_fval is None:
     #     old_fval = phi(0)
 
-    df = derphi(t)
+    # df = derphi(t)
     fval = phi(t)
-    while it < maxiter:
+    while it < maxiter2 and itGrad < maxiter:
+        armijo = False
         if fval < old_fval + c1 * t * derphi0:
+            df = derphi(t)
+            armijo = True
+            itGrad += 1
             if df > c2 * derphi0:
                 break
             else:
@@ -121,15 +127,20 @@ def line_search_weak_wolfe(opt, pk, gfk=None, old_fval=None,
         if amax < 1e-10:
             t *= 2
         else:
-            t = (amax+amin)/2
-        df = derphi(t)
+            if armijo:
+                t = 0.5*amax+0.5*amin
+            else:
+                tt = -(t**2 * derphi0) / (2*(fval - old_fval - t * derphi0))
+                t = max(0.9*amin + 0.1*amax, min(0.5*amax+0.5*amin, tt))
+                #logging.info(f'{t} {tt}')
         fval = phi(t)
         it += 1
 
-    if it == maxiter:
+    if itGrad == maxiter or it == maxiter2:
         logging.warning('Weak Wolfe condition: maximum number of iterations attained')
         t = None
 
+    #logging.info(f'Objective after line search {fval:.4f}, {opt.obj:.4f}, {opt.objTry:.4f}')
     return t, fc[0], gc[0], fval, old_fval, gval[0]
 
 

@@ -1,11 +1,12 @@
 import numpy as np
 import logging
+from copy import deepcopy
 from . import conjugateGradient as cg
 from . import bfgs
 from .gridscalars import GridScalars, saveImage
 from .diffeo import multilinInterp, multilinInterpGradient, multilinInterpGradientVectorField, jacobianDeterminant, \
-    multilinInterpDual, imageGradient, idMesh, multilinInterpVectorField
-from .imageMatchingBase import ImageMatchingParam, ImageMatchingBase
+    multilinInterpDual, imageGradient, idMesh
+from .imageMatchingBase import ImageMatchingBase
 
 
 ## Parameter class for matching
@@ -16,37 +17,30 @@ from .imageMatchingBase import ImageMatchingParam, ImageMatchingBase
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
 
-class Direction:
+class Control(dict):
     def __init__(self):
-        self.diff = []
+        super().__init__()
+        self['Lv'] = None
 
 
 class ImageMatching(ImageMatchingBase):
-    def __init__(self, param,
-                 Template=None, Target=None, maxIter=1000,
-                 regWeight = 1.0, verb=True,
-                 testGradient=True, saveFile = 'evolution',
-                 outputDir = '.',pplot=True):
-
-        super(ImageMatching, self).__init__(param, Template=Template, Target=Target, maxIter=maxIter, regWeight=regWeight,
-                                            verb=verb, testGradient=testGradient, saveFile=saveFile, outputDir=outputDir,
-                                            pplot=pplot)
+    def __init__(self, Template=None, Target=None, options = None):
+        super().__init__(Template=Template, Target=Target, options=options)
         self.initialize_variables()
         self.gradCoeff = np.array(self.shape).prod()
 
-        self.pplot = pplot
-        if self.pplot:
-            self.initial_plot()
 
 
     def initialize_variables(self):
-        self.Tsize = int(round(1.0/self.param.timeStep))
+        self.Tsize = int(round(1.0/self.options['timeStep']))
         self.imDef = GridScalars(grid=self.im0)
 
         vfShape = [self.Tsize, self.dim] + list(self.im0.data.shape)
+        self.control = Control()
+        self.controlTry = Control()
         self.v = np.zeros(vfShape)
-        self.Lv = np.zeros(vfShape)
-        self.LvTry = np.zeros(vfShape)
+        self.control['Lv'] = np.zeros(vfShape)
+        self.controlTry['Lv'] = np.zeros(vfShape)
         self.Lv0 = np.zeros(vfShape[1:])
         # if self.randomInit:
         #     self.at = np.random.normal(0, 1, self.at.shape)
@@ -74,24 +68,33 @@ class ImageMatching(ImageMatchingBase):
         saveImage(self.im0.data, self.outputDir + '/Template' + ext)
         saveImage(self.im1.data, self.outputDir + '/Target' + ext)
         saveImage(self.KparDiff.K, self.outputDir + '/Kernel' + ext, normalize=True)
-        saveImage(self.param.smoothKernel.K, self.outputDir + '/smoothKernel' + ext, normalize=True)
+        saveImage(self.options['smoothKernel'].K, self.outputDir + '/smoothKernel' + ext, normalize=True)
         saveImage(self.mask.min(axis=0), self.outputDir + '/Mask' + ext, normalize=True)
 
 
 
-    def dataTerm(self, psi, I0, I1):
-        I = multilinInterp(I0, psi)
-        return ((I-I1)**2).sum()/2
+    def dataTerm(self, IDef_, var = None):
+        if var is None or 'I1' not in var:
+            I1 = self.im1.data
+        else:
+            I1 = var['I1']
+        # I = multilinInterp(I0, psi)
+        return ((IDef_-I1)**2).sum()/2
 
-    def objectiveFun(self, Lv = None):
-        if Lv is None:
-            Lv = self.Lv
+    def objectiveFun(self, control = None):
+        if control is None:
+            Lv = self.control['Lv']
+        else:
+            Lv = control['Lv']
         dt = 1.0 / self.Tsize
         self.initFlow()
         ener = 0
         for t in range(Lv.shape[0]):
             ener += self.updateFlow(Lv[t,...], dt) * dt/2
-        ener += self.dataTerm(self._psi, self.im0.data, self.im1.data) / self.param.sigmaError**2
+        self.IDef = multilinInterp(self.im0.data, self._psi)
+        ener += self.dataTerm(self.IDef,  {'I1':self.im1.data}) / self.options['sigmaError']**2
+        if control is None:
+            self.obj = ener
         return ener
 
     def LDDMMTimegradient(self, phi, psi, I0, I1, resol):
@@ -111,7 +114,7 @@ class ImageMatching(ImageMatchingBase):
     def testDataTermGradient(self, psi, I0, I1):
         g = self.LDDMMgradientInPsi(psi, I0, I1)
         eps = 1e-6
-        en0 = self.dataTerm(psi, I0, I1)
+        # en0 = self.dataTerm(multilinInterp(I0, psi), {'I1':I1})
         dpsi = np.random.normal(size=psi.shape)
         dpsi[0,...] = 0
         newpsi = np.maximum(psi + eps*dpsi , 0)
@@ -119,15 +122,17 @@ class ImageMatching(ImageMatchingBase):
             newpsi[k,...] = np.minimum(newpsi[k,...], I0.shape[k]-1)
         dpsi = (newpsi-psi)/eps
         #dpsi = np.random.normal(size=psi.shape)
-        en1 = self.dataTerm(psi+eps*dpsi, I0, I1)
-        print(f'Test data gradient {(en1-en0)/eps:0.4f}, {(g*dpsi).sum():.4f}')
+        en0 = self.dataTerm(multilinInterp(I0, (psi-eps*dpsi)), {'I1':I1})
+        en1 = self.dataTerm(multilinInterp(I0, (psi+eps*dpsi)), {'I1':I1})
+        # en1 = self.dataTerm(psi+eps*dpsi, I0, I1)
+        print(f'Test data gradient {(en1-en0)/(2*eps):0.4f}, {(g*dpsi).sum():.4f}')
 
 
     def getGradient(self, coeff=1.0, update=None):
         if update is None:
-            Lvt = self.Lv
+            Lvt = self.control['Lv']
         else:
-            Lvt = self.Lv - update[1]*update[0].diff
+            Lvt = self.control['Lv'] - update[1]*update[0]['Lv']
         dt = 1.0 / self.Tsize
 
         grad = np.zeros([self.Tsize] + self.vfShape)
@@ -138,11 +143,11 @@ class ImageMatching(ImageMatchingBase):
             self.updateFlow(Lvt[t,...], dt)
             psi[t+1,...] = self._psi.copy()
 
-        pp = -self.LDDMMgradientInPsi(self._psi, self.im0.data, self.im1.data) / (self.param.sigmaError **2)
+        pp = -self.LDDMMgradientInPsi(self._psi, self.im0.data, self.im1.data) / (self.options['sigmaError'] **2)
         # self.testDataTermGradient(self._psi, self.im0.data, self.im1.data)
         id = idMesh(self.imShape)
         ng2 = 0
-        self._epsBound = self.param.epsMax
+        self._epsBound = self.options['epsMax']
         for t in range(self.Tsize-1, -1, -1):
             vt = self.kernel(Lvt[t, ...])
             c0 = np.sqrt((vt**2).sum(axis=0)).max()
@@ -165,93 +170,96 @@ class ImageMatching(ImageMatchingBase):
             epsTmp = (1+c0) / (1+c1)
             if epsTmp < self._epsBound:
                 self._epsBound = epsTmp
+            if self.euclideanGradient:
+                grad[t,...] = foo
         #self.epsBig = 10*self._epsBound
-        res = Direction()
-        res.diff = grad/coeff
+        res = Control()
+        res['Lv'] = grad/coeff
         return res
 
 
 
     def getVariable(self):
-        return self.Lv
+        return self.control
 
 
     def updateTry(self, dir, eps, objRef=None):
-        LvTry = self.Lv - eps * dir.diff
-        objTry = self.objectiveFun(LvTry)
+        controlTry = Control()
+        controlTry['Lv'] = self.control['Lv'] - eps * dir['Lv']
+        objTry = self.objectiveFun(controlTry)
         if np.isnan(objTry):
             logging.info('Warning: nan in updateTry')
             return 1e500
 
         if (objRef is None) or (objTry < objRef):
-            self.LvTry = LvTry
+            self.controlTry = controlTry
             self.objTry = objTry
             #print 'objTry=',objTry, dir.diff.sum()
 
         return objTry
 
 
-    def addProd(self, dir1, dir2, beta):
-        dir = Direction()
-        dir.diff = dir1.diff + beta * dir2.diff
-        return dir
-
-    def prod(self, dir1, beta):
-        dir = Direction()
-        dir.diff = beta * dir1.diff
-        return dir
-
-    def copyDir(self, dir0):
-        dir = Direction()
-        dir.diff = np.copy(dir0.diff)
-        return dir
-
+    # def addProd(self, dir1, dir2, beta):
+    #     dir = Control()
+    #     dir[''] = dir1.diff + beta * dir2.diff
+    #     return dir
+    #
+    # def prod(self, dir1, beta):
+    #     dir = Direction()
+    #     dir.diff = beta * dir1.diff
+    #     return dir
+    #
+    # def copyDir(self, dir0):
+    #     dir = Direction()
+    #     dir.diff = np.copy(dir0.diff)
+    #     return dir
+    #
 
     def randomDir(self):
-        dirfoo = Direction()
-        dirfoo.diff = np.random.normal(size=self.Lv.shape)
+        dirfoo = Control()
+        dirfoo['Lv'] = np.random.normal(size=self.control['Lv'].shape)
         return dirfoo
 
-    def dotProduct(self, g1, g2):
+    def dotProduct_Riemannian(self, g1, g2):
         res = np.zeros(len(g2))
-        u = np.zeros(g1.diff.shape)
+        u = np.zeros(g1['Lv'].shape)
         for k in range(u.shape[0]):
-            u[k,...] = self.kernel(g1.diff[k,...])
+            u[k,...] = self.kernel(g1['Lv'][k,...])
         ll = 0
         for gr in g2:
-            ggOld = gr.diff
+            ggOld = gr['Lv']
             res[ll]  = (ggOld*u).sum()/u.shape[0]
             ll = ll + 1
         return res
 
     def dotProduct_euclidean(self, g1, g2):
         res = np.zeros(len(g2))
-        u = g1.diff
+        u = g1['Lv']
         ll = 0
         for gr in g2:
-            ggOld = gr.diff
+            ggOld = gr['Lv']
             res[ll]  = (ggOld*u).sum()/u.shape[0]
             ll = ll + 1
         return res
 
     def acceptVarTry(self):
         self.obj = self.objTry
-        self.Lv = np.copy(self.LvTry)
+        self.control = deepcopy(self.controlTry)
         #print self.at
 
 
 
-    def endOfIteration(self):
-        self.nbIter += 1
+    def endOfIteration(self, forceSave=False):
+        self.iter += 1
         if len(self.im0.data.shape) == 3:
             ext = '.vtk'
         else:
             ext = ''
-        if self.nbIter % 10 == 0:
+        if self.iter % 10 == 0:
             _psi = np.copy(self.psi)
             self.initFlow()
             for t in range(self.Tsize):
-                self.updateFlow(self.Lv[t,...], 1.0/self.Tsize)
+                self.updateFlow(self.control['Lv'][t,...], 1.0/self.Tsize)
                 if (self.saveMovie):
                     I1 = multilinInterp(self.im0.data, self._psi)
                     saveImage(I1, self.outputDir + f'/movie{t+1:03d}' + ext)
@@ -261,11 +269,11 @@ class ImageMatching(ImageMatchingBase):
             I2 = multilinInterp(I1, self._phi)
             I1 = multilinInterp(self.im1.data, self._phi)
             saveImage(I1, self.outputDir + f'/deformedTarget' + ext)
-            saveImage(np.squeeze(self.Lv[0,...]), self.outputDir + f'/initialMomentum' + ext, normalize=True)
+            saveImage(np.squeeze(self.control['Lv'][0,...]), self.outputDir + f'/initialMomentum' + ext, normalize=True)
             dphi = np.log(jacobianDeterminant(self._phi, self.resol))
             saveImage(dphi, self.outputDir + f'/logJacobian' + ext, normalize=True)
 
-            self.GeodesicDiffeoEvolution(self.Lv[0,...])
+            self.GeodesicDiffeoEvolution(self.control['Lv'][0,...])
             I1 = multilinInterp(self.im0.data, self._psi)
             saveImage(I1, self.outputDir + f'/EPDiffTemplate' + ext)
             self.psi = np.copy(self._psi)
@@ -325,10 +333,12 @@ class ImageMatching(ImageMatchingBase):
         self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
         self.epsMax = 5.
         logging.info('Gradient lower bound: %f' % (self.gradEps))
-        if self.param.algorithm == 'cg':
-            cg.cg(self, verb=self.verb, maxIter=self.maxIter, TestGradient=self.testGradient, epsInit=0.1,
-                  Wolfe=self.param.wolfe, )
-        elif self.param.algorithm == 'bfgs':
-            bfgs.bfgs(self, verb=self.verb, maxIter=self.maxIter, TestGradient=self.testGradient, epsInit=1.,
-                      Wolfe=self.param.wolfe, memory=50)
+        if self.options['algorithm'] == 'cg':
+            cg.cg(self, verb=self.options['verb'], maxIter=self.options['maxIter'],
+                  TestGradient=self.options['testGradient'], epsInit=0.1,
+                  lineSearch=self.options['lineSearch'])
+        elif self.options['algorithm'] == 'bfgs':
+            bfgs.bfgs(self, verb=self.options['verb'], maxIter=self.options['maxIter'],
+                  TestGradient=self.options['testGradient'], epsInit=1.,
+                  lineSearch=self.options['lineSearch'], memory=50)
 

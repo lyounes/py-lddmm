@@ -3,6 +3,7 @@ import logging
 import pyfftw
 from numba import prange, jit, int64
 from multiprocessing import cpu_count
+pyfftw.config.NUM_THREADS = cpu_count()
 
 c_ = np.array([[1,0,0,0,0],
                [1,1,0,0,0],
@@ -32,8 +33,8 @@ except ImportError:
     print('could not import VTK functions')
     gotVTK = False
 
-import array
-from PIL.Image import core as _imaging
+# import array
+# from PIL.Image import core as _imaging
 
 ## Functions for images and diffeomorphisms
 
@@ -62,8 +63,8 @@ def convolve_(img, K, periodic=False):
     fft_in = pyfftw.empty_aligned(fftShape, dtype='complex128')
     fft_out = pyfftw.empty_aligned(fftShape, dtype='complex128')
     ifft_out = pyfftw.empty_aligned(fftShape, dtype='complex128')
-    fft_fwd = pyfftw.FFTW(fft_in, fft_out, threads=cpu_count(), axes=ax)
-    fft_bwd = pyfftw.FFTW(fft_out, ifft_out, threads = cpu_count(), direction='FFTW_BACKWARD', axes=ax)
+    fft_fwd = pyfftw.FFTW(fft_in, fft_out, axes=ax)
+    fft_bwd = pyfftw.FFTW(fft_out, ifft_out, direction='FFTW_BACKWARD', axes=ax)
     newK = np.pad(K, seqPadK)
     fK = pyfftw.empty_aligned(fftShape, dtype='complex128')
     fft_in[...] = newK
@@ -235,6 +236,7 @@ def makeMask(margin, S, Neumann=True, periodic = False):
 # multilinear interpolation
 @jit(nopython=True, parallel=True)
 def multilinInterp(img, diffeo):
+    int64 = "int64"
     ndim = img.ndim
     if ndim > 3:
         print('interpolate only in dimensions 1 to 3')
@@ -252,8 +254,10 @@ def multilinInterp(img, diffeo):
         for k in range(img.ndim):
             dfo[k, ...] = np.minimum(dfo[k, ...], img.shape[k]-1)
     else:
-        dfo = diffeo
+        dfo = np.copy(diffeo)
 
+    if diffeo.ndim > ndim:
+        dfo = np.reshape(dfo, (dfo.shape[0], np.prod(np.array(dfo.shape[1:]))))
     I = np.zeros(dfo.shape, dtype=int64)
     I[...] = np.floor(dfo)
     J = np.zeros(dfo.shape, dtype=int64)
@@ -261,35 +265,62 @@ def multilinInterp(img, diffeo):
     for k in range(ndim):
         J[k, ...] = np.minimum(I[k, ...]+1, img.shape[k]-1) 
         r[k, ...] = dfo[k, ...] - I[k, ...]
-    res = np.zeros(img.shape)
+    #res = np.zeros(img.shape)
+    res = np.zeros(dfo.shape[1])
 
     if ndim ==1:
         for k in range(I.shape[1]):
             res[k] = (1-r[0, k]) * img[I[0, k]] + r[0, k] * img[J[0, k]]
     elif ndim==2:
         for k in prange(I.shape[1]):
-            for l in range(I.shape[2]):
-                res[k,l] = ((1-r[1, k,l]) * ((1-r[0, k,l]) * img[I[0, k,l], I[1,k,l]] + r[0, k,l] * img[J[0, k,l], I[1,k,l]])
-                        + r[1, k,l] * ((1-r[0, k,l]) * img[I[0, k,l], J[1,k,l]] + r[0, k,l] * img[J[0, k,l], J[1,k,l]]))
+            res[k] = ((1-r[1, k]) * ((1-r[0, k]) * img[I[0, k], I[1,k]] + r[0, k] * img[J[0, k], I[1,k]])
+                        + r[1, k] * ((1-r[0, k]) * img[I[0, k], J[1,k]] + r[0, k] * img[J[0, k], J[1,k]]))
     elif ndim==3:
         for k in prange(I.shape[1]):
-            for l in range(I.shape[2]):
-                for m in range(I.shape[3]):
-                    res[k,l,m] = ((1-r[2,k,l, m]) * ((1-r[1, k,l, m]) * ((1-r[0, k,l, m])
-                                                                  * img[I[0, k,l, m], I[1,k,l, m], I[2, k,l, m]]
-                                                                  + r[0, k,l, m] * img[J[0, k,l, m], I[1,k,l, m], I[2,k,l, m]])
-                                            + r[1, k,l, m] * ((1-r[0, k,l, m])
-                                                              * img[I[0, k,l, m], J[1,k,l, m], I[2, k,l, m]]
-                                                              + r[0, k,l, m] * img[J[0, k,l, m], J[1,k,l, m], I[2,k,l, m]]))
-                            + r[2,k,l, m] * ((1-r[1, k,l, m]) * ((1-r[0, k,l, m])
-                                                                 * img[I[0, k,l, m], I[1,k,l, m], J[2, k,l, m]]
-                                                                 + r[0, k,l, m] * img[J[0, k,l, m], I[1,k,l, m], J[2,k,l, m]])
-                                        + r[1, k,l, m] * ((1-r[0, k,l, m])
-                                                          * img[I[0, k,l, m], J[1,k,l, m], J[2, k,l, m]]
-                                                          + r[0, k,l, m] * img[J[0, k,l, m], J[1,k,l, m], J[2,k,l, m]])))
+            res[k] = ((1-r[2,k]) * ((1-r[1, k]) * ((1-r[0, k])
+                                                          * img[I[0, k], I[1,k], I[2, k]]
+                                                          + r[0, k] * img[J[0, k], I[1,k], I[2,k]])
+                                    + r[1, k] * ((1-r[0, k])
+                                                      * img[I[0, k], J[1,k], I[2, k]]
+                                                      + r[0, k] * img[J[0, k], J[1,k], I[2,k]]))
+                    + r[2,k] * ((1-r[1, k]) * ((1-r[0, k])
+                                                         * img[I[0, k], I[1,k], J[2, k]]
+                                                         + r[0, k] * img[J[0, k], I[1,k], J[2,k]])
+                                + r[1, k] * ((1-r[0, k])
+                                                  * img[I[0, k], J[1,k], J[2, k]]
+                                                  + r[0, k] * img[J[0, k], J[1,k], J[2,k]])))
     else:
         print('interpolate only in dimensions 1 to 3')
         return
+
+    res= res.reshape(diffeo.shape[1:])
+    # if ndim ==1:
+    #     for k in range(I.shape[1]):
+    #         res[k] = (1-r[0, k]) * img[I[0, k]] + r[0, k] * img[J[0, k]]
+    # elif ndim==2:
+    #     for k in prange(I.shape[1]):
+    #         for l in range(I.shape[2]):
+    #             res[k,l] = ((1-r[1, k,l]) * ((1-r[0, k,l]) * img[I[0, k,l], I[1,k,l]] + r[0, k,l] * img[J[0, k,l], I[1,k,l]])
+    #                     + r[1, k,l] * ((1-r[0, k,l]) * img[I[0, k,l], J[1,k,l]] + r[0, k,l] * img[J[0, k,l], J[1,k,l]]))
+    # elif ndim==3:
+    #     for k in prange(I.shape[1]):
+    #         for l in range(I.shape[2]):
+    #             for m in range(I.shape[3]):
+    #                 res[k,l,m] = ((1-r[2,k,l, m]) * ((1-r[1, k,l, m]) * ((1-r[0, k,l, m])
+    #                                                               * img[I[0, k,l, m], I[1,k,l, m], I[2, k,l, m]]
+    #                                                               + r[0, k,l, m] * img[J[0, k,l, m], I[1,k,l, m], I[2,k,l, m]])
+    #                                         + r[1, k,l, m] * ((1-r[0, k,l, m])
+    #                                                           * img[I[0, k,l, m], J[1,k,l, m], I[2, k,l, m]]
+    #                                                           + r[0, k,l, m] * img[J[0, k,l, m], J[1,k,l, m], I[2,k,l, m]]))
+    #                         + r[2,k,l, m] * ((1-r[1, k,l, m]) * ((1-r[0, k,l, m])
+    #                                                              * img[I[0, k,l, m], I[1,k,l, m], J[2, k,l, m]]
+    #                                                              + r[0, k,l, m] * img[J[0, k,l, m], I[1,k,l, m], J[2,k,l, m]])
+    #                                     + r[1, k,l, m] * ((1-r[0, k,l, m])
+    #                                                       * img[I[0, k,l, m], J[1,k,l, m], J[2, k,l, m]]
+    #                                                       + r[0, k,l, m] * img[J[0, k,l, m], J[1,k,l, m], J[2,k,l, m]])))
+    # else:
+    #     print('interpolate only in dimensions 1 to 3')
+    #     return
 
     return res
 
@@ -314,7 +345,8 @@ def multilinInterpDual(img, diffeo):
         for k in range(img.ndim):
             dfo[k, ...] = np.minimum(dfo[k, ...], img.shape[k]-1)
     else:
-        dfo = diffeo
+        dfo = np.copy(diffeo)
+
 
     I = np.zeros(dfo.shape, dtype=int64)
     I[...] = np.floor(dfo)
@@ -356,6 +388,37 @@ def multilinInterpDual(img, diffeo):
         print('interpolate dual only in dimensions 1 to 3')
         return
 
+    res = np.zeros(img.shape)
+    if ndim ==1:
+        for k in range(I.shape[1]):
+            res[I[0,k]] += (1-r[0, k]) * img[k]
+            res[J[0,k]] += r[0, k] * img[k]
+    elif ndim==2:
+        for k in prange(I.shape[1]):
+            for l in range(I.shape[2]):
+                res[I[0,k,l], I[1,k,l]] += (1-r[1, k,l]) * (1-r[0, k,l]) * img[k,l]
+                res[J[0,k,l], I[1,k,l]] += (1-r[1, k,l]) * r[0, k,l] * img[k,l]
+                res[I[0,k,l], J[1,k,l]] += (1-r[0, k,l]) * r[1, k,l] * img[k,l]
+                res[J[0,k,l], J[1,k,l]] += r[1, k,l] * r[0, k,l] * img[k,l]
+        # res[I[0,...], I[1,...]] += (1-r[1, ...]) * (1-r[0, ...]) * img
+        # res[J[0,...], I[1,...]] += (1-r[1, ...]) * r[0, ...] * img
+        # res[I[0,...], J[1,...]] += (1-r[0, ...]) * r[1, ...] * img
+        # res[J[0,...], J[1,...]] += r[1, ...] * r[0, ...] * img
+    elif ndim==3:
+        for k in prange(I.shape[1]):
+            for l in range(I.shape[2]):
+                for m in range(I.shape[3]):
+                    res[I[0,k,l,m], I[1,k,l,m], I[2,k,l,m]] += (1-r[0, k,l,m]) * (1-r[1, k,l,m]) * (1-r[2, k,l,m]) * img[k,l,m]
+                    res[J[0,k,l,m], I[1,k,l,m], I[2,k,l,m]] += r[0, k,l,m] * (1-r[1, k,l,m]) * (1-r[2, k,l,m]) * img[k,l,m]
+                    res[I[0,k,l,m], J[1,k,l,m], I[2,k,l,m]] += (1-r[0, k,l,m]) * r[1, k,l,m] * (1-r[2, k,l,m]) * img[k,l,m]
+                    res[I[0,k,l,m], I[1,k,l,m], J[2,k,l,m]] += (1-r[0, k,l,m]) * (1-r[1, k,l,m]) * r[2, k,l,m] * img[k,l,m]
+                    res[J[0,k,l,m], J[1,k,l,m], I[2,k,l,m]] += r[0, k,l,m] * r[1, k,l,m] * (1-r[2, k,l,m]) * img[k,l,m]
+                    res[J[0,k,l,m], I[1,k,l,m], J[2,k,l,m]] += r[0, k,l,m] * (1-r[1, k,l,m]) * r[2, k,l,m] * img[k,l,m]
+                    res[I[0,k,l,m], J[1,k,l,m], J[2,k,l,m]] += (1-r[0, k,l,m]) * r[1, k,l,m] * r[2, k,l,m] * img[k,l,m]
+                    res[J[0,k,l,m], J[1,k,l,m], J[2,k,l,m]] += r[0, k,l,m] * r[1, k,l,m] * r[2, k,l,m] * img[k,l,m]
+    else:
+        print('interpolate dual only in dimensions 1 to 3')
+        return
     return res
 
 
@@ -367,6 +430,7 @@ def multilinInterpVectorField(v, diffeo):
 
 @jit(nopython=True)
 def multilinInterpGradient(img, diffeo):
+    int64 = "int64"
     ndim = img.ndim
     if ndim > 3:
         print('interpolate only in dimensions 1 to 3')
@@ -383,14 +447,17 @@ def multilinInterpGradient(img, diffeo):
         for k in range(img.ndim):
             dfo[k, ...] = np.minimum(dfo[k, ...], img.shape[k]-1)
     else:
-        dfo = diffeo
+        dfo = np.copy(diffeo)
+
+    if diffeo.ndim > ndim:
+        dfo = np.reshape(dfo, (dfo.shape[0], np.prod(np.array(dfo.shape[1:]))))
 
     I = np.zeros(dfo.shape, dtype=int64)
     I[...] = np.floor(dfo)
     J = np.zeros(dfo.shape, dtype=int64)
     r = np.zeros(dfo.shape)
     for k in range(ndim):
-        J[k, ...] = np.minimum(I[k, ...]+1, img.shape[k]-1) 
+        J[k, ...] = np.minimum(I[k, ...]+1, img.shape[k]-1)
         r[k, ...] = dfo[k, ...] - I[k, ...]
 
 #    if tooLarge:
@@ -404,33 +471,68 @@ def multilinInterpGradient(img, diffeo):
     elif ndim==2:
         res = np.zeros(I.shape)
         for k in prange(I.shape[1]):
-            for l in range(I.shape[2]):
-                res[0,k,l] = ((1-r[1, k,l]) * (-img[I[0, k,l], I[1,k,l]] + img[J[0, k,l], I[1,k,l]])
-                        + r[1, k,l] * (-img[I[0, k,l], J[1,k,l]] + img[J[0, k,l], J[1,k,l]]))
-                res[1, k,l] = (- ((1-r[0, k,l]) * img[I[0, k,l], I[1,k,l]] + r[0, k,l] * img[J[0, k,l], I[1,k,l]])
-                        + ((1-r[0, k,l]) * img[I[0, k,l], J[1,k,l]] + r[0, k,l] * img[J[0, k,l], J[1,k,l]]))
+            res[0,k] = ((1-r[1, k]) * (-img[I[0, k], I[1,k]] + img[J[0, k], I[1,k]])
+                    + r[1, k] * (-img[I[0, k], J[1,k]] + img[J[0, k], J[1,k]]))
+            res[1, k] = (- ((1-r[0, k]) * img[I[0, k], I[1,k]] + r[0, k] * img[J[0, k], I[1,k]])
+                    + ((1-r[0, k]) * img[I[0, k], J[1,k]] + r[0, k] * img[J[0, k], J[1,k]]))
     elif ndim==3:
         #res = np.zeros(np.insert(img.shape, 0, 3))
         res = np.zeros(I.shape)
         for k in prange(I.shape[1]):
-            for l in range(I.shape[2]):
-                for m in range(I.shape[3]):
-                    res[0,k,l,m] = ((1-r[2,k,l,m]) * ((1-r[1, k,l,m]) * (-img[I[0, k,l,m], I[1,k,l,m], I[2, k,l,m]] + img[J[0, k,l,m], I[1,k,l,m], I[2,k,l,m]])
-                                            + r[1, k,l,m] * (-img[I[0, k,l,m], J[1,k,l,m], I[2, k,l,m]] + img[J[0, k,l,m], J[1,k,l,m], I[2,k,l,m]]))
-                            + r[2,k,l,m] * ((1-r[1, k,l,m]) * (- img[I[0, k,l,m], I[1,k,l,m], J[2, k,l,m]] + img[J[0, k,l,m], I[1,k,l,m], J[2,k,l,m]])
-                                       + r[1, k,l,m] * (-img[I[0, k,l,m], J[1,k,l,m], J[2, k,l,m]] + img[J[0, k,l,m], J[1,k,l,m], J[2,k,l,m]])))
-                    res[1, k,l,m] = ((1-r[2,k,l,m]) * (-((1-r[0, k,l,m]) * img[I[0, k,l,m], I[1,k,l,m], I[2, k,l,m]] + r[0, k,l,m] * img[J[0, k,l,m], I[1,k,l,m], I[2,k,l,m]])
-                                            + ((1-r[0, k,l,m]) * img[I[0, k,l,m], J[1,k,l,m], I[2, k,l,m]] + r[0, k,l,m] * img[J[0, k,l,m], J[1,k,l,m], I[2,k,l,m]]))
-                            + r[2,k,l,m] * (-((1-r[0, k,l,m]) * img[I[0, k,l,m], I[1,k,l,m], J[2, k,l,m]] + r[0, k,l,m] * img[J[0, k,l,m], I[1,k,l,m], J[2,k,l,m]])
-                                        + ((1-r[0, k,l,m]) * img[I[0, k,l,m], J[1,k,l,m], J[2, k,l,m]] + r[0, k,l,m] * img[J[0, k,l,m], J[1,k,l,m], J[2,k,l,m]])))
-                    res[2, k,l,m] = (-((1-r[1, k,l,m]) * ((1-r[0, k,l,m]) * img[I[0, k,l,m], I[1,k,l,m], I[2, k,l,m]] + r[0, k,l,m] * img[J[0, k,l,m], I[1,k,l,m], I[2,k,l,m]])
-                                    + r[1, k,l,m] * ((1-r[0, k,l,m]) * img[I[0, k,l,m], J[1,k,l,m], I[2, k,l,m]] + r[0, k,l,m] * img[J[0, k,l,m], J[1,k,l,m], I[2,k,l,m]]))
-                            + ((1-r[1, k,l,m]) * ((1-r[0, k,l,m]) * img[I[0, k,l,m], I[1,k,l,m], J[2, k,l,m]] + r[0, k,l,m] * img[J[0, k,l,m], I[1,k,l,m], J[2,k,l,m]])
-                                + r[1, k,l,m] * ((1-r[0, k,l,m]) * img[I[0, k,l,m], J[1,k,l,m], J[2, k,l,m]] + r[0, k,l,m] * img[J[0, k,l,m], J[1,k,l,m], J[2,k,l,m]])))
+            # for l in range(I.shape[2]):
+            #     for m in range(I.shape[3]):
+            res[0,k] = ((1-r[2,k]) * ((1-r[1, k]) * (-img[I[0, k], I[1,k], I[2, k]] + img[J[0, k], I[1,k], I[2,k]])
+                                    + r[1, k] * (-img[I[0, k], J[1,k], I[2, k]] + img[J[0, k], J[1,k], I[2,k]]))
+                    + r[2,k] * ((1-r[1, k]) * (- img[I[0, k], I[1,k], J[2, k]] + img[J[0, k], I[1,k], J[2,k]])
+                               + r[1, k] * (-img[I[0, k], J[1,k], J[2, k]] + img[J[0, k], J[1,k], J[2,k]])))
+            res[1, k] = ((1-r[2,k]) * (-((1-r[0, k]) * img[I[0, k], I[1,k], I[2, k]] + r[0, k] * img[J[0, k], I[1,k], I[2,k]])
+                                    + ((1-r[0, k]) * img[I[0, k], J[1,k], I[2, k]] + r[0, k] * img[J[0, k], J[1,k], I[2,k]]))
+                    + r[2,k] * (-((1-r[0, k]) * img[I[0, k], I[1,k], J[2, k]] + r[0, k] * img[J[0, k], I[1,k], J[2,k]])
+                                + ((1-r[0, k]) * img[I[0, k], J[1,k], J[2, k]] + r[0, k] * img[J[0, k], J[1,k], J[2,k]])))
+            res[2, k] = (-((1-r[1, k]) * ((1-r[0, k]) * img[I[0, k], I[1,k], I[2, k]] + r[0, k] * img[J[0, k], I[1,k], I[2,k]])
+                            + r[1, k] * ((1-r[0, k]) * img[I[0, k], J[1,k], I[2, k]] + r[0, k] * img[J[0, k], J[1,k], I[2,k]]))
+                    + ((1-r[1, k]) * ((1-r[0, k]) * img[I[0, k], I[1,k], J[2, k]] + r[0, k] * img[J[0, k], I[1,k], J[2,k]])
+                        + r[1, k] * ((1-r[0, k]) * img[I[0, k], J[1,k], J[2, k]] + r[0, k] * img[J[0, k], J[1,k], J[2,k]])))
     else:
         print('interpolate only in dimensions 1 to 3')
         return
 
+    res = res.reshape(diffeo.shape)
+
+    # if ndim ==1:
+    #     res = np.zeros(I.shape)
+    #     for k in range(I.shape[1]):
+    #         res[0,k] = img[J[0, k]] - img[I[0, k]]
+    # elif ndim==2:
+    #     res = np.zeros(I.shape)
+    #     for k in prange(I.shape[1]):
+    #         for l in range(I.shape[2]):
+    #             res[0,k,l] = ((1-r[1, k,l]) * (-img[I[0, k,l], I[1,k,l]] + img[J[0, k,l], I[1,k,l]])
+    #                     + r[1, k,l] * (-img[I[0, k,l], J[1,k,l]] + img[J[0, k,l], J[1,k,l]]))
+    #             res[1, k,l] = (- ((1-r[0, k,l]) * img[I[0, k,l], I[1,k,l]] + r[0, k,l] * img[J[0, k,l], I[1,k,l]])
+    #                     + ((1-r[0, k,l]) * img[I[0, k,l], J[1,k,l]] + r[0, k,l] * img[J[0, k,l], J[1,k,l]]))
+    # elif ndim==3:
+    #     #res = np.zeros(np.insert(img.shape, 0, 3))
+    #     res = np.zeros(I.shape)
+    #     for k in prange(I.shape[1]):
+    #         for l in range(I.shape[2]):
+    #             for m in range(I.shape[3]):
+    #                 res[0,k,l,m] = ((1-r[2,k,l,m]) * ((1-r[1, k,l,m]) * (-img[I[0, k,l,m], I[1,k,l,m], I[2, k,l,m]] + img[J[0, k,l,m], I[1,k,l,m], I[2,k,l,m]])
+    #                                         + r[1, k,l,m] * (-img[I[0, k,l,m], J[1,k,l,m], I[2, k,l,m]] + img[J[0, k,l,m], J[1,k,l,m], I[2,k,l,m]]))
+    #                         + r[2,k,l,m] * ((1-r[1, k,l,m]) * (- img[I[0, k,l,m], I[1,k,l,m], J[2, k,l,m]] + img[J[0, k,l,m], I[1,k,l,m], J[2,k,l,m]])
+    #                                    + r[1, k,l,m] * (-img[I[0, k,l,m], J[1,k,l,m], J[2, k,l,m]] + img[J[0, k,l,m], J[1,k,l,m], J[2,k,l,m]])))
+    #                 res[1, k,l,m] = ((1-r[2,k,l,m]) * (-((1-r[0, k,l,m]) * img[I[0, k,l,m], I[1,k,l,m], I[2, k,l,m]] + r[0, k,l,m] * img[J[0, k,l,m], I[1,k,l,m], I[2,k,l,m]])
+    #                                         + ((1-r[0, k,l,m]) * img[I[0, k,l,m], J[1,k,l,m], I[2, k,l,m]] + r[0, k,l,m] * img[J[0, k,l,m], J[1,k,l,m], I[2,k,l,m]]))
+    #                         + r[2,k,l,m] * (-((1-r[0, k,l,m]) * img[I[0, k,l,m], I[1,k,l,m], J[2, k,l,m]] + r[0, k,l,m] * img[J[0, k,l,m], I[1,k,l,m], J[2,k,l,m]])
+    #                                     + ((1-r[0, k,l,m]) * img[I[0, k,l,m], J[1,k,l,m], J[2, k,l,m]] + r[0, k,l,m] * img[J[0, k,l,m], J[1,k,l,m], J[2,k,l,m]])))
+    #                 res[2, k,l,m] = (-((1-r[1, k,l,m]) * ((1-r[0, k,l,m]) * img[I[0, k,l,m], I[1,k,l,m], I[2, k,l,m]] + r[0, k,l,m] * img[J[0, k,l,m], I[1,k,l,m], I[2,k,l,m]])
+    #                                 + r[1, k,l,m] * ((1-r[0, k,l,m]) * img[I[0, k,l,m], J[1,k,l,m], I[2, k,l,m]] + r[0, k,l,m] * img[J[0, k,l,m], J[1,k,l,m], I[2,k,l,m]]))
+    #                         + ((1-r[1, k,l,m]) * ((1-r[0, k,l,m]) * img[I[0, k,l,m], I[1,k,l,m], J[2, k,l,m]] + r[0, k,l,m] * img[J[0, k,l,m], I[1,k,l,m], J[2,k,l,m]])
+    #                             + r[1, k,l,m] * ((1-r[0, k,l,m]) * img[I[0, k,l,m], J[1,k,l,m], J[2, k,l,m]] + r[0, k,l,m] * img[J[0, k,l,m], J[1,k,l,m], J[2,k,l,m]])))
+    # else:
+    #     print('interpolate only in dimensions 1 to 3')
+    #     return
+    #
     return res
 
 
@@ -442,14 +544,14 @@ def multilinInterpGradientVectorField(src, diffeo):
 
 
 # Computes gradient
-@jit(nopython=True, parallel=True)
+#@jit(nopython=True, parallel=True)
 def imageGradient(img, resol=None):
     res = None
     if img.ndim > 3:
         print('gradient only in dimensions 1 to 3')
 
     if img.ndim == 3:
-        if resol == None:
+        if resol is None:
             resol = (1.,1.,1.)
         res = np.zeros((3,img.shape[0], img.shape[1], img.shape[2]))
         res[0,1:img.shape[0]-1, :, :] = (img[2:img.shape[0], :, :] - img[0:img.shape[0]-2, :, :])/(2*resol[0])
@@ -463,7 +565,7 @@ def imageGradient(img, resol=None):
         res[2,:, :, img.shape[2]-1] = (img[:, :, img.shape[2]-1] - img[:, :, img.shape[2]-2])/(resol[2])
     elif img.ndim ==2:
         if resol is None:
-            resol = (1.,1.)
+            resol = np.array((1.,1.))
         res = np.zeros((2,img.shape[0], img.shape[1]))
         res[0,1:img.shape[0]-1, :] = (img[2:img.shape[0], :] - img[0:img.shape[0]-2, :])/(2*resol[0])
         res[0,0, :] = (img[1, :] - img[0, :])/(resol[0])
@@ -472,7 +574,7 @@ def imageGradient(img, resol=None):
         res[1,:, img.shape[1]-1] = (img[:, img.shape[1]-1] - img[:, img.shape[1]-2])/(resol[1])
         res[1,:, 1:img.shape[1]-1] = (img[:, 2:img.shape[1]] - img[:, 0:img.shape[1]-2])/(2*resol[1])
     elif img.ndim ==1:
-        if resol == None:
+        if resol is None:
             resol = 1
         res = np.zeros(img.shape[0])
         res[1:img.shape[0]-1] = (img[2:img.shape[0]] - img[0:img.shape[0]-2])/(2*resol)
@@ -686,24 +788,45 @@ class DiffeoParam:
             self.KparDiff = KparDiff
 
 class Diffeomorphism:
-    def __init__(self, shape, param):
-        self.dim = param.dim
+    def __init__(self, shape, options):
+        self.init(shape, options)
+
+    def diffeoOptions(self, options):
+
+        self.options = dict()
+        if 'dim' not in options.keys():
+            logging.error('Options must include a dimension; pursuing with dim=2 -- no guarantees')
+            self.options['dim'] = 2
+        self.options['timeStep'] = .1
+        self.options['KparDiff'] = None
+        self.options['sigmaKernel'] = 6.5
+        self.options['order'] = -1
+        self.options['kernelSize'] = 50
+        self.options['typeKernel'] = 'gauss'
+        self.options['resol'] = (1,1,1)
+        self.options['kernelNormalization'] = 1.
+        self.options['maskMargin'] = 1
+        for k in options.keys():
+            self.options[k] = options[k]
+
+    def init(self, shape, options):
+        self.diffeoOptions(options)
+        self.dim = self.options['dim']
         self.imShape = shape
         self.vfShape = [self.dim] + list(shape)
-        self.timeStep = param.timeStep
-        self.sigmaKernel = param.sigmaKernel
-        self.typeKernel = param.typeKernel
+        self.timeStep = self.options['timeStep']
+        self.sigmaKernel = self.options['sigmaKernel']
+        self.typeKernel = self.options['typeKernel']
         self.kernelNormalization = 1.
         self.maskMargin = 1
         self.nbSemi = 0
-        self.dim = param.dim
-        self.resol = param.resol
-        if param.KparDiff is None:
-            self.KparDiff = Kernel(name = self.typeKernel, sigma = self.sigmaKernel, order=param.order,
-                                   size=param.kernelSize,
-                                   dim=param.dim)
+        self.resol = self.options['resol']
+        if self.options['KparDiff'] is None:
+            self.KparDiff = Kernel(name = self.typeKernel, sigma = self.sigmaKernel, order=self.options['order'],
+                                   size=self.options['kernelSize'],
+                                   dim=self.dim)
         else:
-            self.KparDiff = param.KparDiff
+            self.KparDiff = self.options['KparDiff']
         # self.param = param
         self.phi = np.zeros(self.vfShape)
         self.psi = np.zeros(self.vfShape)
@@ -714,12 +837,12 @@ class Diffeomorphism:
         for i in range(self.dim):
             self.fftShape +=  (self.KShape[i] + self.imShape[i] - 1,)
         ax = np.arange(self.dim, dtype=int)
-        self.mask = makeMask(param.maskMargin, self.imShape)
+        self.mask = makeMask(self.options['maskMargin'], self.imShape)
         self.fft_in = pyfftw.empty_aligned(self.fftShape,dtype='complex128')
         self.fft_out = pyfftw.empty_aligned(self.fftShape,dtype='complex128')
         self.ifft_out = pyfftw.empty_aligned(self.fftShape,dtype='complex128')
-        self.fft_fwd = pyfftw.FFTW(self.fft_in, self.fft_out, threads = cpu_count(), axes=ax)
-        self.fft_bwd = pyfftw.FFTW(self.fft_out, self.ifft_out, direction='FFTW_BACKWARD', threads = cpu_count(), axes=ax)
+        self.fft_fwd = pyfftw.FFTW(self.fft_in, self.fft_out, axes=ax)
+        self.fft_bwd = pyfftw.FFTW(self.fft_out, self.ifft_out, direction='FFTW_BACKWARD', axes=ax)
         self.periodic = False
         self.seqPadK = ()
         self.seqPadI = ()

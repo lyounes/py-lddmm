@@ -247,10 +247,15 @@ class GridScalars:
         return
 
 
-    def zeroPad(self, h):
+    def zeroPad(self, h=1):
         d = np.copy(self.data)
-        self.data = np.zeros([d.shape[0] + 2, d.shape[1]+2, d.shape[2]+2])
-        self.data[1:d.shape[0]+1, 1:d.shape[1]+1, 1:d.shape[2]+1] = d
+        self.data = np.zeros(np.array(d.shape, dtype=int) + 2*h)
+        if self.data.ndim == 1:
+            self.data[h:d.shape[0]+h] = d
+        elif self.data.ndim == 2:
+            self.data[h:d.shape[0]+h, h:d.shape[1]+h] = d
+        elif self.data.ndim == 3:
+            self.data[h:d.shape[0]+h, h:d.shape[1]+h, h:d.shape[2]+h] = d
 
 
 def saveImage(img, filename, normalize=False, origin = (0,0,0), resol = (1.,1.,1.)):

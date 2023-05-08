@@ -1,17 +1,15 @@
 import numpy as np
 import numpy.linalg as la
 import logging
-from . import pointEvolution as evol
 from .surfaces import Surface, extract_components_
 from .curves import Curve
 from .curve_distances import measureNorm0, measureNormDef, measureNormGradient
 from .curve_distances import currentNorm0, currentNormDef, currentNormGradient
 from .curve_distances import varifoldNorm0, varifoldNormDef, varifoldNormGradient
-from . import pointSets
 from functools import partial
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.axes3d import Axes3D
-from .surfaceMatching import SurfaceMatchingParam, SurfaceMatching
+from .surfaceMatching import SurfaceMatching
 from .surfaceSection import SurfaceSection, Surf2SecDist, Surf2SecGrad, Hyperplane, readFromTXT
 
 
@@ -33,25 +31,19 @@ from .surfaceSection import SurfaceSection, Surf2SecDist, Surf2SecGrad, Hyperpla
 #        affine: 'affine', 'similitude', 'euclidean', 'translation' or 'none'
 #        maxIter: max iterations in conjugate gradient
 class SurfaceToSectionsMatching(SurfaceMatching):
-    def __init__(self, Template=None, Target=None, param=None, maxIter=1000, passenger = None, componentMap=None,
-                 regWeight = 1.0, affineWeight = 1.0, internalWeight=1.0, mode="normal",
-                 subsampleTargetSize=-1, affineOnly = False, testGradient = None,
-                 rotWeight = None, scaleWeight = None, transWeight = None, symmetric = False,
-                 saveFile = 'evolution', select_planes = None, forceClosed = False,
-                 saveTrajectories = False, affine = 'none', outputDir = '.',pplot=True):
-        self.forceClosed = forceClosed
+    def __init__(self, Template=None, Target=None, options = None):
         self.colors = ('b', 'm', 'g', 'r', 'y', 'k')
-        super().__init__(Template=Template, Target=Target, param=param, maxIter=maxIter, passenger = passenger,
-                 regWeight = regWeight, affineWeight = affineWeight, internalWeight=internalWeight, mode=mode,
-                 subsampleTargetSize=subsampleTargetSize, affineOnly = affineOnly, testGradient=testGradient,
-                 rotWeight = rotWeight, scaleWeight = scaleWeight, transWeight = transWeight, symmetric = symmetric,
-                 saveFile = saveFile,
-                 saveTrajectories = saveTrajectories, affine = affine, outputDir = outputDir, pplot=pplot)
+        self.hyperplanes = np.empty(0)
+        super().__init__(Template=Template, Target=Target, options=options)
+        
+                # param=param, maxIter=maxIter, passenger = passenger,
+                #  regWeight = regWeight, affineWeight = affineWeight, internalWeight=internalWeight, mode=mode,
+                #  subsampleTargetSize=subsampleTargetSize, affineOnly = affineOnly, testGradient=testGradient,
+                #  rotWeight = rotWeight, scaleWeight = scaleWeight, transWeight = transWeight, symmetric = symmetric,
+                #  saveFile = saveFile,
+                #  saveTrajectories = saveTrajectories, affine = affine, outputDir = outputDir, pplot=pplot)
 
-        self.hyperplanes = None
 
-        self.set_fun(self.param.errorType)
-        self.set_template_and_target(Template, Target, subsampleTargetSize, misc = [select_planes, componentMap])
         self.match_landmarks = False
         self.def_lmk = None
         print(f'Template has {self.fv0.vertices.shape[0]} vertices')
@@ -64,6 +56,13 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         # self.forceLineSearch = False
 
 
+    def getDefaultOptions(self):
+        options = super().getDefaultOptions()
+        options['forceClosed'] = False
+        options['componentMap'] = None
+        options['select_planes'] = None
+        return options
+
 
     def set_template_and_target(self, Template, Target, subsampleTargetSize=-1, misc = None):
         if Template is None:
@@ -72,48 +71,29 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         else:
             self.fv0 = Surface(surf=Template)
 
-        if type(Target) in (list, tuple):
-            if type(Target[0]) == str:
-                self.fv1, self.hyperplanes = readFromTXT(Target, forceClosed=self.forceClosed)
-            else:
-                self.fv1 = Target[0]
-                self.hyperplanes = Target[1]
-        elif type(Target) == str:
-            self.fv1, self.hyperplanes = readFromTXT(Target, forceClosed=self.forceClosed)
-        else:
-            logging.error('Target must be a list or tuple of SurfaceSection')
-            return
-
-        # if fv1 is not None:
-        #     c = []
-        #     found_h = np.zeros(len(fv1), dtype=bool)
-        #     for k in range(self.hyperplanes.shape[0]):
-        #         c.append([])
-        #         for i in range(len(fv1)):
-        #             if not found_h[i]:
-        #                 u = min(np.fabs(self.hyperplanes[k, :3] - fv1[i].hyperplane.u).sum()
-        #                         + np.fabs(self.hyperplanes[k, 3] - fv1[i].hyperplane.offset),
-        #                         np.fabs(self.hyperplanes[k, :3] + fv1[i].hyperplane.u).sum()
-        #                         + np.fabs(self.hyperplanes[k, 3] + fv1[i].hyperplane.offset))
-        #                 if u<1e-2:
-        #                     c[k].append(fv1[i].curve)
-        #                     found_h[i] = True
-        #
-        #     self.fv1 = []
-        #     for i in range(len(c)):
-        #         cv = Curve(curve=c[i])
-        #         h = Hyperplane(u=self.hyperplanes[i,:3], offset=self.hyperplanes[3])
-        #         self.fv1.append(SurfaceSection(curve=cv, hyperplane=h, hypLabel=i))
-
         if misc is None:
             select_planes = None
             componentMap = None
         else:
-            select_planes = misc[0]
-            componentMap = misc[1]
+            select_planes = misc['select_planes']
+            componentMap = misc['componentMap']
 
         if select_planes is not None:
             self.selectPlanes((select_planes))
+
+        if type(Target) in (list, tuple):
+            if type(Target[0]) == str:
+                self.fv1, self.hyperplanes = readFromTXT(Target, forceClosed=self.options['forceClosed'])
+            else:
+                self.fv1 = Target[0]
+                self.hyperplanes = Target[1]
+        elif type(Target) == str:
+            self.fv1, self.hyperplanes = readFromTXT(Target, forceClosed=self.options['forceClosed'])
+        else:
+            logging.error('Target must be a list or tuple of SurfaceSection')
+            return
+
+
         self.fvInit = Surface(surf=self.fv0)
         self.fix_orientation()
         self.fv0.saveVTK(self.outputDir+'/Template.vtk')
@@ -270,45 +250,43 @@ class SurfaceToSectionsMatching(SurfaceMatching):
         fig.canvas.flush_events()
 
     def set_fun(self, errorType, vfun=None):
-        self.param.errorType = errorType
+        self.options['errorType'] = errorType
         if errorType == 'current':
             #print('Running Current Matching')
-            self.fun_obj0 = partial(currentNorm0, KparDist=self.param.KparDist, weight=1.)
-            self.fun_obj = partial(currentNormDef, KparDist=self.param.KparDist, weight=1.)
-            self.fun_objGrad = partial(currentNormGradient, KparDist=self.param.KparDist, weight=1.)
+            self.fun_obj0 = partial(currentNorm0, KparDist=self.options['KparDist'], weight=1.)
+            self.fun_obj = partial(currentNormDef, KparDist=self.options['KparDist'], weight=1.)
+            self.fun_objGrad = partial(currentNormGradient, KparDist=self.options['KparDist'], weight=1.)
         elif errorType=='measure':
             #print('Running Measure Matching')
-            self.fun_obj0 = partial(measureNorm0, KparDist=self.param.KparDist, cpu=True)
-            self.fun_obj = partial(measureNormDef,KparDist=self.param.KparDist, cpu=True)
-            self.fun_objGrad = partial(measureNormGradient,KparDist=self.param.KparDist, cpu=True)
+            self.fun_obj0 = partial(measureNorm0, KparDist=self.options['KparDist'], cpu=True)
+            self.fun_obj = partial(measureNormDef,KparDist=self.options['KparDist'], cpu=True)
+            self.fun_objGrad = partial(measureNormGradient,KparDist=self.options['KparDist'], cpu=True)
         elif errorType=='varifold':
-            self.fun_obj0 = partial(varifoldNorm0, KparDist=self.param.KparDist, weight=1.)
-            self.fun_obj = partial(varifoldNormDef, KparDist=self.param.KparDist, weight=1.)
-            self.fun_objGrad = partial(varifoldNormGradient, KparDist=self.param.KparDist, weight=1.)
+            self.fun_obj0 = partial(varifoldNorm0, KparDist=self.options['KparDist'], weight=1.)
+            self.fun_obj = partial(varifoldNormDef, KparDist=self.options['KparDist'], weight=1.)
+            self.fun_objGrad = partial(varifoldNormGradient, KparDist=self.options['KparDist'], weight=1.)
         else:
-            print('Unknown error Type: ', self.param.errorType)
+            print('Unknown error Type: ', self.options['errorType'])
 
 
-    def dataTerm(self, _fvDef, fv1 = None, _fvInit = None, _lmk_def = None, lmk1 = None):
-        #print('starting dt')
-        if fv1 is None:
+    def dataTerm(self, _fvDef, var = None):
+        if var is not None and 'fv1' in var:
+            fv1 = var['fv1']
+        else:
             fv1 = self.fv1
         obj = 0
         for k,f in enumerate(fv1):
-            #logging.info(f'     Target {k}')
-                                #target_label=np.where(self.componentMap[:,k])[0]) # curveDist0=self.fun_obj0) plot=101+k)
             obj += Surf2SecDist(_fvDef, f, self.fun_obj, target_comp_info=self.component_structure[k])
-        obj /= self.param.sigmaError**2
-        #print('ending dt')
+        obj /= self.options['sigmaError']**2
         return obj
 
     def objectiveFun(self):
         if self.obj is None:
             self.obj0 = 0
             for f in self.fv1:
-                self.obj0 += self.fun_obj0(f.curve) / (self.param.sigmaError**2)
-            (self.obj, self.xt) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
-            self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
+                self.obj0 += self.fun_obj0(f.curve) / (self.options['sigmaError']**2)
+            self.obj, self.state = self.objectiveFunDef(self.control, withTrajectory=True)
+            self.fvDef.updateVertices(np.squeeze(self.state['xt'][-1, :, :]))
             self.obj += self.obj0 + self.dataTerm(self.fvDef)
         return self.obj
 
@@ -323,7 +301,7 @@ class SurfaceToSectionsMatching(SurfaceMatching):
             px += Surf2SecGrad(endPoint, f, self.fun_objGrad, target_comp_info=self.component_structure[k])
                                #target_label=np.where(self.componentMap[:,k])[0])
         #print('ending epg')
-        return px / self.param.sigmaError**2
+        return px / self.options['sigmaError']**2
 
     def saveCorrectedTarget(self, X0, X1):
         U = la.inv(X0[-1])
