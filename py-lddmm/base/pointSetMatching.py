@@ -2,6 +2,7 @@ from copy import deepcopy
 import numpy as np
 import scipy.linalg as la
 import logging
+from functools import partial
 from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, bfgs
 from .pointSets import PointSet
 from . import pointSets, pointset_distances as psd
@@ -122,9 +123,9 @@ class PointSetMatching(BasicMatching):
             self.fun_obj = psd.L2NormDef
             self.fun_objGrad = psd.L2NormGradient
         elif errorType == 'measure':
-            self.fun_obj0 = psd.measureNorm0
-            self.fun_obj = psd.measureNormDef
-            self.fun_objGrad = psd.measureNormGradient
+            self.fun_obj0 = partial(psd.measureNorm0, KparDist=self.options['KparDist'])
+            self.fun_obj = partial(psd.measureNormDef, KparDist=self.options['KparDist'])
+            self.fun_objGrad = partial(psd.measureNormGradient, KparDist=self.options['KparDist'])
         else:
             logging.error('Unknown error Type: ' + self.options['errorType'])
 
@@ -186,7 +187,7 @@ class PointSetMatching(BasicMatching):
 
     def dataTerm(self, _fvDef, var = None):
         if self.options['errorType'] == 'measure':
-            obj = self.fun_obj(_fvDef, self.fv1, self.options['KparDist']) / (self.options['sigmaError'] ** 2)
+            obj = self.fun_obj(_fvDef, self.fv1) / (self.options['sigmaError'] ** 2)
         else:
             obj = self.fun_obj(_fvDef, self.fv1) / (self.options['sigmaError']**2)
         return obj
@@ -235,15 +236,15 @@ class PointSetMatching(BasicMatching):
         obj=0
         obj1 = 0 
         for t in range(self.Tsize):
-            z = np.squeeze(xt[t, :, :])
-            a = np.squeeze(at[t, :, :])
+            z = xt[t, :, :]
+            a = at[t, :, :]
             ra = kernel.applyK(z, a)
             if hasattr(self, 'v'):  
                 self.v[t, :] = ra
             obj = obj + regWeight*timeStep*(a*ra).sum()
 
             if self.extraTerm is not None:
-                obj += self.extraTerm['coeff'] * self.extraTerm['fun'](z, ra)
+                obj += self.extraTerm['coeff'] * self.extraTerm['fun'](z, ra) * timeStep
             if self.affineDim > 0:
                 obj1 +=  timeStep * (self.affineWeight.reshape(Afft[t].shape) * Afft[t]**2).sum()
             #print xt.sum(), at.sum(), obj
@@ -261,7 +262,7 @@ class PointSetMatching(BasicMatching):
     def objectiveFun(self):
         if self.obj == None:
             if self.options['errorType'] == 'measure':
-                self.obj0 = self.fun_obj0(self.fv1, self.options['KparDist']) / (self.options['sigmaError'] ** 2)
+                self.obj0 = self.fun_obj0(self.fv1) / (self.options['sigmaError'] ** 2)
             else:
                 self.obj0 = self.fun_obj0(self.fv1) / (self.options['sigmaError']**2)
             self.objDef, self.state = self.objectiveFunDef(self.control, withTrajectory=True)
@@ -311,7 +312,7 @@ class PointSetMatching(BasicMatching):
         if endPoint is None:
             endPoint = self.fvDef
         if self.options['errorType'] == 'measure':
-            px = self.fun_objGrad(endPoint, self.fv1, self.options['KparDist'])
+            px = self.fun_objGrad(endPoint, self.fv1)
         else:
             px = self.fun_objGrad(endPoint, self.fv1)
         return px / self.options['sigmaError']**2
@@ -451,12 +452,6 @@ class PointSetMatching(BasicMatching):
             self.fvDef.points = np.copy(np.squeeze(self.state['xt'][-1, :, :]))
             dim2 = self.dim**2
             A = self.affB.getTransforms(self.control['Afft'])
-            # A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-            # if self.affineDim > 0:
-            #     for t in range(self.Tsize):
-            #         AB = np.dot(self.affineBasis, self.control['Afft'][t])
-            #         A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-            #         A[1][t] = AB[dim2:dim2+self.dim]
             xt, Jt  = evol.landmarkDirectEvolutionEuler(self.x0, self.control['at'], self.options['KparDiff'], affine=A,
                                                               withJacobian=True)
             if self.options['affine']=='euclidean' or self.options['affine']=='translation':
@@ -468,8 +463,8 @@ class PointSetMatching(BasicMatching):
                     yyt = np.dot(self.state['xt'][t,...] - X[1][t, ...], U.T)
                     f = np.copy(yyt)
                     pointSets.savelmk(f, self.outputDir + '/' + self.options['saveFile'] + 'Corrected' + str(t) + '.lmk')
-                f = np.copy(self.fv1)
-                yyt = np.dot(f - X[1][-1, ...], U.T)
+                f = deepcopy(self.fv1)
+                yyt = np.dot(f.points - X[1][-1, ...], U.T)
                 f = np.copy(yyt)
                 pointSets.savePoints(self.outputDir + '/TargetCorrected.vtk', f)
             for kk in range(self.Tsize+1):

@@ -16,7 +16,6 @@ from base.surfaceExamples import Sphere
 from base import loggingUtils
 from base.meshes import Mesh
 from base.kernelFunctions import Kernel
-from base.affineRegistration import rigidRegistration
 from base.meshMatching import MeshMatching
 from base.meshExamples import TwoBalls, TwoDiscs, MoGCircle
 import pykeops
@@ -106,7 +105,7 @@ def compute(model):
     K1 = Kernel(name='gauss', sigma = sigmaKernel)
     options = {
         'outputDir': '../Output/meshMatchingTest/'+model,
-        'mode': 'debug',
+        'mode': 'normal',
         'maxIter': 1000,
         'affine': 'none',
         'rotWeight': .01,
