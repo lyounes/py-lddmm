@@ -666,7 +666,7 @@ def applyDiffK_numba(x, a1, a2, fun, scale, order, KP=-1, option='1'):
         elif option=='2':
             for k in prange(x.shape[0]):
                 for l in range(x.shape[0]):
-                    res[k, :] += fun(xs[k, :], xs[l, :], a1[l, :], order) * a2[l, :] * sKP1[s]
+                    res[k, :] -= fun(xs[k, :], xs[l, :], a1[l, :], order) * a2[l, :] * sKP1[s]
         elif option=='1and2':
             for k in prange(x.shape[0]):
                 for l in range(x.shape[0]):
@@ -760,15 +760,16 @@ def applyDiffK_pykeops(x, a1, a2, name, scale, order, dtype='float64', KP=-1, op
 
 
 ##Transposed
-def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., lddmm=False, cpu=False, dtype='float64', KP=-1):
+def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., sym = False, lddmm=False, cpu=False, dtype='float64', KP=-1):
     if not cpu and pykeops.config.gpu_available:
-        return applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=regweight, lddmm=lddmm, dtype=dtype, KP=KP)
+        return applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=regweight, lddmm=lddmm,
+                                   sym=sym, dtype=dtype, KP=KP)
     else:
         fun = pick_fun(name, mode = 'DiffT')
-        return applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=regweight, lddmm=lddmm, KP=KP)
+        return applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=regweight, lddmm=lddmm, sym = sym, KP=KP)
 
 @jit(nopython=True, parallel=True)
-def applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=1., lddmm=False, KP=-1):
+def applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=1., lddmm=False, sym = False, KP=-1):
     res = np.zeros(y.shape)
     ns = len(scale)
     sKP1 = scale**(KP-1)
@@ -781,6 +782,8 @@ def applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=1., lddmm=False, 
             for l in range(x.shape[0]):
                 if lddmm:
                     akl = p[k, :] * a[l, :] + a[k, :] * p[l, :] - 2 * regweight * a[k, :] * a[l, :]
+                elif sym:
+                    akl = p[k, :] * a[l, :] + a[k, :] * p[l, :]
                 else:
                     akl = p[k, :] * a[l, :]
                 res[k, :] += fun(ys[k, :], xs[l, :], akl, order) * sKP1[s]
@@ -788,7 +791,7 @@ def applyDiffKT_numba(y, x, p, a, fun, scale, order, regweight=1., lddmm=False, 
     return res
 
 
-def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=False, dtype='float64', KP=-1):
+def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=False, sym = False, dtype='float64', KP=-1):
     res = np.zeros(y.shape)
     ns = len(scale)
     sKP1 = scale**(KP-1)
@@ -802,6 +805,10 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
         pj_ = LazyTensor(p_[None, :, :])
         ai_ = LazyTensor(a_[:, None, :])
         ap_ = (pi_ * aj_ + ai_ * pj_ - 2 * regweight * ai_ * aj_).sum(-1)
+    elif sym:
+        pj_ = LazyTensor(p_[None, :, :])
+        ai_ = LazyTensor(a_[:, None, :])
+        ap_ = (pi_ * aj_ + ai_ * pj_).sum(-1)
     else:
         ap_ = (pi_*aj_).sum(-1)
 
@@ -1094,7 +1101,7 @@ def applyDDiffK_numba(x, a1, a2, p, fun, scale, order, option = '11and12', KP=-1
             KS = s**(KP-2)
             for k in prange(num_nodes):
                 df = np.zeros(dim)
-                for l in prange(num_nodes):
+                for l in range(num_nodes):
                     df += fun(xs[k,:], xs[l,:], a1[k,:] * a2[l,:], p[k,:], order)
                 f[k, :] += df * KS
     elif option == '12':
@@ -1103,7 +1110,7 @@ def applyDDiffK_numba(x, a1, a2, p, fun, scale, order, option = '11and12', KP=-1
             KS = s**(KP-2)
             for k in prange(num_nodes):
                 df = np.zeros(dim)
-                for l in prange(num_nodes):
+                for l in range(num_nodes):
                     df -= fun(xs[k,:], xs[l,:], a1[k,:] * a2[l,:], p[l,:], order)
                 f[k, :] += df * KS
     elif option=='11and12':
@@ -1112,7 +1119,7 @@ def applyDDiffK_numba(x, a1, a2, p, fun, scale, order, option = '11and12', KP=-1
             KS = s**(KP-2)
             for k in prange(num_nodes):
                 df = np.zeros(dim)
-                for l in prange(num_nodes):
+                for l in range(num_nodes):
                     df += fun(xs[k,:], xs[l,:], a1[k,:] * a2[l,:], p[k,:]-p[l, :], order)
                 f[k, :] += df * KS
     else:
@@ -1151,8 +1158,8 @@ def applyDDiffK_pykeops(x, a1, a2, p, name, scale, order, option = '11and12', dt
         elif option == '12':
             res -= ((K2ij * (Dij * pj_).sum(-1) * Dij - K1ij * pj_) * (a1i_ * a2j_).sum(-1)).sum(axis=1) * KS
         elif option=='11and12':
-            dres = (K2ij * (Dij * (pi_ -pj_)).sum(-1) * Dij - K1ij * (pi_-pj_)) * (a1i_ * a2j_).sum(-1) * KS
-            res = res + dres.sum(axis=1)
+            dres = (K2ij * (Dij * (pi_ -pj_)).sum(-1) * Dij - K1ij * (pi_-pj_)) * (a1i_ * a2j_).sum(-1)
+            res = res + dres.sum(axis=1) * KS
         else:
             print('Unknown option in second kernel derivative')
             return res

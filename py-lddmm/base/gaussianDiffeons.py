@@ -1,6 +1,8 @@
 import numpy as np
+from numba import jit
 import numpy.linalg as LA
 import scipy.linalg as spLA
+from .surface_distances import currentNorm0
 
 try:
     from vtk import vtkQuadricClustering
@@ -47,7 +49,7 @@ def generateDiffeonsFromDecimation(fv, target):
         while fv2.faces.shape[0] > target:
             polydata = fv2.toPolyData()
             dc = vtkQuadricClustering()
-            dc.SetInput(polydata)
+            dc.SetInputData(polydata)
             dc.Update()
             g = dc.GetOutput()
             fv2.fromPolyData(g)
@@ -180,21 +182,23 @@ def multiMatEig(S, isSym=False):
         d[k,:] = D[idx]
         v[k,:, :] = V[:,idx]
     return d,v
-        
+
+
+@jit(nopython=True)
 def multiMatInverse1(S, isSym=False):
     N = S.shape[0]
     dim = S.shape[1]
     if (dim==1):
         R = np.divide(1, S)
-        detR = S
+        detR = S[:,0,0]
     elif (dim == 2):
-        detR = np.multiply(S[:,0, 0], S[:, 1, 1]) - np.multiply(S[:,0, 1], S[:, 1, 0])
+        detR = S[:,0, 0]*S[:, 1, 1] - S[:,0, 1]*S[:, 1, 0]
         R = np.zeros(S.shape)
-        R[:, 0, 0] = S[:, 1, 1].copy()
-        R[:, 1, 1] = S[:, 0, 0].copy()
-        R[:, 0, 1] = -S[:, 0, 1]
-        R[:, 1, 0] = -S[:, 1, 0]
-        R = R / detR.reshape([N, 1, 1])
+        R[:, 0, 0] = S[:, 1, 1]/detR
+        R[:, 1, 1] = S[:, 0, 0]/detR
+        R[:, 0, 1] = -S[:, 0, 1]/detR
+        R[:, 1, 0] = -S[:, 1, 0]/detR
+        # R /= detR[:, np.newaxis, np.newaxis]
     elif (dim==3):
         detR = (S[:, 0, 0] * S[:, 1, 1] * S[:, 2, 2] 
                 -S[:, 0, 0] * S[:, 1, 2] * S[:, 2, 1]
@@ -204,40 +208,41 @@ def multiMatInverse1(S, isSym=False):
                 +S[:, 0, 2] * S[:, 1, 0] * S[:, 2, 1])
             #detR = np.divide(1, detR)
         R = np.zeros(S.shape)
-        R[:, 0, 0] = S[:, 1, 1] * S[:, 2, 2] - S[:, 1, 2] * S[:, 2, 1]
-        R[:, 1, 1] = S[:, 0, 0] * S[:, 2, 2] - S[:, 0, 2] * S[:, 2, 0]
-        R[:, 2, 2] = S[:, 1, 1] * S[:, 0, 0] - S[:, 1, 0] * S[:, 0, 1]
-        R[:, 0, 1] = -S[:, 0, 1] * S[:, 2, 2] + S[:, 2, 1] * S[:, 0, 2]
-        R[:, 0, 2] = S[:, 0, 1] * S[:, 1, 2] - S[:, 0, 2] * S[:, 1, 1]
-        R[:, 1, 2] = -S[:, 0, 0] * S[:, 1, 2] + S[:, 0, 2] * S[:, 1, 0]
+        R[:, 0, 0] = (S[:, 1, 1] * S[:, 2, 2] - S[:, 1, 2] * S[:, 2, 1])/detR
+        R[:, 1, 1] = (S[:, 0, 0] * S[:, 2, 2] - S[:, 0, 2] * S[:, 2, 0])/detR
+        R[:, 2, 2] = (S[:, 1, 1] * S[:, 0, 0] - S[:, 1, 0] * S[:, 0, 1])/detR
+        R[:, 0, 1] = (-S[:, 0, 1] * S[:, 2, 2] + S[:, 2, 1] * S[:, 0, 2])/detR
+        R[:, 0, 2] = (S[:, 0, 1] * S[:, 1, 2] - S[:, 0, 2] * S[:, 1, 1])/detR
+        R[:, 1, 2] = (-S[:, 0, 0] * S[:, 1, 2] + S[:, 0, 2] * S[:, 1, 0])/detR
         if isSym:
             R[:, 1, 0] = R[:, 0, 1].copy()
             R[:, 2, 0] = R[:, 0, 2].copy()
             R[:, 2, 1] = R[:, 1, 2].copy()
         else:
-            R[:, 1, 0] = -S[:, 1, 0] * S[:, 2, 2] + S[:, 1, 2] * S[:, 2, 0]
-            R[:, 2, 0] = S[:, 1, 0] * S[:, 2, 1] - S[:, 2, 0] * S[:, 1, 1]
-            R[:, 2, 1] = -S[:, 0, 0] * S[:, 2, 1] + S[:, 2, 0] * S[:, 0, 1]
-        R = R / detR.reshape([N, 1, 1])
+            R[:, 1, 0] = (-S[:, 1, 0] * S[:, 2, 2] + S[:, 1, 2] * S[:, 2, 0])/detR
+            R[:, 2, 0] = (S[:, 1, 0] * S[:, 2, 1] - S[:, 2, 0] * S[:, 1, 1])/detR
+            R[:, 2, 1] = (-S[:, 0, 0] * S[:, 2, 1] + S[:, 2, 0] * S[:, 0, 1])/detR
+        #R = R / detR.reshape([N, 1, 1])
     return R, detR
         
+@jit(nopython=True)
 def multiMatInverse2(S, isSym=False):
     N = S.shape[0]
     M = S.shape[1]
-    dim = S.shape[2] ;
+    dim = S.shape[2]
     if (dim==1):
         R = np.divide(1, S)
-        detR = S
+        detR = S[:,:,0,0]
     elif (dim == 2):
-        R = np.zeros([N, M, dim, dim])
+        R = np.zeros((N, M, dim, dim))
         detR = np.multiply(S[:, :,0, 0], S[:, :, 1, 1]) - np.multiply(S[:, :,0, 1], S[:, :, 1, 0])
-        R[:, :, 0, 0] = S[:, :, 1, 1].copy()
-        R[:, :, 1, 1] = S[:, :, 0, 0].copy()
-        R[:, :, 0, 1] = -S[:, :, 0, 1]
-        R[:, :, 1, 0] = -S[:, :, 1, 0]
-        R = R / detR.reshape([N, M, 1, 1])
+        R[:, :, 0, 0] = S[:, :, 1, 1]/detR
+        R[:, :, 1, 1] = S[:, :, 0, 0]/detR
+        R[:, :, 0, 1] = -S[:, :, 0, 1]/detR
+        R[:, :, 1, 0] = -S[:, :, 1, 0]/detR
+        #R = R / detR.reshape([N, M, 1, 1])
     elif (dim==3):
-        R = np.zeros([N, M, dim, dim])
+        R = np.zeros((N, M, dim, dim))
         detR = (S[:, :, 0, 0] * S[:, :, 1, 1] * S[:, :, 2, 2] 
                 -S[:, :, 0, 0] * S[:, :, 1, 2] * S[:, :, 2, 1]
                 -S[:, :, 0, 1] * S[:, :, 1, 0] * S[:, :, 2, 2]
@@ -245,21 +250,21 @@ def multiMatInverse2(S, isSym=False):
                 +S[:, :, 0, 1] * S[:, :, 1, 2] * S[:, :, 2, 0]
                 +S[:, :, 0, 2] * S[:, :, 1, 0] * S[:, :, 2, 1])
             #detR = np.divide(1, detR)
-        R[:, :, 0, 0] = S[:, :, 1, 1] * S[:, :, 2, 2] - S[:, :, 1, 2] * S[:, :, 2, 1]
-        R[:, :, 1, 1] = S[:, :, 0, 0] * S[:, :, 2, 2] - S[:, :, 0, 2] * S[:, :, 2, 0]
-        R[:, :, 2, 2] = S[:, :, 1, 1] * S[:, :, 0, 0] - S[:, :, 1, 0] * S[:, :, 0, 1]
-        R[:, :, 0, 1] = -S[:, :, 0, 1] * S[:, :, 2, 2] + S[:, :, 2, 1] * S[:, :, 0, 2]
-        R[:, :, 0, 2] = S[:, :, 0, 1] * S[:, :, 1, 2] - S[:, :, 0, 2] * S[:, :, 1, 1]
-        R[:, :, 1, 2] = -S[:, :, 0, 0] * S[:, :, 1, 2] + S[:, :, 0, 2] * S[:, :, 1, 0]
+        R[:, :, 0, 0] = (S[:, :, 1, 1] * S[:, :, 2, 2] - S[:, :, 1, 2] * S[:, :, 2, 1])/detR
+        R[:, :, 1, 1] = (S[:, :, 0, 0] * S[:, :, 2, 2] - S[:, :, 0, 2] * S[:, :, 2, 0])/detR
+        R[:, :, 2, 2] = (S[:, :, 1, 1] * S[:, :, 0, 0] - S[:, :, 1, 0] * S[:, :, 0, 1])/detR
+        R[:, :, 0, 1] = (-S[:, :, 0, 1] * S[:, :, 2, 2] + S[:, :, 2, 1] * S[:, :, 0, 2])/detR
+        R[:, :, 0, 2] = (S[:, :, 0, 1] * S[:, :, 1, 2] - S[:, :, 0, 2] * S[:, :, 1, 1])/detR
+        R[:, :, 1, 2] = (-S[:, :, 0, 0] * S[:, :, 1, 2] + S[:, :, 0, 2] * S[:, :, 1, 0])/detR
         if isSym:
             R[:, :, 1, 0] = R[:, :, 0, 1].copy()
             R[:, :, 2, 0] = R[:, :, 0, 2].copy()
             R[:, :, 2, 1] = R[:, :, 1, 2].copy()
         else:
-            R[:, :, 1, 0] = -S[:, :, 1, 0] * S[:, :, 2, 2] + S[:, :, 1, 2] * S[:, :, 2, 0]
-            R[:, :, 2, 0] = S[:, :, 1, 0] * S[:, :, 2, 1] - S[:, :, 2, 0] * S[:, :, 1, 1]
-            R[:, :, 2, 1] = -S[:, :, 0, 0] * S[:, :, 2, 1] + S[:, :, 2, 0] * S[:, :, 0, 1]
-        R = R / detR.reshape([N, M, 1, 1])
+            R[:, :, 1, 0] = (-S[:, :, 1, 0] * S[:, :, 2, 2] + S[:, :, 1, 2] * S[:, :, 2, 0])/detR
+            R[:, :, 2, 0] = (S[:, :, 1, 0] * S[:, :, 2, 1] - S[:, :, 2, 0] * S[:, :, 1, 1])/detR
+            R[:, :, 2, 1] = (-S[:, :, 0, 0] * S[:, :, 2, 1] + S[:, :, 2, 0] * S[:, :, 0, 1])/detR
+        #R = R / detR.reshape([N, M, 1, 1])
     return R, detR
         
 def positiveProj(S):
@@ -279,7 +284,7 @@ def positiveProj(S):
 def computeProducts(c, S, sig):
     M = c.shape[0]
     dim = c.shape[1]
-    sig2 = sig*sig ;
+    sig2 = sig*sig
 
     sigEye = sig2*np.eye(dim)
     #SS = sigEye.reshape([1,dim,dim]) + S 
@@ -452,7 +457,7 @@ def approximateSurfaceCurrent(c, S, fv, sig):
     g1 = computeProductsCurrents(c,S,sig)
     g2 = computeProductsAsymCurrents(c, S, cc, sig)
     b = LA.solve(g1, np.dot(g2, nu))
-    n0 = surfaces.currentNorm0(fv, kfun.Kernel(name='gauss', sigma=sig))
+    n0 = currentNorm0(fv, kfun.Kernel(name='gauss', sigma=sig))
     n1 = diffeonCurrentNormDef(c,S,b,fv,sig)
     print('Norm before approx:', n0)
     print('Diff after approx:', n0 + n1)
@@ -471,7 +476,7 @@ def diffeonCurrentNormDef(c, S, b, fv, sig):
 def diffeonCurrentNorm0(fv, K):
     #print 'sigma=', sig
     #K = kfun.Kernel(name='gauss', sigma=sig)
-    obj = surfaces.currentNorm0(fv, K)
+    obj = currentNorm0(fv, K)
     return obj
 
 
@@ -606,7 +611,7 @@ class gdOptimizer:
             print('Warning: nan in updateTry')
             return 1e500
 
-        if (objRef == None) | (objTry < objRef):
+        if (objRef == None) or (objTry < objRef):
             self.cTry = cTry
             self.STry = STry
             self.bTry = bTry
@@ -616,8 +621,17 @@ class gdOptimizer:
 
 
 
-    def getGradient(self, coeff=1.0):
-        (pc, pS, pb) = diffeonCurrentNormGradient(self.c0, self.S0, self.b0,
+    def getGradient(self, coeff=1.0, update = None):
+        if update is None:
+            c0 = self.c0
+            S0 = self.S0
+            b0 = self.b0
+        else:
+            c0 = self.c0 - update[1] * update[0].c
+            S0 = self.S0 - update[1] * update[0].S
+            b0 = self.b0 - update[1] * update[0].b
+
+        (pc, pS, pb) = diffeonCurrentNormGradient(c0, S0, b0,
                                         self.fv0, self.sigmaDist)
         dim = self.dim
         sigEye = self.sw*np.eye(dim)
@@ -659,6 +673,10 @@ class gdOptimizer:
         return dirfoo
 
     def dotProduct(self, g1, g2):
+        return self.dotProduct_euclidean(g1, g2)
+
+
+    def dotProduct_euclidean(self, g1, g2):
         res = np.zeros(len(g2))
         dim = self.dim
         sigEye = self.sw*np.eye(dim)

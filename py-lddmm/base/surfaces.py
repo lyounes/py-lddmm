@@ -1,5 +1,6 @@
 #import matplotlib
 import os
+import importlib
 import numpy as np
 from numba import jit, int64
 import scipy as sp
@@ -1166,7 +1167,7 @@ class Surface:
         return res, np.nonzero(selectv)[0]
 
     def createFlatApproximation(self, thickness=None, M=50):
-        if ~gotPygalmesh:
+        if importlib.util.find_spec('pygalmesh') is None:
             raise Exception('Cannot run function without pygalmesh')
 
         # Compute center

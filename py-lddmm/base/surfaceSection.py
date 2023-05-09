@@ -210,6 +210,34 @@ def Surf2SecGrad(surf, s, curveDistGrad, target_label = None, target_comp_info=N
     return grad
 
 
+def collect_hyperplanes(fv1):
+    nc_ = len(fv1)
+    uo = np.zeros((nc_, 4))
+    nh = 0
+    tol = 1e-3
+    hk = np.zeros(4)
+    for k,f in enumerate(fv1):
+        found = False
+        hk[:3] = f.hyperplane.u
+        hk[3] = f.hyperplane.offset
+        if k > 0:
+            dst = np.sqrt(((hk - uo[:nh, :])**2).sum(axis=1))
+            dst2 = np.sqrt(((hk + uo[:nh, :])**2).sum(axis=1))
+            if dst.min() < tol:
+                i = np.argmin(dst)
+                f.hypLabel = i
+                found = True
+            elif dst2.min() < tol:
+                i = np.argmin(dst2)
+                f.hypLabel = i
+                found = True
+        if not found:
+            uo[nh, :] = hk
+            f.hypLabel = nh
+            nh += 1
+    hyperplanes = uo[:nh, :]
+    return hyperplanes
+
 def readFromTXT(filename0, check_orientation = True, find_outer=True, merge_planes=True, forceClosed = False):
     if type(filename0) == str:
         filename0 = (filename0,)

@@ -1,9 +1,11 @@
 import numpy.linalg as la
 import logging
-from . import surfaces
+from .surfaces import Surface, vtkFields
 #import pointEvolution_fort as evol_omp
-from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol
-from . import surfaceMatching
+from . conjugateGradient import cg
+from .bfgs import bfgs
+import pointEvolution as evol
+from . surfaceMatching import SurfaceMatching, Control, State
 from .affineBasis import *
 
 
@@ -15,23 +17,23 @@ from .affineBasis import *
 #      sigmaError: normlization for error term
 #      errorType: 'measure' or 'current'
 #      typeKernel: 'gauss' or 'laplacian'
-class SurfaceMatchingParamAtrophy(surfaceMatching.SurfaceMatchingParam):
-    def __init__(self, timeStep = .1, KparDiff = None, KparDist = None, KparDiffOut = None, sigmaKernel = 6.5,
-                 sigmaKernelOut=6.5, sigmaDist=2.5, sigmaError=1.0, typeKernel='gauss', errorType='varifold'):
-        surfaceMatching.SurfaceMatchingParam.__init__(self, timeStep = timeStep, KparDiff = KparDiff, KparDist=KparDist,
-                                                      sigmaKernel =  sigmaKernel, sigmaDist = sigmaDist,
-                                                      sigmaError = sigmaError,
-                                                      typeKernel = typeKernel, errorType=errorType)
-        self.sigmaKernelOut = sigmaKernelOut
-        if KparDiffOut == None:
-            self.KparDiffOut = kfun.Kernel(name = self.typeKernel, sigma = self.sigmaKernelOut)
-        else:
-            self.KparDiffOut = KparDiffOut
-
+# class SurfaceMatchingParamAtrophy(surfaceMatching.SurfaceMatchingParam):
+#     def __init__(self, timeStep = .1, KparDiff = None, KparDist = None, KparDiffOut = None, sigmaKernel = 6.5,
+#                  sigmaKernelOut=6.5, sigmaDist=2.5, sigmaError=1.0, typeKernel='gauss', errorType='varifold'):
+#         surfaceMatching.SurfaceMatchingParam.__init__(self, timeStep = timeStep, KparDiff = KparDiff, KparDist=KparDist,
+#                                                       sigmaKernel =  sigmaKernel, sigmaDist = sigmaDist,
+#                                                       sigmaError = sigmaError,
+#                                                       typeKernel = typeKernel, errorType=errorType)
+#         self.sigmaKernelOut = sigmaKernelOut
+#         if KparDiffOut == None:
+#             self.KparDiffOut = kfun.Kernel(name = self.typeKernel, sigma = self.sigmaKernelOut)
+#         else:
+#             self.KparDiffOut = KparDiffOut
+#
 
 ## Main class for surface matching
-#        Template: sequence of surface classes (from surface.py); if not specified, opens files in fileTemp
-#        Target: sequence of surface classes (from surface.py); if not specified, opens files in fileTarg
+#        Template: sequence of surface classes (from surface.py) if not specified, opens files in fileTemp
+#        Target: sequence of surface classes (from surface.py) if not specified, opens files in fileTarg
 #        par: surfaceMatchingParam
 #        verb: verbose printing
 #        regWeight: multiplicative constant on object regularization
@@ -45,52 +47,43 @@ class SurfaceMatchingParamAtrophy(surfaceMatching.SurfaceMatchingParam):
 #        maxIter_cg: max iterations in conjugate gradient
 #        maxIter_al: max interation for augmented lagrangian
 
-class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
-    def __init__(self, Template=None, Target=None, fileTempl=None, fileTarg=None, param=None, verb=True, regWeight=1.0,
-                 affineWeight = 1.0,
-                  testGradient=False, mu = 0.1, outputDir='.', saveFile = 'evolution', affine='none', volumeOnly=False,
-                  rotWeight = None, scaleWeight = None, transWeight = None, symmetric=False, maxIter_cg=1000, maxIter_al=100):
-        super(SurfaceMatchingAtrophy, self).__init__(Template, Target, fileTempl, fileTarg, param, maxIter_cg, regWeight, affineWeight,
-                                                              verb, -1, rotWeight, scaleWeight, transWeight, symmetric, testGradient,
-                                                              saveFile, False, affine, outputDir)
-
-
-        self.volumeOnly = volumeOnly
-        self.maxIter_cg = maxIter_cg
-        self.maxIter_al = maxIter_al
-        self.iter = 0
-
-        if self.volumeOnly:
-            self.cval = np.zeros(self.Tsize+1)
-            self.cstr = np.zeros(self.Tsize+1)
-            self.lmb = np.zeros(self.Tsize+1)
+class SurfaceMatchingAtrophy(SurfaceMatching):
+    def __init__(self, Template=None, Target=None, options=None):
+        super().__init__(Template=Template, Target=Target, options=options)
+        if self.options['volumeOnly']:
+            self.cval = np.zeros(self.Tsize + 1)
+            self.cstr = np.zeros(self.Tsize + 1)
+            self.lmb = np.zeros(self.Tsize + 1)
         else:
-            self.cval = np.zeros([self.Tsize+1, self.npt])
-            self.cstr = np.zeros([self.Tsize+1, self.npt])
-            self.lmb = np.zeros([self.Tsize+1, self.npt])
-        self.nu = np.zeros([self.Tsize+1, self.npt, self.dim])
-        
-        self.mu = mu
-        self.useKernelDotProduct = True
-        self.dotProduct = self.kernelDotProduct
-        #self.useKernelDotProduct = False
-        #self.dotProduct = self.standardDotProduct
+            self.cval = np.zeros([self.Tsize + 1, self.npt])
+            self.cstr = np.zeros([self.Tsize + 1, self.npt])
+            self.lmb = np.zeros([self.Tsize + 1, self.npt])
+        self.nu = np.zeros([self.Tsize + 1, self.npt, self.dim])
+
+        self.mu = self.options['mu']
+        self.ds = 1.0
+
+    def getDefaultOptions(self):
+        options = super().getDefaultOptions()
+        options['volumeOnly'] = False
+        options['maxIter_grad'] = 1000
+        options['maxIter_al'] = 100
+        options['mu'] = 1.0
+        options['KparDiffOut'] = None
+        self.converged = False
+        return options
 
 
-    def constraintTerm(self, xt, at, Afft):
+    def constraintTerm(self, st, control):
+        at = control['at']
+        Afft = control['Afft']
+        xt = st['xt']
         timeStep = 1.0/self.Tsize
         obj=0
         cval = np.zeros(self.cval.shape)
         for t in range(self.Tsize):
             a = at[t]
             x = xt[t]
-            # if self.affineDim > 0:
-            #     AB = np.dot(self.affineBasis, Afft[t]) 
-            #     A = AB[0:dim2].reshape([self.dim, self.dim])
-            #     b = AB[dim2:dim2+self.dim]
-            # else:
-            #     A = np.zeros([self.dim, self.dim])
-            #     b = np.zeros(self.dim)
             nu = np.zeros(x.shape)
             fk = self.fv0.faces
             xDef0 = x[fk[:, 0], :]
@@ -103,16 +96,16 @@ class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
                 nu[j, :] += nf[kk,:]
             for kk,j in enumerate(fk[:,2]):
                 nu[j, :] += nf[kk,:]
-            if not self.volumeOnly:
+            if not self.options['volumeOnly']:
                 nu /= np.sqrt((nu**2).sum(axis=1)).reshape([nu.shape[0], 1])
             nu *= self.fv0ori
 
 
-            #r = self.param.KparDiff.applyK(x, a) + np.dot(x, A.T) + b
-            r = self.param.KparDiff.applyK(x, a) 
+            #r = self.options['KparDiff'].applyK(x, a) + np.dot(x, A.T) + b
+            r = self.options['KparDiff'].applyK(x, a)
             self.nu[t,...] = nu
             self.v[t,...] = r
-            if self.volumeOnly:
+            if self.options['volumeOnly']:
                 cstr = (nu*r).sum()
             else:
                 cstr = np.squeeze((nu*r).sum(axis=1))
@@ -121,24 +114,19 @@ class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
             obj += 0.5*timeStep * (cval[t,...]**2).sum()/self.mu
 
         #print 'cstr', obj
-        return obj,cval
+        return obj, cval
 
-    def constraintTermGrad(self, xt, at, Afft):
+    def constraintTermGrad(self, st, control):
+        at = control['at']
+        Afft = control['Afft']
+        xt = st['xt']
         lmb = np.zeros(self.cval.shape)
         dxcval = np.zeros(xt.shape)
         dacval = np.zeros(at.shape)
-        dAffcval = np.zeros(Afft.shape)
-        dim2 = self.dim**2
+        dAffcval = None
         for t in range(self.Tsize):
             a = at[t]
             x = xt[t]
-            # if self.affineDim > 0:
-            #     AB = np.dot(self.affineBasis, Afft[t]) 
-            #     A = AB[0:dim2].reshape([self.dim, self.dim])
-            #     b = AB[dim2:dim2+self.dim]
-            # else:
-            #     A = np.zeros([self.dim, self.dim])
-            #     b = np.zeros(self.dim)
             fk = self.fv0.faces
             nu = np.zeros(x.shape)
             xDef0 = x[fk[:, 0], :]
@@ -152,14 +140,12 @@ class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
             for kk,j in enumerate(fk[:,2]):
                 nu[j, :] += nf[kk,:]
             normNu = np.sqrt((nu**2).sum(axis=1))
-            if not self.volumeOnly:
+            if not self.options['volumeOnly']:
                 nu /= normNu.reshape([nu.shape[0], 1])
             nu *= self.fv0ori
-            #r2 = self.param.KparDiffOut.applyK(zB, aB)
 
-            #dv = self.param.KparDiff.applyK(x, a) + np.dot(x, A.T) + b
-            vt = self.param.KparDiff.applyK(x, a)
-            if self.volumeOnly:
+            vt = self.options['KparDiff'].applyK(x, a)
+            if self.options['volumeOnly']:
                 lmb[t] = -np.maximum((nu*vt).sum() -self.lmb[t]*self.mu, 0)/self.mu
                 lnu = lmb[t]*nu
                 lv = vt * lmb[t]
@@ -169,17 +155,17 @@ class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
                 lv = vt * lmb[t,:,np.newaxis]
             #lnu = np.multiply(nu, np.mat(lmb[t, npt:npt1]).T)
             #print lnu.shape
-            dxcval[t] = self.param.KparDiff.applyDiffKT(x, a, lnu)
-            dxcval[t] += self.param.KparDiff.applyDiffKT(x, lnu, a)
+            dxcval[t] = self.options['KparDiff'].applyDiffKT(x, a, lnu)
+            dxcval[t] += self.options['KparDiff'].applyDiffKT(x, lnu, a)
             #dxcval[t] += np.dot(lnu, A)
-            if self.useKernelDotProduct:
+            if not self.euclideanGradient:
                 dacval[t] = np.copy(lnu)
             else:
-                dacval[t] = self.param.KparDiff.applyK(x, lnu)
-            dAffcval = []
+                dacval[t] = self.options['KparDiff'].applyK(x, lnu)
+            # dAffcval = []
             # if self.affineDim > 0:
             #     dAffcval[t, :] = (np.dot(self.affineBasis.T, np.vstack([np.dot(lnu.T, x).reshape([dim2,1]), lnu.sum(axis=0).reshape([self.dim,1])]))).flatten()
-            if not self.volumeOnly:
+            if not self.options['volumeOnly']:
                 lv /= normNu.reshape([nu.shape[0], 1])
                 lv -= np.multiply(nu, np.multiply(nu, lv).sum(axis=1).reshape([nu.shape[0], 1]))
             lvf = lv[fk[:,0]] + lv[fk[:,1]] + lv[fk[:,2]]
@@ -204,88 +190,87 @@ class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
 
 
 
-    def testConstraintTerm(self, xt, at, Afft):
+    def testConstraintTerm(self, st, control):
+        at = control['at']
+        Afft = control['Afft']
         eps = 0.00000001
-        xtTry = xt + eps*np.random.randn(self.Tsize+1, self.npt, self.dim)
-        atTry = at + eps*np.random.randn(self.Tsize, self.npt, self.dim)
-        # if self.affineDim > 0:
-        #     AfftTry = Afft + eps*np.random.randn(self.Tsize, self.affineDim)
-            
-
-        u0 = self.constraintTerm(xt, at, Afft)
-        ux = self.constraintTerm(xtTry, at, Afft)
-        ua = self.constraintTerm(xt, atTry, Afft)
-        [l, dx, da, dA] = self.constraintTermGrad(xt, at, Afft)
-        vx = np.multiply(dx, xtTry-xt).sum()/eps
-        va = np.multiply(da, atTry-at).sum()/eps
+        stTry = State()
+        ctrTry = Control()
+        rx = np.random.randn(self.Tsize+1, self.npt, self.dim)
+        ra = np.random.randn(self.Tsize+1, self.npt, self.dim)
+        stTry['xt'] = st['xt'] + eps*rx
+        ctrTry['at'] = control['at'] + eps*ra
+        ux0 = self.constraintTerm(stTry, control)
+        ua0 = self.constraintTerm(st, ctrTry)
+        stTry['xt'] = st['xt'] - eps*rx
+        ctrTry['at'] = control['at'] - eps*ra
+        ux1 = self.constraintTerm(stTry, control)
+        ua1 = self.constraintTerm(st, ctrTry)
+        [l, dx, da, dA] = self.constraintTermGrad(st, control)
+        vx = (dx * rx).sum()
+        va = (da * ra).sum()
         logging.info('Testing constraints:')
-        logging.info('var x: %f %f' %( self.Tsize*(ux[0]-u0[0])/(eps), -vx)) 
-        logging.info('var a: %f %f' %( self.Tsize*(ua[0]-u0[0])/(eps), -va)) 
+        logging.info('var x: %f %f' %( self.Tsize*(ux1[0]-ux0[0])/(2*eps), -vx))
+        logging.info('var a: %f %f' %( self.Tsize*(ua1[0]-ua0[0])/(2*eps), -va))
         # if self.affineDim > 0:
         #     uA = self.constraintTerm(xt, at, AfftTry)
         #     vA = np.multiply(dA, AfftTry-Afft).sum()/eps
         #     logging.info('var affine: %f %f' %(self.Tsize*(uA[0]-u0[0])/(eps), -vA ))
 
-    def  objectiveFunDef(self, at, Afft=None, withTrajectory = False, withJacobian = False, fv0 = None, kernel=None,
-                         regWeight=None):
-        f = super(SurfaceMatchingAtrophy, self).objectiveFunDef(at, Afft=Afft, withTrajectory=True,
-                                                                withJacobian=withJacobian, fv0=fv0)
-        cstr = self.constraintTerm(f[1], at, Afft)
+    def  objectiveFunDef(self, control, var = None, withTrajectory = False, withJacobian = False):
+        f = super().objectiveFunDef(control, var = var, withTrajectory=True, withJacobian=withJacobian)
+        cstr = self.constraintTerm(f[1], control)
         obj = f[0]+cstr[0]
 
         #print f[0], cstr[0]
 
-        if withJacobian:
-            return obj, f[1], f[2], cstr[1]
-        elif withTrajectory:
+        if withJacobian or withTrajectory:
             return obj, f[1], cstr[1]
         else:
             return obj
 
     def objectiveFun(self):
         if self.obj == None:
-            self.obj0 = self.param.fun_obj0(self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
-            if self.symmetric:
-                self.obj0 += self.param.fun_obj0(self.fv0, self.param.KparDist) / (self.param.sigmaError**2)
+            self.obj0 = self.options['fun_obj0'](self.fv1, self.options['KparDist']) / (self.options['sigmaError']**2)
+            if self.options['symmetric']:
+                self.obj0 += self.options['fun_obj0'](self.fv0, self.options['KparDist']) / (self.options['sigmaError']**2)
 
-            (self.obj, self.xt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withTrajectory=True)
+            (self.obj, self.state, self.cval) = self.objectiveFunDef(self.control, withTrajectory=True)
             self.obj += self.obj0
 
-            self.fvDef.updateVertices(np.squeeze(self.xt[self.Tsize, ...]))
-            self.obj += self.param.fun_obj(self.fvDef, self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
-            if self.symmetric:
-                self.fvInit.updateVertices(np.squeeze(self.x0))
-                self.obj += self.param.fun_obj(self.fvInit, self.fv0, self.param.KparDist) / (self.param.sigmaError**2)
+            self.fvDef.updateVertices(np.squeeze(self.state['xt'][self.Tsize, ...]))
+            self.obj += self.options['fun_obj'](self.fvDef, self.fv1, self.options['KparDist']) / (self.options['sigmaError']**2)
+            if self.options['symmetric']:
+                self.fvInit.updateVertices(np.squeeze(self.control['x0']))
+                self.obj += self.options['fun_obj'](self.fvInit, self.fv0, self.options['KparDist']) / (self.options['sigmaError']**2)
 
         return self.obj
 
     # def getVariable(self):
     #     return [self.at, self.Afft]
 
-    def updateTry(self, dir, eps, objRef=None):
-        atTry  = self.at - eps * dir.diff
+    def updateTry(self, dr, eps, objRef=None):
+        controlTry = Control()
+        controlTry['at']  = self.control['at'] - eps * dr['at']
         if self.affineDim > 0:
-            AfftTry = self.Afft - eps * dir.aff
+            controlTry['Afft'] = self.control['Afft'] - eps * dr['Afft']
         else:
-            AfftTry = []
+            controlTry['Afft'] = None
 
-        fv0 = surfaces.Surface(surf=self.fv0)
-        if self.symmetric:
-            x0Try = self.x0 - eps * dr.initx
-            fv0.updateVertices(x0Try)
-        else:
-            x0Try = None
-        foo = self.objectiveFunDef(atTry, AfftTry, fv0 = fv0, withTrajectory=True)
-        objTry = 0
+        fv0 = Surface(surf=self.fv0)
+        if self.options['symmetric']:
+            controlTry['x0'] = self.control['x0'] - eps * dr['x0']
+            fv0.updateVertices(controlTry['x0'])
+        objTry, st, cval = self.objectiveFunDef(controlTry, var = {'fv0': fv0}, withTrajectory=True)
 
-        ff = surfaces.Surface(surf=self.fvDef)
-        ff.updateVertices(np.squeeze(foo[1][self.Tsize, ...]))
-        objTry += self.param.fun_obj(ff, self.fv1, self.param.KparDist) / (self.param.sigmaError**2)
-        if self.symmetric:
-            ffI = surfaces.Surface(surf=self.fvInit)
-            ffI.updateVertices(x0Try)
-            objTry += self.param.fun_obj(ffI, self.fv0, self.param.KparDist) / (self.param.sigmaError**2)
-        objTry += foo[0]+self.obj0
+        ff = Surface(surf=self.fvDef)
+        ff.updateVertices(np.squeeze(st['xt'][self.Tsize, ...]))
+        objTry += self.options['fun_obj'](ff, self.fv1, self.options['KparDist']) / (self.options['sigmaError']**2)
+        if self.options['symmetric']:
+            ffI = Surface(surf=self.fvInit)
+            ffI.updateVertices(controlTry['x0'])
+            objTry += self.options['fun_obj'](ffI, self.fv0, self.options['KparDist']) / (self.options['sigmaError']**2)
+        objTry += self.obj0
 
         if np.isnan(objTry):
             logging.warning('Warning: nan in updateTry')
@@ -293,32 +278,33 @@ class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
 
 
         if (objRef == None) | (objTry < objRef):
-            self.atTry = atTry
-            self.AfftTry = AfftTry
+            self.controlTry = controlTry
             self.objTry = objTry
-            self.x0Try = x0Try
-            self.cval = foo[2]
-
+            self.cval = cval
 
         return objTry
 
 
-    def covectorEvolution(self, at, Afft, px1):
+    def covectorEvolution(self, control, px1):
+        at = control['at']
+        Afft = control['Afft']
         M = self.Tsize
         timeStep = 1.0/M
-        dim2 = self.dim**2
-        A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
         if self.affineDim > 0:
+            dim2 = self.dim ** 2
+            A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
             for t in range(self.Tsize):
                 AB = np.dot(self.affineBasis, Afft[t]) 
                 A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
                 A[1][t] = AB[dim2:dim2+self.dim]
-        xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.param.KparDiff, affine = A)
+            else:
+                A = None
+        xt = evol.landmarkDirectEvolutionEuler(self.control['x0'], at, self.options['KparDiff'], affine = A)
         #xt = xJ
         pxt = np.zeros([M+1, self.npt, self.dim])
         pxt[M, :, :] = px1
         
-        foo = self.constraintTermGrad(xt, at, Afft)
+        foo = self.constraintTermGrad(xt, control)
         lmb = foo[0]
         dxcval = foo[1]
         dacval = foo[2]
@@ -327,11 +313,11 @@ class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
         pxt[M, :, :] += timeStep * dxcval[M]
         
         for t in range(M):
-            px = np.squeeze(pxt[M-t, :, :])
-            z = np.squeeze(xt[M-t-1, :, :])
-            a = np.squeeze(at[M-t-1, :, :])
+            px = pxt[M-t, :, :]
+            z = xt[M-t-1, :, :]
+            a = at[M-t-1, :, :]
             zpx = np.copy(dxcval[M-t-1])
-            zpx += self.param.KparDiff.applyDiffKT(z, px, a, regweight=self.regweight, lddmm=True)
+            zpx += self.options['KparDiff'].applyDiffKT(z, px, a, regweight=self.options['regWeight'], lddmm=True)
             if self.affineDim > 0:
                 pxt[M-t-1, :, :] = np.dot(px, self.affB.getExponential(timeStep*A[0][M-t-1])) + timeStep * zpx
                 #zpx += np.dot(px, A[0][M-t-1])
@@ -342,15 +328,17 @@ class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
         return pxt, xt, dacval, dAffcval
 
 
-    def HamiltonianGradient(self, at, Afft, px1, getCovector = False):
-        (pxt, xt, dacval, dAffcval) = self.covectorEvolution(at, Afft, px1)
+    def HamiltonianGradient(self, control, px1, getCovector = False):
+        at = control['at']
+        Afft = control['Afft']
+        (pxt, xt, dacval, dAffcval) = self.covectorEvolution(control, px1)
 
-        if self.useKernelDotProduct:
-            dat = 2*self.regweight*at - pxt[1:pxt.shape[0],...] - dacval
+        if not self.euclideanGradient:
+            dat = 2*self.options['regWeight']*at - pxt[1:pxt.shape[0],...] - dacval
         else:
             dat = -dacval
             for t in range(self.Tsize):
-                dat[t] += self.param.KparDiff.applyK(xt[t], 2*self.regweight*at[t] - pxt[t+1])
+                dat[t] += self.options['KparDiff'].applyK(xt[t], 2*self.options['regWeight']*at[t] - pxt[t+1])
         if self.affineDim > 0:
             timeStep = 1.0/self.Tsize
             dAfft = 2*np.multiply(self.affineWeight.reshape([1, self.affineDim]), Afft) 
@@ -374,16 +362,16 @@ class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
             return dat, dAfft, xt, pxt
 
     # def endPointGradient(self):
-    #     px1 = -self.param.fun_objGrad(self.fvDef, self.fv1, self.param.KparDist) / self.param.sigmaError**2
+    #     px1 = -self.options['fun_obj']Grad(self.fvDef, self.fv1, self.options['KparDist']) / self.options['sigmaError']**2
     #     return px1
 
-    def addProd(self, dir1, dir2, beta):
-        dir = surfaceMatching.Direction()
-        dir.diff = dir1.diff + beta * dir2.diff
-        dir.initx = dir1.initx + beta * dir2.initx
-        if self.affineDim > 0:
-            dir.aff = dir1.aff + beta * dir2.aff
-        return dir
+    # def addProd(self, dir1, dir2, beta):
+    #     dir = surfaceMatching.Direction()
+    #     dir.diff = dir1.diff + beta * dir2.diff
+    #     dir.initx = dir1.initx + beta * dir2.initx
+    #     if self.affineDim > 0:
+    #         dir.aff = dir1.aff + beta * dir2.aff
+    #     return dir
 
     # def copyDir(self, dir0):
     #     dir = surfaceMatching.Direction()
@@ -392,66 +380,88 @@ class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
     #     return dir
 
         
-    def kernelDotProduct(self, g1, g2):
-        res = np.zeros(len(g2))
-        for t in range(self.Tsize):
-            z = np.squeeze(self.xt[t, :, :])
-            gg = np.squeeze(g1.diff[t, :, :])
-            u = self.param.KparDiff.applyK(z, gg)
-            #if self.affineDim > 0:
-                #uu = np.multiply(g1.aff[t], self.affineWeight)
-            ll = 0
-            for gr in g2:
-                ggOld = np.squeeze(gr.diff[t, :, :])
-                res[ll]  +=  np.multiply(ggOld,u).sum()
-                if self.affineDim > 0:
-                    res[ll] += np.multiply(g1.aff[t], gr.aff[t]).sum() * self.coeffAff
-                    #res[ll] += np.multiply(uu, gr.aff[t]).sum()
-                ll = ll + 1
-        if self.symmetric:
-            for ll,gr in enumerate(g2):
-                res[ll] += (g1.initx * gr.initx).sum() * self.coeffInitx
-      
-        return res
+    # def dotProduct_Riemannian(self, g1, g2):
+    #     res = np.zeros(len(g2))
+    #     for t in range(self.Tsize):
+    #         z = self.state['xt'][t, :, :]
+    #         gg = g1['at'][t, :, :]
+    #         u = self.options['KparDiff'].applyK(z, gg)
+    #         #if self.affineDim > 0:
+    #             #uu = np.multiply(g1.aff[t], self.affineWeight)
+    #         ll = 0
+    #         for gr in g2:
+    #             ggOld = gr.['diff[t, :, :])
+    #             res[ll]  +=  np.multiply(ggOld,u).sum()
+    #             if self.affineDim > 0:
+    #                 res[ll] += np.multiply(g1.aff[t], gr.aff[t]).sum() * self.coeffAff
+    #                 #res[ll] += np.multiply(uu, gr.aff[t]).sum()
+    #             ll = ll + 1
+    #     if self.options['symmetric']:
+    #         for ll,gr in enumerate(g2):
+    #             res[ll] += (g1.initx * gr.initx).sum() * self.coeffInitx
+    #
+    #     return res
+    #
+    # def standardDotProduct(self, g1, g2):
+    #     res = np.zeros(len(g2))
+    #     dim2 = self.dim**2
+    #     for ll,gr in enumerate(g2):
+    #         res[ll]=0
+    #         res[ll] += np.multiply(g1.diff, gr.diff).sum()
+    #         if self.affineDim > 0:
+    #             #uu = np.multiply(g1.aff, self.affineWeight.reshape([1, self.affineDim]))
+    #             #res[ll] += np.multiply(uu, gr.aff).sum() * self.coeffAff
+    #             res[ll] += np.multiply(g1.aff, gr.aff).sum() * self.coeffAff
+    #             #+np.multiply(g1[1][k][:, dim2:dim2+self.dim], gr[1][k][:, dim2:dim2+self.dim]).sum())
+    #
+    #     if self.options['symmetric']:
+    #         for ll,gr in enumerate(g2):
+    #             res[ll] += (g1.initx * gr.initx).sum() * self.coeffInitx
+    #
+    #     return res
 
-    def standardDotProduct(self, g1, g2):
-        res = np.zeros(len(g2))
-        dim2 = self.dim**2
-        for ll,gr in enumerate(g2):
-            res[ll]=0
-            res[ll] += np.multiply(g1.diff, gr.diff).sum()
-            if self.affineDim > 0:
-                #uu = np.multiply(g1.aff, self.affineWeight.reshape([1, self.affineDim]))
-                #res[ll] += np.multiply(uu, gr.aff).sum() * self.coeffAff
-                res[ll] += np.multiply(g1.aff, gr.aff).sum() * self.coeffAff
-                #+np.multiply(g1[1][k][:, dim2:dim2+self.dim], gr[1][k][:, dim2:dim2+self.dim]).sum())
-
-        if self.symmetric:
-            for ll,gr in enumerate(g2):
-                res[ll] += (g1.initx * gr.initx).sum() * self.coeffInitx
-
-        return res
 
 
+    def getGradient(self, coeff=1.0, update=None):
+        if update is None:
+            control= self.control
+            endPoint = self.fvDef
+            #A = self.affB.getTransforms(self.Afft)
+        else:
+            control = Control()
+            if update[0]['Afft'] is not None:
+                control['Afft'] = self.control['Afft'] - update[1]*update[0]['Afft']
+                A = self.affB.getTransforms(control['Afft'])
+            else:
+                A = None
+            control['at'] = self.control['at'] - update[1] *update[0]['at']
+            if self.options['symmetric']:
+                control['x0'] = self.control['x0'] - update[1]*update[0]['x0']
+            xt = evol.landmarkDirectEvolutionEuler(control['x0'], control['at']*self.ds,
+                                                   self.options['KparDiff'], affine=A)
+            endPoint = Surface(surf=self.fv0)
+            endPoint.updateVertices(xt[-1, :, :])
 
-    def getGradient(self, coeff=1.0):
-        px1 = -self.endPointGradient()
+        px1 = -self.endPointGradient(endPoint=endPoint)
         #px1.append(np.zeros([self.npoints, self.dim]))
-        foo = self.HamiltonianGradient(self.at, self.Afft, px1, getCovector=True)
-        grd = surfaceMatching.Direction()
-        grd.diff = foo[0] / (coeff*self.Tsize)
+        foo = self.HamiltonianGradient(control, px1, getCovector=True)
+        grd = Control()
+        grd['at'] = foo[0] / (coeff*self.Tsize)
         if self.affineDim > 0:
-            grd.aff = foo[1] / (self.coeffAff*coeff*self.Tsize)
-        if self.symmetric:
-            grd.initx = (self.initPointGradient() - foo[3][0,...])/(self.coeffInitx * coeff)
+            grd['Afft'] = foo[1] / (self.coeffAff*coeff*self.Tsize)
+        if self.options['symmetric']:
+            grd['x0'] = (self.initPointGradient() - foo[3][0,...])/(self.coeffInitx * coeff)
         return grd
 
     def randomDir(self):
-        dirfoo = surfaceMatching.Direction()
-        dirfoo.diff = np.random.randn(self.Tsize, self.npt, self.dim)
-        dirfoo.initx = np.random.randn(self.npt, self.dim)
+        dirfoo = Control()
+        dirfoo['at'] = np.random.randn(self.Tsize, self.npt, self.dim)
+        if self.options['symmetric']:
+            dirfoo['x0'] = np.random.randn(self.npt, self.dim)
+        else:
+            dirfoo['x0'] = np.zeros((self.npt, self.dim))
         if self.affineDim > 0:
-            dirfoo.aff = np.random.randn(self.Tsize, self.affineDim)
+            dirfoo['aff'] = np.random.randn(self.Tsize, self.affineDim)
         return dirfoo
 
     # def acceptVarTry(self):
@@ -459,39 +469,39 @@ class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
     #     self.at = np.copy(self.atTry)
     #     self.Afft = np.copy(self.AfftTry)
 
-    def endOfIteration(self):
+    def endOfIteration(self, forceSave=False):
         self.iter += 1
         if self.iter >= self.affBurnIn:
             self.coeffAff = self.coeffAff2
         if (self.iter % self.saveRate == 0) :
-            (obj1, self.xt, Jt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withJacobian=True)
+            (obj1, self.state, self.cval) = self.objectiveFunDef(self.control, withJacobian=True)
             logging.info('mean constraint %f max constraint %f' %(np.sqrt((self.cstr**2).sum()/self.cval.size), np.fabs(self.cstr).max()))
             logging.info('saving data')
-            self.fvInit.updateVertices(self.x0)
+            self.fvInit.updateVertices(self.state['x0'])
 
-            if self.affine=='euclidean' or self.affine=='translation':
-                f = surfaces.Surface(surf=self.fvInit)
-                X = self.affB.integrateFlow(self.Afft)
+            if self.options['affine']=='euclidean' or self.options['affine']=='translation':
+                f = Surface(surf=self.fvInit)
+                X = self.affB.integrateFlow(self.control['Afft'])
                 displ = np.zeros(self.npt)
-                dt = 1.0 /self.Tsize ;
+                dt = 1.0 /self.Tsize 
                 for t in range(self.Tsize+1):
                     U = la.inv(X[0][t])
-                    yt = np.dot(self.xt[t,...] - X[1][t, ...], U.T)
+                    yt = np.dot(self.state['xt'][t,...] - X[1][t, ...], U.T)
                     if t < self.Tsize:
-                        at = np.dot(self.at[t,...], U.T)
-                        vt = self.param.KparDiff.applyK(yt, at)
+                        at = np.dot(self.control['at'][t,...], U.T)
+                        vt = self.options['KparDiff'].applyK(yt, at)
                     f.updateVertices(yt)
-                    vf = surfaces.vtkFields() ;
-                    vf.scalars.append('Jacobian') ;
-                    vf.scalars.append(np.exp(Jt[t, :]))
+                    vf = vtkFields()
+                    vf.scalars.append('Jacobian') 
+                    vf.scalars.append(np.exp(self.state['Jt'][t, :]))
                     vf.scalars.append('displacement')
                     vf.scalars.append(displ)
-                    vf.vectors.append('velocity') ;
+                    vf.vectors.append('velocity') 
                     vf.vectors.append(vt)
-                    f.saveVTK2(self.outputDir +'/'+self.saveFile+'Corrected'+str(t)+'.vtk', vf)
+                    f.saveVTK2(self.outputDir +'/'+self.options['saveFile']+'Corrected'+str(t)+'.vtk', vf)
                     nu = self.fv0ori*f.computeVertexNormals()
                     displ += dt * (vt*nu).sum(axis=1)
-                f = surfaces.Surface(surf=self.fv1)
+                f = Surface(surf=self.fv1)
                 #logging.info('rotation?: %f' %(np.fabs(np.dot(U, U.T)- np.eye(3)).sum()))
                 yt = np.dot(f.vertices - X[1][-1, ...], U.T)
                 f.updateVertices(yt)
@@ -499,24 +509,24 @@ class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
                 
                 
             #self.testConstraintTerm(self.xt, self.at, self.Afft)
-            nn = 0 ;
+            nn = 0 
             AV0 = self.fvInit.computeVertexArea()
             nu = self.fv0ori*self.fvInit.computeVertexNormals()
             v = self.v[0,...]
             displ = np.zeros(self.npt)
-            dt = 1.0 /self.Tsize ;
-            n1 = self.xt.shape[1] ;
+            dt = 1.0 /self.Tsize 
+            n1 = self.state['xt'].shape[1]
             for kk in range(self.Tsize+1):
-                self.fvDef.updateVertices(np.squeeze(self.xt[kk, :, :]))
+                self.fvDef.updateVertices(self.state['xt'][kk, :, :])
                 AV = self.fvDef.computeVertexArea()
                 AV = (AV[0]/AV0[0])-1
-                vf = surfaces.vtkFields() ;
-                vf.scalars.append('Jacobian') ;
-                vf.scalars.append(np.exp(Jt[kk, :]))
-                vf.scalars.append('Jacobian_T') ;
+                vf = vtkFields()
+                vf.scalars.append('Jacobian') 
+                vf.scalars.append(np.exp(self.state['Jt'][kk, :]))
+                vf.scalars.append('Jacobian_T') 
                 vf.scalars.append(AV[:,0])
-                vf.scalars.append('Jacobian_N') ;
-                vf.scalars.append(np.exp(Jt[kk, :])/(AV[:,0]+1)-1)
+                vf.scalars.append('Jacobian_N') 
+                vf.scalars.append(np.exp(self.state['Jt'][kk, :])/(AV[:,0]+1)-1)
                 vf.scalars.append('displacement')
                 vf.scalars.append(displ)
                 if kk < self.Tsize:
@@ -525,20 +535,20 @@ class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
                     kkm = kk
                 else:
                     kkm = kk-1
-                if not self.volumeOnly:
-                    vf.scalars.append('constraint') ;
+                if not self.options['volumeOnly']:
+                    vf.scalars.append('constraint') 
                     vf.scalars.append(self.cstr[kkm,:])
-                vf.vectors.append('velocity') ;
+                vf.vectors.append('velocity') 
                 vf.vectors.append(self.v[kkm,:])
-                vf.vectors.append('normals') ;
+                vf.vectors.append('normals') 
                 vf.vectors.append(self.nu[kkm,:])
-                self.fvDef.saveVTK2(self.outputDir +'/'+self.saveFile+str(kk)+'.vtk', vf)
+                self.fvDef.saveVTK2(self.outputDir +'/'+self.options['saveFile']+str(kk)+'.vtk', vf)
                 displ += dt * (v*nu).sum(axis=1)
         else:
-            (obj1, self.xt, Jt, self.cval) = self.objectiveFunDef(self.at, self.Afft, withJacobian=True)
+            (obj1, self.state, self.cval) = self.objectiveFunDef(self.control, withJacobian=True)
             logging.info('mean constraint %f max constraint %f' %(np.sqrt((self.cstr**2).sum()/self.cval.size), np.fabs(self.cstr).max()))
-            self.fvDef.updateVertices(np.squeeze(self.xt[-1, :, :]))
-            self.fvInit.updateVertices(self.x0)
+            self.fvDef.updateVertices(np.squeeze(self.state['xt'][-1, :, :]))
+            self.fvInit.updateVertices(self.control['x0'])
 
     def optimizeMatching(self):
         self.coeffZ = 10.
@@ -550,10 +560,17 @@ class SurfaceMatchingAtrophy(surfaceMatching.SurfaceMatching):
         self.coeffAff = self.coeffAff1
         self.muEps = 1.0
         it = 0
-        while (self.muEps > 0.001) & (it<self.maxIter_al)  :
+        while (self.muEps > 0.001) & (it<self.options['maxIter_al'])  :
             logging.info('Starting Minimization: gradEps = %f muEps = %f mu = %f' %(self.gradEps, self.muEps,self.mu))
             #self.coeffZ = max(1.0, self.mu)
-            cg.cg(self, verb = self.verb, maxIter = self.maxIter_cg, TestGradient = self.testGradient, epsInit=0.1)
+            if self.options['algorithm'] == 'cg':
+                cg(self, verb = self.options['verb'], maxIter = self.options['maxIte_gradr'],
+                      TestGradient=self.options['testGradient'], epsInit=.01,
+                      Wolfe=self.options['Wolfe'])
+            elif self.options['algorithm'] == 'bfgs':
+                bfgs(self, verb = self.options['verb'], maxIter = self.options['maxIter_grad'],
+                      TestGradient=self.options['testGradient'], epsInit=1.,
+                      Wolfe=self.options['Wolfe'], lineSearch=self.options['lineSearch'], memory=50)
             self.coeffAff = self.coeffAff2
             for t in range(self.Tsize+1):
                 self.lmb[t, ...] = -self.cval[t, ...]/self.mu

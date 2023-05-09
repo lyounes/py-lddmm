@@ -542,7 +542,7 @@ class Kernel(KernelSpec):
         return z
 
     # Computes array A(i) = sum_k sum_(j) nabla_1[a1(k,i). K(x(i), x(j))a2(k,j)]
-    def applyDiffKT(self, x, p0, a, firstVar=None, regweight=1., lddmm=False, extra_term = None, cpu=False):
+    def applyDiffKT(self, x, p0, a, firstVar=None, regweight=1., lddmm=False, sym = False, extra_term = None, cpu=False):
         if firstVar is None:
             y = np.copy(x)
         else:
@@ -561,7 +561,7 @@ class Kernel(KernelSpec):
                                            self.localMaps[1], regweight=regweight, lddmm=lddmm, KP=self.ms_exponent)
         else:
             zpx = ku.applyDiffKT(y ,x , p ,a , self.name, self.sigma ,self.order,
-                                 regweight=regweight, lddmm=lddmm, cpu=cpu, dtype=self.pk_dtype, KP=self.ms_exponent)
+                                 regweight=regweight, lddmm=lddmm, sym=sym, cpu=cpu, dtype=self.pk_dtype, KP=self.ms_exponent)
         if self.affine == 'affine':
             xx = x-self.center
 

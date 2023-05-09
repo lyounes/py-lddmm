@@ -1,5 +1,6 @@
 import numpy as np
 import logging
+from copy import deepcopy
 from .linesearch import line_search_wolfe, line_search_weak_wolfe, line_search_goldstein_price
 
 # added comment to test git, 4-26-19
@@ -52,7 +53,6 @@ def __stopCondition():
 
 def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, memory=25, Wolfe = True,
          lineSearch = 'Weak_Wolfe'):
-
     if (hasattr(opt, 'getVariable')==False or hasattr(opt, 'objectiveFun')==False or hasattr(opt, 'updateTry')==False
             or hasattr(opt, 'acceptVarTry')==False or hasattr(opt, 'getGradient')==False):
         logging.error('Error: required functions are not provided')
@@ -101,6 +101,8 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
 
     if hasattr(opt, 'gradEps'):
         gradEps = opt.gradEps
+    elif hasattr(opt, 'options') and 'gradEps' in opt.options.keys():
+        gradEps = opt.options['gradEps']
     else:
         gradEps = None
 
@@ -141,7 +143,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
     obj_old = None
     gval = None
     while it < maxIter:
-
+        #gval = None
         try_BFGS = True
         stopBFGS = False
         while(try_BFGS):
@@ -151,11 +153,13 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
                 opt.obj = None
                 obj = opt.objectiveFun()
                 obj_old = None
+                gval = None
 
+            #gval = None
             if gval is None:
                 grd = opt.getGradient(gradCoeff)
             else:
-                grd = gval
+                grd = deepcopy(gval)
 
             if TestGradient:
                 if hasattr(opt, 'randomDir'):
@@ -199,9 +203,9 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
 
             grd2 = dotProduct(grd, [grd])[0]
             grdTry = np.sqrt(np.maximum(1e-20,dotProduct(q,[q])[0]))
-            dir0 = copyDir(q)
+            dir0 = deepcopy(q)
 
-            grdOld = copyDir(grd)
+            grdOld = deepcopy(grd)
 
             if it == 0 or it == burnIn:
                 if gradEps is None:
@@ -262,7 +266,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
             if Wolfe:
                 eps, fc, gc, phi_star, old_fval, gval = line_search(opt, dir0, gfk=grd, old_fval=obj,
                                    old_old_fval=obj_old, c1=1e-4, c2=0.9, amax=None,
-                                   maxiter=100)
+                                   maxiter=10)
                 if eps is not None:
                     diffVar = prod(dir0, -eps)
                     obj_old = obj
