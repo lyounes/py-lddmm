@@ -12,8 +12,6 @@ from . import pointSets
 from .surfaceMatching import SurfaceMatching, Control as SMControl, State as SMState
 from .affineBasis import AffineBasis, getExponential, gradExponential
 from functools import partial
-import matplotlib
-matplotlib.use("QT5Agg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -300,8 +298,8 @@ class SurfaceMatchingMidpoint(SurfaceMatching):
         #         z = self.xt1[t, :, :]
         #         grd['diff1'][t,:,:] = self.options['KparDiff'].applyK(z, foo[0][1][t, :,:])/(coeff*self.Tsize)
         # else:
-        grd['at0'] = foo[0]['at']/(coeff*self.Tsize)
-        grd['at1'] = foo[0]['at'] / (coeff * self.Tsize)
+        grd['at0'] = foo[0]['dat']/(coeff*self.Tsize)
+        grd['at1'] = foo[1]['dat'] / (coeff * self.Tsize)
         if self.affineDim > 0:
             grd['Afft'] = np.zeros(self.control['Afft'].shape)
             dim2 = self.dim ** 2
