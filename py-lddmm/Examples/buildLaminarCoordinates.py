@@ -1,8 +1,12 @@
+import os
 from sys import path as sys_path
 sys_path.append('..')
 sys_path.append('../base')
 import matplotlib
-matplotlib.use("QT5Agg")
+if 'DISPLAY' in os.environ:
+    matplotlib.use('qt5Agg')
+else:
+    matplotlib.use("Agg")
 import numpy as np
 from base import loggingUtils
 from base import surfaces
@@ -15,6 +19,14 @@ from mpl_toolkits.mplot3d import Axes3D
 def BuildLaminar(target0, outputDir, pancakeThickness=None, runRegistration=True, fromPancake=True):
     # Step 1: Create a labeled  "pancake" approximation to the target
     h, lab, width = target0.createFlatApproximation(thickness=pancakeThickness, M=75)
+    
+    if not os.access(outputDir, os.W_OK):
+        if os.access(outputDir, os.F_OK):
+            logging.error('Cannot write in ' + outputDir)
+            return
+        else:
+            os.makedirs(outputDir)
+
     h.saveVTK(outputDir + '/pancakeTemplate.vtk', scalars=lab, scal_name='Labels')
 
     if fromPancake:
@@ -103,6 +115,7 @@ def BuildLaminar(target0, outputDir, pancakeThickness=None, runRegistration=True
     #lab2 = lab[closest]
 
     # Step 4: Extract the upper and lower surfaces from the target and save data
+    
     target.saveVTK(outputDir + '/labeledTarget.vtk', scalars=lab2, scal_name='Labels')
     fv1 = target.truncate(val=0.5 - np.fabs(1 - lab2))
     fv1.saveVTK(outputDir + '/labeledTarget1.vtk')
@@ -119,7 +132,7 @@ def BuildLaminar(target0, outputDir, pancakeThickness=None, runRegistration=True
 
     options = {
         'outputDir': outputDir,
-        'mode': 'debug',
+        'mode': 'normal',
         'maxIter': 20,
         'affine': 'none',
         'KparDiff': K1,
@@ -127,7 +140,7 @@ def BuildLaminar(target0, outputDir, pancakeThickness=None, runRegistration=True
         'sigmaError': sigmaError,
         'errorType': 'varifold',
         'algorithm': 'bfgs',
-        'pk_dtype': 'float64',
+        'pk_dtype': 'float32',
         'saveFile': 'firstRun',
         'internalWeight': internalWeight,
         'internalCost': internalCost,
