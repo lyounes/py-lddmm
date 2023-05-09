@@ -481,14 +481,14 @@ class SurfaceTimeMatching(SurfaceMatching):
         #         z = self.xt[t, :, :]
         #         grd['diff'][t,:,:] = self.options['KparDiff'].applyK(z, foo[0][t, :,:])/(coeff*self.Tsize)
         # else:
-        grd['at'] = foo[0]/(coeff*self.Tsize)
+        grd['at'] = foo['dat']/(coeff*self.Tsize)
         grd['x0'] = np.zeros((self.npt, self.dim))
         # grd['Afft'] = np.zeros(self.control['Afft'].shape)
         # if self.affineBurnIn:
         #     grd.diff *= 0
         if self.affineDim > 0 and self.iter < self.affBurnIn:
-            dA = foo[1]
-            db = foo[2]
+            dA = foo['dA']
+            db = foo['db']
             grd['Afft'] = 2*self.affineWeight.reshape([1, self.affineDim]) * self.control['Afft']
             #grd.aff = 2 * self.Afft
             for t in range(self.Tsize):
