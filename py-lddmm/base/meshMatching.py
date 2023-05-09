@@ -3,7 +3,7 @@ import numpy as np
 import h5py
 import logging
 from functools import partial
-from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, loggingUtils, bfgs
+from . import kernelFunctions as kfun, pointEvolution as evol
 from . import meshes, mesh_distances as msd
 from . import pointSetMatching
 

@@ -1,3 +1,7 @@
+from sys import path as sys_path
+sys_path.append('..')
+sys_path.append('../base')
+
 from base.surfaceExamples import Sphere, Heart
 import os
 from base.surfaces import Surface

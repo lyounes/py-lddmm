@@ -18,7 +18,7 @@ outputDir = '../Output/timeSeriesNoAtrophy'
 K1 = Kernel(name='laplacian', sigma = 6.5, order=4)
 options = {
     'outputDir': outputDir,
-    'mode': 'debug',
+    'mode': 'normal',
     'maxIter': 2000,
     'affine': 'none',
     'regWeight': 1.,
@@ -29,7 +29,6 @@ options = {
     'sigmaError': 0.5,
     'errorType': 'current',
     'algorithm': 'bfgs',
-    'pk_dtype': 'float64',
     'internalWeight': 0.,
     'internalCost': None
 }

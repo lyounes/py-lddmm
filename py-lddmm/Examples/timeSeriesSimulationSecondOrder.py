@@ -18,11 +18,11 @@ for k in range(2):
     fv1 += [surfaces.Surface(surf=rdir + 'followUp' + str(2 * k + 1) + '.vtk')]
 outputDir = '../Output/timeSeriesNoAtrophy'
 
-#K1 = Kernel(name='laplacian', sigma = 6.5, order=4)
 K1 = Kernel(name='gauss', sigma = 6.5, order=4)
+## typeRegression = 'geodesic' or 'spline' or 'spline2' (which is 'geodesic' and 'spline' together
 options = {
     'outputDir': outputDir,
-    'mode': 'Normal',
+    'mode': 'normal',
     'maxIter': 2000,
     'affine': 'none',
     'regWeight': 1.,
@@ -33,8 +33,7 @@ options = {
     'sigmaError': 0.5,
     'errorType': 'current',
     'algorithm': 'bfgs',
-    'pk_dtype': 'float64',
-    'typeRegression': 'spline2',
+    'typeRegression': 'geodesic',
     'internalWeight': 0.,
     'saveRate': 10,
     'internalCost': None

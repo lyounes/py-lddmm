@@ -53,7 +53,7 @@ K1 = Kernel(name='gauss', sigma = sigmaKernel)
 # sm.KparDist.pk_dtype = 'float64'
 options = {
     'outputDir': '../Output/pointSetMatchingTest/'+model,
-    'mode': 'debug',
+    'mode': 'normal',
     'maxIter': 1000,
     'affine': 'euclidean',
     'rotWeight': 100,
