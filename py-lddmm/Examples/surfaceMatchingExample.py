@@ -170,7 +170,7 @@ def compute(model):
     # sm.KparDist.pk_dtype = 'float64'
     options = {
         'outputDir': '../Output/surfaceMatchingExample/' + model,
-        'mode': 'debug',
+        'mode': 'normal',
         'maxIter': 2000,
         'affine': 'euclidean',
         'regWeight': regweight,
@@ -183,7 +183,7 @@ def compute(model):
         'KparDist': ('gauss', sigmaDist),
         'sigmaError': sigmaError,
         'errorType': 'varifold',
-        'algorithm': 'cg',
+        'algorithm': 'bfgs',
         'unreduced': False,
         'internalWeight': internalWeight,
         'internalCost': internalCost,
