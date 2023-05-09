@@ -247,10 +247,11 @@ class SurfaceMatchingMidpoint(SurfaceMatching):
         res1 = self.hamiltonianGradient(px11, kernel = kernel, regWeight=regWeight,
                                                    fv0=self.fv1, control=control1)
 
-        if control0['Afft'] is None:
-            return [res0[0], res1[0]], [res0[1], res1[1]], [res0[2], res1[2]]
-        else:
-            return [res0[0], res1[0]], res0[1], res0[2], [res0[3], res1[3]], [res0[4], res1[4]]
+        return res0, res1
+        # if control0['Afft'] is None:
+        #     return [res0[0], res1[0]], [res0[1], res1[1]], [res0[2], res1[2]]
+        # else:
+        #     return [res0[0], res1[0]], res0[1], res0[2], [res0[3], res1[3]], [res0[4], res1[4]]
 
 
     def getGradient(self, coeff=1.0, update=None):
@@ -299,18 +300,18 @@ class SurfaceMatchingMidpoint(SurfaceMatching):
         #         z = self.xt1[t, :, :]
         #         grd['diff1'][t,:,:] = self.options['KparDiff'].applyK(z, foo[0][1][t, :,:])/(coeff*self.Tsize)
         # else:
-        grd['at0'] = foo[0][0]/(coeff*self.Tsize)
-        grd['at1'] = foo[0][1] / (coeff * self.Tsize)
+        grd['at0'] = foo[0]['at']/(coeff*self.Tsize)
+        grd['at1'] = foo[0]['at'] / (coeff * self.Tsize)
         if self.affineDim > 0:
-            grd['Afft'] = np.zeros(self.Afft.shape)
+            grd['Afft'] = np.zeros(self.control['Afft'].shape)
             dim2 = self.dim ** 2
-            dA = foo[1]
-            db = foo[2]
-            grd['Afft'] = 2*self.affineWeight.reshape([1, self.affineDim])*self.Afft
+            dA = foo[0]['dA']
+            db = foo[0]['db']
+            grd['Afft'] = 2*self.affineWeight.reshape([1, self.affineDim])*self.control['Afft']
             #grd.aff = 2 * self.Afft
             for t in range(self.Tsize):
                dAff = np.dot(self.affineBasis.T, np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])]))
-               grd['Afft'][t] -=  dAff.reshape(grd['aff'][t].shape)
+               grd['Afft'][t] -=  dAff.reshape(grd['Afft'][t].shape)
             grd['Afft'] /= (self.coeffAff*coeff*self.Tsize)
         return grd
 
