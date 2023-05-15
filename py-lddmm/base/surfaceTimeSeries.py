@@ -486,7 +486,7 @@ class SurfaceTimeMatching(SurfaceMatching):
         # grd['Afft'] = np.zeros(self.control['Afft'].shape)
         # if self.affineBurnIn:
         #     grd.diff *= 0
-        if self.affineDim > 0 and self.iter < self.affBurnIn:
+        if self.affineDim > 0:
             dA = foo['dA']
             db = foo['db']
             grd['Afft'] = 2*self.affineWeight.reshape([1, self.affineDim]) * self.control['Afft']

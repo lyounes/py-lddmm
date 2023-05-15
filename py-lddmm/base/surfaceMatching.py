@@ -526,7 +526,7 @@ class SurfaceMatching(PointSetMatching):
     def update(self, dr, eps):
         for k in dr.keys():
             if dr[k] is not None:
-                self.state[k] -= dr[k]
+                self.control[k] -= dr[k]
 
     def updateTry(self, dr, eps, objRef=None):
         objTry = self.obj0
@@ -1082,7 +1082,10 @@ class SurfaceMatching(PointSetMatching):
     def saveEvolution(self, fv0, state, passenger = None, fileName='evolution', velocity = None,
                       orientation= None, with_area_displacement=False):
         xt = state['xt']
-        Jacobian = state['Jt']
+        if 'Jt' in state:
+            Jacobian = state['Jt']
+        else:
+            Jacobian = None
         if velocity is None:
             velocity = self.v
         if orientation is None:
@@ -1186,7 +1189,7 @@ class SurfaceMatching(PointSetMatching):
                                        self.control['ct'])
             #self.updateEndPoint(self.xt)
             #self.ct = np.copy(self.xt[:-1, :, :])
-            self.saveEvolution(self.fv0, self.state['xt'])
+            self.saveEvolution(self.fv0, self.state)
 
         if self.unreducedResetRate > 0 and self.iter % self.unreducedResetRate == 0:
             logging.info('Resetting trajectories')

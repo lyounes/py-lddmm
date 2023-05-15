@@ -512,6 +512,11 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             fvDef.saveVTK(self.outputDir + '/' + self.options['saveFile'] + '_bok' + str(kk) + '.vtk')
             # self.fvDef.saveVTK(self.outputDir +'/'+ self.saveFile+str(kk)+'.vtk', scalars = self.idx, scal_name='Labels')
 
+    def startOfIteration(self):
+        if self.reset:
+            self.options['KparDiff'].pk_dtype = 'float64'
+            self.options['KparDist'].pk_dtype = 'float64'
+
 
     def endOfIteration(self, forceSave = False):
         self.iter += 1
@@ -605,6 +610,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             ax.set_ylim(min(lim0[1][0], lim1[1][0]), max(lim0[1][1], lim1[1][1]))
             ax.set_zlim(min(lim0[2][0], lim1[2][0]), max(lim0[2][1], lim1[2][1]))
             fig.canvas.flush_events()
+        self.options['KparDiff'].pk_dtype = self.Kdiff_dtype
+        self.options['KparDist'].pk_dtype = self.Kdist_dtype
 
     def optimizeMatching(self):
         self.coeffZ = 10.
