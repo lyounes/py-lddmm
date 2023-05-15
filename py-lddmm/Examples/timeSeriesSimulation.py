@@ -20,7 +20,7 @@ options = {
     'outputDir': outputDir,
     'mode': 'normal',
     'maxIter': 2000,
-    'affine': 'none',
+    'affine': 'euclidean',
     'regWeight': 1.,
     'Landmarks': None,
     'affineWeight': .1,
