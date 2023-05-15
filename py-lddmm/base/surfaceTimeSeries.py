@@ -494,7 +494,7 @@ class SurfaceTimeMatching(SurfaceMatching):
             for t in range(self.Tsize):
                dAff = self.affineBasis.T @ np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])])
                #grd.aff[t] -=  np.divide(dAff.reshape(grd.aff[t].shape), self.affineWeight.reshape(grd.aff[t].shape))
-               grd['Afft'][t] -=  dAff.reshape(grd['aff'][t].shape)
+               grd['Afft'][t] -=  dAff.reshape(grd['Afft'][t].shape)
             grd['Afft'] /= (self.coeffAff*coeff*self.Tsize)
         return grd
 

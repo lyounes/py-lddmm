@@ -2,6 +2,7 @@ from numba import jit, prange
 import numpy as np
 from math import pi, exp, sqrt
 from . import kernelFunctions_util as ku
+from .conjugateGradient import linearcg
 from scipy.spatial import distance as dfun
 
 def kernelMatrixGauss(x, firstVar=None, grid=None, par=[1], diff = False, diff2 = False, constant_plane=False, precomp=None):
@@ -606,3 +607,8 @@ class Kernel(KernelSpec):
         z = ku.applykdiff11and12(x, n, a, p, self.name, self.sigma, self.order, KP=self.ms_exponent)
         return z
 
+    def solve(self, x, xi, b, iterMax=100):
+        def op(a_):
+            return self.applyK(x, a_)
+
+        return linearcg(op, xi, iterMax=iterMax)

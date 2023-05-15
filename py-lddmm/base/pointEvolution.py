@@ -907,3 +907,21 @@ def secondOrderFiberGradient(x0, a0, y0, v0, rhot, px1, pa1, py1, pv1, KparDiff,
         return drhot, xt, at, yt, vt, pxt, pat, pyt, pvt
 
 
+
+def landmarkParallelTransport(T, x0, b0, a0, KparDiff):
+    timeStep = np.floor(1/T)
+    xt, at = landmarkEPDiff(T, x0, a0, KparDiff)
+    bt = np.zeros(at.shape)
+    bt[0, :, :] = b0
+    for t in range(at.shape[0]-1):
+        x = xt[t, :, :]
+        a = at[t, :, :]
+        b = bt[t, :, :]
+        xi = KparDiff.applyK(a)
+        eta = KparDiff.applyK(b)
+        z = KparDiff.applyDiffKT(x, a, b)
+        z0 = KparDiff.applyDiffK(x, b, xi) - KparDiff.applyDiffK(x, a, eta)
+        z += KparDiff.solve(x, z0)
+        bt[t+1, :, :] = b - timeStep * z/2
+
+    return bt
