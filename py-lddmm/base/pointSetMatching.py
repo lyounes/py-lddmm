@@ -163,6 +163,8 @@ class PointSetMatching(BasicMatching):
         self.options['KparDiff'].pk_dtype = self.options['pk_dtype']
         self.options['KparDist'].pk_dtype = self.options['pk_dtype']
 
+        self.gradEps = self.options['gradEps']
+
 
         self.affineOnly = self.options['affineOnly']
         self.affB = AffineBasis(self.dim, self.options['affine'])
@@ -481,7 +483,8 @@ class PointSetMatching(BasicMatching):
         grd = self.getGradient(self.gradCoeff)
         [grd2] = self.dotProduct(grd, [grd])
 
-        self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
+        if self.gradEps < 0:
+            self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
         logging.info('Gradient lower bound: %f' %(self.gradEps))
         self.coeffAff = self.coeffAff1
 

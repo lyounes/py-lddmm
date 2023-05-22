@@ -15,6 +15,7 @@ import pointset_distances as psd
 from .pointSetMatching import PointSetMatching
 from .affineBasis import getExponential, gradExponential
 from . import pointEvolution as evol
+from . import pointEvolutionSemiReduced as evolSR
 from functools import partial
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -107,6 +108,7 @@ class SurfaceMatching(PointSetMatching):
         options['Landmarks'] = None
         options['reweightCells'] = False
         options['unreducedResetRate'] = -1
+        options['fidelityWeight'] = 0.
         return options
 
 
@@ -124,11 +126,11 @@ class SurfaceMatching(PointSetMatching):
 
     def set_parameters(self):
         super().set_parameters()
-        self.gradEps = -1
         self.lineSearch = "Weak_Wolfe"
         self.randomInit = False
         self.iter = 0
         self.reset = True
+        self.options['epsInit'] /= self.fv0.vertices.shape[0]
 
         if self.options['internalCost'] == 'h1':
             self.internalCost = normGrad
@@ -142,6 +144,8 @@ class SurfaceMatching(PointSetMatching):
             self.internalCost = None
 
         self.unreducedResetRate = self.options['unreducedResetRate']
+        self.fidelityWeight = self.options['fidelityWeight']
+        self.obj_unreduced_save = np.inf
 
 
     def set_sgd(self, control=100, template=100, target=100):
@@ -439,14 +443,17 @@ class SurfaceMatching(PointSetMatching):
 
         if withJacobian:
             if self.unreduced:
-                xt,Jt  = evol.landmarkSemiReducedEvolutionEuler(x0, ct, at*self.ds, kernel, affine=A, withJacobian=True)
+                xt,Jt  = evolSR.landmarkSemiReducedEvolutionEuler(x0, ct, at*self.ds, kernel,
+                                                                  fidelityWeight=self.fidelityWeight,
+                                                                  affine=A, withJacobian=True)
             else:
                 xt,Jt  = evol.landmarkDirectEvolutionEuler(x0, at*self.ds, kernel, affine=A, withJacobian=True)
             st['xt'] = xt
             st['Jt'] = Jt
         else:
             if self.unreduced:
-                xt = evol.landmarkSemiReducedEvolutionEuler(x0, ct, at*self.ds, kernel, affine=A)
+                xt = evolSR.landmarkSemiReducedEvolutionEuler(x0, ct, at*self.ds, kernel, affine=A,
+                                                              fidelityWeight=self.fidelityWeight)
             else:
                 xt  = evol.landmarkDirectEvolutionEuler(x0, at*self.ds, kernel, affine=A)
             st['xt'] = xt
@@ -519,6 +526,40 @@ class SurfaceMatching(PointSetMatching):
 
         return self.obj
 
+
+    def objectiveFun_(self, control):
+        if self.obj is None:
+            if self.options['errorType'] == 'L2Norm':
+                obj0 = L2Norm0(self.fv1) / (self.options['sigmaError'] ** 2)
+            else:
+                obj0 = self.fun_obj0(self.fv1) / (self.options['sigmaError']**2)
+            if self.options['symmetric']:
+                obj0 += self.fun_obj0(self.fv0) / (self.options['sigmaError']**2)
+            if self.match_landmarks:
+                obj0 += self.wlmk * self.lmk_obj0(self.targ_lmk) / (self.options['sigmaError']**2)
+        else:
+            obj0 = self.obj0
+            # if self.unreduced:
+            #     (self.obj, self.state) = self.objectiveFunDef(self.control, withTrajectory=True)
+            # else:
+        obj, state = self.objectiveFunDef(control, withTrajectory=True)
+        #foo = Surface(surf=self.fvDef)
+        fvDef = Surface(surf=self.fv0)
+        fvDef.updateVertices(state['xt'][-1, :self.nvert, :])
+        if self.match_landmarks:
+            def_lmk = PointSet(self.def_lmk)
+            def_lmk.points = state['xt'][-1, self.nvert:, :]
+        else:
+            def_lmk = None
+        if self.options['symmetric']:
+            fvInit = Surface(surf=self.fv0)
+            fvInit.updateVertices(np.squeeze(control['x0'][:self.nvert, :]))
+            obj += obj0 + self.dataTerm(fvDef, {'fvInit':fvInit, 'lmk_def':def_lmk})
+        else:
+            obj += obj0 + self.dataTerm(fvDef, {'lmk_def':def_lmk})
+        #print self.obj0,  self.dataTerm(self.fvDef)
+
+        return obj, state
 
     # def Direction(self):
     #     return Direction()
@@ -635,6 +676,12 @@ class SurfaceMatching(PointSetMatching):
             x0 = np.concatenate((fv0.vertices, self.tmpl_lmk.points), axis=0)
         else:
             x0 = fv0.vertices
+
+        if self.unreduced and self.control['ct'].shape[1] == x0.shape[0]:
+            fidelityTerm = True
+        else:
+            fidelityTerm = False
+
         N = x0.shape[0]
         dim = x0.shape[1]
         T = control['at'].shape[0]
@@ -642,8 +689,8 @@ class SurfaceMatching(PointSetMatching):
         affine = self.affB.getTransforms(control['Afft'])
         if computeTraj:
             if self.unreduced:
-                xt = evol.landmarkSemiReducedEvolutionEuler(x0, control['ct'], control['at']*self.ds,
-                                                            KparDiff, affine=affine)
+                xt = evolSR.landmarkSemiReducedEvolutionEuler(x0, control['ct'], control['at']*self.ds,
+                                                            KparDiff, fidelityWeight=self.fidelityWeight, affine=affine)
             else:
                 xt = evol.landmarkDirectEvolutionEuler(x0, control['at']*self.ds, KparDiff, affine=affine)
             if current_at:
@@ -694,6 +741,9 @@ class SurfaceMatching(PointSetMatching):
                 else:
                     zpx = KparDiff.applyDiffKT(z, px, a*self.ds, regweight=self.options['regWeight'], lddmm=True)
 
+            if self.unreduced and fidelityTerm:
+                zpx -= self.fidelityWeight * px
+
             if affine is not None:
                 pxt[T-t-1, :, :] = px @ A[T-t-1, :, :] + timeStep * zpx
             else:
@@ -716,6 +766,13 @@ class SurfaceMatching(PointSetMatching):
 
         foo = Surface(surf=fv0)
         foo.updateVertices(x0)
+
+        if self.unreduced and self.control['ct'].shape[1] == x0.shape[0]:
+            fidelityTerm = True
+        else:
+            fidelityTerm = False
+
+
         (pxt, xt) = self.hamiltonianCovector(px1, kernel, regWeight, fv0=foo, control = control)
 
         dat = np.zeros(control['at'].shape)
@@ -747,6 +804,8 @@ class SurfaceMatching(PointSetMatching):
                     dct[t, :, :] = 2 * regWeight * kernel.applyDiffKT(c, a, a) * self.ds**2 \
                                    - kernel.applyDiffKT(z, a, px, firstVar=c) * self.ds \
                                     + 2 * self.options['unreducedWeight'] * (c-z)
+                    if self.unreduced and fidelityTerm:
+                        dct[t, :, :] -= self.fidelityWeight * px
                     v = kernel.applyK(c, a, firstVar=z)*self.ds
                 else:
                     dat[t, :, :] = 2 * regWeight * a * self.ds**2 - px * self.ds
@@ -803,8 +862,9 @@ class SurfaceMatching(PointSetMatching):
         select0[I0_] = True
         fv0, I0 = self.fv0.select_faces(select0)
         self.stateSubset = I0
-        xt = evol.landmarkSemiReducedEvolutionEuler(fv0.vertices, self.control['ct'], self.control['at'], self.options['KparDiff'],
-                                                    affine=self.control['Afft'])
+        xt = evolSR.landmarkSemiReducedEvolutionEuler(fv0.vertices, self.control['ct'], self.control['at'],
+                                                      self.options['KparDiff'],
+                                                      fidelityWeight=self.fidelityWeight, affine=self.control['Afft'])
         endPoint = Surface(surf=fv0)
         endPoint.updateVertices(xt[-1, :, :])
         endPoint.face_weights /= sqp0
@@ -849,8 +909,9 @@ class SurfaceMatching(PointSetMatching):
 
     def checkSGDEndpointGradient(self):
         endPoint = Surface(surf=self.fv0)
-        xt = evol.landmarkSemiReducedEvolutionEuler(self.fv0.vertices, self.control['ct'], self.control['at'], self.options['KparDiff'],
-                                                    affine=self.control['Afft'])
+        xt = evolSR.landmarkSemiReducedEvolutionEuler(self.fv0.vertices, self.control['ct'], self.control['at'],
+                                                      self.options['KparDiff'],
+                                                      fidelityWeight=self.fidelityWeight, affine=self.control['Afft'])
         endPoint.updateVertices(xt[-1, :, :])
 
         pxTrue = self.endPointGradient(endPoint=endPoint)
@@ -875,14 +936,15 @@ class SurfaceMatching(PointSetMatching):
         else:
             J0 = np.arange(self.control['ct'].shape[1])
             #J1 = np.arange(self.ct.shape[1])
-        foo = evol.landmarkSemiReducedHamiltonianGradient(self.control['x0'], self.control['ct'], self.control['at'],
-                                                          -px1, self.options['KparDiff'],
-                                                          self.options['regWeight'], getCovector = True, affine = A,
-                                                          weightSubset=self.options['unreducedWeight'],
-                                                          controlSubset = J0, stateSubset=self.stateSubset,
-                                                          controlProb=self.probSelectControl,
-                                                          stateProb=self.probSelectVertexTemplate,
-                                                          forwardTraj=xt)
+        foo = evolSR.landmarkSemiReducedHamiltonianGradient(self.control['x0'], self.control['ct'], self.control['at'],
+                                                            -px1, self.options['KparDiff'],
+                                                            self.options['regWeight'], getCovector = True, affine = A,
+                                                            fidelityWeight=self.fidelityWeight,
+                                                            weightSubset=self.options['unreducedWeight'],
+                                                            controlSubset = J0, stateSubset=self.stateSubset,
+                                                            controlProb=self.probSelectControl,
+                                                            stateProb=self.probSelectVertexTemplate,
+                                                            forwardTraj=xt)
         dim2 = self.dim**2
         grd = Control()
         grd['ct'] = foo[0] / (coeff*self.Tsize)
@@ -920,8 +982,9 @@ class SurfaceMatching(PointSetMatching):
                     control[k] = self.control[k] - update[1]*update[0][k]
             A = self.affB.getTransforms(control['Afft'])
             if self.unreduced:
-                xt = evol.landmarkSemiReducedEvolutionEuler(self.control['x0'], control['ct'], control['at']*self.ds,
-                                                            self.options['KparDiff'], affine=A)
+                xt = evolSR.landmarkSemiReducedEvolutionEuler(self.control['x0'], control['ct'], control['at']*self.ds,
+                                                            self.options['KparDiff'], affine=A,
+                                                              fidelityWeight=self.fidelityWeight)
             else:
                 xt = evol.landmarkDirectEvolutionEuler(self.control['x0'], control['at']*self.ds,
                                                        self.options['KparDiff'], affine=A)
@@ -1192,7 +1255,8 @@ class SurfaceMatching(PointSetMatching):
             self.saveEvolution(self.fv0, self.state)
 
         if self.unreducedResetRate > 0 and self.iter % self.unreducedResetRate == 0:
-            logging.info('Resetting trajectories')
+            dist = ((self.control['ct'] - self.state['xt'][-1, :, :])**2).sum(axis=-1).max()
+            logging.info(f'Resetting trajectories: max distance = {dist:.4f}')
             self.control['ct'] = np.copy(self.state['xt'][:-1, :, :])
             # f.at = np.zeros(f.at.shape)
             self.controlTry['ct'] = np.copy(self.control['ct'])
@@ -1229,10 +1293,11 @@ class SurfaceMatching(PointSetMatching):
             logging.info('Saving surfaces...')
             if self.passenger_points is None:
                 if self.unreduced:
-                    xt, Jt = evol.landmarkSemiReducedEvolutionEuler(self.control['x0'], self.control['ct'],
-                                                                         self.control['at']*self.ds,
-                                                                         self.options['KparDiff'], affine=A,
-                                                                         withJacobian=True)
+                    xt, Jt = evolSR.landmarkSemiReducedEvolutionEuler(self.control['x0'], self.control['ct'],
+                                                                      self.control['at']*self.ds,
+                                                                      self.options['KparDiff'], affine=A,
+                                                                      fidelityWeight=self.fidelityWeight,
+                                                                      withJacobian=True)
                 else:
                     xt, Jt = evol.landmarkDirectEvolutionEuler(self.control['x0'], self.control['at']*self.ds,
                                                                     self.options['KparDiff'],
@@ -1240,9 +1305,10 @@ class SurfaceMatching(PointSetMatching):
                 yt = None
             else:
                 if self.unreduced:
-                    xt, yt, Jt = evol.landmarkSemiReducedEvolutionEuler(self.control['x0'], self.control['ct'],
+                    xt, yt, Jt = evolSR.landmarkSemiReducedEvolutionEuler(self.control['x0'], self.control['ct'],
                                                                          self.control['at']*self.ds,
                                                                          self.options['KparDiff'], affine=A,
+                                                                          fidelityWeight=self.fidelityWeight,
                                                                          withPointSet=self.passenger_points,
                                                                          withJacobian=True)
                 else:
@@ -1284,9 +1350,10 @@ class SurfaceMatching(PointSetMatching):
         else:
             if self.varCounter != self.trajCounter:
                 if self.unreduced:
-                    self.state['xt'] = evol.landmarkSemiReducedEvolutionEuler(self.control['x0'], self.control['ct'],
+                    self.state['xt'] = evolSR.landmarkSemiReducedEvolutionEuler(self.control['x0'], self.control['ct'],
                                                                               self.control['at']*self.ds,
-                                                                              self.options['KparDiff'], affine=A)
+                                                                              self.options['KparDiff'], affine=A,
+                                                                                fidelityWeight=self.fidelityWeight)
                 else:
                     self.state['xt'] = evol.landmarkDirectEvolutionEuler(self.control['x0'], self.control['at']*self.ds,
                                                                          self.options['KparDiff'], affine=A)
@@ -1295,13 +1362,34 @@ class SurfaceMatching(PointSetMatching):
             if self.options['symmetric']:
                 self.fvInit.updateVertices(self.control['x0'][:self.nvert, :])
 
-        if self.unreduced and self.unreducedResetRate > 0 and self.iter % self.unreducedResetRate == 0:
-            rho = 1.
-            logging.info('Resetting trajectories')
-            self.control['ct'] = (1-rho) * self.control['ct'] + rho * self.state['xt'][:-1, :, :]
-            # f.at = np.zeros(f.at.shape)
-            self.controlTry['ct'] = np.copy(self.control['ct'])
-            self.reset = True
+        if (self.unreduced and self.unreducedResetRate > 0 and self.iter % self.unreducedResetRate == 0 and
+            self.obj < self.obj_unreduced_save):
+            self.obj_unreduced_save = self.obj
+            dist0 = np.sqrt(((self.state['xt'][0, :, :] - self.state['xt'][-1, :, :])**2).sum(axis=-1).max())
+            dist = np.sqrt(((self.control['ct'] - self.state['xt'][:-1, :, :])**2).sum(axis=-1).max())
+            if dist > 0.05 * dist0:
+                rho = 1.
+                objDef, st = self.objectiveFun_(self.control)
+                obj_ = 2*objDef+1
+                control = deepcopy((self.control))
+                d_ = 2*dist + 1
+                control['ct'] = (1 - rho) * self.control['ct'] + rho * self.state['xt'][:-1, :, :]
+                # while obj_ > 1.5*objDef and rho > 0.001:
+                #     control['ct'] = (1-rho) * self.control['ct'] + rho * self.state['xt'][:-1, :, :]
+                #     obj_, st = self.objectiveFun_(control)
+                #     #d_ = np.sqrt(((st['xt'][-1, :, :] - self.state['xt'][-1, :, :]) ** 2).sum(axis=-1).max())
+                #     #logging.info(f"d: {obj_:.4f}" )
+                #     if obj_ > objDef:
+                #         rho *= 0.5
+                # rho = 1.
+                if rho > 0.001:
+                    logging.info(f'Resetting trajectories: max distance = {dist:.4f} trajectory distance = {dist0:.4f} rho = {rho:0.4f}')
+                    self.control = deepcopy(control)
+                    # f.at = np.zeros(f.at.shape)
+                    self.controlTry['ct'] = np.copy(self.control['ct'])
+                    # dist = np.sqrt(((self.control['ct'] - self.state['xt'][:-1, :, :])**2).sum(axis=-1).max())
+                    # logging.info(f'max distance = {dist:.4f}')
+                    self.reset = True
         if self.pplot:
             self.plotAtIteration()
 
@@ -1382,7 +1470,7 @@ class SurfaceMatching(PointSetMatching):
                       Wolfe=self.options['Wolfe'])
             elif self.options['algorithm'] == 'bfgs':
                 bfgs.bfgs(self, verb = self.options['verb'], maxIter = self.options['maxIter'],
-                      TestGradient=self.options['testGradient'], epsInit=1.,
+                      TestGradient=self.options['testGradient'], epsInit=self.options['epsInit'],
                       Wolfe=self.options['Wolfe'], lineSearch=self.options['lineSearch'], memory=50)
         elif self.options['algorithm'] == 'sgd':
             logging.info('Running stochastic gradient descent')

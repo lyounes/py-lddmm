@@ -136,7 +136,19 @@ def line_search_weak_wolfe(opt, pk, gfk=None, old_fval=None,
         fval = phi(t)
         it += 1
 
-    if itGrad == maxiter or it == maxiter2:
+    if itGrad == maxiter:
+        logging.warning('Weak Wolfe condition: maximum gradient computations attained: switching to backtracking')
+        while it < maxiter2:
+            armijo = False
+            if fval < old_fval + c1 * t * derphi0:
+                df = derphi(t)
+                break
+            else:
+                t /= 2
+            fval = phi(t)
+            it += 1
+
+    if it == maxiter2:
         logging.warning('Weak Wolfe condition: maximum number of iterations attained')
         t = None
 
