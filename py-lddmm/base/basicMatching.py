@@ -61,6 +61,7 @@ class BasicMatching(object):
         self.setOutputDir(self.options['outputDir'])
         self.set_landmarks(self.options['Landmarks'])
         self.set_template_and_target(Template, Target, misc=self.options)
+        self.burnIn = self.options['burnIn']
 
         self.reset = False
         self.Kdiff_dtype = self.options['pk_dtype']
@@ -85,6 +86,8 @@ class BasicMatching(object):
             'algorithm': 'bfgs',
             'unreduced': False,
             'Wolfe': True,
+            'burnIn': 10,
+            'epsInit': 1.,
             'KparDiff': None,
             'KparDist': None,
             'pk_dtype': 'float32',
@@ -115,6 +118,7 @@ class BasicMatching(object):
             'internalCost': None,
             'internalWeight': 1.0,
             'lineSearch': 'Weak_Wolfe',
+            'gradTol': -1.,
             'gradLB': 0.001
         }
         return options
