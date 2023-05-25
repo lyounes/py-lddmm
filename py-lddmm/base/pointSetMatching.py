@@ -163,7 +163,7 @@ class PointSetMatching(BasicMatching):
         self.options['KparDiff'].pk_dtype = self.options['pk_dtype']
         self.options['KparDist'].pk_dtype = self.options['pk_dtype']
 
-        self.gradEps = self.options['gradEps']
+        self.gradEps = self.options['gradTol']
 
 
         self.affineOnly = self.options['affineOnly']
