@@ -34,10 +34,14 @@ class SurfaceTimeMatching(SurfaceMatching):
         options['rescaleTemplate'] = False
         options['volumeWeight'] = None
         options['times'] = None
+        options['timeStep0'] = None
         return options
 
     def initialize_variables(self):
         self.Tsize = int(round(1.0 / self.options['timeStep']))
+        if self.options['timeStep0'] is None:
+            self.options['timeStep0'] = self.options['timeStep']
+        self.Tsize0 = int(round(1.0 / self.options['timeStep0']))
         self.nvert = self.fvInit.vertices.shape[0]
         if self.match_landmarks:
             self.control['x0'] = np.concatenate((self.fvInit.vertices, self.tmpl_lmk.points), axis=0)
