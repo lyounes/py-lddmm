@@ -308,17 +308,18 @@ class CurveMatching(PointSetMatching):
         at = control['at']
 
         timeStep = 1.0/self.Tsize
-        A = self.affB.getTransforms(Afft)
-        st = State()
-        if withJacobian:
-            (xt,Jt)  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A, withJacobian=True)
-            st['Jt'] = Jt
-        else:
-            xt  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A)
-        st['xt'] = xt
+        # A = self.affB.getTransforms(Afft)
+        st = self.solveStateEquation(control, init_state=x0, kernel=kernel, options={'withJacobian':withJacobian})
+        # if withJacobian:
+        #     (xt,Jt)  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A, withJacobian=True)
+        #     st['Jt'] = Jt
+        # else:
+        #     xt  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A)
+        # st['xt'] = xt
         #print xt[-1, :, :]
         #print obj
         obj=0
+        xt = st['xt']
         foo = curves.Curve(curve=self.fv0)
         for t in range(self.Tsize):
             z = xt[t, :, :]
@@ -396,8 +397,11 @@ class CurveMatching(PointSetMatching):
         dim = x0.shape[1]
         M = control['at'].shape[0]
         timeStep = 1.0/M
+        st = self.solveStateEquation(control)
+        # xt = evol.landmarkDirectEvolutionEuler(x0, control['at'], KparDiff, affine=affine)
+
+        xt = st['xt']
         affine = self.affB.getTransforms(control['Afft'])
-        xt = evol.landmarkDirectEvolutionEuler(x0, control['at'], KparDiff, affine=affine)
         if affine is not None:
             A0 = affine[0]
             A = np.zeros([M,dim,dim])
@@ -511,7 +515,7 @@ class CurveMatching(PointSetMatching):
         for k in update[0].keys():
             if update[0][k] is not None:
                 control[k] = self.control[k] - update[1] * update[0][k]
-        A = self.affB.getTransforms(control['Afft'])
+        # A = self.affB.getTransforms(control['Afft'])
         # at = self.at - update[1] * update[0]['diff']
         #
         # Afft = self.Afft - update[1] * update[0]['aff']
@@ -519,11 +523,13 @@ class CurveMatching(PointSetMatching):
         #     A = self.affB.getTransforms(Afft)
         # else:
         #     A = None
-        xt = evol.landmarkDirectEvolutionEuler(self.x0, control['at'], self.options['KparDiff'], affine=A)
+        st = self.solveStateEquation(control)
+        # xt = evol.landmarkDirectEvolutionEuler(self.x0, control['at'], self.options['KparDiff'], affine=A)
+        xt = st['xt']
         endPoint = curves.Curve(curve=self.fv0)
         endPoint.updateVertices(xt[-1, :, :])
-        st = State()
-        st['xt'] = xt
+        # st = State()
+        # st['xt'] = xt
 
         return control, st, endPoint
 
@@ -660,9 +666,12 @@ class CurveMatching(PointSetMatching):
 
         if self.saveRate > 0 and self.iter%self.saveRate==0:
             if self.dim==2:
-                A = self.affB.getTransforms(self.control['Afft'])
-                (xt,yt) = evol.landmarkDirectEvolutionEuler(self.fv0.vertices, self.control['at'], self.options['KparDiff'],
-                                                            affine=A, withPointSet=self.gridxy)
+                # A = self.affB.getTransforms(self.control['Afft'])
+                st = self.solveStateEquation(init_state=self.fv0.vertices, options={'withPointSet':self.gridxy})
+                # (xt,yt) = evol.landmarkDirectEvolutionEuler(self.fv0.vertices, self.control['at'], self.options['KparDiff'],
+                #                                             affine=A, withPointSet=self.gridxy)
+                xt = st['xt']
+                yt = st['yt']
             if self.options['saveTrajectories']:
                 pointSets.saveTrajectories(self.outputDir + '/' + self.options['saveFile'] + 'curves.vtk', self.state['xt'])
 
@@ -726,9 +735,16 @@ class CurveMatching(PointSetMatching):
     def endOptim(self):
         if self.saveRate==0 or self.iter%self.saveRate > 0:
             if self.dim==2:
-                A = self.affB.getTransforms(self.control['Afft'])
-                (xt,yt) = evol.landmarkDirectEvolutionEuler(self.fv0.vertices, self.control['at'], self.options['KparDiff'],
-                                                            affine=A, withPointSet=self.gridxy)
+                st = self.solveStateEquation(init_state=self.fv0.vertices, options={'withPointSet':self.gridxy})
+                # (xt,yt) = evol.landmarkDirectEvolutionEuler(self.fv0.vertices, self.control['at'], self.options['KparDiff'],
+                #                                             affine=A, withPointSet=self.gridxy)
+                yt = st['yt']
+                # A = self.affB.getTransforms(self.control['Afft'])
+                # (xt,yt) = evol.landmarkDirectEvolutionEuler(self.fv0.vertices, self.control['at'], self.options['KparDiff'],
+                #                                             affine=A, withPointSet=self.gridxy)
+                for kk in range(self.Tsize+1):
+                    self.gridDef.vertices = np.copy(yt[kk, :, :])
+                    self.gridDef.saveVTK(self.outputDir + '/grid' + str(kk) + '.vtk')
             for kk in range(self.Tsize+1):
                 self.fvDef.updateVertices(np.squeeze(self.state['xt'][kk, :, :]))
                 #self.fvDef.saveVTK(self.outputDir +'/'+ self.options['saveFile']+str(kk)+'.vtk', scalars = Jt[kk, :], scal_name='Jacobian')

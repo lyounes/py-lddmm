@@ -4,12 +4,22 @@ from . import affineBasis
 
 ########### Semi-reduced equations: ct are control points in the evolution
 
-def landmarkSemiReducedEvolutionEuler(x0, ct, at, KparDiff, fidelityWeight = 0.0, affine=None,
-                                 withJacobian=False, withNormals=None, withPointSet=None):
+def landmarkSemiReducedEvolutionEuler(x0, ct, at, KparDiff, fidelityWeight = 0.0, affine=None, options= None):
+    #                                 withJacobian=False, withNormals=None, withPointSet=None):
     if ct.shape[1] != x0.shape[0]:
         fidelityTerm = False
     else:
         fidelityTerm = True
+
+    _options = {'withJacobian': False, 'withNormals': None, 'withPointSet': None}
+    if options is not None:
+        for k in options.keys():
+            _options[k] = options[k]
+
+    withJacobian = _options['withJacobian']
+    withNormals = _options['withNormals']
+    withPointSet = _options['withPointSet']
+
     if not (affine is None or len(affine[0]) == 0):
         withaff = True
         A = affine[0]
@@ -26,24 +36,24 @@ def landmarkSemiReducedEvolutionEuler(x0, ct, at, KparDiff, fidelityWeight = 0.0
     xt = np.zeros((T+1, N, dim))
     xt[0, :,:] = x0
 
-    Jt = np.zeros((T + 1, N, 1))
-    simpleOutput = True
+    if withJacobian:
+        Jt = np.zeros((T + 1, N, 1))
+    else:
+        Jt = None
+
     if withPointSet is not None:
-        simpleOutput = False
         K = withPointSet.shape[0]
         y0 = withPointSet
         yt = np.zeros((T + 1, K, dim))
         yt[0, :, :] = y0
-        if withJacobian:
-            simpleOutput = False
+    else:
+        yt = None
 
     if withNormals is not None:
-        simpleOutput = False
         nt = np.zeros((T+1, N, dim))
         nt[0, :, :] = withNormals
-
-    if withJacobian:
-        simpleOutput = False
+    else:
+        nt = None
 
     for t in range(T):
         if withaff:
@@ -75,17 +85,14 @@ def landmarkSemiReducedEvolutionEuler(x0, ct, at, KparDiff, fidelityWeight = 0.0
             if withaff:
                 nt[t + 1, :, :] -= timeStep * np.dot(nt[t, :, :], A[t])
 
-    if simpleOutput:
-        return xt
-    else:
-        output = [xt]
-        if not (withPointSet is None):
-            output.append(yt)
-        if not (withNormals is None):
-            output.append(nt)
-        if withJacobian: #not (Jt is None):
-            output.append(Jt)
-        return output
+    output = dict()
+    output['xt'] = xt
+    output['Jt'] = Jt
+    output['yt'] = yt
+    output['nt'] = nt
+
+    return output
+
 
 
 def landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, Kpardiff, fidelityWeight = 0.,

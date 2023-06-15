@@ -354,7 +354,7 @@ class SurfaceTimeMatching(SurfaceMatching):
             if self.options['volumeWeight']:
                 targGradient -= (2./3) * self.options['volumeWeight']*(endPoint[k].surfVolume() - self.fv1[k].surfVolume()) * self.fvDef[k].computeAreaWeightedVertexNormals()
             if self.match_landmarks:
-                pxl = self.wlmk * self.lmk_objGrad(endPoint_lmk[k].points, self.targ_lmk[k].points)
+                pxl = self.wlmk * self.lmk_objGrad(endPoint_lmk[k].vertices, self.targ_lmk[k].points)
                 targGradient = np.concatenate((targGradient, pxl), axis=0)
             px.append(targGradient)
         #print "px", (px[0]**2).sum()
@@ -388,7 +388,9 @@ class SurfaceTimeMatching(SurfaceMatching):
         nTarg = len(px1)
         timeStep = 1.0 / T
         if computeTraj:
-            xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+            st = self.solveStateEquation(control=control, init_state=x0)
+            xt = st['xt']
+            # xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
             if current_at:
                 self.trajCounter = self.varCounter
                 self.state['xt'] = xt
@@ -460,7 +462,9 @@ class SurfaceTimeMatching(SurfaceMatching):
             #     A = self.affB.getTransforms(self.Afft - update[1]*update[0]['aff'])
             # else:
             #     A = None
-            xt = evol.landmarkDirectEvolutionEuler(self.control['x0'], control['at'], self.options['KparDiff'], affine=A)
+            st = self.solveStateEquation(control=control, init_state=self.control['x0'])
+            xt = st['xt']
+            # xt = evol.landmarkDirectEvolutionEuler(self.control['x0'], control['at'], self.options['KparDiff'], affine=A)
             endPoint = []
             for k in range(self.nTarg):
                 if self.match_landmarks:

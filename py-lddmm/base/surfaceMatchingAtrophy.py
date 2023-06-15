@@ -294,12 +294,15 @@ class SurfaceMatchingAtrophy(SurfaceMatching):
             dim2 = self.dim ** 2
             A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
             for t in range(self.Tsize):
-                AB = np.dot(self.affineBasis, Afft[t]) 
+                AB = np.dot(self.affineBasis, Afft[t])
                 A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
                 A[1][t] = AB[dim2:dim2+self.dim]
             else:
                 A = None
-        xt = evol.landmarkDirectEvolutionEuler(self.control['x0'], at, self.options['KparDiff'], affine = A)
+
+        st = self.solveStateEquation(control=control, init_state=self.control['x0'])
+        xt = st['xt']
+        # xt = evol.landmarkDirectEvolutionEuler(self.control['x0'], at, self.options['KparDiff'], affine = A)
         #xt = xJ
         pxt = np.zeros([M+1, self.npt, self.dim])
         pxt[M, :, :] = px1
@@ -437,8 +440,10 @@ class SurfaceMatchingAtrophy(SurfaceMatching):
             control['at'] = self.control['at'] - update[1] *update[0]['at']
             if self.options['symmetric']:
                 control['x0'] = self.control['x0'] - update[1]*update[0]['x0']
-            xt = evol.landmarkDirectEvolutionEuler(control['x0'], control['at']*self.ds,
-                                                   self.options['KparDiff'], affine=A)
+            st = self.solveStateEquation(control=control, init_state=control['x0'])
+            xt = st['xt']
+            # xt = evol.landmarkDirectEvolutionEuler(control['x0'], control['at']*self.ds,
+            #                                        self.options['KparDiff'], affine=A)
             endPoint = Surface(surf=self.fv0)
             endPoint.updateVertices(xt[-1, :, :])
 

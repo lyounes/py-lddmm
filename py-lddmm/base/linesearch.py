@@ -124,7 +124,7 @@ def line_search_weak_wolfe(opt, pk, gfk=None, old_fval=None,
                 amin = t
         else:
             amax = t
-        if amax < 1e-10:
+        if amax < 1e-16:
             t *= 2
         else:
             if armijo:

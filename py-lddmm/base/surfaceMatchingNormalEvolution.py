@@ -329,7 +329,9 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                     A[1][t] = AB[dim2:dim2 + self.dim]
         else:
             A = None
-        xt = evol.landmarkDirectEvolutionEuler(x0, at*self.ds, self.options['KparDiff'], affine=A)
+        st = self.solveStateEquation(control=control, init_state=x0)
+        xt = st['xt']
+        # xt = evol.landmarkDirectEvolutionEuler(x0, at*self.ds, self.options['KparDiff'], affine=A)
         # xt = xJ
         pxt = np.zeros([M + 1, self.npt, self.dim])
         pxt[M, :, :] = px1
@@ -427,8 +429,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             for k in update[0]:
                 if update[0][k] is not None:
                     control[k] = self.control[k] - update[1] * update[0][k]
-            A = self.affB.getTransforms(control['Afft'])
-            xt = evol.landmarkDirectEvolutionEuler(control['x0'], control['at']*self.ds, self.options['KparDiff'], affine=A)
+            # A = self.affB.getTransforms(control['Afft'])
+            st = self.solveStateEquation(control=control, init_state=control['x0'])
+            xt = st['xt']
+            # xt = evol.landmarkDirectEvolutionEuler(control['x0'], control['at']*self.ds, self.options['KparDiff'], affine=A)
             endPoint = surfaces.Surface(surf=self.fv0)
             endPoint.updateVertices(xt[-1, :, :])
 

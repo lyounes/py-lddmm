@@ -17,12 +17,22 @@ from base.surfaces import Surface
 from base.kernelFunctions import Kernel
 from base.affineRegistration import rigidRegistration
 from base.surfaceMatching import SurfaceMatching
+from base.secondOrderSurfaceMatching import SecondOrderSurfaceMatching
 import pykeops
 pykeops.clean_pykeops()
 plt.ion()
 
 model = 'Balls'
-typeCost = 'elastic'
+
+secondOrder = True
+
+if secondOrder:
+    typeCost = 'LDDMM'
+    order = '_SO_'
+else:
+    typeCost = 'LDDMM'
+    order = ''
+
 
 def compute(model):
     loggingUtils.setup_default_logging('../Output', stdOutput = True)
@@ -169,16 +179,17 @@ def compute(model):
     # sm.KparDiff.pk_dtype = 'float64'
     # sm.KparDist.pk_dtype = 'float64'
     options = {
-        'outputDir': '../Output/surfaceMatchingExample/' + model,
-        'mode': 'normal',
+        'outputDir': '../Output/surfaceMatchingExample/' + model + order,
+        'mode': 'debug',
         'maxIter': 2000,
         'affine': 'euclidean',
+        'affineKernel': True,
         'regWeight': regweight,
         'Landmarks': landmarks,
-        'rotWeight': 0.1,
-        'transWeight': 0.1,
+        'rotWeight': 100.,
+        'transWeight': 10.,
         'scaleWeight': 10.,
-        'affineWeight': 100.,
+        'affineWeight': 10.,
         'KparDiff': K1,
         'KparDist': ('gauss', sigmaDist),
         'sigmaError': sigmaError,
@@ -190,7 +201,10 @@ def compute(model):
         'unreducedResetRate': 10000,
         'unreducedWeight': 0.1
     }
-    f = SurfaceMatching(Template=ftemp, Target=ftarg, options=options)
+    if secondOrder:
+        f = SecondOrderSurfaceMatching(Template=ftemp, Target=ftarg, options=options)
+    else:
+        f = SurfaceMatching(Template=ftemp, Target=ftarg, options=options)
     f.optimizeMatching()
     # for k in range(20):
     #     f.options['unreducedWeight'] += 0.1 * f.ds

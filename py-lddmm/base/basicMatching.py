@@ -97,6 +97,7 @@ class BasicMatching(object):
             'maxIter': 1000,
             'regWeight': 1.0,
             'unreducedWeight': 1.0,
+            'affineKernel': False,
             'affineWeight': 10.0,
             'rotWeight': 0.01,
             'scaleWeight': None,

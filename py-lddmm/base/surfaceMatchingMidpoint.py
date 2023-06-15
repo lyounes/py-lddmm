@@ -29,6 +29,9 @@ class State(dict):
         super().__init__()
         self['xt0'] =None
         self['xt1'] =None
+        self['Jt0'] = None
+        self['Jt1'] = None
+
 
 
 ## Main class for surface matching
@@ -82,6 +85,28 @@ class SurfaceMatchingMidpoint(SurfaceMatching):
     #     if self.pplot:
     #         self.initial_plot()
 
+
+
+    def solveStateEquation(self, control= None, init_state = None, kernel = None, options=None):
+        if control is None:
+            control = self.control
+        if init_state is None:
+            init_state = (self.x0, self.x1)
+        if kernel is None:
+            kernel = self.options['KparDiff']
+
+        A = self.affB.getTransforms(control['Afft'])
+
+        st0 = evol.landmarkDirectEvolutionEuler(init_state[0], control['at0'], kernel, affine=A, options=options)
+        st1 = evol.landmarkDirectEvolutionEuler(init_state[1], control['at1'], kernel, options=options)
+
+        st = State()
+        st['xt0'] = st0['xt']
+        st['xt1'] = st1['xt']
+        st['Jt0'] = st0['Jt']
+        st['Jt1'] = st1['Jt']
+
+        return st
 
     def initialize_variables(self):
         self.Tsize = int(round(1.0/self.options['timeStep']))
@@ -254,36 +279,41 @@ class SurfaceMatchingMidpoint(SurfaceMatching):
 
     def getGradient(self, coeff=1.0, update=None):
         if update is None:
-            at0 = self.control['at0']
+            control = self.control
             endPoint0 = self.fvDef0
-            at1 = self.control['at1']
-            Afft = self.control['Afft']
+            # at1 = self.control['at1']
+            # Afft = self.control['Afft']
             endPoint1 = self.fvDef1
-            if self.affineDim > 0:
-                A = self.affB.getTransforms(self.control['Afft'])
-            else:
-                A = None
+            # if self.affineDim > 0:
+            #     A = self.affB.getTransforms(self.control['Afft'])
+            # else:
+            #     A = None
         else:
+            control = Control()
             if self.affineDim > 0:
-                Afft = self.control['Afft'] - update[1]*update[0]['Afft']
-                A = self.affB.getTransforms(Afft)
+                control['Afft'] = self.control['Afft'] - update[1]*update[0]['Afft']
+                # A = self.affB.getTransforms(control['Afft'])
             else:
                 A = None
-                Afft = None
-            at0 = self.control['at0'] - update[1] *update[0]['at0']
-            xt0 = evol.landmarkDirectEvolutionEuler(self.x0, at0, self.options['KparDiff'], affine=A)
+                # Afft = None
+
+            control['at0'] = self.control['at0'] - update[1] *update[0]['at0']
+            control['at1'] = self.control['at1'] - update[1] *update[0]['at1']
+            st = self.solveStateEquation(control=control)
+            xt0 = st['xt0']
+            xt1 = st['xt1']
+            # xt0 = evol.landmarkDirectEvolutionEuler(self.x0, at0, self.options['KparDiff'], affine=A)
             endPoint0 = surfaces.Surface(surf=self.fv0)
             endPoint0.updateVertices(xt0[-1, :, :])
-            at1 = self.control['at1'] - update[1] *update[0]['at1']
-            xt1 = evol.landmarkDirectEvolutionEuler(self.x1, at1, self.options['KparDiff'])
+            # xt1 = evol.landmarkDirectEvolutionEuler(self.x1, at1, self.options['KparDiff'])
             endPoint1 = surfaces.Surface(surf=self.fv1)
             endPoint1.updateVertices(xt1[-1, :, :])
 
 
-        control = Control()
-        control['at0'] = at0
-        control['at1'] = at1
-        control['Afft'] = Afft
+        # control = Control()
+        # control['at0'] = at0
+        # control['at1'] = at1
+        # control['Afft'] = Afft
         px1 = self.endPointGradient(endPoint=[endPoint0, endPoint1])
         px01 = -px1[0]
         px11 = -px1[1]
@@ -427,13 +457,18 @@ class SurfaceMatchingMidpoint(SurfaceMatching):
             ct1 = SMControl()
             ct1['at'] = self.control['at1']
 
+            st = self.solveStateEquation(options={'withJacobian':True})
             st0 = SMState()
-            (st0['xt'], st0['Jt'])  = evol.landmarkDirectEvolutionEuler(self.x0, self.control['at0'],
-                                                                        self.options['KparDiff'], affine=A,
-                                                                        withJacobian=True)
+            st0['xt'] = st['xt0']
+            st0['Jt'] = st['Jt0']
+            # (st0['xt'], st0['Jt'])  = evol.landmarkDirectEvolutionEuler(self.x0, self.control['at0'],
+            #                                                             self.options['KparDiff'], affine=A,
+            #                                                             withJacobian=True)
             st1 = SMState()
-            (st1['xt'], st1['Jt'])  = evol.landmarkDirectEvolutionEuler(self.x1, self.control['at1'],
-                                                                        self.options['KparDiff'], withJacobian=True)
+            st1['xt'] = st['xt1']
+            st1['Jt'] = st['Jt1']
+            # (st1['xt'], st1['Jt'])  = evol.landmarkDirectEvolutionEuler(self.x1, self.control['at1'],
+            #                                                             self.options['KparDiff'], withJacobian=True)
             if self.options['affine']=='euclidean' or self.options['affine']=='translation':
                 self.saveCorrectedEvolution(self.fv0, st0, ct0, fileName=self.options['saveFile'] +'0')
             self.saveEvolution(self.fv0, st0, fileName=self.options['saveFile']+'_0_', velocity=self.v0)

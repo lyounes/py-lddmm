@@ -17,12 +17,23 @@ from base import loggingUtils
 from base.meshes import Mesh
 from base.kernelFunctions import Kernel
 from base.meshMatching import MeshMatching
+from base.secondOrderMeshMatching import SecondOrderMeshMatching
 from base.meshExamples import TwoBalls, TwoDiscs, MoGCircle
 import pykeops
 pykeops.clean_pykeops()
 plt.ion()
 
 model = 'GaussCenters'
+secondOrder = True
+
+if secondOrder:
+    typeCost = 'LDDMM'
+    order = '_SO_'
+    internalCost = None
+else:
+    internalCost = 'LDDMM'
+    # internalCost = 'divergence'
+    order = ''
 
 def compute(model):
     loggingUtils.setup_default_logging('../Output', stdOutput = True)
@@ -88,6 +99,9 @@ def compute(model):
         ftemp = fv0
         ftarg = fv1
     elif model == 'GaussCenters':
+        sigmaKernel = 5.
+        sigmaDist = 5.
+        sigmaError = .5
         ftemp = MoGCircle(largeRadius=10, nregions=50)
         centers = ftemp.GaussCenters + .5 * np.random.normal(0,1,ftemp.GaussCenters.shape)
         ftarg = MoGCircle(largeRadius=12, centers=1.2*centers, typeProb=ftemp.typeProb, alpha=ftemp.alpha)
@@ -104,13 +118,13 @@ def compute(model):
     ## Object kernel
     K1 = Kernel(name='gauss', sigma = sigmaKernel)
     options = {
-        'outputDir': '../Output/meshMatchingTest/'+model,
-        'mode': 'normal',
+        'outputDir': '../Output/meshMatchingTest/'+model+order,
+        'mode': 'debug',
         'maxIter': 1000,
-        'affine': 'none',
-        'rotWeight': .01,
-        'transWeight': .01,
-        'scaleWeight': 10.,
+        'affine': 'affine',
+        'rotWeight': 100,
+        'transWeight': 10,
+        'scaleWeight': 1.,
         'affineWeight': 100.,
         'KparDiff': K1,
         'KparDist': ('gauss', sigmaDist),
@@ -118,16 +132,15 @@ def compute(model):
         'sigmaError': sigmaError,
         'errorType': 'measure',
         'algorithm': 'bfgs',
-        'internalCost': 'divergence',
+        'internalCost': internalCost,
         'internalWeight': 10.0,
         'pk_dtype': 'float32'
     }
 
-    f = MeshMatching(Template=ftemp, Target=ftarg, options=options)
-                     # outputDir=,param=sm,
-                     #    testGradient=False, regWeight = regweight, maxIter=1000,
-                     # affine= 'none', rotWeight=.01, transWeight = .01,
-                     #    scaleWeight=10., affineWeight=100.)
+    if secondOrder:
+        f = SecondOrderMeshMatching(Template=ftemp, Target=ftarg, options=options)
+    else:
+        f = MeshMatching(Template=ftemp, Target=ftarg, options=options)
 
     f.optimizeMatching()
     plt.ioff()
