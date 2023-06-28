@@ -142,6 +142,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
     grdOld = None
     obj_old = None
     gval = None
+    opt.reset = False
     while it < maxIter:
         #gval = None
         if hasattr(opt, 'startOfIteration'):
@@ -149,6 +150,8 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
         if opt.reset:
             opt.obj = None
             obj = opt.objectiveFun()
+            if verb:
+                logging.info(f"recomputed objective {obj:.5f}")
             obj_old = None
             gval = None
 
@@ -226,7 +229,6 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
                 if eps > epsBig:
                     eps = epsBig
 
-        opt.reset = False
         _eps = eps
 
         ### Starting Line Search
@@ -238,6 +240,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
             obj_old = obj
             opt.acceptVarTry()  #
             obj = phi_star
+            opt.reset = False
         else:
             logging.info('Wolfe search unsuccessful')
             if opt.reset:
@@ -249,6 +252,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
                     opt.endOfIteration()
                 break
             opt.reset = True
+            gval = None
 
 
         if (np.fabs(obj-obj_old) < 1e-7) and stopCondition():
@@ -266,8 +270,8 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
 
         if verb | (it == maxIter):
             if eps is None:
-                logging.info('iteration {0:d}: obj = {1:.5f}, eps = None, gradient: {3:.5f}'.format(it+1, obj,
-                                                                                                    eps, np.sqrt(grd2)))
+                logging.info('iteration {0:d}: obj = {1:.5f}, eps = None, gradient: {2:.5f}'.format(it+1, obj,
+                                                                                                    np.sqrt(grd2)))
             else:
                 logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, gradient: {3:.5f}'.format(it+1, obj, eps,
                                                                                                        np.sqrt(grd2)))
@@ -287,7 +291,10 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
 
         if hasattr(opt, 'endOfIteration'):
             opt.endOfIteration()
-        it += 1
+        if not opt.reset:
+            it += 1
+        # if opt.reset:
+        #     opt.reset = False
 
     if it == maxIter and hasattr(opt, 'endOfProcedure'):
         opt.endOfProcedure()

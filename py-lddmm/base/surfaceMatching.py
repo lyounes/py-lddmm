@@ -208,6 +208,7 @@ class SurfaceMatching(PointSetMatching):
         else:
             self.fv0 = Surface(surf=Template)
 
+        self.x0 = self.fv0.vertices
         if self.options['errorType'] != 'currentMagnitude':
             if Target is None:
                 logging.error('Please provide a target surface')
@@ -1301,11 +1302,14 @@ class SurfaceMatching(PointSetMatching):
             self.controlTry['ct'] = np.copy(self.control['ct'])
 
 
+
     def startOfIteration(self):
         if self.options['algorithm'] != 'sgd':
             if self.reset:
-                self.options['KparDiff'].pk_dtype = 'float64'
-                self.options['KparDist'].pk_dtype = 'float64'
+                logging.info('switching to float64')
+                self.resetPK('float64')
+                self.pkBuffer = 0
+
 
     def endOfIteration(self, forceSave=False):
         self.iter += 1
@@ -1393,9 +1397,20 @@ class SurfaceMatching(PointSetMatching):
                                            self.control['ct'])
             self.saveHdf5(fileName=self.outputDir + '/output.h5')
         else:
+            if self.reset:
+                obj0 = self.objectiveFun()
+                self.obj = None
+                obj = self.objectiveFun()
+                self.obj = None
+                self.resetPK('float64')
+                obj2 = self.objectiveFun()
+                self.resetPK()
+                logging.info(f"recomputing Objective {obj0:.5f} {obj:.5f} {obj2:.5f}")
             if self.varCounter != self.trajCounter:
+                logging.info('recomputing trajectories')
                 st = self.solveStateEquation(init_state=self.control['x0'])
                 self.state['xt'] = st['xt']
+
                 # if self.unreduced:
                 #     self.state['xt'] = evolSR.landmarkSemiReducedEvolutionEuler(self.control['x0'], self.control['ct'],
                 #                                                               self.control['at']*self.ds,
@@ -1440,8 +1455,12 @@ class SurfaceMatching(PointSetMatching):
         if self.pplot:
             self.plotAtIteration()
 
-        self.options['KparDiff'].pk_dtype = self.Kdiff_dtype
-        self.options['KparDist'].pk_dtype = self.Kdist_dtype
+        if self.pkBuffer > 50:
+            if self.options['KparDiff'].pk_dtype != self.Kdiff_dtype:
+                logging.info("return to original pk_dtype")
+            self.resetPK()
+        else:
+            self.pkBuffer += 1
 
 
     def saveHdf5(self, fileName):

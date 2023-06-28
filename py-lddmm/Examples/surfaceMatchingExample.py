@@ -24,7 +24,7 @@ plt.ion()
 
 model = 'Balls'
 
-secondOrder = True
+secondOrder = False
 
 if secondOrder:
     typeCost = 'LDDMM'
@@ -180,13 +180,13 @@ def compute(model):
     # sm.KparDist.pk_dtype = 'float64'
     options = {
         'outputDir': '../Output/surfaceMatchingExample/' + model + order,
-        'mode': 'debug',
+        'mode': 'normal',
         'maxIter': 2000,
         'affine': 'euclidean',
-        'affineKernel': True,
+        'affineKernel': False,
         'regWeight': regweight,
         'Landmarks': landmarks,
-        'rotWeight': 100.,
+        'rotWeight': 10.,
         'transWeight': 10.,
         'scaleWeight': 10.,
         'affineWeight': 10.,
