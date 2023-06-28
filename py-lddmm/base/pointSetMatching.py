@@ -70,9 +70,9 @@ class PointSetMatching(BasicMatching):
 
     def createObject(self, data, other=None):
         if other is None:
-            return PointSet(data=input)
+            return PointSet(data=data)
         else:
-            return PointSet(data=input, weights=other)
+            return PointSet(data=data, weights=other)
 
     def updateObject(self, object, data, other=None):
         return object.updateVertices(data)

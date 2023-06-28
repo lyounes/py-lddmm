@@ -252,7 +252,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
 
 
         if (np.fabs(obj-obj_old) < 1e-7) and stopCondition():
-            logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, gradient: {3:.5f}'.format(it+1, obj, eps, np.sqrt(grd2)))
+            logging.info(f'iteration {it + 1:d}: obj = {obj:.5f}, eps = {eps:.5f}, gradient: {np.sqrt(grd2):.5f}')
             if it > burnIn and opt.reset:
                 logging.info('Stopping Gradient Descent: small variation')
                 opt.converged = True
@@ -266,11 +266,9 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
 
         if verb | (it == maxIter):
             if eps is None:
-                logging.info('iteration {0:d}: obj = {1:.5f}, eps = None, gradient: {3:.5f}'.format(it+1, obj,
-                                                                                                    eps, np.sqrt(grd2)))
+                logging.info(f'iteration {it+1:d}: obj = {obj:.5f}, eps = None, gradient: {np.sqrt(grd2):.5f}')
             else:
-                logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, gradient: {3:.5f}'.format(it+1, obj, eps,
-                                                                                                       np.sqrt(grd2)))
+                logging.info(f'iteration {it+1:d}: obj = {obj:.5f}, eps = {eps:.5f}, gradient: {np.sqrt(grd2):.5f}')
 
         if np.sqrt(grd2) <gradEps and stopCondition():
             logging.info('Stopping Gradient Descent: small gradient')

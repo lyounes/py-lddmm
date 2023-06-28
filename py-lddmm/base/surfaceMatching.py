@@ -9,7 +9,7 @@ from . surfaces import Surface, vtkFields
 from .surface_distances import currentNorm0, currentNormGradient, currentMagnitude, currentMagnitudeGradient, currentNormDef
 from .surface_distances import measureNorm0, measureNormGradient, measureNormDef, varifoldNormGradient, varifoldNormDef, varifoldNorm0
 from .surface_distances import measureNormPS0, measureNormPSDef, measureNormPSGradient, L2NormGradient, L2Norm0, L2Norm
-from .surface_distances import normGrad, elasticNorm, diffNormGrad, diffElasticNorm
+from .surface_distances import normGrad, elasticNorm, diffNormGrad, diffElasticNorm, normDisplacement, diffNormDisplacement
 from . pointSets import PointSet, saveTrajectories, savePoints
 import pointset_distances as psd
 from .pointSetMatching import PointSetMatching
@@ -152,6 +152,24 @@ class SurfaceMatching(PointSetMatching):
         self.passengerDef = deepcopy(self.passenger)
 
 
+    def internalCost__(self, fv, phi):
+        res = 0
+        for d in self.internalcostList:
+            res += d[2] * d[0](fv, phi)
+        return res
+
+    def internalCostGrad__(self, fv, phi, variables = 'both'):
+        grad = dict()
+        if variables in ('both', 'phi'):
+            grad['phi'] = np.zeros(phi.shape)
+        if variables in ('both', 'x'):
+            grad['x'] = np.zeros(fv.vertices.shape)
+
+        for d in self.internalcostList:
+            res = d[1](fv, phi, variables=variables)
+            for k in res.keys():
+                grad[k] += d[2] * res[k]
+        return grad
 
     def set_parameters(self):
         super().set_parameters()
@@ -161,16 +179,28 @@ class SurfaceMatching(PointSetMatching):
         self.reset = True
         self.options['epsInit'] /= self.fv0.vertices.shape[0]
 
-        if self.options['internalCost'] == 'h1':
-            self.internalCost = normGrad
-            self.internalCostGrad = diffNormGrad
-        elif self.options['internalCost'] == 'elastic':
-            self.internalCost = elasticNorm
-            self.internalCostGrad = diffElasticNorm
-        else:
-            if self.options['internalCost'] is not None:
-                logging.info(f"unknown {self.options['internalCost']:.04f}")
-            self.internalCost = None
+
+        if self.options['internalCost'] is not None:
+            self.internalcostList = []
+            if isinstance(self.options['internalCost'], str):
+                self.options['internalCost'] = [[self.options['internalCost'], self.options['internalWeight']]]
+            else:
+                self.options['internalCost'] = list(self.options['internalCost'])
+            for d in self.options['internalCost']:
+                if d[0] == 'h1':
+                    self.internalcostList.append([normGrad, diffNormGrad, d[1]])
+                elif d[0] == 'elastic':
+                    self.internalcostList.append([elasticNorm, diffElasticNorm, d[1]])
+                elif d[0] == 'displacement':
+                    self.internalcostList.append([normDisplacement, diffNormDisplacement, d[1]])
+                else:
+                    logging.info(f"unknown {d[0]}")
+                    self.internalCost = None
+
+            if len(self.internalcostList) > 0:
+                self.internalCost = self.internalCost__
+                self.internalCostGrad = self.internalCostGrad__
+                self.options['internalWeight'] = 1
 
         self.unreducedResetRate = self.options['unreducedResetRate']
         self.fidelityWeight = self.options['fidelityWeight']
@@ -759,8 +789,8 @@ class SurfaceMatching(PointSetMatching):
             foo.updateVertices(z)
             if self.internalCost:
                 grd = self.internalCostGrad(foo, v)
-                Lv = grd[0]
-                DLv = self.options['internalWeight']*grd[1]
+                Lv = grd['phi']
+                DLv = self.options['internalWeight']*grd['x']
                 if self.unreduced:
                     zpx = KparDiff.applyDiffKT(c, px - self.options['internalWeight']*Lv, a*self.ds,
                                                lddmm=False, firstVar=z) - DLv - 2*self.options['unreducedWeight'] * (z-c)
@@ -845,7 +875,7 @@ class SurfaceMatching(PointSetMatching):
                     v = kernel.applyK(z,a)*self.ds
                 if self.internalCost:
                     foo.updateVertices(z[:nvert, :])
-                    Lv = self.internalCostGrad(foo, v, variables='phi')
+                    Lv = self.internalCostGrad(foo, v, variables='phi')['phi']
                     if self.unreduced:
                         dat[t, :, :] += self.options['internalWeight'] * kernel.applyK(z, Lv, firstVar=c) * self.ds
                         dct[t, :, :] += self.options['internalWeight'] * kernel.applyDiffKT(z, a, Lv, firstVar=c)*self.ds

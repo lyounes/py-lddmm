@@ -16,6 +16,7 @@ from base.pointSets import PointSet
 from base.kernelFunctions import Kernel
 from base.affineRegistration import rigidRegistration
 from base.pointSetMatching import PointSetMatching
+from base.secondOrderPointSetMatching import SecondOrderPointSetMatching
 import pykeops
 #pykeops.clean_pykeops()
 plt.ion()
@@ -24,6 +25,8 @@ model = 'Gaussian'
 dim = 3
 true_dim = 2
 N = 1000
+secondOrder = False
+
 
 
 A = np.random.normal(0,1, size=(dim, dim))
@@ -67,7 +70,10 @@ options = {
     'algorithm': 'bfgs',
     'pk_dtype': 'float64'
 }
-f = PointSetMatching(Template=fv0, Target=fv1, options=options)
+if secondOrder:
+    f = SecondOrderPointSetMatching(Template=fv0, Target=fv1, options=options)
+else:
+    f = PointSetMatching(Template=fv0, Target=fv1, options=options)
 
 f.optimizeMatching()
 plt.ioff()

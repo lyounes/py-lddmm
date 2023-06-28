@@ -24,13 +24,13 @@ plt.ion()
 
 model = 'Balls'
 
-secondOrder = True
+secondOrder = False
 
 if secondOrder:
     typeCost = 'LDDMM'
     order = '_SO_'
 else:
-    typeCost = 'LDDMM'
+    typeCost = 'internal'
     order = ''
 
 
@@ -42,10 +42,11 @@ def compute(model):
         internalWeight = 0.
         regweight = 1.
     else:
-        sigmaKernel = 0.5
-        internalWeight = 100.
+        sigmaKernel = .5
+        internalWeight = 1.
         regweight = 0.1
-        internalCost = 'elastic'
+        #internalCost = 'elastic'
+        internalCost = [['elastic', 100.], ['displacement', 1.]]
 
     sigmaDist = 10.
     sigmaError = 1.
@@ -182,8 +183,8 @@ def compute(model):
         'outputDir': '../Output/surfaceMatchingExample/' + model + order,
         'mode': 'debug',
         'maxIter': 2000,
-        'affine': 'euclidean',
-        'affineKernel': True,
+        'affine': 'none',
+        'affineKernel': False,
         'regWeight': regweight,
         'Landmarks': landmarks,
         'rotWeight': 100.,
