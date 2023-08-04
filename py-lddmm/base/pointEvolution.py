@@ -187,8 +187,8 @@ def landmarkHamiltonianCovector(x0, at, px1, Kpardiff, regweight, affine=None, e
         a = at[M - t - 1, :, :]
         if extraTerm is not None:
             grd = extraTerm['grad'](z, Kpardiff.applyK(z,a))
-            Lv = -extraTerm['coeff'] * grd[0]
-            DLv = extraTerm['coeff'] * grd[1]
+            Lv = -extraTerm['coeff'] * grd['phi']
+            DLv = extraTerm['coeff'] * grd['x']
             zpx = Kpardiff.applyDiffKT(z, px, a, regweight=regweight, lddmm=True,
                                        extra_term=Lv) - DLv
         else:
@@ -217,7 +217,7 @@ def landmarkHamiltonianGradient(x0, at, px1, KparDiff, regweight, getCovector = 
         #print 'testgr', (2*a-px).sum()
         dat[k, :, :] = (2*regweight*a-px)
         if extraTerm is not None:
-            Lv = extraTerm['grad'](x, KparDiff.applyK(x,a), variables='phi')
+            Lv = extraTerm['grad'](x, KparDiff.applyK(x,a), variables='phi')['phi']
             #Lv = -foo.laplacian(v)
             dat[k, :, :] += extraTerm['coeff'] * Lv
         if not (affine is None):

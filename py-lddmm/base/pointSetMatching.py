@@ -71,9 +71,9 @@ class PointSetMatching(BasicMatching):
 
     def createObject(self, data, other=None):
         if other is None:
-            return PointSet(data=input)
+            return PointSet(data=data)
         else:
-            return PointSet(data=input, weights=other)
+            return PointSet(data=data, weights=other)
 
     def updateObject(self, object, data, other=None):
         return object.updateVertices(data)
@@ -436,6 +436,7 @@ class PointSetMatching(BasicMatching):
         else:
             self.options['KparDiff'].pk_dtype = newType
             self.options['KparDist'].pk_dtype = newType
+        self.pkBuffer = 0
 
     def startOfIteration(self):
         if self.reset:

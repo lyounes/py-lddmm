@@ -23,7 +23,7 @@ import pykeops
 pykeops.clean_pykeops()
 plt.ion()
 
-model = 'GaussCenters'
+model = 'Circles'
 secondOrder = True
 
 if secondOrder:

@@ -1,5 +1,6 @@
 import numpy as np
 import logging
+import time
 from copy import deepcopy
 from .linesearch import line_search_wolfe, line_search_weak_wolfe, line_search_goldstein_price
 
@@ -143,7 +144,9 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
     obj_old = None
     gval = None
     opt.reset = False
+    itt0 = time.process_time()
     while it < maxIter:
+        t0 = time.process_time()
         #gval = None
         if hasattr(opt, 'startOfIteration'):
             opt.startOfIteration()
@@ -256,7 +259,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
 
 
         if (np.fabs(obj-obj_old) < 1e-7) and stopCondition():
-            logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, gradient: {3:.5f}'.format(it+1, obj, eps, np.sqrt(grd2)))
+            logging.info(f'iteration {it + 1:d}: obj = {obj:.5f}, eps = {eps:.5f}, gradient: {np.sqrt(grd2):.5f}')
             if it > burnIn and opt.reset:
                 logging.info('Stopping Gradient Descent: small variation')
                 opt.converged = True
@@ -268,13 +271,15 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
             else:
                 opt.reset = True
 
+        tt0 = time.process_time()
+        t1 = tt0 - t0
+        tt1 = tt0 - itt0
+        itt0 = tt0
         if verb | (it == maxIter):
             if eps is None:
-                logging.info('iteration {0:d}: obj = {1:.5f}, eps = None, gradient: {2:.5f}'.format(it+1, obj,
-                                                                                                    np.sqrt(grd2)))
+                logging.info(f'iteration {it+1:d}: obj = {obj:.5f}, eps = None, gradient: {np.sqrt(grd2):.5f}, time = {t1:.04f}, {tt1:.04f}')
             else:
-                logging.info('iteration {0:d}: obj = {1:.5f}, eps = {2:.5f}, gradient: {3:.5f}'.format(it+1, obj, eps,
-                                                                                                       np.sqrt(grd2)))
+                logging.info(f'iteration {it+1:d}: obj = {obj:.5f}, eps = {eps:.5f}, gradient: {np.sqrt(grd2):.5f}, time = {t1:.04f}, {tt1:.04f}')
 
         if np.sqrt(grd2) <gradEps and stopCondition():
             logging.info('Stopping Gradient Descent: small gradient')

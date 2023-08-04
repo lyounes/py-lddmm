@@ -354,8 +354,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             v = self.options['KparDiff'].applyK(z, a)*self.ds
             if self.internalCost:
                 grd = self.internalCostGrad(foo, v)
-                Lv = grd[0]
-                DLv = self.options['internalWeight'] * self.options['regWeight'] * grd[1]
+                Lv = grd['phi']
+                DLv = self.options['internalWeight'] * self.options['regWeight'] * grd['x']
                 zpx += self.options['KparDiff'].applyDiffKT(z, px, a*self.ds, regweight=self.options['regWeight'],
                             lddmm=True, extra_term=-self.options['internalWeight'] * self.options['regWeight']*Lv) - DLv
             else:
@@ -383,7 +383,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 v = self.options['KparDiff'].applyK(z, a)*self.ds
                 dat[t, :, :] += 2 * self.options['regWeight'] * a *self.ds**2 - px * self.ds
                 if self.internalCost:
-                    Lv = self.internalCostGrad(foo, v, variables='phi')
+                    Lv = self.internalCostGrad(foo, v, variables='phi')['phi']
                     dat[t, :, :] += self.options['regWeight'] * self.options['internalWeight'] * Lv * self.ds
         else:
             dat = -dacval
@@ -394,7 +394,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 px = np.squeeze(pxt[t + 1, :, :])
                 v = self.options['KparDiff'].applyK(z, a)
                 if self.internalCost:
-                    Lv = self.internalCostGrad(foo, v, variables='phi')
+                    Lv = self.internalCostGrad(foo, v, variables='phi')['phi']
                     dat[t, :, :] += self.options['KparDiff'].applyK(z, 2 * self.options['regWeight'] * a - px +
                                                             self.options['regWeight'] * self.options['internalWeight'] * Lv)
                 else:
@@ -452,7 +452,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
     def saveEvolution(self, fv0, state, fileName='evolution', velocity = None, orientation= None,
                       constraint = None, normals=None):
         xt = state['xt']
-        Jacobian = state['xt']
+        Jacobian = state['Jt']
         if velocity is None:
             velocity = self.v
         if orientation is None:

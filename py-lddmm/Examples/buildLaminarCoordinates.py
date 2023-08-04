@@ -8,6 +8,7 @@ if 'DISPLAY' in os.environ:
 else:
     matplotlib.use("Agg")
 import numpy as np
+import logging
 from base import loggingUtils
 from base import surfaces
 from base.kernelFunctions import Kernel
@@ -127,7 +128,7 @@ def BuildLaminar(target0, outputDir, pancakeThickness=None, runRegistration=True
     sigmaDist = 2.5
     sigmaError = .1
     internalWeight = 10.
-    internalCost = 'elastic'
+    internalCost = [['displacement', 1.], ['elastic', 100.]]
     K1 = Kernel(name='laplacian', sigma=sigmaKernel)
 
     options = {
@@ -141,7 +142,7 @@ def BuildLaminar(target0, outputDir, pancakeThickness=None, runRegistration=True
         'errorType': 'varifold',
         'algorithm': 'bfgs',
         'pk_dtype': 'float32',
-        'saveFile': 'firstRun',
+        'saveFile': 'evolution',
         'internalWeight': internalWeight,
         'internalCost': internalCost,
         'saveTrajectories': True,

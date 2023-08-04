@@ -259,6 +259,7 @@ def square_divergence_grad(x, v, faces, variables = 'both'):
     gradx = np.zeros(x.shape)
     gradphi = np.zeros(v.shape)
     test = False
+    grad = dict()
     #logging.info(f"dim = {dim}, variables = {variables}")
     if dim==2:
         x0 = x[faces[:, 0], :]
@@ -284,6 +285,7 @@ def square_divergence_grad(x, v, faces, variables = 'both'):
                 fp = square_divergence(x, v+eps*h, faces)
                 fm = square_divergence(x, v-eps*h, faces)
                 logging.info(f'test sqdiv v: {(gradphi*h).sum():.4f} {(fp-fm)/(2*eps):.4f}')
+            grad['phi'] = gradphi
             #gradphi = -gradphi
         if variables == 'x' or variables == 'both':
             c2 = ((div/vol)**2)[:, None]
@@ -294,6 +296,7 @@ def square_divergence_grad(x, v, faces, variables = 'both'):
                 gradx[f[0], :] += dx0[k, :]
                 gradx[f[1], :] += dx1[k, :]
                 gradx[f[2], :] += dx2[k, :]
+            grad['x'] = gradx
             #gradx = -gradx
             if test == True:
                 eps = 1e-10
@@ -323,6 +326,7 @@ def square_divergence_grad(x, v, faces, variables = 'both'):
                 gradphi[f[1], :] += dphi1[k, :]
                 gradphi[f[2], :] += dphi2[k, :]
                 gradphi[f[3], :] += dphi3[k, :]
+            grad['phi'] = gradphi
 
         if variables == 'x' or variables == 'both':
             c2 = ((div/vol)**2)[:, None]
@@ -335,13 +339,16 @@ def square_divergence_grad(x, v, faces, variables = 'both'):
                 gradx[f[1], :] += dx1[k, :]
                 gradx[f[2], :] += dx2[k, :]
                 gradx[f[3], :] += dx3[k, :]
+            grad['x'] = gradx
     else:
         logging.warning('square divergence grad: unrecognized dimension')
-    if variables == 'both':
-        return (gradphi, gradx)
-    elif variables == 'phi':
-        return gradphi
-    elif variables == 'x':
-        return gradx
-    else:
-        logging.info('Incorrect option in square_divergence_grad')
+
+    return grad
+    # if variables == 'both':
+    #     return (gradphi, gradx)
+    # elif variables == 'phi':
+    #     return gradphi
+    # elif variables == 'x':
+    #     return gradx
+    # else:
+    #     logging.info('Incorrect option in square_divergence_grad')

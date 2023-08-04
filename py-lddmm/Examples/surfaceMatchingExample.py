@@ -18,11 +18,12 @@ from base.kernelFunctions import Kernel
 from base.affineRegistration import rigidRegistration
 from base.surfaceMatching import SurfaceMatching
 from base.secondOrderSurfaceMatching import SecondOrderSurfaceMatching
+from base.surfaceExamples import HalfSphere
 import pykeops
 pykeops.clean_pykeops()
 plt.ion()
 
-model = 'Balls'
+model = 'HalfSphere'
 
 secondOrder = False
 
@@ -30,7 +31,7 @@ if secondOrder:
     typeCost = 'LDDMM'
     order = '_SO_'
 else:
-    typeCost = 'LDDMM'
+    typeCost = 'internal'
     order = ''
 
 
@@ -42,10 +43,11 @@ def compute(model):
         internalWeight = 0.
         regweight = 1.
     else:
-        sigmaKernel = 0.5
-        internalWeight = 100.
+        sigmaKernel = .5
+        internalWeight = 1.
         regweight = 0.1
-        internalCost = 'elastic'
+        #internalCost = 'elastic'
+        internalCost = [['elastic', 100.], ['displacement', 10.]]
 
     sigmaDist = 10.
     sigmaError = 1.
@@ -117,6 +119,11 @@ def compute(model):
 
         ftemp = fv1
         ftarg = fv3
+    elif model=='HalfSphere':
+        ftemp = HalfSphere(radius=5)
+        ftarg = HalfSphere(radius=10)
+        sigmaDist = 2.5
+        sigmaError = 0.1
     elif model=='KCrane':
         ftemp = surfaces.Surface(surf='../testData/Surfaces/KCrane/blub_triangulated_reduced.obj')
         ftarg = surfaces.Surface(surf='../testData/Surfaces/KCrane/spot_triangulated_reduced.obj')
@@ -182,7 +189,7 @@ def compute(model):
         'outputDir': '../Output/surfaceMatchingExample/' + model + order,
         'mode': 'normal',
         'maxIter': 2000,
-        'affine': 'euclidean',
+        'affine': 'none',
         'affineKernel': False,
         'regWeight': regweight,
         'Landmarks': landmarks,
@@ -194,10 +201,12 @@ def compute(model):
         'KparDist': ('gauss', sigmaDist),
         'sigmaError': sigmaError,
         'errorType': 'varifold',
+        'pk_dtype': 'float64',
         'algorithm': 'bfgs',
         'unreduced': False,
         'internalWeight': internalWeight,
         'internalCost': internalCost,
+        'saveTrajectories': True,
         'unreducedResetRate': 10000,
         'unreducedWeight': 0.1
     }
