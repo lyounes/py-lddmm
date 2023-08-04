@@ -2,8 +2,13 @@ import numpy as np
 from numba import jit
 from . import diffeo
 import logging
-from pykeops.numpy import LazyTensor
-import pykeops
+import keopscore
+if keopscore.config.config.use_cuda:
+    from pykeops.numpy import Genred, LazyTensor
+    import pykeops
+
+# from pykeops.numpy import LazyTensor
+# import pykeops
 from . import kernelFunctions_util as ku
 
 def haussdorffDist(fv1, fv2):
@@ -279,7 +284,7 @@ def df0_(u):
     return 2*u
 
 def varifoldNorm0(fv1, KparDist, fun = None, cpu=False, dtype='float64'):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and keopscore.config.config.use_cuda:
         return varifoldNorm0_pykeops(fv1, KparDist, dtype = dtype)
     else:
         return varifoldNorm0_numpy(fv1, KparDist, fun = fun)
@@ -321,7 +326,7 @@ def varifoldNorm0_pykeops(fv1, KparDist, dtype = 'float64'):
 
 # Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct
 def varifoldNormDef(fvDef, fv1, KparDist, fun = None, cpu=False, dtype='float64'):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and keopscore.config.config.use_cuda:
         return varifoldNormDef_pykeops(fvDef, fv1, KparDist, dtype = KparDist.pk_dtype)
     else:
         return varifoldNormDef_numpy(fvDef, fv1, KparDist, fun = fun)
@@ -387,7 +392,7 @@ def varifoldNorm(fvDef, fv1, KparDist, fun=None):
 
 # Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (current norm)
 def varifoldNormGradient(fvDef, fv1, KparDist, with_weights=False, fun = None, cpu=False, dtype='float64'):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and keopscore.config.config.use_cuda:
 #        varifoldNormGradient_numpy(fvDef, fv1, KparDist, with_weights=with_weights, fun = fun)
         return varifoldNormGradient_pykeops(fvDef, fv1, KparDist, with_weights=with_weights, dtype = KparDist.pk_dtype)
     else:

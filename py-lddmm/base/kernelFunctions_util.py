@@ -10,8 +10,10 @@ except:
     cupy_available = False
 
 from math import pi
-from pykeops.numpy import Genred, LazyTensor
-import pykeops
+import keopscore
+if keopscore.config.config.use_cuda:
+    from pykeops.numpy import Genred, LazyTensor
+    import pykeops
 
 pkfloat = 'float64'
 
@@ -439,7 +441,7 @@ def pick_fun(name, mode = 'base'):
     return fun
 
 def applyK(y, x, a, name, scale, order, cpu=False, dtype='float64', KP=-1):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and keopscore.config.config.use_cuda:
         return applyK_pykeops(y, x, a, name, scale, order, dtype=dtype, KP=KP)
     else:
         fun = pick_fun(name)
@@ -534,7 +536,7 @@ def applyK_pykeops(y, x, a, name, scale, order, dtype='float64', KP=-1):
 
 def applyK1K2(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, a,
               cpu=False, dtype='float64', KP=-1):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and keopscore.config.config.use_cuda:
         return applyK1K2_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, a,
                                  dtype=dtype, KP=KP)
     else:
@@ -592,7 +594,7 @@ def applyK1K2_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, orde
 
 
 def applyDiv(y, x, a, name, scale, order, cpu=False, dtype='float64', KP=-1):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and keopscore.config.config.use_cuda:
         return applyDiv_pykeops(y, x, a, name, scale, order, dtype=dtype, KP=KP)
     else:
         fun = pick_fun(name, mode = 'Diff')
@@ -642,7 +644,7 @@ def applyDiv_pykeops(y, x, a, name, scale, order, dtype='float64', KP=-1, option
 
 ## Kernel sums: first derivative
 def applyDiffK(x, a1, a2, name, scale, order, cpu=False, dtype='float64', KP=-1, option='1'):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and keopscore.config.config.use_cuda:
         return applyDiffK_pykeops(x, a1, a2, name, scale, order, dtype=dtype, KP=KP, option=option)
     else:
         fun = pick_fun(name, mode = 'Diff')
@@ -761,7 +763,7 @@ def applyDiffK_pykeops(x, a1, a2, name, scale, order, dtype='float64', KP=-1, op
 
 ##Transposed
 def applyDiffKT(y, x, p, a, name, scale, order, regweight=1., sym = False, lddmm=False, cpu=False, dtype='float64', KP=-1):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and keopscore.config.config.use_cuda:
         return applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=regweight, lddmm=lddmm,
                                    sym=sym, dtype=dtype, KP=KP)
     else:
@@ -844,7 +846,7 @@ def applyDiffKT_pykeops(y, x, p, a, name, scale, order, regweight=1., lddmm=Fals
 
 def applyDiffK1K2T(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, p, a,
               regweight=1., lddmm=False, cpu=False, dtype='float64', KP=-1):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and keopscore.config.config.use_cuda:
         return applyDiffK1K2T_pykeops(y1, x1, name1, scale1, order1, y2, x2, name2, scale2, order2, p, a,
                                  regweight=regweight, lddmm=lddmm, dtype=dtype, KP=KP)
     else:
@@ -1080,7 +1082,7 @@ def applykdiff1and2_(x, a1, a2, name, scale, order, KP=-1):
 
 ## Second derivatives
 def applyDDiffK(x, a1, a2, p, name, scale, order, cpu=False, dtype='float64', KP=-1, option='11'):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and keopscore.config.config.use_cuda:
         return applyDDiffK_pykeops(x, a1, a2, p, name, scale, order, dtype=dtype, KP=KP, option=option)
     else:
         fun = pick_fun(name, mode = 'DDiff')
@@ -1420,7 +1422,7 @@ def applykdiff11and12(x, a1, a2, p, name, scale, order, KP=-1):
 #     return f
 
 def applyktensor(y, x, ay, ax, betay, betax, name, scale, order, cpu=False, dtype='float64', KP=-1):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and keopscore.config.config.use_cuda:
        # res1 = applyktensor_numba(y, x, ay, ax, betay, betax, name, scale, order)
         res2 = applyktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype=dtype, KP=KP)
         return res2 
@@ -1538,7 +1540,7 @@ def applykmat(y, x, beta, name, scale, order, KP=-1):
     return f
 
 def applydiffktensor(y, x, ay, ax, betay, betax, name, scale, order, cpu=False, dtype='float64', KP=-1):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and keopscore.config.config.use_cuda:
         return applydiffktensor_pykeops(y, x, ay, ax, betay, betax, name, scale, order, dtype=dtype, KP=KP)
     else:
         return applydiffktensor_numba(y, x, ay, ax, betay, betax, name, scale, order, KP=KP)
@@ -1627,7 +1629,7 @@ def applydiffktensor_numba(y, x, ay, ax, betay, betax, name, scale, order, KP=-1
 
 
 def applykdiffmat(y, x, beta, name, scale, order, cpu=False, dtype='float64', KP=-1):
-    if not cpu and cupy_available and pykeops.config.gpu_available:
+    if not cpu and cupy_available and keopscore.config.config.use_cuda:
         return applykdiffmat_cupy(y, x, beta, name, scale, order, dtype=dtype, KP=KP)
     else:
         return applykdiffmat_numba(y, x, beta, name, scale, order, KP=KP)
