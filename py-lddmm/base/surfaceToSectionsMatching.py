@@ -3,9 +3,9 @@ import numpy.linalg as la
 import logging
 from .surfaces import Surface, extract_components_
 from .curves import Curve
-from .curve_distances import measureNorm0, measureNormDef, measureNormGradient
-from .curve_distances import currentNorm0, currentNormDef, currentNormGradient
-from .curve_distances import varifoldNorm0, varifoldNormDef, varifoldNormGradient
+from .curveDistancess import measureNorm0, measureNormDef, measureNormGradient
+from .curveDistancess import currentNorm0, currentNormDef, currentNormGradient
+from .curveDistancess import varifoldNorm0, varifoldNormDef, varifoldNormGradient
 from functools import partial
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.axes3d import Axes3D

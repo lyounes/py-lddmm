@@ -7,7 +7,7 @@ from .surfaceTimeSeries import SurfaceTimeMatching
 from .secondOrderPointSetMatching import SecondOrderPointSetMatching
 from . import pointEvolution as evol
 from .affineBasis import getExponential, gradExponential
-from .surface_distances import L2Norm0
+from .surfaceDistancess import L2Norm0
 
 ## Parameter class for matching
 #      timeStep: time discretization

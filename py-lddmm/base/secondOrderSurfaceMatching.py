@@ -6,7 +6,7 @@ from .secondOrderPointSetMatching import SecondOrderPointSetMatching
 from .surfaceMatching import SurfaceMatching
 # from . import conjugateGradient as cg, pointEvolution as evol, bfgs
 # from .affineBasis import getExponential, gradExponential
-# from .surface_distances import L2Norm, L2Norm0, L2NormGradient
+# from .surfaceDistancess import L2Norm, L2Norm0, L2NormGradient
 
 ## Parameter class for matching
 #      timeStep: time discretization

@@ -1,7 +1,7 @@
 import numpy.linalg as la
 import logging
 import pointSets
-from . import surfaces, surface_distances as sd
+from . import surfaces, surfaceDistancess as sd
 #import pointEvolution_fort as evol_omp
 from . import conjugateGradient as cg, pointEvolution as evol
 from .surfaceTimeSeries import SurfaceTimeMatching, Control

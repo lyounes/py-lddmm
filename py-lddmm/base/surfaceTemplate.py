@@ -2,7 +2,7 @@ import numpy as np
 from . import surfaces
 import logging
 from .surfaceMatching import SurfaceMatching, Control as SMControl, State as SMState
-from . import surface_distances as sd
+from . import surfaceDistancess as sd
 import multiprocessing as mp
 from . import conjugateGradient as cg, bfgs as bfgs, kernelFunctions as kfun
 from .surfaceExamples import Ellipse_pygal

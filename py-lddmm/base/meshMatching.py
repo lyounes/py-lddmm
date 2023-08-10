@@ -4,7 +4,7 @@ import h5py
 import logging
 from functools import partial
 from . import kernelFunctions as kfun, pointEvolution as evol
-from . import meshes, mesh_distances as msd
+from . import meshes, meshDistances as msd
 from . import pointSetMatching
 
 
@@ -110,7 +110,13 @@ class MeshMatching(pointSetMatching.PointSetMatching):
             self.extraTerm['fun'] = partial(msd.square_divergence, faces=self.fv0.faces)
             self.extraTerm['grad'] = partial(msd.square_divergence_grad, faces=self.fv0.faces)
             self.extraTerm['coeff'] = self.options['internalWeight']
+        elif self.options['internalCost'] == 'normalized_divergence':
+            self.extraTerm = {}
+            self.extraTerm['fun'] = partial(msd.normalized_square_divergence, faces=self.fv0.faces)
+            self.extraTerm['grad'] = partial(msd.normalized_square_divergence_grad, faces=self.fv0.faces)
+            self.extraTerm['coeff'] = self.options['internalWeight']
         else:
+            logging.warning("Internal cost not recognized: " + self.options['internalCost'])
             self.extraTerm = None
 
 

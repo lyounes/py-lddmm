@@ -7,7 +7,7 @@ import h5py
 import glob
 from . import conjugateGradient as cg, kernelFunctions as kfun, pointEvolution as evol, bfgs
 from . import surfaces
-from . import surface_distances
+from . import surfaceDistancess
 from . import pointSets
 from .surfaceMatching import SurfaceMatching, Control as SMControl, State as SMState
 from .affineBasis import AffineBasis, getExponential, gradExponential
@@ -142,15 +142,15 @@ class SurfaceMatchingMidpoint(SurfaceMatching):
         self.options['errorType'] = errorType
         if errorType == 'current':
             #print('Running Current Matching')
-            self.fun_obj = partial(surface_distances.currentNorm, KparDist=self.options['KparDist'], weight=1.)
-            self.fun_objGrad = partial(surface_distances.currentNormGradient, KparDist=self.options['KparDist'], weight=1.)
+            self.fun_obj = partial(surfaceDistancess.currentNorm, KparDist=self.options['KparDist'], weight=1.)
+            self.fun_objGrad = partial(surfaceDistancess.currentNormGradient, KparDist=self.options['KparDist'], weight=1.)
         elif errorType=='measure':
             #print('Running Measure Matching')
-            self.fun_obj = partial(surface_distances.measureNorm,KparDist=self.options['KparDist'])
-            self.fun_objGrad = partial(surface_distances.measureNormGradient,KparDist=self.options['KparDist'])
+            self.fun_obj = partial(surfaceDistancess.measureNorm,KparDist=self.options['KparDist'])
+            self.fun_objGrad = partial(surfaceDistancess.measureNormGradient,KparDist=self.options['KparDist'])
         elif errorType=='varifold':
-            self.fun_obj = partial(surface_distances.varifoldNorm, KparDist=self.options['KparDist'], fun=vfun)
-            self.fun_objGrad = partial(surface_distances.varifoldNormGradient, KparDist=self.options['KparDist'], fun=vfun)
+            self.fun_obj = partial(surfaceDistancess.varifoldNorm, KparDist=self.options['KparDist'], fun=vfun)
+            self.fun_objGrad = partial(surfaceDistancess.varifoldNormGradient, KparDist=self.options['KparDist'], fun=vfun)
         else:
             print('Unknown error Type: ', self.options['errorType'])
 

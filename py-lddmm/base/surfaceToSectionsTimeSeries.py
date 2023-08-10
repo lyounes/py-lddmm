@@ -4,9 +4,9 @@ from functools import partial
 import logging
 from .surfaces import Surface
 from .curves import Curve
-from .curve_distances import measureNorm0, measureNormDef, measureNormGradient
-from .curve_distances import currentNorm0, currentNormDef, currentNormGradient
-from .curve_distances import varifoldNorm0, varifoldNormDef, varifoldNormGradient
+from .curveDistancess import measureNorm0, measureNormDef, measureNormGradient
+from .curveDistancess import currentNorm0, currentNormDef, currentNormGradient
+from .curveDistancess import varifoldNorm0, varifoldNormDef, varifoldNormGradient
 from .surfaceTimeSeries import SurfaceTimeMatching
 from .surfaceSection import SurfaceSection, Surf2SecDist, Surf2SecGrad, Hyperplane, readFromTXT
 

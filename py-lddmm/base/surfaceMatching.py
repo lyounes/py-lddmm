@@ -6,10 +6,10 @@ import logging
 import h5py
 from . import conjugateGradient as cg, bfgs, sgd
 from . surfaces import Surface, vtkFields
-from .surface_distances import currentNorm0, currentNormGradient, currentMagnitude, currentMagnitudeGradient, currentNormDef
-from .surface_distances import measureNorm0, measureNormGradient, measureNormDef, varifoldNormGradient, varifoldNormDef, varifoldNorm0
-from .surface_distances import measureNormPS0, measureNormPSDef, measureNormPSGradient, L2NormGradient, L2Norm0, L2Norm
-from .surface_distances import normGrad, elasticNorm, diffNormGrad, diffElasticNorm, normDisplacement, diffNormDisplacement
+from .surfaceDistancess import currentNorm0, currentNormGradient, currentMagnitude, currentMagnitudeGradient, currentNormDef
+from .surfaceDistancess import measureNorm0, measureNormGradient, measureNormDef, varifoldNormGradient, varifoldNormDef, varifoldNorm0
+from .surfaceDistancess import measureNormPS0, measureNormPSDef, measureNormPSGradient, L2NormGradient, L2Norm0, L2Norm
+from .surfaceDistancess import normGrad, elasticNorm, diffNormGrad, diffElasticNorm, normDisplacement, diffNormDisplacement
 from . pointSets import PointSet, saveTrajectories, savePoints
 import pointset_distances as psd
 from .pointSetMatching import PointSetMatching

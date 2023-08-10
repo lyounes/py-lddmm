@@ -2,7 +2,7 @@ import numpy as np
 from numba import jit
 import numpy.linalg as LA
 import scipy.linalg as spLA
-from .surface_distances import currentNorm0
+from .surfaceDistances import currentNorm0
 
 try:
     from vtk import vtkQuadricClustering

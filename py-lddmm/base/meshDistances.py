@@ -268,7 +268,7 @@ def square_divergence_grad(x,v,faces, variables='both'):
     return square_divergence_grad_(x,v,faces, variables=variables)
 
 def normalized_square_divergence_grad(x,v,faces, variables='both'):
-    return square_divergence_(x,v,faces, normalize=True, variables=variables)
+    return square_divergence_grad_(x,v,faces, normalize=True, variables=variables)
 
 
 def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
@@ -276,7 +276,7 @@ def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
     nf = faces.shape[0]
     gradx = np.zeros(x.shape)
     gradphi = np.zeros(v.shape)
-    test = False
+    test = True
     grad = dict()
     #logging.info(f"dim = {dim}, variables = {variables}")
     if dim==2:
@@ -289,6 +289,12 @@ def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
         vol = np.fabs(det2D(x1-x0, x2-x0))
         div = det2D(v2, x0-x1) + det2D(v0, x1-x2) + det2D(v1, x2-x0)
         c1 = 2 * (div / vol)[:, None]
+        if normalize:
+            totalVol = vol.sum()
+            sqdiv = (div ** 2 / vol).sum()
+        else:
+            totalVol = 1
+            sqdiv = 1
         if variables == 'phi' or variables == 'both':
             dphi2 = -rot90(x0-x1) * c1
             dphi0 = -rot90(x1-x2) * c1
@@ -297,31 +303,36 @@ def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
                 gradphi[f[0], :] += dphi0[k, :]
                 gradphi[f[1], :] += dphi1[k, :]
                 gradphi[f[2], :] += dphi2[k, :]
+            grad['phi'] = gradphi / totalVol
             if test == True:
                 eps = 1e-10
                 h = np.random.normal(0,1,v.shape)
-                fp = square_divergence(x, v+eps*h, faces)
-                fm = square_divergence(x, v-eps*h, faces)
-                logging.info(f'test sqdiv v: {(gradphi*h).sum():.4f} {(fp-fm)/(2*eps):.4f}')
-            grad['phi'] = gradphi
+                fp = square_divergence_(x, v+eps*h, faces, normalize=normalize)
+                fm = square_divergence_(x, v-eps*h, faces, normalize=normalize)
+                logging.info(f"test sqdiv v: {(grad['phi']*h).sum():.4f} {(fp-fm)/(2*eps):.4f}")
             #gradphi = -gradphi
         if variables == 'x' or variables == 'both':
             c2 = ((div/vol)**2)[:, None]
             dx0 = -rot90(v1 - v2) * c1 + rot90(x1-x2)*c2
             dx1 = -rot90(v2 - v0) * c1 + rot90(x2-x0)*c2
             dx2 = -rot90(v0 - v1) * c1 + rot90(x0-x1)*c2
+            if normalize:
+                dx0 -= rot90(x1-x2) * sqdiv / totalVol
+                dx1 -= rot90(x2-x0) * sqdiv /totalVol
+                dx2 -= rot90(x0-x1) * sqdiv / totalVol
+
             for k, f in enumerate(faces):
                 gradx[f[0], :] += dx0[k, :]
                 gradx[f[1], :] += dx1[k, :]
                 gradx[f[2], :] += dx2[k, :]
-            grad['x'] = gradx
+            grad['x'] = gradx/totalVol
             #gradx = -gradx
             if test == True:
                 eps = 1e-10
                 h = np.random.normal(0, 1, x.shape)
-                fp = square_divergence(x + eps * h, v, faces)
-                fm = square_divergence(x - eps * h, v, faces)
-                logging.info(f'test sqdiv x: {(gradx*h).sum():.4f} {(fp - fm) / (2 * eps):.4f}')
+                fp = square_divergence_(x + eps * h, v, faces, normalize=normalize)
+                fm = square_divergence_(x - eps * h, v, faces, normalize=normalize)
+                logging.info(f"test sqdiv x: {(grad['x']*h).sum():.4f} {(fp - fm) / (2 * eps):.4f}")
     elif dim == 3:
         x0 = x[faces[:, 0], :]
         x1 = x[faces[:, 1], :]
@@ -334,6 +345,12 @@ def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
         vol = np.fabs(det3D(x1-x0, x2-x0, x3-x0))
         div = det3D(v3, x0-x1, x0-x2) + det3D(v0, x1-x2, x1-x3) + det3D(v1, x2-x3, x2-x0) + det3D(v2, x3-x0, x3-x1)
         c1 = 2 * (div / vol)[:, None]
+        if normalize:
+            totalVol = vol.sum()
+            sqdiv = (div ** 2 / vol).sum()
+        else:
+            totalVol = 1
+            sqdiv = 1
         if variables == 'phi' or variables == 'both':
             dphi0 = np.cross(x1-x2, x1-x3) * c1
             dphi1 = np.cross(x2-x3, x2-x0) * c1
@@ -344,7 +361,13 @@ def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
                 gradphi[f[1], :] += dphi1[k, :]
                 gradphi[f[2], :] += dphi2[k, :]
                 gradphi[f[3], :] += dphi3[k, :]
-            grad['phi'] = gradphi
+            grad['phi'] = gradphi/totalVol
+            if test == True:
+                eps = 1e-10
+                h = np.random.normal(0,1,v.shape)
+                fp = square_divergence_(x, v+eps*h, faces, normalize=normalize)
+                fm = square_divergence_(x, v-eps*h, faces, normalize=normalize)
+                logging.info(f"test sqdiv v: {(grad['phi']*h).sum():.4f} {(fp-fm)/(2*eps):.4f}")
 
         if variables == 'x' or variables == 'both':
             c2 = ((div/vol)**2)[:, None]
@@ -352,12 +375,25 @@ def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
             dx1 = (np.cross(v2, x0-x3) + np.cross(v3, x0-x2) + np.cross(v0, x3-x2)) * c1 - c2 * np.cross(x2-x0, x3-x0)
             dx2 = (np.cross(v3, x1-x0) + np.cross(v0, x1-x3) + np.cross(v1, x0-x3)) * c1 - c2 * np.cross(x3-x1, x0-x1)
             dx3 = (np.cross(v0, x2-x1) + np.cross(v1, x2-x0) + np.cross(v2, x1-x0)) * c1 - c2 * np.cross(x0-x2, x1-x2)
+            if normalize:
+                dx0 -= np.cross(x1 - x3, x2 - x3) * sqdiv / totalVol
+                dx1 -= np.cross(x2 - x0, x3 - x0) * sqdiv / totalVol
+                dx2 -= np.cross(x3 - x1, x0 - x1) * sqdiv / totalVol
+                dx3 -= np.cross(x0 - x2, x1 - x2) * sqdiv / totalVol
+
             for k, f in enumerate(faces):
                 gradx[f[0], :] += dx0[k, :]
                 gradx[f[1], :] += dx1[k, :]
                 gradx[f[2], :] += dx2[k, :]
                 gradx[f[3], :] += dx3[k, :]
-            grad['x'] = gradx
+            grad['x'] = gradx/totalVol
+            if test == True:
+                eps = 1e-10
+                h = np.random.normal(0, 1, x.shape)
+                fp = square_divergence_(x + eps * h, v, faces, normalize=normalize)
+                fm = square_divergence_(x - eps * h, v, faces, normalize=normalize)
+                logging.info(f"test sqdiv x: {(grad['x']*h).sum():.4f} {(fp - fm) / (2 * eps):.4f}")
+
     else:
         logging.warning('square divergence grad: unrecognized dimension')
 

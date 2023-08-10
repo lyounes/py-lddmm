@@ -32,7 +32,7 @@ if secondOrder:
     internalCost = None
 else:
     typeCost = 'LDDMM'
-    internalCost = None #'divergence'
+    internalCost = 'normalized_divergence'
     order = ''
 
 def compute(model):

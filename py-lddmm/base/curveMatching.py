@@ -1,7 +1,7 @@
 import os
 from copy import deepcopy
 import logging
-from . import curves, curve_distances as cd
+from . import curves, curveDistancess as cd
 from . import pointSets
 from .pointSetMatching import PointSetMatching, Control, State
 from . import conjugateGradient as cg, grid, pointEvolution as evol, bfgs
