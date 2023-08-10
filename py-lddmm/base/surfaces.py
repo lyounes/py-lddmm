@@ -697,7 +697,7 @@ class Surface:
 
             #dc = vtkDecimatePro()
             if target>0:
-                red = 1 - min(np.float(target)/g.GetNumberOfPoints(), 1)
+                red = 1 - min(float(target)/g.GetNumberOfPoints(), 1)
                 #print 'Reduction: ', red
                 dc = vtkQuadricDecimation()
                 dc.SetTargetReduction(red)

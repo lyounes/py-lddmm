@@ -23,7 +23,9 @@ import pykeops
 pykeops.clean_pykeops()
 plt.ion()
 
-model = 'HalfSphere'
+#model = 'HalfSphere'
+model = 'Hearts'
+
 
 secondOrder = False
 
@@ -31,7 +33,7 @@ if secondOrder:
     typeCost = 'LDDMM'
     order = '_SO_'
 else:
-    typeCost = 'internal'
+    typeCost = 'elastic'
     order = ''
 
 
@@ -46,8 +48,8 @@ def compute(model):
         sigmaKernel = .5
         internalWeight = 1.
         regweight = 0.1
-        #internalCost = 'elastic'
-        internalCost = [['elastic', 100.], ['displacement', 10.]]
+        internalCost = [['elastic', 50]]
+        #internalCost = [['elastic', 100.], ['displacement', 10.]]
 
     sigmaDist = 10.
     sigmaError = 1.
@@ -114,8 +116,10 @@ def compute(model):
         I1 = np.minimum(c1**p/s1 - ((ax**p + 0.5*ay**p + az**p)), np.minimum((s2*ax**p + s2*0.5*ay**p + s2*az**p)-c2**p/s1, 1+c3/s1-y))  
         fv3 = Surface()
         fv3.Isosurface(I1, value = 0, target=1000, scales=[1, 1, 1], smooth=0.01)
-        
-        fv3.vertices[:,1] += 15 - 15/s1
+
+        vrt = fv3.vertices
+        vrt[:, 1] += 15 - 15 / s1
+        fv3.updateVertices(vrt)
 
         ftemp = fv1
         ftarg = fv3
