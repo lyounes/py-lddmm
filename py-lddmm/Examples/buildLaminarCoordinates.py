@@ -142,7 +142,7 @@ def BuildLaminar(target0, outputDir, pancakeThickness=None, runRegistration=True
         'errorType': 'varifold',
         'algorithm': 'bfgs',
         'pk_dtype': 'float32',
-        'saveFile': 'firstRun',
+        'saveFile': 'evolution',
         'internalWeight': internalWeight,
         'internalCost': internalCost,
         'saveTrajectories': True,

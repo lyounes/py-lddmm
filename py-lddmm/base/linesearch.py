@@ -97,7 +97,13 @@ def line_search_weak_wolfe(opt, pk, gfk=None, old_fval=None,
     amin = 0
     if old_fval is None:
         old_fval = phi(0)
+
     t = t_init
+    if hasattr(opt, "gradCoeff"):
+        gradCoeff = opt.gradCoeff
+    else:
+        gradCoeff = 1
+    #t *= gradCoeff
     maxiter2 = 100
     # if old_old_fval is not None:
     #     t = 2*(old_fval - old_old_fval)/derphi0
@@ -114,11 +120,11 @@ def line_search_weak_wolfe(opt, pk, gfk=None, old_fval=None,
     fval = phi(t)
     while it < maxiter2 and itGrad < maxiter:
         armijo = False
-        if fval < old_fval + c1 * t * derphi0:
+        if fval < old_fval + c1 * t * derphi0 * gradCoeff:
             df = derphi(t)
             armijo = True
             itGrad += 1
-            if df > c2 * derphi0:
+            if df > c2 * derphi0 * gradCoeff:
                 break
             else:
                 amin = t
@@ -138,9 +144,10 @@ def line_search_weak_wolfe(opt, pk, gfk=None, old_fval=None,
 
     if itGrad == maxiter:
         logging.warning('Weak Wolfe condition: maximum gradient computations attained: switching to backtracking')
+        gval[0] = None
         while it < maxiter2:
             armijo = False
-            if fval < old_fval + c1 * t * derphi0:
+            if fval < old_fval + c1 * t * derphi0 * gradCoeff:
                 df = derphi(t)
                 break
             else:
@@ -149,7 +156,7 @@ def line_search_weak_wolfe(opt, pk, gfk=None, old_fval=None,
             it += 1
 
     if it == maxiter2:
-        logging.warning('Weak Wolfe condition: maximum number of iterations attained')
+        logging.warning(f'Weak Wolfe condition: maximum number of iterations attained {fval:.5f}--{old_fval:.5f}')
         t = None
 
     #logging.info(f'Objective after line search {fval:.4f}, {opt.obj:.4f}, {opt.objTry:.4f}')

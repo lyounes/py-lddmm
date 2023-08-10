@@ -452,7 +452,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
     def saveEvolution(self, fv0, state, fileName='evolution', velocity = None, orientation= None,
                       constraint = None, normals=None):
         xt = state['xt']
-        Jacobian = state['xt']
+        Jacobian = state['Jt']
         if velocity is None:
             velocity = self.v
         if orientation is None:

@@ -103,6 +103,7 @@ class SurfaceMatching(PointSetMatching):
             self.set_sgd()
 
 
+
     def createObject(self, data, other=None):
         if isinstance(data, Surface):
             fv = Surface(surf=data)
@@ -186,6 +187,7 @@ class SurfaceMatching(PointSetMatching):
                 self.options['internalCost'] = [[self.options['internalCost'], self.options['internalWeight']]]
             else:
                 self.options['internalCost'] = list(self.options['internalCost'])
+
             for d in self.options['internalCost']:
                 if d[0] == 'h1':
                     self.internalcostList.append([normGrad, diffNormGrad, d[1]])
@@ -240,6 +242,7 @@ class SurfaceMatching(PointSetMatching):
         else:
             self.fv0 = Surface(surf=Template)
 
+        self.x0 = self.fv0.vertices
         if self.options['errorType'] != 'currentMagnitude':
             if Target is None:
                 logging.error('Please provide a target surface')
@@ -1292,13 +1295,13 @@ class SurfaceMatching(PointSetMatching):
         return xtEPDiff, atEPdiff
 
     def updateEndPoint(self, xt):
-        self.fvDef.updateVertices(np.squeeze(xt[-1, :self.nvert, :]))
+        self.fvDef.updateVertices(xt[-1, :self.nvert, :])
         if self.match_landmarks:
             self.def_lmk.updateVertices(xt[-1, self.nvert:, :])
 
     def plotAtIteration(self):
         fig = plt.figure(4)
-        # fig.clf()
+        fig.clf()
         ax = Axes3D(fig, auto_add_to_figure=False)
         fig.add_axes(ax)
         lim0 = self.addSurfaceToPlot(self.fv1, ax, ec='k', fc='b')
@@ -1333,13 +1336,17 @@ class SurfaceMatching(PointSetMatching):
             self.controlTry['ct'] = np.copy(self.control['ct'])
 
 
+
     def startOfIteration(self):
         if self.options['algorithm'] != 'sgd':
             if self.reset:
-                self.options['KparDiff'].pk_dtype = 'float64'
-                self.options['KparDist'].pk_dtype = 'float64'
+                logging.info('switching to float64')
+                self.resetPK('float64')
+                self.pkBuffer = 0
+
 
     def endOfIteration(self, forceSave=False):
+        # t0 = time.process_time()
         self.iter += 1
         if self.options['algorithm'] == 'sgd':
             self.endOfIterationSGD(forceSave=forceSave)
@@ -1425,9 +1432,20 @@ class SurfaceMatching(PointSetMatching):
                                            self.control['ct'])
             self.saveHdf5(fileName=self.outputDir + '/output.h5')
         else:
+            if self.reset:
+                obj0 = self.objectiveFun()
+                self.obj = None
+                obj = self.objectiveFun()
+                self.obj = None
+                self.resetPK('float64')
+                obj2 = self.objectiveFun()
+                self.resetPK()
+                logging.info(f"recomputing Objective {obj0:.5f} {obj:.5f} {obj2:.5f}")
             if self.varCounter != self.trajCounter:
+                logging.info('recomputing trajectories')
                 st = self.solveStateEquation(init_state=self.control['x0'])
                 self.state['xt'] = st['xt']
+
                 # if self.unreduced:
                 #     self.state['xt'] = evolSR.landmarkSemiReducedEvolutionEuler(self.control['x0'], self.control['ct'],
                 #                                                               self.control['at']*self.ds,
@@ -1470,10 +1488,19 @@ class SurfaceMatching(PointSetMatching):
                     # logging.info(f'max distance = {dist:.4f}')
                     self.reset = True
         if self.pplot:
+            logging.info('Plotting')
             self.plotAtIteration()
 
-        self.options['KparDiff'].pk_dtype = self.Kdiff_dtype
-        self.options['KparDist'].pk_dtype = self.Kdist_dtype
+        if self.pkBuffer > 50:
+            if self.options['KparDiff'].pk_dtype != self.Kdiff_dtype:
+                logging.info("return to original pk_dtype")
+            self.resetPK()
+        else:
+            self.pkBuffer += 1
+
+        # t1 = time.process_time() - t0
+        # logging.info(f'EoI time: {t1:.04f}')
+
 
 
     def saveHdf5(self, fileName):

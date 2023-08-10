@@ -18,11 +18,14 @@ from base.kernelFunctions import Kernel
 from base.affineRegistration import rigidRegistration
 from base.surfaceMatching import SurfaceMatching
 from base.secondOrderSurfaceMatching import SecondOrderSurfaceMatching
+from base.surfaceExamples import HalfSphere
 import pykeops
 pykeops.clean_pykeops()
 plt.ion()
 
+#model = 'HalfSphere'
 model = 'Hearts'
+
 
 secondOrder = False
 
@@ -45,7 +48,7 @@ def compute(model):
         sigmaKernel = .5
         internalWeight = 1.
         regweight = 0.1
-        internalCost = [['elastic', 500]]
+        internalCost = [['elastic', 50]]
         #internalCost = [['elastic', 100.], ['displacement', 10.]]
 
     sigmaDist = 10.
@@ -120,8 +123,11 @@ def compute(model):
 
         ftemp = fv1
         ftarg = fv3
-        sigmaError = .1
-        sigmaDist = 5.
+    elif model=='HalfSphere':
+        ftemp = HalfSphere(radius=5)
+        ftarg = HalfSphere(radius=10)
+        sigmaDist = 2.5
+        sigmaError = 0.1
     elif model=='KCrane':
         ftemp = surfaces.Surface(surf='../testData/Surfaces/KCrane/blub_triangulated_reduced.obj')
         ftarg = surfaces.Surface(surf='../testData/Surfaces/KCrane/spot_triangulated_reduced.obj')
@@ -191,7 +197,7 @@ def compute(model):
         'affineKernel': False,
         'regWeight': regweight,
         'Landmarks': landmarks,
-        'rotWeight': 100.,
+        'rotWeight': 10.,
         'transWeight': 10.,
         'scaleWeight': 10.,
         'affineWeight': 10.,
@@ -199,10 +205,12 @@ def compute(model):
         'KparDist': ('gauss', sigmaDist),
         'sigmaError': sigmaError,
         'errorType': 'varifold',
+        'pk_dtype': 'float64',
         'algorithm': 'bfgs',
         'unreduced': False,
         'internalWeight': internalWeight,
         'internalCost': internalCost,
+        'saveTrajectories': True,
         'unreducedResetRate': 10000,
         'unreducedWeight': 0.1
     }

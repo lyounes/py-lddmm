@@ -67,6 +67,7 @@ class PointSetMatching(BasicMatching):
 
         self.Kdiff_dtype = self.options['pk_dtype']
         self.Kdist_dtype = self.options['pk_dtype']
+        self.gradCoeff = 1 #self.x0.shape[0] ** 2
 
     def createObject(self, data, other=None):
         if other is None:
@@ -225,6 +226,7 @@ class PointSetMatching(BasicMatching):
         self.saveEPDiffTrajectories = False
         self.varCounter = 0
         self.trajCounter = 0
+        self.pkBuffer = 0
 
 
 
@@ -425,11 +427,23 @@ class PointSetMatching(BasicMatching):
             grd['Afft'] /= (self.coeffAff*coeff*self.Tsize)
         return grd
 
+
+
+    def resetPK(self, newType = None):
+        if newType is None:
+            self.options['KparDiff'].pk_dtype = self.Kdiff_dtype
+            self.options['KparDist'].pk_dtype = self.Kdist_dtype
+        else:
+            self.options['KparDiff'].pk_dtype = newType
+            self.options['KparDist'].pk_dtype = newType
+        self.pkBuffer = 0
+
     def startOfIteration(self):
         if self.reset:
             logging.info('Switching to 64 bits')
-            self.options['KparDiff'].pk_dtype = 'float64'
-            self.options['KparDist'].pk_dtype = 'float64'
+            self.resetPK('float64')
+            self.pkBuffer = 0
+
 
 
 
@@ -521,8 +535,9 @@ class PointSetMatching(BasicMatching):
                 fvDef.save(self.outputDir + '/' + self.options['saveFile'] + str(kk) + '.vtk')
         obj1, self.state = self.objectiveFunDef(self.control, withTrajectory=True)
         self.fvDef.vertices = np.copy(np.squeeze(self.state['xt'][-1, :, :]))
-        self.options['KparDiff'].pk_dtype = self.Kdiff_dtype
-        self.options['KparDist'].pk_dtype = self.Kdist_dtype
+
+        if self.pkBuffer > 10:
+            self.resetPK()
 
 
     def optimizeMatching(self):
