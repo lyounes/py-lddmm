@@ -224,7 +224,13 @@ def varifoldNormGradient_old(fvDef, fv1, KparDist, with_weights=False, imKernel=
 ##Internal costs
 ########
 
-def square_divergence(x, v, faces):
+def square_divergence(x,v,faces):
+    return square_divergence_(x,v,faces)
+
+def normalized_square_divergence(x,v,faces):
+    return square_divergence_(x,v,faces, normalize=True)
+
+def square_divergence_(x, v, faces, normalize = False):
     dim = x.shape[1]
     nf = faces.shape[0]
     vol = np.zeros(nf)
@@ -251,9 +257,21 @@ def square_divergence(x, v, faces):
         div = det3D(v3, x0-x1, x0-x2) + det3D(v0, x1-x2, x1-x3) + det3D(v1, x2-x3, x2-x0) + det3D(v2, x3-x0, x3-x1)
     else:
         logging.warning('square divergence: unrecognized dimension')
-    return ((div ** 2)/np.maximum(vol, 1e-10)).sum()
 
-def square_divergence_grad(x, v, faces, variables = 'both'):
+    if normalize:
+        res = ((div ** 2)/np.maximum(vol, 1e-10)).sum() / vol.sum()
+    else:
+        res = ((div ** 2)/np.maximum(vol, 1e-10)).sum()
+    return res
+
+def square_divergence_grad(x,v,faces, variables='both'):
+    return square_divergence_grad_(x,v,faces, variables=variables)
+
+def normalized_square_divergence_grad(x,v,faces, variables='both'):
+    return square_divergence_(x,v,faces, normalize=True, variables=variables)
+
+
+def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
     dim = x.shape[1]
     nf = faces.shape[0]
     gradx = np.zeros(x.shape)

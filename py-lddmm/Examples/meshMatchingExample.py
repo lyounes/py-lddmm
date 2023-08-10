@@ -24,23 +24,31 @@ from base.meshExamples import TwoBalls, TwoDiscs, MoGCircle, TwoEllipses
 plt.ion()
 
 model = 'Ellipses'
-secondOrder = True
+secondOrder = False
 
 if secondOrder:
     typeCost = 'LDDMM'
     order = '_SO_'
     internalCost = None
 else:
-    internalCost = 'LDDMM'
-    # internalCost = 'divergence'
+    typeCost = 'LDDMM'
+    internalCost = None #'divergence'
     order = ''
 
 def compute(model):
+    if internalCost is None:
+        sigmaKernel = 1.
+        sigmaDist = 5.
+        sigmaError = .5
+        regweight = 1.
+    else:
+        sigmaKernel = .1
+        sigmaDist = 5.
+        sigmaError = .5
+        regweight = .1
+    internalWeight = 1000.
+
     loggingUtils.setup_default_logging('../Output', stdOutput = True)
-    sigmaKernel = 1.
-    sigmaDist = 5.
-    sigmaError = .5
-    regweight = 1.
     if model=='Circles':
         fv0 = TwoDiscs(largeRadius=10, smallRadius=4.5)
         # f = Circle(radius = 10., targetSize=1000)
@@ -62,7 +70,7 @@ def compute(model):
         ftemp = fv0
         ftarg = fv1
     elif model == 'Ellipses':
-        fv0 = TwoEllipses(Boundary_a=10, Boundary_b=6, smallRadius=.25)
+        fv0 = TwoEllipses(Boundary_a=14, Boundary_b=6, smallRadius=.25)
         fv1 = TwoEllipses(Boundary_a=12, Boundary_b=10, smallRadius=.4, translation=[0.1, -0.1])
         ftemp = fv0
         ftarg = fv1
@@ -123,10 +131,10 @@ def compute(model):
     ftarg.updateImage(alpha * ftarg.image + beta * ftarg.image.sum(axis=1)[:, None])
 
     ## Object kernel
-    K1 = Kernel(name='gauss', sigma = sigmaKernel)
+    K1 = Kernel(name='laplacian', sigma = sigmaKernel)
     options = {
         'outputDir': '../Output/meshMatchingTest/'+model+order,
-        'mode': 'debug',
+        'mode': 'normal',
         'maxIter': 1000,
         'affine': 'affine',
         'rotWeight': 100,
@@ -140,8 +148,9 @@ def compute(model):
         'errorType': 'measure',
         'algorithm': 'bfgs',
         'internalCost': internalCost,
-        'internalWeight': 10.0,
-        'pk_dtype': 'float32'
+        'internalWeight': internalWeight,
+        'regWeight': regweight,
+        'pk_dtype': 'float64'
     }
 
     if secondOrder:

@@ -11,8 +11,9 @@ class TwoDiscs(Mesh):
         f = Circle(radius=largeRadius, targetSize=targetSize)
         super(TwoDiscs, self).__init__(f,volumeRatio=5000)
         imagev = np.array(((self.vertices - np.array(f.center)[None, :]) ** 2).sum(axis=1) < smallRadius**2, dtype=float)
+        imagef = np.array(((self.centers - np.array(f.center)[None, :]) ** 2).sum(axis=1) < smallRadius**2, dtype=float)
         image = np.zeros((self.faces.shape[0], 2))
-        image[:, 0] = (imagev[self.faces[:, 0]] + imagev[self.faces[:, 1]] + imagev[self.faces[:, 2]]) / 3
+        image[:, 0] = imagef #(imagev[self.faces[:, 0]] + imagev[self.faces[:, 1]] + imagev[self.faces[:, 2]]) / 3
         image[:, 1] = 1 - image[:, 0]
         self.updateImage(image)
 
@@ -20,11 +21,13 @@ class TwoEllipses(Mesh):
     def __init__(self, Boundary_a = 10., Boundary_b = 10, smallRadius = 0.5, translation = (0,0), targetSize=250):
         f = Ellipse(a=Boundary_a, b=Boundary_b, targetSize=targetSize)
         super(TwoEllipses, self).__init__(f,volumeRatio=5000)
-        A = (((self.vertices[:,0] - f.center[0] - translation[0]*Boundary_a)/Boundary_b)**2
-             + ((self.vertices[:,1] - f.center[1] - translation[1]*Boundary_b)/Boundary_a)**2) < smallRadius
+        # A = (((self.vertices[:,0] - f.center[0] - translation[0]*Boundary_a)/Boundary_b)**2
+        #      + ((self.vertices[:,1] - f.center[1] - translation[1]*Boundary_b)/Boundary_a)**2) < smallRadius
+        A = (((self.centers[:,0] - f.center[0] - translation[0]*Boundary_a)/Boundary_b)**2
+             + ((self.centers[:,1] - f.center[1] - translation[1]*Boundary_b)/Boundary_a)**2) < smallRadius
         imagev = np.array(A, dtype=float)
         image = np.zeros((self.faces.shape[0], 2))
-        image[:, 0] = (imagev[self.faces[:, 0]] + imagev[self.faces[:, 1]] + imagev[self.faces[:, 2]]) / 3
+        image[:, 0] = imagev #(imagev[self.faces[:, 0]] + imagev[self.faces[:, 1]] + imagev[self.faces[:, 2]]) / 3
         image[:, 1] = 1 - image[:, 0]
         self.updateImage(image)
 
