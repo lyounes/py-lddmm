@@ -2,12 +2,12 @@ from sys import path as sys_path
 sys_path.append('..')
 sys_path.append('../base')
 import os
+# os.environ['KMP_DUPLICATE_LIB_OK']='True'
 import matplotlib
 if 'DISPLAY' in os.environ:
     matplotlib.use('qt5Agg')
 else:
     matplotlib.use("Agg")
-    print(os.environ)
 import matplotlib.pyplot as plt
 import numpy as np
 import pygalmesh
@@ -18,12 +18,12 @@ from base.meshes import Mesh
 from base.kernelFunctions import Kernel
 from base.meshMatching import MeshMatching
 from base.secondOrderMeshMatching import SecondOrderMeshMatching
-from base.meshExamples import TwoBalls, TwoDiscs, MoGCircle
-import pykeops
-pykeops.clean_pykeops()
+from base.meshExamples import TwoBalls, TwoDiscs, MoGCircle, TwoEllipses
+# import pykeops
+# pykeops.clean_pykeops()
 plt.ion()
 
-model = 'Circles'
+model = 'Ellipses'
 secondOrder = True
 
 if secondOrder:
@@ -42,21 +42,28 @@ def compute(model):
     sigmaError = .5
     regweight = 1.
     if model=='Circles':
-        f = Circle(radius = 10., targetSize=1000)
-        fv0 = Mesh(f, volumeRatio=1000)
-        # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
-        imagev = np.array(((fv0.vertices - np.array(f.center)[None, :]) ** 2).sum(axis=1) < 20, dtype=float)
-        fv0.image = np.zeros((fv0.faces.shape[0], 2))
-        fv0.image[:, 0] = (imagev[fv0.faces[:, 0]] + imagev[fv0.faces[:, 1]] + imagev[fv0.faces[:, 2]]) / 3
-        fv0.image[:, 1] = 1 - fv0.image[:, 0]
+        fv0 = TwoDiscs(largeRadius=10, smallRadius=4.5)
+        # f = Circle(radius = 10., targetSize=1000)
+        # fv0 = Mesh(f, volumeRatio=1000)
+        # # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
+        # imagev = np.array(((fv0.vertices - np.array(f.center)[None, :]) ** 2).sum(axis=1) < 20, dtype=float)
+        # fv0.image = np.zeros((fv0.faces.shape[0], 2))
+        # fv0.image[:, 0] = (imagev[fv0.faces[:, 0]] + imagev[fv0.faces[:, 1]] + imagev[fv0.faces[:, 2]]) / 3
+        # fv0.image[:, 1] = 1 - fv0.image[:, 0]
 
-        f = Circle(radius = 12, targetSize=1000)
-        fv1 = Mesh(f, volumeRatio=5000)
-        # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
-        imagev = np.array(((fv1.vertices - np.array(f.center)[None, :]) ** 2).sum(axis=1) < 10, dtype=float)
-        fv1.image = np.zeros((fv1.faces.shape[0], 2))
-        fv1.image[:, 0] = (imagev[fv1.faces[:, 0]] + imagev[fv1.faces[:, 1]] + imagev[fv1.faces[:, 2]]) / 3
-        fv1.image[:, 1] = 1 - fv1.image[:, 0]
+        fv1 = TwoDiscs(largeRadius=12, smallRadius=3)
+        # f = Circle(radius = 12, targetSize=1000)
+        # fv1 = Mesh(f, volumeRatio=5000)
+        # # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
+        # imagev = np.array(((fv1.vertices - np.array(f.center)[None, :]) ** 2).sum(axis=1) < 10, dtype=float)
+        # fv1.image = np.zeros((fv1.faces.shape[0], 2))
+        # fv1.image[:, 0] = (imagev[fv1.faces[:, 0]] + imagev[fv1.faces[:, 1]] + imagev[fv1.faces[:, 2]]) / 3
+        # fv1.image[:, 1] = 1 - fv1.image[:, 0]
+        ftemp = fv0
+        ftarg = fv1
+    elif model == 'Ellipses':
+        fv0 = TwoEllipses(Boundary_a=10, Boundary_b=6, smallRadius=.25)
+        fv1 = TwoEllipses(Boundary_a=12, Boundary_b=10, smallRadius=.4, translation=[0.1, -0.1])
         ftemp = fv0
         ftarg = fv1
     elif model == 'Spheres':
