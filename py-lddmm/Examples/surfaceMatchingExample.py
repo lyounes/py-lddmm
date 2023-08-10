@@ -22,7 +22,7 @@ import pykeops
 pykeops.clean_pykeops()
 plt.ion()
 
-model = 'Balls'
+model = 'Hearts'
 
 secondOrder = False
 
@@ -30,7 +30,7 @@ if secondOrder:
     typeCost = 'LDDMM'
     order = '_SO_'
 else:
-    typeCost = 'internal'
+    typeCost = 'elastic'
     order = ''
 
 
@@ -45,8 +45,8 @@ def compute(model):
         sigmaKernel = .5
         internalWeight = 1.
         regweight = 0.1
-        #internalCost = 'elastic'
-        internalCost = [['elastic', 100.], ['displacement', 1.]]
+        internalCost = [['elastic', 100]]
+        #internalCost = [['elastic', 100.], ['displacement', 10.]]
 
     sigmaDist = 10.
     sigmaError = 1.
@@ -113,11 +113,15 @@ def compute(model):
         I1 = np.minimum(c1**p/s1 - ((ax**p + 0.5*ay**p + az**p)), np.minimum((s2*ax**p + s2*0.5*ay**p + s2*az**p)-c2**p/s1, 1+c3/s1-y))  
         fv3 = Surface()
         fv3.Isosurface(I1, value = 0, target=1000, scales=[1, 1, 1], smooth=0.01)
-        
-        fv3.vertices[:,1] += 15 - 15/s1
+
+        vrt = fv3.vertices
+        vrt[:, 1] += 15 - 15 / s1
+        fv3.updateVertices(vrt)
 
         ftemp = fv1
         ftarg = fv3
+        sigmaError = .1
+        sigmaDist = 5.
     elif model=='KCrane':
         ftemp = surfaces.Surface(surf='../testData/Surfaces/KCrane/blub_triangulated_reduced.obj')
         ftarg = surfaces.Surface(surf='../testData/Surfaces/KCrane/spot_triangulated_reduced.obj')
@@ -181,7 +185,7 @@ def compute(model):
     # sm.KparDist.pk_dtype = 'float64'
     options = {
         'outputDir': '../Output/surfaceMatchingExample/' + model + order,
-        'mode': 'debug',
+        'mode': 'normal',
         'maxIter': 2000,
         'affine': 'none',
         'affineKernel': False,

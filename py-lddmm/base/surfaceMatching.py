@@ -201,6 +201,8 @@ class SurfaceMatching(PointSetMatching):
                 self.internalCost = self.internalCost__
                 self.internalCostGrad = self.internalCostGrad__
                 self.options['internalWeight'] = 1
+        else:
+            self.internalCost = None
 
         self.unreducedResetRate = self.options['unreducedResetRate']
         self.fidelityWeight = self.options['fidelityWeight']
