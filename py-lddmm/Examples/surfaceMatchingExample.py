@@ -45,7 +45,7 @@ def compute(model):
         sigmaKernel = .5
         internalWeight = 1.
         regweight = 0.1
-        internalCost = [['elastic', 100]]
+        internalCost = [['elastic', 500]]
         #internalCost = [['elastic', 100.], ['displacement', 10.]]
 
     sigmaDist = 10.
