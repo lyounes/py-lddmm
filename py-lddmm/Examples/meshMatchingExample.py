@@ -46,7 +46,8 @@ def compute(model):
         sigmaDist = 5.
         sigmaError = .5
         regweight = .1
-    internalWeight = 1000.
+
+    internalWeight = 100.
 
     loggingUtils.setup_default_logging('../Output', stdOutput = True)
     if model=='Circles':
@@ -135,7 +136,7 @@ def compute(model):
     options = {
         'outputDir': '../Output/meshMatchingTest/'+model+order,
         'mode': 'normal',
-        'maxIter': 1000,
+        'maxIter': 2000,
         'affine': 'affine',
         'rotWeight': 100,
         'transWeight': 10,
