@@ -418,6 +418,17 @@ class Mesh:
             if face_per_vertex[k] > 1e-10*mv:
                 self.vertex_weights[k] /= face_per_vertex[k]
 
+    def shrinkTriangles(self, ratio=0.5):
+        newv = np.zeros((self.faces.shape[0]*self.faces.shape[1], self.vertices.shape[1]))
+        newf = np.zeros(self.faces.shape)
+        for k in range(self.faces.shape[0]):
+            for j in range(self.faces.shape[1]):
+                newf[k,0] = self.faces.shape[1]*k + j
+                newv[3*k+j, :] = self.centers[k,:] + ratio*(self.vertices[self.faces[k,j], :] - self.centers[k,:])
+        neww = self.weights/(ratio** self.dim)
+        newm = Mesh(mesh=(newf, newv), weights=neww, image=self.image, imNames=self.imNames)
+        return newm
+
     def rescaleUnits(self, scale):
         self.weights /= scale**self.dim
         self.updateVertices(self.vertices*scale)

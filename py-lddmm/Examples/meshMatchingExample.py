@@ -25,6 +25,7 @@ plt.ion()
 
 model = 'Ellipses'
 secondOrder = False
+shrink = True
 
 if secondOrder:
     typeCost = 'LDDMM'
@@ -152,6 +153,10 @@ def compute(model):
         'regWeight': regweight,
         'pk_dtype': 'float64'
     }
+
+    if shrink:
+        ftemp = ftemp.shrinkTriangles()
+        ftarg = ftarg.shrinkTriangles()
 
     if secondOrder:
         f = SecondOrderMeshMatching(Template=ftemp, Target=ftarg, options=options)
