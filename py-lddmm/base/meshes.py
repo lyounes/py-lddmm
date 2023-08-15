@@ -82,7 +82,7 @@ def twelve_vertexes(dimension=3):
 
     return ico
 
-@jit(nopython=True)
+#@jit(nopython=True)
 def computeCentersVolumesNormals__(faces, vertices, weights, checkOrientation= False):
     dim = vertices.shape[1]
     if dim == 2:
@@ -423,7 +423,7 @@ class Mesh:
         newf = np.zeros(self.faces.shape)
         for k in range(self.faces.shape[0]):
             for j in range(self.faces.shape[1]):
-                newf[k,0] = self.faces.shape[1]*k + j
+                newf[k,j] = self.faces.shape[1]*k + j
                 newv[3*k+j, :] = self.centers[k,:] + ratio*(self.vertices[self.faces[k,j], :] - self.centers[k,:])
         neww = self.weights/(ratio** self.dim)
         newm = Mesh(mesh=(newf, newv), weights=neww, image=self.image, imNames=self.imNames)
