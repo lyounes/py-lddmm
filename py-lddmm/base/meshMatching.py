@@ -116,7 +116,8 @@ class MeshMatching(pointSetMatching.PointSetMatching):
             self.extraTerm['grad'] = partial(msd.normalized_square_divergence_grad, faces=self.fv0.faces)
             self.extraTerm['coeff'] = self.options['internalWeight']
         else:
-            logging.warning("Internal cost not recognized: " + self.options['internalCost'])
+            if self.options['internalCost'] is not None:
+                logging.warning("Internal cost not recognized: " + self.options['internalCost'])
             self.extraTerm = None
 
 
