@@ -276,7 +276,7 @@ def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
     nf = faces.shape[0]
     gradx = np.zeros(x.shape)
     gradphi = np.zeros(v.shape)
-    test = True
+    test = False
     grad = dict()
     #logging.info(f"dim = {dim}, variables = {variables}")
     if dim==2:
@@ -286,7 +286,9 @@ def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
         v0 = v[faces[:, 0], :]
         v1 = v[faces[:, 1], :]
         v2 = v[faces[:, 2], :]
-        vol = np.fabs(det2D(x1-x0, x2-x0))
+        vol = det2D(x1-x0, x2-x0)
+        svol = np.sign(vol)
+        vol = np.fabs(vol)
         div = det2D(v2, x0-x1) + det2D(v0, x1-x2) + det2D(v1, x2-x0)
         c1 = 2 * (div / vol)[:, None]
         if normalize:
@@ -313,14 +315,16 @@ def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
             #gradphi = -gradphi
         if variables == 'x' or variables == 'both':
             c2 = ((div/vol)**2)[:, None]
+            if normalize:
+                c2 += sqdiv/totalVol
+            c2 *= svol[:,None]
             dx0 = -rot90(v1 - v2) * c1 + rot90(x1-x2)*c2
             dx1 = -rot90(v2 - v0) * c1 + rot90(x2-x0)*c2
             dx2 = -rot90(v0 - v1) * c1 + rot90(x0-x1)*c2
-            if normalize:
-                dx0 -= rot90(x1-x2) * sqdiv / totalVol
-                dx1 -= rot90(x2-x0) * sqdiv /totalVol
-                dx2 -= rot90(x0-x1) * sqdiv / totalVol
-
+            #if normalize:
+             #   dx0 += rot90(x1-x2) * sqdiv / totalVol
+             #   dx1 += rot90(x2-x0) * sqdiv /totalVol
+             #   dx2 += rot90(x0-x1) * sqdiv / totalVol
             for k, f in enumerate(faces):
                 gradx[f[0], :] += dx0[k, :]
                 gradx[f[1], :] += dx1[k, :]

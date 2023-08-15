@@ -44,10 +44,12 @@ class TwoBalls(Mesh):
         )
         super(TwoBalls, self).__init__([np.array(mesh.cells[1].data, dtype=int), np.array(mesh.points, dtype=float)])
         c0 = np.array([0,0,0])
-        imagev = np.array(((self.vertices - c0[None, :]) ** 2).sum(axis=1) < smallRadius**2, dtype=float)
+        A = ((self.centers - c0[None, :]) ** 2).sum(axis=1) < smallRadius**2
+        imagev = np.array(A, dtype=float)
         image = np.zeros((self.faces.shape[0], 2))
-        image[:, 0] = (imagev[self.faces[:, 0]] + imagev[self.faces[:, 1]] + imagev[self.faces[:, 2]]
-                           + imagev[self.faces[:, 3]]) / 4
+        image[:, 0] = imagev
+            # (imagev[self.faces[:, 0]] + imagev[self.faces[:, 1]] + imagev[self.faces[:, 2]]
+            #                + imagev[self.faces[:, 3]]) / 4
         image[:, 1] = 1 - image[:, 0]
         self.updateImage(image)
 

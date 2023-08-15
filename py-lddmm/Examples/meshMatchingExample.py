@@ -23,9 +23,10 @@ from base.meshExamples import TwoBalls, TwoDiscs, MoGCircle, TwoEllipses
 # pykeops.clean_pykeops()
 plt.ion()
 
-model = 'Ellipses'
+model = 'Spheres'
 secondOrder = False
-shrink = True
+shrink = False
+shrinkRatio = 0.75
 
 if secondOrder:
     typeCost = 'LDDMM'
@@ -33,8 +34,13 @@ if secondOrder:
     internalCost = None
 else:
     typeCost = 'LDDMM'
-    internalCost = 'normalized_divergence'
+    internalCost = None #'divergence'
     order = ''
+
+if shrink:
+    sh = f'_shrink_{shrinkRatio:.2}_'
+else:
+    sh = ''
 
 def compute(model):
     if internalCost is None:
@@ -43,11 +49,12 @@ def compute(model):
         sigmaError = .5
         regweight = 1.
     else:
-        sigmaKernel = .1
+        sigmaKernel = 1.
         sigmaDist = 5.
         sigmaError = .5
-        regweight = .1
-    internalWeight = 1000.
+        regweight = 1.
+
+    internalWeight = .1
 
     loggingUtils.setup_default_logging('../Output', stdOutput = True)
     if model=='Circles':
@@ -76,44 +83,46 @@ def compute(model):
         ftemp = fv0
         ftarg = fv1
     elif model == 'Spheres':
-        mesh = pygalmesh.generate_mesh(
-            pygalmesh.Ball([0.0, 0.0, 0.0], 10.0),
-            min_facet_angle=30.0,
-            max_radius_surface_delaunay_ball=.75,
-            max_facet_distance=0.025,
-            max_circumradius_edge_ratio=2.0,
-            max_cell_circumradius=.75,  # lambda x: abs(np.sqrt(np.dot(x, x)) - 0.5) / 5 + 0.025,
-            verbose=False
-        )
-        fv0 = Mesh([np.array(mesh.cells[1].data, dtype=int), np.array(mesh.points, dtype=float)])
-        print(fv0.vertices.shape)
-        c0 = np.array([0,0,0])
-        # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
-        imagev = np.array(((fv0.vertices - c0[None, :]) ** 2).sum(axis=1) < 20, dtype=float)
-        fv0.image = np.zeros((fv0.faces.shape[0], 2))
-        fv0.image[:, 0] = (imagev[fv0.faces[:, 0]] + imagev[fv0.faces[:, 1]] + imagev[fv0.faces[:, 2]]
-                           + imagev[fv0.faces[:, 3]]) / 4
-        fv0.image[:, 1] = 1 - fv0.image[:, 0]
+        ftemp = TwoBalls(largeRadius=10, smallRadius=4.5)
+        # mesh = pygalmesh.generate_mesh(
+        #     pygalmesh.Ball([0.0, 0.0, 0.0], 10.0),
+        #     min_facet_angle=30.0,
+        #     max_radius_surface_delaunay_ball=.75,
+        #     max_facet_distance=0.025,
+        #     max_circumradius_edge_ratio=2.0,
+        #     max_cell_circumradius=.75,  # lambda x: abs(np.sqrt(np.dot(x, x)) - 0.5) / 5 + 0.025,
+        #     verbose=False
+        # )
+        # fv0 = Mesh([np.array(mesh.cells[1].data, dtype=int), np.array(mesh.points, dtype=float)])
+        # print(fv0.vertices.shape)
+        # c0 = np.array([0,0,0])
+        # # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
+        # imagev = np.array(((fv0.vertices - c0[None, :]) ** 2).sum(axis=1) < 20, dtype=float)
+        # fv0.image = np.zeros((fv0.faces.shape[0], 2))
+        # fv0.image[:, 0] = (imagev[fv0.faces[:, 0]] + imagev[fv0.faces[:, 1]] + imagev[fv0.faces[:, 2]]
+        #                    + imagev[fv0.faces[:, 3]]) / 4
+        # fv0.image[:, 1] = 1 - fv0.image[:, 0]
 
-        mesh1 = pygalmesh.generate_mesh(
-            pygalmesh.Ball([0.0, 0.0, 0.0], 12.0),
-            min_facet_angle=30.0,
-            max_radius_surface_delaunay_ball=.75,
-            max_facet_distance=0.025,
-            max_circumradius_edge_ratio=2.0,
-            max_cell_circumradius=.75,  # lambda x: abs(np.sqrt(np.dot(x, x)) - 0.5) / 5 + 0.025,
-            verbose=False
-        )
-        fv1 = Mesh([np.array(mesh1.cells[1].data, dtype=int), np.array(mesh1.points, dtype=float)])
-        print(fv1.vertices.shape)
-        # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
-        imagev = np.array(((fv1.vertices - c0[None, :]) ** 2).sum(axis=1) < 10, dtype=float)
-        fv1.image = np.zeros((fv1.faces.shape[0], 2))
-        fv1.image[:, 0] = (imagev[fv1.faces[:, 0]] + imagev[fv1.faces[:, 1]] + imagev[fv1.faces[:, 2]]
-                           + imagev[fv1.faces[:, 3]]) / 4
-        fv1.image[:, 1] = 1 - fv1.image[:, 0]
-        ftemp = fv0
-        ftarg = fv1
+        ftarg = TwoBalls(largeRadius=12, smallRadius=3)
+        # mesh1 = pygalmesh.generate_mesh(
+        #     pygalmesh.Ball([0.0, 0.0, 0.0], 12.0),
+        #     min_facet_angle=30.0,
+        #     max_radius_surface_delaunay_ball=.75,
+        #     max_facet_distance=0.025,
+        #     max_circumradius_edge_ratio=2.0,
+        #     max_cell_circumradius=.75,  # lambda x: abs(np.sqrt(np.dot(x, x)) - 0.5) / 5 + 0.025,
+        #     verbose=False
+        # )
+        # fv1 = Mesh([np.array(mesh1.cells[1].data, dtype=int), np.array(mesh1.points, dtype=float)])
+        # print(fv1.vertices.shape)
+        # # imagev = np.array(((mesh2.vertices - np.array([0.5, 0.5])[None, :])**2).sum(axis=1) < 0.1, dtype=float)
+        # imagev = np.array(((fv1.vertices - c0[None, :]) ** 2).sum(axis=1) < 10, dtype=float)
+        # fv1.image = np.zeros((fv1.faces.shape[0], 2))
+        # fv1.image[:, 0] = (imagev[fv1.faces[:, 0]] + imagev[fv1.faces[:, 1]] + imagev[fv1.faces[:, 2]]
+        #                    + imagev[fv1.faces[:, 3]]) / 4
+        # fv1.image[:, 1] = 1 - fv1.image[:, 0]
+        # ftemp = fv0
+        # ftarg = fv1
     elif model == 'GaussCenters':
         sigmaKernel = 5.
         sigmaDist = 5.
@@ -134,10 +143,10 @@ def compute(model):
     ## Object kernel
     K1 = Kernel(name='laplacian', sigma = sigmaKernel)
     options = {
-        'outputDir': '../Output/meshMatchingTest/'+model+order,
+        'outputDir': '../Output/meshMatchingTest/'+model+order+sh,
         'mode': 'normal',
-        'maxIter': 1000,
-        'affine': 'affine',
+        'maxIter': 2000,
+        'affine': 'none',
         'rotWeight': 100,
         'transWeight': 10,
         'scaleWeight': 1.,
@@ -155,8 +164,8 @@ def compute(model):
     }
 
     if shrink:
-        ftemp = ftemp.shrinkTriangles()
-        ftarg = ftarg.shrinkTriangles()
+        ftemp = ftemp.shrinkTriangles(ratio=shrinkRatio)
+        ftarg = ftarg.shrinkTriangles(ratio=shrinkRatio)
 
     if secondOrder:
         f = SecondOrderMeshMatching(Template=ftemp, Target=ftarg, options=options)
