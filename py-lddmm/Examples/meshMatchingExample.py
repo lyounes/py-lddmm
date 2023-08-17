@@ -18,6 +18,7 @@ from base.meshes import Mesh
 from base.kernelFunctions import Kernel
 from base.meshMatching import MeshMatching
 from base.secondOrderMeshMatching import SecondOrderMeshMatching
+from base.imageMatchingLDDMM import ImageMatching
 from base.meshExamples import TwoBalls, TwoDiscs, MoGCircle, TwoEllipses
 # import pykeops
 # pykeops.clean_pykeops()
@@ -27,6 +28,7 @@ model = 'Ellipses'
 secondOrder = False
 shrink = False
 shrinkRatio = 0.75
+eulerian = True
 
 if secondOrder:
     typeCost = 'LDDMM'
@@ -82,8 +84,6 @@ def compute(model):
         fv1 = TwoEllipses(Boundary_a=12, Boundary_b=10, smallRadius=.4, translation=[0.1, -0.1])
         ftemp = fv0
         ftarg = fv1
-        img = fv0.toImage()
-        print(img.shape)
     elif model == 'Spheres':
         ftemp = TwoBalls(largeRadius=10, smallRadius=4.5)
         # mesh = pygalmesh.generate_mesh(
@@ -143,36 +143,61 @@ def compute(model):
     ftarg.updateImage(alpha * ftarg.image + beta * ftarg.image.sum(axis=1)[:, None])
 
     ## Object kernel
-    K1 = Kernel(name='laplacian', sigma = sigmaKernel)
-    options = {
-        'outputDir': '../Output/meshMatchingTest/'+model+order+sh,
-        'mode': 'normal',
-        'maxIter': 2000,
-        'affine': 'none',
-        'rotWeight': 100,
-        'transWeight': 10,
-        'scaleWeight': 1.,
-        'affineWeight': 100.,
-        'KparDiff': K1,
-        'KparDist': ('gauss', sigmaDist),
-        'KparIm': ('gauss', .1),
-        'sigmaError': sigmaError,
-        'errorType': 'measure',
-        'algorithm': 'bfgs',
-        'internalCost': internalCost,
-        'internalWeight': internalWeight,
-        'regWeight': regweight,
-        'pk_dtype': 'float64'
-    }
 
-    if shrink:
-        ftemp = ftemp.shrinkTriangles(ratio=shrinkRatio)
-        ftarg = ftarg.shrinkTriangles(ratio=shrinkRatio)
+    if eulerian:
+        imgTemp = ftemp.toImage(index=0)
+        imgTarg = ftarg.toImage(index=0)
+        options = {
+            'dim': ftarg.dim,
+            'timeStep': 0.1,
+            'algorithm': 'bfgs',
+            'sigmaKernel': 5,
+            'order': 3,
+            'kernelSize': 25,
+            'typeKernel': 'laplacian',
+            'sigmaError': 50.,
+            'rescaleFactor': .1,
+            'padWidth': 15,
+            'affineAlign': 'euclidean',
+            'outputDir': '../Output/meshMatchingTestImageComparison/'+model+order+sh,
+            'mode': 'debug',
+            'regWeight': 1.,
+            'maxIter': 1000
+        }
+        f = ImageMatching(Template=imgTemp, Target=imgTarg, options=options)
 
-    if secondOrder:
-        f = SecondOrderMeshMatching(Template=ftemp, Target=ftarg, options=options)
+        f.restartRate = 50
     else:
-        f = MeshMatching(Template=ftemp, Target=ftarg, options=options)
+        K1 = Kernel(name='laplacian', sigma=sigmaKernel)
+        options = {
+            'outputDir': '../Output/meshMatchingTest/' + model + order + sh,
+            'mode': 'normal',
+            'maxIter': 2000,
+            'affine': 'none',
+            'rotWeight': 100,
+            'transWeight': 10,
+            'scaleWeight': 1.,
+            'affineWeight': 100.,
+            'KparDiff': K1,
+            'KparDist': ('gauss', sigmaDist),
+            'KparIm': ('gauss', .1),
+            'sigmaError': sigmaError,
+            'errorType': 'measure',
+            'algorithm': 'bfgs',
+            'internalCost': internalCost,
+            'internalWeight': internalWeight,
+            'regWeight': regweight,
+            'pk_dtype': 'float64'
+        }
+
+        if shrink:
+            ftemp = ftemp.shrinkTriangles(ratio=shrinkRatio)
+            ftarg = ftarg.shrinkTriangles(ratio=shrinkRatio)
+
+        if secondOrder:
+            f = SecondOrderMeshMatching(Template=ftemp, Target=ftarg, options=options)
+        else:
+            f = MeshMatching(Template=ftemp, Target=ftarg, options=options)
 
     f.optimizeMatching()
     plt.ioff()

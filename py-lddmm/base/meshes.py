@@ -677,7 +677,7 @@ class Mesh:
     def meshVolume(self):
         return self.volumes.sum()
 
-    def toImage(self, resolution=1, background = 0, margin = 10):
+    def toImage(self, resolution=1, background = 0, margin = 10, index = None):
         imin = self.vertices.min(axis=0)
         imax = self.vertices.max(axis=0)
         imDim = list(np.ceil((imax - imin)/resolution) + 2*margin)
@@ -694,7 +694,10 @@ class Mesh:
                 outIm[I[j, 0], I[j, 1], I[j,2], :] += self.volumes[j] * self.image[j,:]
         outIm /= resolution**self.dim
 
-        return outIm
+        if index is None:
+            return outIm
+        else:
+            return outIm[...,index]
 
 
 

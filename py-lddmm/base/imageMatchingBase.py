@@ -177,7 +177,7 @@ class ImageMatchingBase(BasicMatching, Diffeomorphism):
     def set_template_and_target(self, Template, Target, misc = None): #subsampleTargetSize=-1, affineAlign=None):
         affineAlign = self.options['affineAlign']
 
-        if Template==None:
+        if Template is None:
             logging.error('Please provide a template surface')
             return
         else:
@@ -187,7 +187,7 @@ class ImageMatchingBase(BasicMatching, Diffeomorphism):
             self.im0.data = imresize(self.im0.data,
                                      np.floor(np.array(self.im0.data.shape)*self.options['rescaleFactor']).astype(int))
 
-        if Target==None:
+        if Target is None:
             logging.error('Please provide a target surface')
             return
         else:
