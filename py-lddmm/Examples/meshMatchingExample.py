@@ -23,7 +23,7 @@ from base.meshExamples import TwoBalls, TwoDiscs, MoGCircle, TwoEllipses
 # pykeops.clean_pykeops()
 plt.ion()
 
-model = 'Spheres'
+model = 'Ellipses'
 secondOrder = False
 shrink = False
 shrinkRatio = 0.75
@@ -82,6 +82,8 @@ def compute(model):
         fv1 = TwoEllipses(Boundary_a=12, Boundary_b=10, smallRadius=.4, translation=[0.1, -0.1])
         ftemp = fv0
         ftarg = fv1
+        img = fv0.toImage()
+        print(img.shape)
     elif model == 'Spheres':
         ftemp = TwoBalls(largeRadius=10, smallRadius=4.5)
         # mesh = pygalmesh.generate_mesh(

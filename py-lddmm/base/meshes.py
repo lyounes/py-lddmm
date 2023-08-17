@@ -677,6 +677,27 @@ class Mesh:
     def meshVolume(self):
         return self.volumes.sum()
 
+    def toImage(self, resolution=1, background = 0, margin = 10):
+        imin = self.vertices.min(axis=0)
+        imax = self.vertices.max(axis=0)
+        imDim = list(np.ceil((imax - imin)/resolution) + 2*margin)
+        s = np.array(imDim + [self.image.shape[1]], dtype=int)
+        if np.prod(s) > 1e7:
+            print('Image to big to create', s)
+            return
+        outIm = np.full(s, background, dtype=float)
+        I = np.ceil((self.centers - imin[None, :])/resolution).astype(int) + margin
+        for j in range(self.faces.shape[0]):
+            if self.dim == 2:
+                outIm[I[j, 0], I[j, 1], :] += self.volumes[j] * self.image[j,:]
+            elif self.dim == 3:
+                outIm[I[j, 0], I[j, 1], I[j,2], :] += self.volumes[j] * self.image[j,:]
+        outIm /= resolution**self.dim
+
+        return outIm
+
+
+
 
     def saveVTK_OLD(self, fileName, scalars = None, normals = None, tensors=None, scal_name='scalars',
                 vectors=None, vect_name='vectors', fields=None, field_name='fields'):
