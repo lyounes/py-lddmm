@@ -78,6 +78,7 @@ class BasicMatching(object):
         self.pplot = self.options['pplot']
         if self.pplot:
             self.initial_plot()
+        self.initialSave()
 
 
     def getDefaultOptions(self):
@@ -145,7 +146,10 @@ class BasicMatching(object):
 
     def initial_plot(self):
         pass
-    
+
+    def initialSave(self):
+        pass
+
     def set_template_and_target(self, Template, Target, misc=None):
         pass
 

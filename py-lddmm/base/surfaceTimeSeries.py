@@ -1,6 +1,6 @@
 import logging
 import numpy.linalg as la
-from . import surfaces, surfaceDistancess as sd
+from . import surfaces, surfaceDistances as sd
 from . import pointSets
 from . import pointEvolution as evol
 from .affineBasis import *

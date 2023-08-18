@@ -62,7 +62,7 @@ class Ellipse(Curve):
         x0 = center[0]
         y0 = center[1]
         x = x0+a*np.cos(t)
-        y = y0+a*np.sin(t)
+        y = y0+b*np.sin(t)
         v = np.zeros([t.shape[0],2])
         v[:,0] = x
         v[:,1] = y

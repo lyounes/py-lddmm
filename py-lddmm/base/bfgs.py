@@ -243,7 +243,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
             obj_old = obj
             opt.acceptVarTry()  #
             obj = phi_star
-            opt.reset = False
+            newreset = False
         else:
             logging.info('Wolfe search unsuccessful')
             if opt.reset:
@@ -254,13 +254,13 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
                 elif hasattr(opt, 'endOfIteration'):
                     opt.endOfIteration()
                 break
-            opt.reset = True
+            newreset = True
             gval = None
 
 
         if (np.fabs(obj-obj_old) < 1e-7) and stopCondition():
             logging.info(f'iteration {it + 1:d}: obj = {obj:.5f}, eps = {eps:.5f}, gradient: {np.sqrt(grd2):.5f}')
-            if it > burnIn and opt.reset:
+            if it > burnIn or opt.reset:
                 logging.info('Stopping Gradient Descent: small variation')
                 opt.converged = True
                 if hasattr(opt, 'endOfProcedure'):
@@ -269,7 +269,8 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
                     opt.endOfIteration()
                 break
             else:
-                opt.reset = True
+                newreset = True
+
 
         tt0 = time.process_time()
         t1 = tt0 - t0
@@ -294,6 +295,7 @@ def bfgs(opt, verb = True, maxIter=1000, TestGradient = False, epsInit=0.01, mem
         else:
             eps = epsMax
 
+        opt.reset = newreset
         if hasattr(opt, 'endOfIteration'):
             opt.endOfIteration()
         if not opt.reset:

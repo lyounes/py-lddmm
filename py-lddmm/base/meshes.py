@@ -677,22 +677,42 @@ class Mesh:
     def meshVolume(self):
         return self.volumes.sum()
 
-    def toImage(self, resolution=1, background = 0, margin = 10, index = None):
+    def toImage(self, resolution=1, background = 0, margin = 10, index = None, imDim=None):
+        interp = LinearNDInterpolator(self.centers, self.image, fill_value=background)
+
         imin = self.vertices.min(axis=0)
         imax = self.vertices.max(axis=0)
-        imDim = list(np.ceil((imax - imin)/resolution) + 2*margin)
-        s = np.array(imDim + [self.image.shape[1]], dtype=int)
-        if np.prod(s) > 1e7:
-            print('Image to big to create', s)
+        if imDim is None:
+            imDim = np.ceil((imax - imin)/resolution).astype(int)
+        if np.prod(imDim) * self.image.shape[1] > 1e7:
+            print('Image to big to create', imDim, self.image.shape[1])
             return
-        outIm = np.full(s, background, dtype=float)
-        I = np.ceil((self.centers - imin[None, :])/resolution).astype(int) + margin
-        for j in range(self.faces.shape[0]):
-            if self.dim == 2:
-                outIm[I[j, 0], I[j, 1], :] += self.volumes[j] * self.image[j,:]
-            elif self.dim == 3:
-                outIm[I[j, 0], I[j, 1], I[j,2], :] += self.volumes[j] * self.image[j,:]
-        outIm /= resolution**self.dim
+
+        if self.dim > 3:
+            print('Image cannot be created: dimensions too large', s)
+            return
+
+        X = np.linspace(imin[0] - margin, imax[0] + margin, imDim[0])
+        if self.dim == 2:
+            Y = np.linspace(imin[1] - margin, imax[1] + margin, imDim[1])
+            X, Y = np.meshgrid(X, Y)
+            outIm = interp(X,Y)
+        elif self.dim == 3:
+            Y = np.linspace(imin[1] - margin, imax[1] + margin, imDim[1])
+            Z = np.linspace(imin[2] - margin, imax[2] + margin, imDim[2])
+            X, Y, Z = np.meshgrid(X, Y, Z)
+            outIm = interp(X,Y,Z)
+        else:
+            outIm = interp(X)
+
+        # outIm = np.full(s, background, dtype=float)
+        # I = np.ceil((self.centers - imin[None, :])/resolution).astype(int) + margin
+        # for j in range(self.faces.shape[0]):
+        #     if self.dim == 2:
+        #         outIm[I[j, 0], I[j, 1], :] += self.volumes[j] * self.image[j,:]
+        #     elif self.dim == 3:
+        #         outIm[I[j, 0], I[j, 1], I[j,2], :] += self.volumes[j] * self.image[j,:]
+        # outIm /= resolution**self.dim
 
         if index is None:
             return outIm

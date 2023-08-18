@@ -60,16 +60,16 @@ class ImageMatching(ImageMatchingBase):
         # ax.set_zlim(min(lim0[2][0], lim1[2][0]), max(lim0[2][1], lim1[2][1]))
         # fig.canvas.flush_events()
 
-    def initialSave(self):
-        if len(self.im0.data.shape) == 3:
-            ext = '.vtk'
-        else:
-            ext = ''
-        saveImage(self.im0.data, self.outputDir + '/Template' + ext)
-        saveImage(self.im1.data, self.outputDir + '/Target' + ext)
-        saveImage(self.KparDiff.K, self.outputDir + '/Kernel' + ext, normalize=True)
-        saveImage(self.options['smoothKernel'].K, self.outputDir + '/smoothKernel' + ext, normalize=True)
-        saveImage(self.mask.min(axis=0), self.outputDir + '/Mask' + ext, normalize=True)
+    # def initialSave(self):
+    #     if len(self.im0.data.shape) == 3:
+    #         ext = '.vtk'
+    #     else:
+    #         ext = ''
+    #     saveImage(self.im0.data, self.outputDir + '/Template' + ext)
+    #     saveImage(self.im1.data, self.outputDir + '/Target' + ext)
+    #     saveImage(self.KparDiff.K, self.outputDir + '/Kernel' + ext, normalize=True)
+    #     saveImage(self.smoothKernel.K, self.outputDir + '/smoothKernel' + ext, normalize=True)
+    #     saveImage(self.mask.min(axis=0), self.outputDir + '/Mask' + ext, normalize=True)
 
 
 

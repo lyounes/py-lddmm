@@ -13,6 +13,7 @@ import numpy as np
 import pygalmesh
 from base.curveExamples import Circle
 from base.surfaceExamples import Sphere
+import logging
 from base import loggingUtils
 from base.meshes import Mesh
 from base.kernelFunctions import Kernel
@@ -28,7 +29,7 @@ model = 'Ellipses'
 secondOrder = False
 shrink = False
 shrinkRatio = 0.75
-eulerian = True
+eulerian = False
 
 if secondOrder:
     typeCost = 'LDDMM'
@@ -105,7 +106,7 @@ def compute(model):
         #                    + imagev[fv0.faces[:, 3]]) / 4
         # fv0.image[:, 1] = 1 - fv0.image[:, 0]
 
-        ftarg = TwoBalls(largeRadius=12, smallRadius=3)
+        ftarg = TwoBalls(largeRadius=15, smallRadius=3)
         # mesh1 = pygalmesh.generate_mesh(
         #     pygalmesh.Ball([0.0, 0.0, 0.0], 12.0),
         #     min_facet_angle=30.0,
@@ -145,22 +146,27 @@ def compute(model):
     ## Object kernel
 
     if eulerian:
-        imgTemp = ftemp.toImage(index=0)
-        imgTarg = ftarg.toImage(index=0)
+        resolution = 0.1
+        imgTemp = ftemp.toImage(resolution=resolution, index=0, margin=0)
+        imgTarg = ftarg.toImage(resolution=resolution, index=0, margin=0, imDim=imgTemp.shape)
+        ## True kernel size = resolution * sig * kernelSize
+        sig = sigmaKernel / resolution
+        logging.info(f"sigma for image matching: {sig:.2f}")
+
         options = {
             'dim': ftarg.dim,
             'timeStep': 0.1,
             'algorithm': 'bfgs',
-            'sigmaKernel': 5,
+            'sigmaKernel': sig,
             'order': 3,
-            'kernelSize': 25,
             'typeKernel': 'laplacian',
-            'sigmaError': 50.,
-            'rescaleFactor': .1,
+            'sigmaError': 5.,
+            'rescaleFactor': 1.,
             'padWidth': 15,
-            'affineAlign': 'euclidean',
+            'affineAlign': None,
             'outputDir': '../Output/meshMatchingTestImageComparison/'+model+order+sh,
-            'mode': 'debug',
+            'mode': 'normal',
+            'normalize':255.,
             'regWeight': 1.,
             'maxIter': 1000
         }
