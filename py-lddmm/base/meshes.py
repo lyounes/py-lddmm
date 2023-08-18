@@ -882,8 +882,8 @@ class Mesh:
             #     fvtkout.write('\n')
             #
 
-    def save(self, fileName, vtkFields = None):
-        self.saveVTK(fileName)
+    def save(self, fileName, vtkFields = ()):
+        self.saveVTK(fileName, vtk_fields=vtkFields)
 
     # Reads .vtk file
     def readVTK(self, fileName):

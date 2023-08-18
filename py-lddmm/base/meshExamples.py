@@ -24,7 +24,7 @@ class TwoEllipses(Mesh):
         # A = (((self.vertices[:,0] - f.center[0] - translation[0]*Boundary_a)/Boundary_b)**2
         #      + ((self.vertices[:,1] - f.center[1] - translation[1]*Boundary_b)/Boundary_a)**2) < smallRadius
         A = (((self.centers[:,0] - f.center[0] - translation[0]*Boundary_a)/Boundary_b)**2
-             + ((self.centers[:,1] - f.center[1] - translation[1]*Boundary_b)/Boundary_a)**2) < smallRadius
+             + ((self.centers[:,1] - f.center[1] - translation[1]*Boundary_b)/Boundary_a)**2) < smallRadius**2
         imagev = np.array(A, dtype=float)
         image = np.zeros((self.faces.shape[0], 2))
         image[:, 0] = imagev #(imagev[self.faces[:, 0]] + imagev[self.faces[:, 1]] + imagev[self.faces[:, 2]]) / 3

@@ -52,12 +52,12 @@ def compute(model):
         sigmaError = .5
         regweight = 1.
     else:
-        sigmaKernel = 1.
+        sigmaKernel = .1
         sigmaDist = 5.
         sigmaError = .5
         regweight = 1.
 
-    internalWeight = .1
+    internalWeight = 10.
 
     loggingUtils.setup_default_logging('../Output', stdOutput = True)
     if model=='Circles':
@@ -81,8 +81,16 @@ def compute(model):
         ftemp = fv0
         ftarg = fv1
     elif model == 'Ellipses':
-        fv0 = TwoEllipses(Boundary_a=14, Boundary_b=6, smallRadius=.25)
-        fv1 = TwoEllipses(Boundary_a=12, Boundary_b=10, smallRadius=.4, translation=[0.1, -0.1])
+        fv0 = TwoEllipses(Boundary_a=14, Boundary_b=6, smallRadius=6/15)
+        fv1 = TwoEllipses(Boundary_a=12, Boundary_b=10, smallRadius=.4, translation=[0.25, -0.1])
+        sigmaDist = 1.
+        sigmaKernel = [5., 1., .1]
+        ftemp = fv0
+        ftarg = fv1
+    elif model == 'EllipsesTranslation':
+        fv0 = TwoEllipses(Boundary_a=12, Boundary_b=10, smallRadius=.3, translation=[0.3, 0])
+        fv1 = TwoEllipses(Boundary_a=12, Boundary_b=10, smallRadius=.3, translation=[-0.3, 0])
+        sigmaDist = 2.5
         ftemp = fv0
         ftarg = fv1
     elif model == 'Spheres':
@@ -147,8 +155,8 @@ def compute(model):
 
     if eulerian:
         resolution = 0.1
-        imgTemp = ftemp.toImage(resolution=resolution, index=0, margin=0)
-        imgTarg = ftarg.toImage(resolution=resolution, index=0, margin=0, imDim=imgTemp.shape)
+        imgTemp = ftemp.toImage(resolution=resolution, index=0, margin=5)
+        imgTarg = ftarg.toImage(resolution=resolution, index=0, margin=5, imDim=imgTemp.shape)
         ## True kernel size = resolution * sig * kernelSize
         sig = sigmaKernel / resolution
         logging.info(f"sigma for image matching: {sig:.2f}")

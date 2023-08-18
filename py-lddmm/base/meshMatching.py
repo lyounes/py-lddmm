@@ -6,6 +6,7 @@ from functools import partial
 from . import kernelFunctions as kfun, pointEvolution as evol
 from . import meshes, meshDistances as msd
 from . import pointSetMatching
+from .vtk_fields import vtkFields
 
 
 ## Main class for image varifold matching
@@ -306,7 +307,11 @@ class MeshMatching(pointSetMatching.PointSetMatching):
             for kk in range(self.Tsize+1):
                 fvDef = meshes.Mesh(mesh=self.fvDef)
                 fvDef.updateVertices(xt[kk, :, :])
-                fvDef.save(self.outputDir + '/' + self.options['saveFile'] + str(kk) + '.vtk')
+                vf1 = vtkFields('CELL_DATA', self.fv0.faces.shape[0])
+                vf1.scalars['logJacobianFromRatio'] = np.log(np.maximum(fvDef.volumes/self.fv0.volumes, 1e-10))
+                vf2 = vtkFields('POINT_DATA', self.fv0.vertices.shape[0])
+                vf2.scalars['logJacobianFromODE'] = Jt[kk,:,0]
+                fvDef.save(self.outputDir + '/' + self.options['saveFile'] + str(kk) + '.vtk', vtkFields=(vf2, vf1))
 
             self.saveHdf5(fileName=self.outputDir + '/output.h5')
 
