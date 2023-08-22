@@ -28,7 +28,7 @@ from base.meshExamples import TwoBalls, TwoDiscs, MoGCircle, TwoEllipses
 plt.ion()
 
 
-def qp_atlas(f0, f1, kernel, solver='cvxopt'):
+def qp_atlas(f0, f1, kernel, solver='cvxopt', truth = None):
     nlabel = f0.image.shape[1]
     ntype = f1.image.shape[1]
     alpha = np.mean(f1.weights)
@@ -49,7 +49,10 @@ def qp_atlas(f0, f1, kernel, solver='cvxopt'):
     #     a0 = alpha * f0.volumes * f0.image[:,i0]
     #     for f in range(ntypes):
     a1 = (f1.weights * f1.volumes)[:, None] * f1.image
-    q = np.ravel(a0.T @ kernel.applyK(f1.centers, a1, firstVar=f0.centers))
+    q = -np.ravel(a0.T @ kernel.applyK(f1.centers, a1, firstVar=f0.centers))
+    if truth is not None:
+        r = P@truth + q
+        print('error', np.fabs(r).max())
     for i0 in range(nlabel):
         for f in range(ntype):
             A[i0, i0*ntype + f] = 1
@@ -111,7 +114,7 @@ options = {
 
 f11 = Mesh(mesh=fv1)
 f11.updateImage(fv1.image @ (transProb/s))
-res = qp_atlas(fv1, f11, K1)
+res = qp_atlas(fv1, f11, K1, truth = np.ravel(transProb/s))
 res = np.reshape(res, (nlabel, ntypes))
 
 print('estimated', res)
