@@ -29,7 +29,7 @@ model = 'Ellipses'
 secondOrder = False
 shrink = False
 shrinkRatio = 0.75
-eulerian = False
+eulerian = True
 
 if secondOrder:
     typeCost = 'LDDMM'
@@ -81,10 +81,10 @@ def compute(model):
         ftemp = fv0
         ftarg = fv1
     elif model == 'Ellipses':
-        fv0 = TwoEllipses(Boundary_a=14, Boundary_b=6, smallRadius=6/15)
+        fv0 = TwoEllipses(Boundary_a=14, Boundary_b=6, smallRadius=0.33)
         fv1 = TwoEllipses(Boundary_a=12, Boundary_b=10, smallRadius=.4, translation=[0.25, -0.1])
         sigmaDist = 1.
-        sigmaKernel = [5., 1., .1]
+        sigmaKernel = 1.
         ftemp = fv0
         ftarg = fv1
     elif model == 'EllipsesTranslation':
@@ -176,6 +176,7 @@ def compute(model):
             'mode': 'normal',
             'normalize':255.,
             'regWeight': 1.,
+            'sigmaSmooth': 1.5,
             'maxIter': 1000
         }
         f = ImageMatching(Template=imgTemp, Target=imgTarg, options=options)
