@@ -45,7 +45,7 @@ except ImportError:
 # from scipy.sparse import coo_matrix
 # import glob
 import logging
-from pointSets_util import det2D, det3D
+from .pointSets_util import det2D, det3D
 
 # @jit(nopython=True)
 # def det2D(x1, x2):
@@ -677,26 +677,32 @@ class Mesh:
     def meshVolume(self):
         return self.volumes.sum()
 
-    def toImage(self, resolution=1, background = 0, margin = 10, index = None, imDim=None):
-        interp = LinearNDInterpolator(self.centers, self.image, fill_value=background)
+    def toImage(self, resolution=1, background = 0, margin = 10, index = None, bounds=None):
+        interp = LinearNDInterpolator(self.centers, self.weights[:, None]*self.image, fill_value=background)
 
-        imin = self.vertices.min(axis=0)
-        imax = self.vertices.max(axis=0)
-        if imDim is None:
-            imDim = np.ceil((imax - imin)/resolution).astype(int)
+        if bounds is None:
+            imin = self.vertices.min(axis=0) - margin
+            imax = self.vertices.max(axis=0) + margin
+        else:
+            imin = bounds[0]
+            imax = bounds[1]
+
+        imDim = np.ceil((imax - imin)/resolution).astype(int)
+
         if np.prod(imDim) * self.image.shape[1] > 1e7:
             print('Image to big to create', imDim, self.image.shape[1])
             return
 
         if self.dim > 3:
-            print('Image cannot be created: dimensions too large', s)
+            print('Image cannot be created: dimensions too large', self.dim)
             return
 
-        X = np.linspace(imin[0] - margin, imax[0] + margin, imDim[0])
+        X = np.linspace(imin[0] , imax[0], imDim[0])
         if self.dim == 2:
-            Y = np.linspace(imin[1] - margin, imax[1] + margin, imDim[1])
+            Y = np.linspace(imin[1], imax[1], imDim[1])
             X, Y = np.meshgrid(X, Y)
             outIm = interp(X,Y)
+            outIm = np.flip(outIm, axis=0)
         elif self.dim == 3:
             Y = np.linspace(imin[1] - margin, imax[1] + margin, imDim[1])
             Z = np.linspace(imin[2] - margin, imax[2] + margin, imDim[2])

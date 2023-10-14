@@ -573,7 +573,7 @@ class Surface:
     def Simplify(self, target=1000.0, deciPro=False):
         if gotVTK:
             polydata = self.toPolyData()
-            red = 1 - min(np.float(target) / polydata.GetNumberOfPoints(), 1)
+            red = 1 - min(float(target) / polydata.GetNumberOfPoints(), 1)
             if deciPro:
                 dc = vtkDecimatePro()
                 if vtkVersion.GetVTKMajorVersion() >= 6:

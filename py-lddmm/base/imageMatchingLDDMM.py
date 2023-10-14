@@ -264,6 +264,8 @@ class ImageMatching(ImageMatchingBase):
                     I1 = multilinInterp(self.im0.data, self._psi)
                     saveImage(I1, self.outputDir + f'/movie{t+1:03d}' + ext)
 
+            I1 = multilinInterp(self.originalTemplate.data, self._psi)
+            saveImage(I1, self.outputDir + f'/deformedOriginalTemplate' + ext)
             I1 = multilinInterp(self.im0.data, self._psi)
             saveImage(I1, self.outputDir + f'/deformedTemplate' + ext)
             I2 = multilinInterp(I1, self._phi)

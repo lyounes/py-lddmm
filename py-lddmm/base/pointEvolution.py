@@ -332,7 +332,7 @@ def landmarkEPDiff(T, x0, a0, KparDiff, affine = None, withJacobian=False, withN
         nt[0, :, :] = withNormals
     if withJacobian:
         simpleOutput = False
-        Jt = np.zeros([T+1, N])
+        Jt = np.zeros([T+1, N, 1])
     if not(affine is None):
         A = affine[0]
         b = affine[1]
@@ -363,9 +363,9 @@ def landmarkEPDiff(T, x0, a0, KparDiff, affine = None, withJacobian=False, withN
             if not (affine is None):
                 nt[k+1, :, :] += timeStep * np.dot(zn, A[k])
         if withJacobian:
-            Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(z, a)
+            Jt[k+1, :, 0] = Jt[k, :, 0] + timeStep * KparDiff.applyDivergence(z, a)
             if not (affine is None):
-                Jt[k+1, :] += timeStep * (np.trace(A[k]))
+                Jt[k+1, :, 0] += timeStep * (np.trace(A[k]))
     if simpleOutput:
         return xt, at
     else:
@@ -423,9 +423,9 @@ def secondOrderEvolution(x0, a0, KparDiff, timeStep, withSpline = None, affine=N
 
     if withJacobian:
         if withPointSet is not None:
-            Jt = np.zeros([T+1, K])
+            Jt = np.zeros([T+1, K, 1])
         else:
-            Jt = np.zeros([T+1, N])
+            Jt = np.zeros([T+1, N, 1])
     else:
         Jt = None
 
@@ -456,13 +456,13 @@ def secondOrderEvolution(x0, a0, KparDiff, timeStep, withSpline = None, affine=N
             else:
                 zt[k+1, :, :] = z + timeStep * zx  
             if withJacobian:
-                Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(x, a, firstVar=z).ravel()
+                Jt[k+1, :, 0] = Jt[k, :, 0] + timeStep * KparDiff.applyDivergence(x, a, firstVar=z).ravel()
                 if aff_:
-                    Jt[k+1, :] += timeStep * (np.trace(A[k]))
+                    Jt[k+1, :, 0] += timeStep * (np.trace(A[k]))
         elif withJacobian:
-            Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(x, a).ravel()
+            Jt[k+1, :, 0] = Jt[k, :, 0] + timeStep * KparDiff.applyDivergence(x, a).ravel()
             if aff_:
-                Jt[k+1, :] += timeStep * (np.trace(A[k]))
+                Jt[k+1, :, 0] += timeStep * (np.trace(A[k]))
 
     output = dict()
     output['xt'] = xt

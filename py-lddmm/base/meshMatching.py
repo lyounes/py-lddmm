@@ -54,6 +54,8 @@ class MeshMatching(pointSetMatching.PointSetMatching):
     def getDefaultOptions(self):
         options = super().getDefaultOptions()
         options['KparIm'] = None
+        options['lame_lambda'] = None
+        options['lame_mu'] = None
         return options
 
     def set_parameters(self):
@@ -115,6 +117,16 @@ class MeshMatching(pointSetMatching.PointSetMatching):
             self.extraTerm = {}
             self.extraTerm['fun'] = partial(msd.normalized_square_divergence, faces=self.fv0.faces)
             self.extraTerm['grad'] = partial(msd.normalized_square_divergence_grad, faces=self.fv0.faces)
+            self.extraTerm['coeff'] = self.options['internalWeight']
+        elif self.options['internalCost'] in ('elastic', 'elastic_energy'):
+            self.extraTerm = {}
+            if self.options['lame_lambda'] is None:
+                self.options['lame_lambda'] = 1.
+                self.options['lame_mu'] = 1.
+            self.extraTerm['fun'] = partial(msd.elasticEnergy, faces=self.fv0.faces, lbd=self.options['lame_lambda'],
+                                            mu = self.options['lame_mu'])
+            self.extraTerm['grad'] = partial(msd.elasticEnergy_grad, faces=self.fv0.faces, lbd=self.options['lame_lambda'],
+                                             mu = self.options['lame_mu'])
             self.extraTerm['coeff'] = self.options['internalWeight']
         else:
             if self.options['internalCost'] is not None:

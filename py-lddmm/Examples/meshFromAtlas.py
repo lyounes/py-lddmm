@@ -68,21 +68,24 @@ def qp_atlas(f0, f1, kernel, solver='cvxopt', truth = None):
 loggingUtils.setup_default_logging('../Output', stdOutput = True)
 
 
-fv0 = TwoEllipses(Boundary_a=14, Boundary_b=6, smallRadius=0.33)
+fv0 = TwoEllipses(Boundary_a=14, Boundary_b=6, smallRadius=0.25)
 fv1 = TwoEllipses(Boundary_a=12, Boundary_b=10, smallRadius=.4, translation=[0.25, -0.1])
 sigmaDist = 1.
-sigmaKernel = 1.
+sigmaKernel = .25
 nlabel = fv0.image.shape[1]
-ntypes = 5
-s = 100000
+ntypes = 4
+s = 10
+sw = s*10
 
-transProb = np.random.uniform(0,1, size=(nlabel, ntypes))
-transProb *= s / transProb.sum(axis=1)[:, None]
+transProb = np.array([[0.05, 0.3, 0.35,  0.3], [0.5, 0.15, 0.25, 0.1 ]])
+#
+# transProb = np.random.uniform(0,1, size=(nlabel, ntypes))
+# transProb /= transProb.sum(axis=1)[:, None]
 image1 = np.zeros((fv1.faces.shape[0], ntypes))
 w = np.zeros(fv1.faces.shape[0])
 for k in range(fv1.faces.shape[0]):
-    image1[k, :] = stats.dirichlet.rvs(fv1.image[k, :] @ transProb)
-    w[k] = stats.gamma.rvs(s*fv1.volumes[k]) / (s*fv1.volumes[k])
+    image1[k, :] = stats.dirichlet.rvs(s * fv1.image[k, :] @ transProb)
+    w[k] = stats.gamma.rvs(sw*fv1.weights[k],  loc=0, scale=1/sw)
 
 f1 = Mesh(mesh=fv1)
 f1.updateImage(image1)
@@ -92,7 +95,7 @@ f1.saveVTK('../Output/randomMesh.vtk')
 
 K1 = Kernel(name='laplacian', sigma=sigmaKernel)
 options = {
-    'outputDir': '../Output/meshMatchingTest/Atlas',
+    'outputDir': '../Output/meshMatchingTest/Atlas' + f'_s{s:.0f}',
     'mode': 'normal',
     'maxIter': 100,
     'affine': 'none',
@@ -102,41 +105,51 @@ options = {
     'affineWeight': 100.,
     'KparDiff': K1,
     'KparDist': ('gauss', sigmaDist),
-    'KparIm': ('gauss', .1),
-    'sigmaError': 0.5,
+    'KparIm': ('euclidean', 1.),
+    'sigmaError': 0.1,
     'errorType': 'measure',
     'algorithm': 'bfgs',
-    'internalCost': None,
-    'internalWeight': 0,
-    'regWeight': 1.,
+    'internalCost': 'elastic',
+    'internalWeight': 1.0,
+    'regWeight': .1,
     'pk_dtype': 'float64'
 }
 
-f11 = Mesh(mesh=fv1)
-f11.updateImage(fv1.image @ (transProb/s))
-res = qp_atlas(fv1, f11, K1, truth = np.ravel(transProb/s))
-res = np.reshape(res, (nlabel, ntypes))
-
-print('estimated', res)
-print('true', transProb/s)
-fv = Mesh(mesh=fv1)
-image0 = fv.image @ res
-fv.updateImage(image0)
-fv.saveVTK('../Output/reconstructedMesh.vtk')
+# f11 = Mesh(mesh=fv1)
+# f11.updateImage(fv1.image @ (transProb/s))
+# res = qp_atlas(fv1, f11, K1, truth = np.ravel(transProb/s))
+# res = np.reshape(res, (nlabel, ntypes))
+# print('estimated', res)
+# print('true', transProb/s)
+# fv = Mesh(mesh=fv1)
+# image0 = fv.image @ res
+# fv.updateImage(image0)
+# fv.saveVTK('../Output/reconstructedMesh.vtk')
 
 alpha = np.mean(f1.weights)
 print(f'alpha= {alpha:.4f}')
 fv = Mesh(mesh=fv0)
+
 for iter in range(10):
     res = qp_atlas(fv, f1, K1)
     res = np.reshape(res, (nlabel, ntypes))
-    print(res)
+    np.set_printoptions(precision=4)
+    print('estimated', res)
+    np.set_printoptions(precision=4)
+    print('Ground truth', transProb)
     #res = transProb / s
     f0 = Mesh(mesh=fv)
     image0 = fv.image @ res
     f0.updateImage(image0)
-    f0.updateWeights(f0.weights*alpha)
+    f0.updateWeights(fv0.weights*alpha)
     print(f0.vertices.shape, f0.faces.shape, f0.image.shape)
-    mm = MeshMatching(Template=f0, Target=f1, options=options)
+    if iter == 0:
+        mm = MeshMatching(Template=f0, Target=f1, options=options)
+    else:
+        mm.fv0.updateImage(image0)
+        mm.fv0.updateWeights(fv0.weights*alpha)
+        mm.fvDef.updateImage(image0)
+        mm.fvDef.updateWeights(fv0.weights*alpha)
+        mm.reset = True
     mm.optimizeMatching()
-    fv.updateVertices(f0.vertices)
+    fv.updateVertices(mm.fvDef.vertices)

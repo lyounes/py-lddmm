@@ -2,6 +2,7 @@ import os
 import numpy as np
 import logging
 import glob
+from copy import deepcopy
 from .basicMatching import BasicMatching 
 from .gridscalars import GridScalars, saveImage
 from .diffeo import DiffeoParam, Diffeomorphism, Kernel
@@ -141,6 +142,8 @@ class ImageMatchingBase(BasicMatching, Diffeomorphism):
         #
         # self.resol = self.options['resol']
 
+        self.originalTemplate = deepcopy(self.im0)
+        self.originalTarget = deepcopy(self.im1)
         if self.options['sigmaSmooth'] > 0:
             self.smoothKernel = Kernel(name = 'gauss', sigma = self.options['sigmaSmooth'], size=25, dim=self.options['dim'])
             self.smoothKernel.K /= self.smoothKernel.K.sum()
@@ -225,8 +228,8 @@ class ImageMatchingBase(BasicMatching, Diffeomorphism):
 
 
         if self.options['normalize'] is not None:
-            m = self.im0.data.min()
-            M = max(self.im0.data.max()-m, 1e-10)
+            m = min(self.im0.data.min(), self.im1.data.min())
+            M = max(max(self.im0.data.max(), self.im1.data.max())-m, 1e-10)
             self.im0.data = self.options['normalize'] * (self.im0.data -m) /(M)
             self.im1.data = self.options['normalize'] * (self.im1.data -m) /(M)
 
@@ -277,6 +280,8 @@ class ImageMatchingBase(BasicMatching, Diffeomorphism):
             ext = '.vtk'
         else:
             ext = ''
+        saveImage(self.originalTemplate.data, self.outputDir + '/OriginalTemplate'+ ext)
+        saveImage(self.originalTarget.data, self.outputDir + '/OriginalTarget'+ ext)
         saveImage(self.im0.data, self.outputDir + '/Template'+ ext)
         saveImage(self.im1.data, self.outputDir + '/Target' + ext)
         saveImage(self.KparDiff.K, self.outputDir + '/Kernel' + ext, normalize=True)

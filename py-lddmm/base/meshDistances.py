@@ -243,7 +243,7 @@ def square_divergence_(x, v, faces, normalize = False):
         v1 = v[faces[:, 1], :]
         v2 = v[faces[:, 2], :]
         vol = np.fabs(det2D(x1-x0, x2-x0))
-        div = det2D(v2, x0-x1) + det2D(v0, x1-x2) + det2D(v1, x2-x0)
+        div = det2D(v1-v0, x2-x0) + det2D(x1-x0, v2-v0)
     elif dim == 3:
         x0 = x[faces[:, 0], :]
         x1 = x[faces[:, 1], :]
@@ -254,7 +254,7 @@ def square_divergence_(x, v, faces, normalize = False):
         v2 = v[faces[:, 2], :]
         v3 = v[faces[:, 3], :]
         vol = np.fabs(det3D(x1-x0, x2-x0, x3-x0))
-        div = det3D(v3, x0-x1, x0-x2) + det3D(v0, x1-x2, x1-x3) + det3D(v1, x2-x3, x2-x0) + det3D(v2, x3-x0, x3-x1)
+        div = det3D(v1-v0, x2-x0, x3-x0) + det3D(x1-x0, v2-v0, x3-x0) + det3D(x1-x0, x2-x0, v3-v0)
     else:
         logging.warning('square divergence: unrecognized dimension')
 
@@ -289,7 +289,7 @@ def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
         vol = det2D(x1-x0, x2-x0)
         svol = np.sign(vol)
         vol = np.fabs(vol)
-        div = det2D(v2, x0-x1) + det2D(v0, x1-x2) + det2D(v1, x2-x0)
+        div = det2D(v1-v0, x2-x0) + det2D(x1-x0, v2-v0)
         c1 = 2 * (div / vol)[:, None]
         if normalize:
             totalVol = vol.sum()
@@ -298,9 +298,9 @@ def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
             totalVol = 1
             sqdiv = 1
         if variables == 'phi' or variables == 'both':
-            dphi2 = -rot90(x0-x1) * c1
-            dphi0 = -rot90(x1-x2) * c1
             dphi1 = -rot90(x2-x0) * c1
+            dphi2 = rot90(x1-x0) * c1
+            dphi0 = - dphi1 - dphi2
             for k, f in enumerate(faces):
                 gradphi[f[0], :] += dphi0[k, :]
                 gradphi[f[1], :] += dphi1[k, :]
@@ -318,9 +318,10 @@ def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
             if normalize:
                 c2 += sqdiv/totalVol
             c2 *= svol[:,None]
-            dx0 = -rot90(v1 - v2) * c1 + rot90(x1-x2)*c2
+            #dx0 = -rot90(v1 - v2) * c1 + rot90(x1-x2)*c2
             dx1 = -rot90(v2 - v0) * c1 + rot90(x2-x0)*c2
-            dx2 = -rot90(v0 - v1) * c1 + rot90(x0-x1)*c2
+            dx2 = rot90(v1 - v0) * c1 - rot90(x1-x0)*c2
+            dx0 = -dx1 - dx2
             #if normalize:
              #   dx0 += rot90(x1-x2) * sqdiv / totalVol
              #   dx1 += rot90(x2-x0) * sqdiv /totalVol
@@ -339,15 +340,17 @@ def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
                 logging.info(f"test sqdiv x: {(grad['x']*h).sum():.4f} {(fp - fm) / (2 * eps):.4f}")
     elif dim == 3:
         x0 = x[faces[:, 0], :]
-        x1 = x[faces[:, 1], :]
-        x2 = x[faces[:, 2], :]
-        x3 = x[faces[:, 3], :]
+        u1 = x[faces[:, 1], :] - x0
+        u2 = x[faces[:, 2], :] - x0
+        u3 = x[faces[:, 3], :] - x0
         v0 = v[faces[:, 0], :]
-        v1 = v[faces[:, 1], :]
-        v2 = v[faces[:, 2], :]
-        v3 = v[faces[:, 3], :]
-        vol = np.fabs(det3D(x1-x0, x2-x0, x3-x0))
-        div = det3D(v3, x0-x1, x0-x2) + det3D(v0, x1-x2, x1-x3) + det3D(v1, x2-x3, x2-x0) + det3D(v2, x3-x0, x3-x1)
+        w1 = v[faces[:, 1], :] - v0
+        w2 = v[faces[:, 2], :] - v0
+        w3 = v[faces[:, 3], :] - v0
+        vol = det3D(u1, u2, u3)
+        svol = np.sign(vol)
+        vol = np.fabs(vol)
+        div = np.fabs(det3D(w1, u2, u3)) + np.fabs(det3D(u1, w2, u3)) + np.fabs(det3D(u1, u2, w3))
         c1 = 2 * (div / vol)[:, None]
         if normalize:
             totalVol = vol.sum()
@@ -356,10 +359,10 @@ def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
             totalVol = 1
             sqdiv = 1
         if variables == 'phi' or variables == 'both':
-            dphi0 = np.cross(x1-x2, x1-x3) * c1
-            dphi1 = np.cross(x2-x3, x2-x0) * c1
-            dphi2 = np.cross(x3-x0, x3-x1) * c1
-            dphi3 = np.cross(x0-x1, x0-x2) * c1
+            dphi1 = np.cross(u2, u3) * c1
+            dphi2 = -np.cross(u1, u3) * c1
+            dphi3 = np.cross(u1, u2) * c1
+            dphi0 = - dphi1 - dphi2 - dphi3
             for k, f in enumerate(faces):
                 gradphi[f[0], :] += dphi0[k, :]
                 gradphi[f[1], :] += dphi1[k, :]
@@ -376,9 +379,10 @@ def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
         if variables == 'x' or variables == 'both':
             c2 = ((div/vol)**2)[:, None]
             dx0 = (np.cross(v1, x3-x2) + np.cross(v2, x3-x1) + np.cross(v3, x2-x1)) * c1 - c2 * np.cross(x1-x3, x2-x3)
-            dx1 = (np.cross(v2, x0-x3) + np.cross(v3, x0-x2) + np.cross(v0, x3-x2)) * c1 - c2 * np.cross(x2-x0, x3-x0)
-            dx2 = (np.cross(v3, x1-x0) + np.cross(v0, x1-x3) + np.cross(v1, x0-x3)) * c1 - c2 * np.cross(x3-x1, x0-x1)
-            dx3 = (np.cross(v0, x2-x1) + np.cross(v1, x2-x0) + np.cross(v2, x1-x0)) * c1 - c2 * np.cross(x0-x2, x1-x2)
+            dx1 = (np.cross(w2, u3) + np.cross(u2, w3)) * c1 - c2 * np.cross(u2, u3)
+            dx2 = -(np.cross(w1, u3) + np.cross(u1, w3)) * c1 + c2 * np.cross(u1, u3)
+            dx3 = (np.cross(w1, u2) + np.cross(u1, w2)) * c1 - c2 * np.cross(u1, u2)
+            dx0 = -dx1 - dx2 - dx3
             if normalize:
                 dx0 -= np.cross(x1 - x3, x2 - x3) * sqdiv / totalVol
                 dx1 -= np.cross(x2 - x0, x3 - x0) * sqdiv / totalVol
@@ -410,3 +414,198 @@ def square_divergence_grad_(x, v, faces, variables = 'both', normalize=False):
     #     return gradx
     # else:
     #     logging.info('Incorrect option in square_divergence_grad')
+
+
+def elasticEnergy_grad(x, v, faces, variables = 'both', lbd=1., mu=1.):
+    dim = x.shape[1]
+    nf = faces.shape[0]
+    vol = np.zeros(nf)
+    div = np.zeros(nf)
+    lTerm = np.zeros(nf)
+    mTerm = np.zeros(nf)
+    gradx = np.zeros(x.shape)
+    gradphi = np.zeros(v.shape)
+    test = False
+    grad = dict()
+    if dim==2:
+        x0 = x[faces[:, 0], :]
+        u1 = x[faces[:, 1], :] - x0
+        u2 = x[faces[:, 2], :] - x0
+        n1 = - rot90(u2)
+        n2 = rot90(u1)
+        v0 = v[faces[:, 0], :]
+        w1 = v[faces[:, 1], :] - v0
+        w2 = v[faces[:, 2], :] - v0
+        F = w1[:, :, None] * n1[:, None, :] + w2[:, :, None] * n2[:, None, :]
+        F = 0.5*(F + F.transpose(0,2,1))
+        Fn1 = (F * n1[:, None, :]).sum(axis=2)
+        Fn2 = (F * n2[:, None, :]).sum(axis=2)
+        lTerm = F[:, 0, 0] + F[:, 1, 1]
+        mTerm = (F**2).sum(axis=(1,2))
+        vol = det2D(u1, u2)
+        svol = np.sign(vol)
+        vol = np.fabs(vol)
+        div = det2D(w1, u2) + det2D(u1, w2)
+        c1 = 2 * (lTerm / vol)[:, None]
+        if variables == 'phi' or variables == 'both':
+            dphi1 = n1 * (lbd*c1) + Fn1 * (2* mu / vol[:, None])
+            dphi2 = n2 * (lbd*c1) + Fn2 * (2 * mu / vol[:, None])
+            dphi0 = - dphi1 - dphi2
+            for k, f in enumerate(faces):
+                gradphi[f[0], :] += dphi0[k, :]
+                gradphi[f[1], :] += dphi1[k, :]
+                gradphi[f[2], :] += dphi2[k, :]
+            grad['phi'] = gradphi
+            if test == True:
+                eps = 1e-10
+                h = np.random.normal(0,1,v.shape)
+                fp = elasticEnergy(x, v+eps*h, faces, lbd=lbd, mu=mu)
+                fm = elasticEnergy(x, v-eps*h, faces, lbd=lbd, mu=mu)
+                logging.info(f"test elastic v: {(grad['phi']*h).sum():.4f} {(fp-fm)/(2*eps):.4f}")
+
+        if variables == 'x' or variables == 'both':
+            c2 = ((lbd*lTerm**2+mu*mTerm)/vol**2)[:, None]
+            c2 *= svol[:,None]
+            Fw1 = (F * w1[:, None, :]).sum(axis=-1)
+            Fw2 = (F * w2[:, None, :]).sum(axis=-1)
+            #dx0 = -rot90(v1 - v2) * c1 + rot90(x1-x2)*c2
+            dx1 = -rot90(w2) * (lbd*c1) - n1 *c2 - 2 * mu * rot90(Fw2) / vol[:, None]
+            dx2 = rot90(w1) * (lbd*c1) - n2 *c2  + 2 * mu * rot90(Fw1) / vol[:, None]
+            dx0 = -dx1 - dx2
+            #if normalize:
+             #   dx0 += rot90(x1-x2) * sqdiv / totalVol
+             #   dx1 += rot90(x2-x0) * sqdiv /totalVol
+             #   dx2 += rot90(x0-x1) * sqdiv / totalVol
+            for k, f in enumerate(faces):
+                gradx[f[0], :] += dx0[k, :]
+                gradx[f[1], :] += dx1[k, :]
+                gradx[f[2], :] += dx2[k, :]
+            grad['x'] = gradx
+            #gradx = -gradx
+            if test == True:
+                eps = 1e-10
+                h = np.random.normal(0, 1, x.shape)
+                fp = elasticEnergy(x + eps * h, v, faces, lbd=lbd, mu=mu)
+                fm = elasticEnergy(x - eps * h, v, faces, lbd=lbd, mu=mu)
+                logging.info(f"test elastic x: {(grad['x']*h).sum():.4f} {(fp - fm) / (2 * eps):.4f}")
+
+    elif dim == 3:
+        x0 = x[faces[:, 0], :]
+        u1 = x[faces[:, 1], :] - x0
+        u2 = x[faces[:, 2], :] - x0
+        u3 = x[faces[:, 3], :] - x0
+        n1 = np.cross(u2, u3)
+        n2 = - np.cross(u1, u3)
+        n3 = np.cross(u1, u2)
+        v0 = v[faces[:, 0], :]
+        w1 = v[faces[:, 1], :] - v0
+        w2 = v[faces[:, 2], :] - v0
+        w3 = v[faces[:, 3], :] - v0
+        F = w1[:, :, None] * n1[:, None, :] + w2[:, :, None] * n2[:, None, :] + w3[:, :, None] * n3[:, None, :]
+        F = 0.5*(F + F.transpose(0,2,1))
+        Fn1 = (F * n1[:, None, :]).sum(axis=2)
+        Fn2 = (F * n2[:, None, :]).sum(axis=2)
+        Fn3 = (F * n3[:, None, :]).sum(axis=2)
+        lTerm = F[:, 0, 0] + F[:, 1, 1] + F[:, 2, 2]
+        mTerm = (F**2).sum(axis=(1,2))
+        vol = det3D(u1, u2, u3)
+        svol = np.sign(vol)
+        vol = np.fabs(vol)
+#        div = det3D(w1, u2, u3) + det3D(u1, w2, u3) + det3D(u1, u2, w3)
+        c1 = 2 * lbd * (lTerm / vol)[:, None]
+        c3 = 2 * mu / vol[:, None]
+        if variables == 'phi' or variables == 'both':
+            dphi1 = n1 * c1 + Fn1 * c3 
+            dphi2 = n2 * c1 + Fn2 * c3 
+            dphi3 = n3 * c1 + Fn3 * c3 
+            dphi0 = - dphi1 - dphi2 - dphi3
+            for k, f in enumerate(faces):
+                gradphi[f[0], :] += dphi0[k, :]
+                gradphi[f[1], :] += dphi1[k, :]
+                gradphi[f[2], :] += dphi2[k, :]
+                gradphi[f[3], :] += dphi3[k, :]
+            grad['phi'] = gradphi
+            if test == True:
+                eps = 1e-10
+                h = np.random.normal(0,1,v.shape)
+                fp = elasticEnergy(x, v+eps*h, faces, lbd=lbd, mu=mu)
+                fm = elasticEnergy(x, v-eps*h, faces, lbd=lbd, mu=mu)
+                logging.info(f"test elastic v: {(grad['phi']*h).sum():.4f} {(fp-fm)/(2*eps):.4f}")
+
+        if variables == 'x' or variables == 'both':
+            c2 = ((lbd*lTerm**2+mu*mTerm)/vol**2)[:, None]
+            c2 *= svol[:,None]
+            Fw1 = (F * w1[:, None, :]).sum(axis=-1)
+            Fw2 = (F * w2[:, None, :]).sum(axis=-1)
+            Fw3 = (F * w3[:, None, :]).sum(axis=-1)
+            #dx0 = -rot90(v1 - v2) * c1 + rot90(x1-x2)*c2
+            dx1 = (np.cross(w2, u3) + np.cross(u2, w3)) * c1 - n1 * c2 + (np.cross(Fw2, u3) + np.cross(u2, Fw3)) * c3
+            dx2 = -(np.cross(w1, u3) + np.cross(u1, w3)) * c1 - n2 * c2 - (np.cross(Fw1, u3) + np.cross(u1, Fw3)) * c3
+            dx3 = (np.cross(w1, u2) + np.cross(u1, w2)) * c1 - n3 * c2 + (np.cross(Fw1, u2) + np.cross(u1, Fw2)) * c3
+            dx0 = -dx1 - dx2 - dx3
+            for k, f in enumerate(faces):
+                gradx[f[0], :] += dx0[k, :]
+                gradx[f[1], :] += dx1[k, :]
+                gradx[f[2], :] += dx2[k, :]
+                gradx[f[3], :] += dx3[k, :]
+            grad['x'] = gradx
+            #gradx = -gradx
+            if test == True:
+                eps = 1e-10
+                h = np.random.normal(0, 1, x.shape)
+                fp = elasticEnergy(x + eps * h, v, faces, lbd=lbd, mu=mu)
+                fm = elasticEnergy(x - eps * h, v, faces, lbd=lbd, mu=mu)
+                logging.info(f"test elastic x: {(grad['x']*h).sum():.4f} {(fp - fm) / (2 * eps):.4f}")
+
+    else:
+        logging.warning('Elastic energy: unrecognized dimension')
+
+    return grad
+
+def elasticEnergy(x, v, faces, lbd=1., mu=1.):
+    dim = x.shape[1]
+    nf = faces.shape[0]
+    vol = np.zeros(nf)
+    div = np.zeros(nf)
+    lTerm = np.zeros(nf)
+    mTerm = np.zeros(nf)
+    if dim==2:
+        x0 = x[faces[:, 0], :]
+        u1 = x[faces[:, 1], :] - x0
+        u2 = x[faces[:, 2], :] - x0
+        n1 = - rot90(u2)
+        n2 = rot90(u1)
+        v0 = v[faces[:, 0], :]
+        w1 = v[faces[:, 1], :] - v0
+        w2 = v[faces[:, 2], :] - v0
+        F = w1[:, :, None] * n1[:, None, :] + w2[:, :, None] * n2[:, None, :]
+        F = 0.5*(F + F.transpose(0,2,1))
+        lTerm = F[:, 0, 0] + F[:, 1, 1]
+        mTerm = (F**2).sum(axis=(1,2))
+        vol = np.fabs(det2D(u1, u2))
+        #div = det2D(w1, u2) + det2D(u1, w2)
+        # logging.info(f'{np.fabs(lTerm-div).sum()}')
+    elif dim == 3:
+        x0 = x[faces[:, 0], :]
+        u1 = x[faces[:, 1], :] - x0
+        u2 = x[faces[:, 2], :] - x0
+        u3 = x[faces[:, 3], :] - x0
+        n1 = np.cross(u2, u3)
+        n2 = - np.cross(u1, u3)
+        n3 = np.cross(u1, u2)
+        v0 = v[faces[:, 0], :]
+        w1 = v[faces[:, 1], :] - v0
+        w2 = v[faces[:, 2], :] - v0
+        w3 = v[faces[:, 3], :] - v0
+        F = w1[:, :, None] * n1[:, None, :] + w2[:, :, None] * n2[:, None, :] + w3[:, :, None] * n3[:, None, :]
+        F = 0.5*(F + F.transpose(0,2,1))
+        lTerm = F[:, 0, 0] + F[:, 1, 1] + F[:, 2, 2]
+        mTerm = (F**2).sum(axis=(1,2))
+        vol = np.fabs(det3D(u1, u2, u3))
+        #div = det3D(w1, u2, u3) + det3D(u1, w2, u3) + det3D(u1, u2, w3)
+        #logging.info(f'{np.fabs(lTerm-div).sum()}')
+    else:
+        logging.warning('Elastic energy: unrecognized dimension')
+
+    res = ((lbd * lTerm**2 + mu * mTerm)/np.maximum(vol, 1e-10)).sum()
+    return res
