@@ -1,7 +1,9 @@
-from numba import jit, prange
+from numba import jit
 import numpy as np
-from math import pi, exp, sqrt
+import logging
+from math import pi, sqrt
 from . import kernelFunctions_util as ku
+from .conjugateGradient import linearcg
 from scipy.spatial import distance as dfun
 
 def kernelMatrixGauss(x, firstVar=None, grid=None, par=[1], diff = False, diff2 = False, constant_plane=False, precomp=None):
@@ -336,7 +338,7 @@ def applyDiv_(y, x, a, name, scale, order):
 # dim: dimension
 class KernelSpec:
     def __init__(self, name='gauss', affine = 'none', sigma = (1.,), order = 3, w1 = 1.0,
-                 w2 = 1.0, dim = 3, center = None, weight = 1.0, localMaps=None):
+                 w2 = 1.0, dim = 3, weight = 1.0, localMaps=None):
         self.name = name
         if np.isscalar(sigma):
             self.sigma = np.array([sigma], dtype=float)
@@ -344,13 +346,7 @@ class KernelSpec:
             self.sigma = np.array(sigma, dtype=float)
         self.order = order
         self.weight=weight
-        self.w1 = w1
-        self.w2 = w2
         self.constant_plane=False
-        if center is None:
-            self.center = np.zeros(dim)
-        else:
-            self.center = np.array(center)
         self.affine_basis = []
         self.dim = dim
         #self.prev_x = []
@@ -358,7 +354,7 @@ class KernelSpec:
         self.precomp = []
         self._hold = False
         self._state = False
-        self.affine = affine
+        self.setAffine(affine, w1, w2)
         self.localMaps = localMaps
         self.kff = False
         self.pk_dtype = 'float64'
@@ -392,19 +388,28 @@ class KernelSpec:
             self.name = 'none'
             self.kernelMatrix = None
             self.par = []
+
+
+    def setAffine(self, affine, w1 = 1., w2 = 1., center = None):
+        self.affine = affine
+        self.w1 = w1
+        self.w2 = w2
+        if center is None:
+            self.center = np.zeros(self.dim)
+        else:
+            self.center = np.array(center)
         if self.affine=='euclidean':
             if self.dim == 3:
                 s2 = np.sqrt(2.0)
-                self.affine_basis.append(np.mat([ [0,1,0], [-1,0,0], [0,0,0]])/s2)
-                self.affine_basis.append(np.mat([ [0,0,1], [0,0,0], [-1,0,0]])/s2)
-                self.affine_basis.append(np.mat([ [0,0,0], [0,0,1], [0,-1,0]])/s2)
+                self.affine_basis.append(np.array([ [0,1,0], [-1,0,0], [0,0,0]])/s2)
+                self.affine_basis.append(np.array([ [0,0,1], [0,0,0], [-1,0,0]])/s2)
+                self.affine_basis.append(np.array([ [0,0,0], [0,0,1], [0,-1,0]])/s2)
             elif self.dim==2:
                 s2 = np.sqrt(2.0)
-                self.affine_basis.append(np.mat([ [0,1], [-1,0]])/s2)
+                self.affine_basis.append(np.array([ [0,1], [-1,0]])/s2)
             else:
-                print('Euclidian kernels only available in dimensions 2 or 3')
-                return
-
+                logging.info('Warning: Euclidean kernels only available in dimensions 2 or 3')
+                self.affine = 'affine'
 
 # Main class for kernel definition
 class Kernel(KernelSpec):
@@ -472,13 +477,13 @@ class Kernel(KernelSpec):
             xx = x-self.center
             if firstVar is None:
                 if grid is None:
-                    z += self.w1 * np.dot(xx, np.dot(xx.T, a)) + self.w2 * a.sum(axis=0)
+                    z += self.w1 * (xx @ (xx.T @ a)) + self.w2 * a.sum(axis=0)
                 else:
                     yy = grid -self.center
-                    z += self.w1 * np.dot(grid, np.dot(xx.T, a)) + self.w2 * a.sum(axis=0)
+                    z += self.w1 * (yy @ (xx.T @ a)) + self.w2 * a.sum(axis=0)
             else:
                 yy = firstVar-self.center
-                z += self.w1 * np.dot(yy, np.dot(xx.T, a)) + self.w2 * a.sum(axis=0)
+                z += self.w1 * (yy @ (xx.T @ a)) + self.w2 * a.sum(axis=0)
         elif self.affine == 'euclidean':
             xx = x-self.center
             if not (firstVar is None):
@@ -514,15 +519,46 @@ class Kernel(KernelSpec):
     # # Computes A(i) = sum_j D_1[K(x(i), x(j))a2(j)]a1(i)
     def applyDiffK(self, x, a1, a2):
         z = ku.applykdiff1(x, a1, a2, self.name, self.sigma, self.order, KP=self.ms_exponent)
+        if self.affine == 'affine':
+            xx = x - self.center
+            z += self.w1 * (xx * a2).sum() * a1
+        elif self.affine == 'euclidean':
+            xx = x - self.center
+            for E in self.affine_basis:
+                ETa1 = np.dot(a1, E)
+                ETa2 = np.dot(a2, E)
+                z += self.w1 * (xx * ETa2).sum() * ETa1
+
         return z
 
     # Computes A(i) = sum_j D_2[K(x(i), x(j))a2(j)]a1(j)
     def applyDiffK2(self, x, a1, a2):
         z = ku.applykdiff2(x, a1, a2, self.name, self.sigma, self.order, KP=self.ms_exponent)
+        if self.affine == 'affine':
+            xx = x - self.center
+            z += self.w1 * (a1 * a2).sum() * xx
+        elif self.affine == 'euclidean':
+            xx = x - self.center
+            for E in self.affine_basis:
+                Exx = np.dot(xx, E.T)
+                ETa2 = np.dot(a2, E)
+                z += self.w1 * (a1 * ETa2).sum() * Exx
+
         return z
 
     def applyDiffK1and2(self, x, a1, a2):
         z = ku.applykdiff1and2(x, a1, a2, self.name, self.sigma, self.order, KP=self.ms_exponent)
+        if self.affine == 'affine':
+            xx = x - self.center
+            # z += self.w1 * ((xx * a2).sum() * a1+(a1 * a2).sum() * xx)
+            z += self.w1 * (a1 @ (xx.T @ a2) + (xx @ (a1.T @ a2)))
+        elif self.affine == 'euclidean':
+            xx = x - self.center
+            for E in self.affine_basis:
+                Exx = np.dot(xx, E.T)
+                Ea1 = np.dot(a1, E.T)
+                ETa2 = np.dot(a2, E)
+                z += self.w1 * ((xx * ETa2).sum() * Ea1 + (a1 * ETa2).sum() * Exx)
         return z
 
     # Computes A(i) = sum_j D_2[K(x(i), x(j))a2(j)]a1(j)
@@ -564,16 +600,29 @@ class Kernel(KernelSpec):
                                  regweight=regweight, lddmm=lddmm, sym=sym, cpu=cpu, dtype=self.pk_dtype, KP=self.ms_exponent)
         if self.affine == 'affine':
             xx = x-self.center
+            # zpx += self.w1 * (xx * a).sum() * p
+            # if lddmm:
+            #     zpx += self.w1 * ((xx * p).sum() * a - 2 * regweight * (xx * a).sum() * a)
+            # elif sym:
+            #     zpx += self.w1 * (xx * p).sum() * a
+            zpx += self.w1 *  (p @ (a.T @ xx))
+            if lddmm:
+                zpx += self.w1 * (a @ (p.T @ xx) - 2 * regweight * a @ (a.T @ xx))
+            elif sym:
+                zpx += self.w1 * (a @ (p.T @ xx))
 
             ### TO CHECK
-            zpx += self.w1 * ((a*xx).sum() * p + (p*xx).sum() * a)
+            #zpx += self.w1 * ((a*xx).sum() * p + (p*xx).sum() * a)
         elif self.affine == 'euclidean':
             xx = x-self.center
             for E in self.affine_basis:
-                yy = np.dot(xx, E.T)
-                for k in range(len(a)):
-                     bb = np.dot(p[k], E)
-                     zpx += self.w1 * np.multiply(yy, a[k]).sum() * bb
+                ETp = np.dot(p, E)
+                ETa = np.dot(a, E)
+                zpx += self.w1 * (xx * ETa).sum() * ETp
+                if lddmm:
+                    zpx += self.w1 * ((xx * ETp).sum() * ETa - 2*regweight*(xx * ETa).sum() * ETa)
+                elif sym:
+                    zpx += self.w1 * (xx * ETp).sum() * ETa
         return zpx
 
 
@@ -599,10 +648,33 @@ class Kernel(KernelSpec):
                                         self.localMaps[1], KP=self.ms_exponent)
         else:
             zpx = ku.applyDiv(y,x,a, self.name, self.sigma, self.order, KP=self.ms_exponent)
+
+        if self.affine == 'affine':
+            xx = x - self.center
+            zpx += self.w1 * (xx * a).sum()
+        elif self.affine == 'euclidean':
+            xx = x - self.center
+            for E in self.affine_basis:
+                ETa = np.dot(a, E)
+                zpx += self.w1 * (xx * ETa).sum() * np.trace(E)
+
+
         return zpx
 
 
     def applyDDiffK11and12(self, x, n, a, p):
         z = ku.applykdiff11and12(x, n, a, p, self.name, self.sigma, self.order, KP=self.ms_exponent)
+        if self.affine == 'affine':
+            z += self.w1 * a @ (a.T @ p)
+        elif self.affine == 'euclidean':
+            for E in self.affine_basis:
+                ETa = a @ E
+                z += self.w1 * (p * ETa).sum() * ETa
+
         return z
 
+    def solve(self, x, xi, b, iterMax=100):
+        def op(a_):
+            return self.applyK(x, a_)
+
+        return linearcg(op, xi, iterMax=iterMax)

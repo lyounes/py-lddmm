@@ -21,7 +21,7 @@ except ImportError:
 class Curve:
     def __init__(self, curve=None, isOpen=False, c=0.0001):
         if type(curve) in (list, tuple):
-            if type(curve[0]) is Curve:
+            if isinstance(curve[0],  Curve):
                 self.concatenate(curve, c=c)
             elif type(curve[0]) is str:
                 fvl = []

@@ -5,7 +5,7 @@ from base.loggingUtils import setup_default_logging
 from base.kernelFunctions import Kernel
 from base import surfaceMatching
 from base import surfaces as surfaces
-from base.secondOrderMatching import SecondOrderSurfaceTimeMatching
+from base.secondOrderSurfaceTimeMatching import SecondOrderSurfaceTimeMatching
 
 
 setup_default_logging('../Output/Temp', fileName='info', stdOutput = True)

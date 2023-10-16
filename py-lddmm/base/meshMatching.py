@@ -4,8 +4,9 @@ import h5py
 import logging
 from functools import partial
 from . import kernelFunctions as kfun, pointEvolution as evol
-from . import meshes, mesh_distances as msd
+from . import meshes, meshDistances as msd
 from . import pointSetMatching
+from .vtk_fields import vtkFields
 
 
 ## Main class for image varifold matching
@@ -53,6 +54,8 @@ class MeshMatching(pointSetMatching.PointSetMatching):
     def getDefaultOptions(self):
         options = super().getDefaultOptions()
         options['KparIm'] = None
+        options['lame_lambda'] = None
+        options['lame_mu'] = None
         return options
 
     def set_parameters(self):
@@ -69,6 +72,14 @@ class MeshMatching(pointSetMatching.PointSetMatching):
 
         if self.options['KparIm'] is None:
             self.options['KparIm'] = kfun.Kernel(name = typeKim, sigma = sigmaKim, order= orderKim)
+
+    def createObject(self, data, other=None):
+        if isinstance(data, meshes.Mesh):
+            fv = meshes.Mesh(mesh=data)
+        else:
+            fv = meshes.Mesh(mesh=self.fv0)
+            fv.updateVertices(data)
+        return fv
 
     def initialize_variables(self):
         self.x0 = np.copy(self.fv0.vertices)
@@ -102,7 +113,24 @@ class MeshMatching(pointSetMatching.PointSetMatching):
             self.extraTerm['fun'] = partial(msd.square_divergence, faces=self.fv0.faces)
             self.extraTerm['grad'] = partial(msd.square_divergence_grad, faces=self.fv0.faces)
             self.extraTerm['coeff'] = self.options['internalWeight']
+        elif self.options['internalCost'] == 'normalized_divergence':
+            self.extraTerm = {}
+            self.extraTerm['fun'] = partial(msd.normalized_square_divergence, faces=self.fv0.faces)
+            self.extraTerm['grad'] = partial(msd.normalized_square_divergence_grad, faces=self.fv0.faces)
+            self.extraTerm['coeff'] = self.options['internalWeight']
+        elif self.options['internalCost'] in ('elastic', 'elastic_energy'):
+            self.extraTerm = {}
+            if self.options['lame_lambda'] is None:
+                self.options['lame_lambda'] = 1.
+                self.options['lame_mu'] = 1.
+            self.extraTerm['fun'] = partial(msd.elasticEnergy, faces=self.fv0.faces, lbd=self.options['lame_lambda'],
+                                            mu = self.options['lame_mu'])
+            self.extraTerm['grad'] = partial(msd.elasticEnergy_grad, faces=self.fv0.faces, lbd=self.options['lame_lambda'],
+                                             mu = self.options['lame_mu'])
+            self.extraTerm['coeff'] = self.options['internalWeight']
         else:
+            if self.options['internalCost'] is not None:
+                logging.warning("Internal cost not recognized: " + self.options['internalCost'])
             self.extraTerm = None
 
 
@@ -151,25 +179,31 @@ class MeshMatching(pointSetMatching.PointSetMatching):
         deformedTemplate = LDDMMResult.create_group('deformedTemplate')
         deformedTemplate.create_dataset('vertices', data=self.fvDef.vertices)
         variables = LDDMMResult.create_group('variables')
-        variables.create_dataset('alpha', data=self.control['at'])
-        if self.control['Afft'] is not None:
-            variables.create_dataset('affine', data=self.control['Afft'])
-        else:
-            variables.create_dataset('affine', data='None')
+        for k in self.control.keys():
+            # logging.info('variable: ' + k)
+            variables.create_dataset(k, data=self.control[k])
+        # if self.control['Afft'] is not None:
+        #     variables.create_dataset('affine', data=self.control['Afft'])
+        # else:
+        #     variables.create_dataset('affine', data='None')
         descriptors = LDDMMResult.create_group('descriptors')
 
-        if self.affineDim > 0:
-            A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-            dim2 = self.dim**2
-            for t in range(self.Tsize):
-                AB = np.dot(self.affineBasis, self.control['Afft'][t])
-                A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-                A[1][t] = AB[dim2:dim2 + self.dim]
-        else:
-            A = None
+        # if self.affineDim > 0:
+        #     A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+        #     dim2 = self.dim**2
+        #     for t in range(self.Tsize):
+        #         AB = np.dot(self.affineBasis, self.control['Afft'][t])
+        #         A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
+        #         A[1][t] = AB[dim2:dim2 + self.dim]
+        # else:
+        #     A = None
 
-        (xt, Jt) = evol.landmarkDirectEvolutionEuler(self.x0, self.control['at'], self.options['KparDiff'], affine=A,
-                                                     withJacobian=True)
+        st = self.solveStateEquation(options={'withJacobian':True})
+        #
+        # (xt, Jt) = evol.landmarkDirectEvolutionEuler(self.x0, self.control['at'], self.options['KparDiff'], affine=A,
+        #                                              withJacobian=True)
+        xt = st['xt']
+        Jt = st['Jt']
 
         AV0 = self.fv0.computeVertexVolume()
         AV = self.fvDef.computeVertexVolume()/AV0
@@ -210,11 +244,14 @@ class MeshMatching(pointSetMatching.PointSetMatching):
             if update[0][k] is not None:
                 control[k] = self.control[k] - update[1] * update[0][k]
 
-        if control['Afft'] is not None:
-            A = self.affB.getTransforms(control['Afft'])
-        else:
-            A = None
-        xt = evol.landmarkDirectEvolutionEuler(self.x0, control['at'], self.options['KparDiff'], affine=A)
+        # if control['Afft'] is not None:
+        #     A = self.affB.getTransforms(control['Afft'])
+        # else:
+        #     A = None
+
+        st = self.solveStateEquation(control=control)
+        xt = st['xt']
+        # xt = evol.landmarkDirectEvolutionEuler(self.x0, control['at'], self.options['KparDiff'], affine=A)
         endPoint = meshes.Mesh(mesh=self.fv0)
         endPoint.updateVertices(xt[-1, :, :])
         st = pointSetMatching.State()
@@ -243,17 +280,21 @@ class MeshMatching(pointSetMatching.PointSetMatching):
             (obj1, self.state) = self.objectiveFunDef(self.control, withTrajectory=True)
 
             self.fvDef.updateVertices(self.state['xt'][-1, :, :])
-            dim2 = self.dim**2
-            if self.control['Afft'] is not None:
-                A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
-                for t in range(self.Tsize):
-                    AB = np.dot(self.affineBasis, self.control['Afft'][t])
-                    A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
-                    A[1][t] = AB[dim2:dim2+self.dim]
-            else:
-                A = None
-            (xt, Jt)  = evol.landmarkDirectEvolutionEuler(self.x0, self.control['at'], self.options['KparDiff'], affine=A,
-                                                              withJacobian=True)
+            # dim2 = self.dim**2
+            # if self.control['Afft'] is not None:
+            #     A = [np.zeros([self.Tsize, self.dim, self.dim]), np.zeros([self.Tsize, self.dim])]
+            #     for t in range(self.Tsize):
+            #         AB = np.dot(self.affineBasis, self.control['Afft'][t])
+            #         A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
+            #         A[1][t] = AB[dim2:dim2+self.dim]
+            # else:
+            #     A = None
+
+            st = self.solveStateEquation(options={'withJacobian':True})
+            xt = st['xt']
+            Jt = st['Jt']
+            # (xt, Jt)  = evol.landmarkDirectEvolutionEuler(self.x0, self.control['at'], self.options['KparDiff'], affine=A,
+            #                                                   withJacobian=True)
             # if self.affine=='euclidean' or self.affine=='translation':
             #     X = self.affB.integrateFlow(self.Afft)
             #     displ = np.zeros(self.x0.shape[0])
@@ -278,7 +319,11 @@ class MeshMatching(pointSetMatching.PointSetMatching):
             for kk in range(self.Tsize+1):
                 fvDef = meshes.Mesh(mesh=self.fvDef)
                 fvDef.updateVertices(xt[kk, :, :])
-                fvDef.save(self.outputDir + '/' + self.options['saveFile'] + str(kk) + '.vtk')
+                vf1 = vtkFields('CELL_DATA', self.fv0.faces.shape[0])
+                vf1.scalars['logJacobianFromRatio'] = np.log(np.maximum(fvDef.volumes/self.fv0.volumes, 1e-10))
+                vf2 = vtkFields('POINT_DATA', self.fv0.vertices.shape[0])
+                vf2.scalars['logJacobianFromODE'] = Jt[kk,:,0]
+                fvDef.save(self.outputDir + '/' + self.options['saveFile'] + str(kk) + '.vtk', vtkFields=(vf2, vf1))
 
             self.saveHdf5(fileName=self.outputDir + '/output.h5')
 

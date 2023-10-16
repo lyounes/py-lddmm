@@ -61,6 +61,7 @@ class BasicMatching(object):
         self.setOutputDir(self.options['outputDir'])
         self.set_landmarks(self.options['Landmarks'])
         self.set_template_and_target(Template, Target, misc=self.options)
+        self.burnIn = self.options['burnIn']
 
         self.reset = False
         self.Kdiff_dtype = self.options['pk_dtype']
@@ -77,6 +78,7 @@ class BasicMatching(object):
         self.pplot = self.options['pplot']
         if self.pplot:
             self.initial_plot()
+        self.initialSave()
 
 
     def getDefaultOptions(self):
@@ -85,6 +87,8 @@ class BasicMatching(object):
             'algorithm': 'bfgs',
             'unreduced': False,
             'Wolfe': True,
+            'burnIn': 10,
+            'epsInit': 1.,
             'KparDiff': None,
             'KparDist': None,
             'pk_dtype': 'float32',
@@ -94,6 +98,7 @@ class BasicMatching(object):
             'maxIter': 1000,
             'regWeight': 1.0,
             'unreducedWeight': 1.0,
+            'affineKernel': False,
             'affineWeight': 10.0,
             'rotWeight': 0.01,
             'scaleWeight': None,
@@ -115,6 +120,7 @@ class BasicMatching(object):
             'internalCost': None,
             'internalWeight': 1.0,
             'lineSearch': 'Weak_Wolfe',
+            'gradTol': -1.,
             'gradLB': 0.001
         }
         return options
@@ -140,7 +146,10 @@ class BasicMatching(object):
 
     def initial_plot(self):
         pass
-    
+
+    def initialSave(self):
+        pass
+
     def set_template_and_target(self, Template, Target, misc=None):
         pass
 

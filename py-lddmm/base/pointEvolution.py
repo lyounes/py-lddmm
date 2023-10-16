@@ -85,9 +85,8 @@ from . import affineBasis
 #         return output
 #
 
-def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=None,
-                                 withJacobian=False, withNormals=None, withPointSet=None):
-    if not (affine is None or len(affine[0]) == 0):
+def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=None, options = None):
+    if affine is not None and len(affine[0]) > 0:
         withaff = True
         A = affine[0]
         b = affine[1]
@@ -96,6 +95,15 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=None,
         A = np.zeros((1,1,1)) #np.zeros((T,dim,dim))
         b = np.zeros((1,1)) #np.zeros((T,dim))
 
+    _options = {'withJacobian':False, 'withNormals':None, 'withPointSet':None}
+    if options is not None:
+        for k in options.keys():
+            _options[k] = options[k]
+
+    withJacobian = _options['withJacobian']
+    withNormals = _options['withNormals']
+    withPointSet = _options['withPointSet']
+
     N = x0.shape[0]
     dim = x0.shape[1]
     T = at.shape[0]
@@ -103,24 +111,24 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=None,
     xt = np.zeros((T+1, N, dim))
     xt[0, :,:] = x0
 
-    Jt = np.zeros((T + 1, N, 1))
-    simpleOutput = True
+    if withJacobian:
+        Jt = np.zeros((T + 1, N, 1))
+    else:
+        Jt = None
+
     if withPointSet is not None:
-        simpleOutput = False
         K = withPointSet.shape[0]
         y0 = withPointSet
         yt = np.zeros((T + 1, K, dim))
         yt[0, :,:] = y0
-        if withJacobian:
-            simpleOutput = False
+    else:
+        yt = None
 
     if withNormals is not None:
-        simpleOutput = False
         nt = np.zeros((T+1, N, dim))
         nt[0, :,:] = withNormals
-
-    if withJacobian:
-        simpleOutput = False
+    else:
+        nt = None
 
     for t in range(T):
         if withaff:
@@ -147,18 +155,13 @@ def landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=None,
             if withaff:
                 nt[t + 1, :, :] -= timeStep * (nt[t, :, :] @ A[t])
 
-    if simpleOutput:
-        return xt
-    else:
-        output = [xt]
-        if not (withPointSet is None):
-            output.append(yt)
-        if not (withNormals is None):
-            output.append(nt)
-        if withJacobian: #not (Jt is None):
-            output.append(Jt)
-        return output
+    output = dict()
+    output['xt'] = xt
+    output['Jt'] = Jt
+    output['yt'] = yt
+    output['nt'] = nt
 
+    return output
 
 
 def landmarkHamiltonianCovector(x0, at, px1, Kpardiff, regweight, affine=None, extraTerm = None):
@@ -172,7 +175,8 @@ def landmarkHamiltonianCovector(x0, at, px1, Kpardiff, regweight, affine=None, e
     M = at.shape[0]
     timeStep = 1.0 / (M)
 
-    xt = landmarkDirectEvolutionEuler(x0, at, Kpardiff, affine=affine)
+    st = landmarkDirectEvolutionEuler(x0, at, Kpardiff, affine=affine)
+    xt = st['xt']
 
     pxt = np.zeros((M + 1, N, dim))
     pxt[M, :, :] = px1
@@ -183,8 +187,8 @@ def landmarkHamiltonianCovector(x0, at, px1, Kpardiff, regweight, affine=None, e
         a = at[M - t - 1, :, :]
         if extraTerm is not None:
             grd = extraTerm['grad'](z, Kpardiff.applyK(z,a))
-            Lv = -extraTerm['coeff'] * grd[0]
-            DLv = extraTerm['coeff'] * grd[1]
+            Lv = -extraTerm['coeff'] * grd['phi']
+            DLv = extraTerm['coeff'] * grd['x']
             zpx = Kpardiff.applyDiffKT(z, px, a, regweight=regweight, lddmm=True,
                                        extra_term=Lv) - DLv
         else:
@@ -213,7 +217,7 @@ def landmarkHamiltonianGradient(x0, at, px1, KparDiff, regweight, getCovector = 
         #print 'testgr', (2*a-px).sum()
         dat[k, :, :] = (2*regweight*a-px)
         if extraTerm is not None:
-            Lv = extraTerm['grad'](x, KparDiff.applyK(x,a), variables='phi')
+            Lv = extraTerm['grad'](x, KparDiff.applyK(x,a), variables='phi')['phi']
             #Lv = -foo.laplacian(v)
             dat[k, :, :] += extraTerm['coeff'] * Lv
         if not (affine is None):
@@ -230,202 +234,6 @@ def landmarkHamiltonianGradient(x0, at, px1, KparDiff, regweight, getCovector = 
             return dat, dA, db, xt
         else:
             return dat, dA, db, xt, pxt
-
-
-########### Semi-reduced equations: ct are control points in the evolution
-
-def landmarkSemiReducedEvolutionEuler(x0, ct, at, KparDiff, affine=None,
-                                 withJacobian=False, withNormals=None, withPointSet=None):
-    if not (affine is None or len(affine[0]) == 0):
-        withaff = True
-        A = affine[0]
-        b = affine[1]
-    else:
-        withaff = False
-        A = np.zeros((1,1,1)) #np.zeros((T,dim,dim))
-        b = np.zeros((1,1)) #np.zeros((T,dim))
-
-    N = x0.shape[0]
-    dim = x0.shape[1]
-    T = at.shape[0]
-    timeStep = 1.0 / (T)
-    xt = np.zeros((T+1, N, dim))
-    xt[0, :,:] = x0
-
-    Jt = np.zeros((T + 1, N, 1))
-    simpleOutput = True
-    if withPointSet is not None:
-        simpleOutput = False
-        K = withPointSet.shape[0]
-        y0 = withPointSet
-        yt = np.zeros((T + 1, K, dim))
-        yt[0, :, :] = y0
-        if withJacobian:
-            simpleOutput = False
-
-    if withNormals is not None:
-        simpleOutput = False
-        nt = np.zeros((T+1, N, dim))
-        nt[0, :, :] = withNormals
-
-    if withJacobian:
-        simpleOutput = False
-
-    for t in range(T):
-        if withaff:
-            Rk = affineBasis.getExponential(timeStep * A[t,:,:])
-            xt[t+1, :, :] = np.dot(xt[t,:,:], Rk.T) + timeStep * b[t,None, :]
-        else:
-            xt[t+1, :,:] = xt[t, :,:]
-        xt[t+1,:,:] += timeStep*KparDiff.applyK(ct[t,:,:], at[t,:,:], firstVar=xt[t,:,:])
-
-        if withPointSet is not None:
-            if withaff:
-                yt[t+1,:,:] = np.dot(yt[t, :,:], Rk.T) + timeStep * b[t, None, :]
-            else:
-                yt[t+1,:,:] = yt[t, :,:]
-            yt[t + 1, :,:] += timeStep * KparDiff.applyK(ct[t, :,:], at[t, :,:], firstVar=yt[t, :,:])
-
-        if withJacobian:
-            Jt[t+1,:,:] = Jt[t,:,:] + timeStep * KparDiff.applyDivergence(ct[t,:,:], at[t,:,:])
-            if withaff:
-                Jt[t+1, :,:] += timeStep * (np.trace(A[t]))
-
-        if withNormals is not None:
-            nt[t+1, :,:] = nt[t, :,:] - timeStep * KparDiff.applyDiffKT(ct[t,:,:], nt[t, :, :], at[t, :, :])
-            if withaff:
-                nt[t + 1, :, :] -= timeStep * np.dot(nt[t, :, :], A[t])
-
-    if simpleOutput:
-        return xt
-    else:
-        output = [xt]
-        if not (withPointSet is None):
-            output.append(yt)
-        if not (withNormals is None):
-            output.append(nt)
-        if withJacobian: #not (Jt is None):
-            output.append(Jt)
-        return output
-
-
-def landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, Kpardiff, affine=None, forwardTraj = None,
-                                           stateSubset = None, controlSubset = None, stateProb = 1.,
-                                           controlProb = 1., weightSubset = 1.):
-    if not (affine is None or len(affine[0]) == 0):
-        A = affine[0]
-    else:
-        A = np.zeros((1, 1, 1))
-
-    if np.isscalar(stateProb):
-        stateProb = stateProb * np.ones(x0.shape[0])
-
-    N = x0.shape[0]
-    dim = x0.shape[1]
-    T = at.shape[0]
-    timeStep = 1.0 / T
-
-    if stateSubset is not None:
-        x0_ = x0[stateSubset]
-    else:
-        stateSubset = np.arange(N)
-        x0_ = x0
-
-    J = np.intersect1d(stateSubset, controlSubset)
-
-    if forwardTraj is None:
-        xt = landmarkSemiReducedEvolutionEuler(x0_, ct, at, Kpardiff, affine=affine)
-    else:
-        xt = forwardTraj
-
-    pxt = np.zeros((T, N, dim))
-    pxt[T-1, stateSubset, :] = px1
-
-    for t in range(1,T):
-        px = np.squeeze(pxt[T - t, stateSubset, :])
-        z = np.squeeze(xt[T - t, :, :])
-        c = np.squeeze(ct[T - t, :, :])
-        a = np.squeeze(at[T - t, :, :])
-        zpx = np.zeros((N, dim))
-        zpx[stateSubset, :] = Kpardiff.applyDiffKT(c, px, a, firstVar=z)
-        zpx[stateSubset, :] -= 2* (weightSubset/stateProb[stateSubset, None]) * z
-        zpx[J, :] += 2*(weightSubset / (stateProb[J, None]*controlProb)) * c[J, :]
-        if not (affine is None):
-            pxt[T - t - 1, stateSubset, :] = np.dot(px, affineBasis.getExponential(timeStep * A[T - t, :, :])) \
-                                             + timeStep * zpx[stateSubset, :]
-        else:
-            pxt[T - t - 1, stateSubset, :] = px + timeStep * zpx[stateSubset, :]
-    return pxt, xt
-
-
-
-# Computes gradient after covariant evolution for deformation cost a^TK(x,x) a
-def landmarkSemiReducedHamiltonianGradient(x0, ct, at, px1, KparDiff, regweight, getCovector = False, affine = None,
-                                           controlSubset = None, controlProb = 1., stateSubset = None,
-                                           stateProb = 1., weightSubset = 1., forwardTraj = None):
-    if controlSubset is None:
-        controlSubset = np.arange(at.shape[1])
-        stateSubset = np.arange(x0.shape[0])
-
-    if np.isscalar(stateProb):
-        stateProb = stateProb * np.ones(x0.shape[0])
-
-    (pxt, xt) = landmarkSemiReducedHamiltonianCovector(x0, ct, at, px1, KparDiff, affine=affine,
-                                                       controlSubset = controlSubset, stateSubset=stateSubset,
-                                                       stateProb=stateProb, controlProb=controlProb,
-                                                       weightSubset=weightSubset,
-                                                       forwardTraj=forwardTraj)
-    #pprob = controlProb * controlProb
-    M = at.shape[1]
-    pprob = controlProb * (M*controlProb - 1)/(M-1)
-    dprob = 1/controlProb - 1/pprob
-    I0 = controlSubset
-    #I1 = controlSubset[1]
-    J = np.intersect1d(I0, stateSubset)
-
-    dat = np.zeros(at.shape)
-    dct = np.zeros(at.shape)
-    timeStep = 1.0/at.shape[0]
-    if not (affine is None):
-        A = affine[0]
-        dA = np.zeros(affine[0].shape)
-        db = np.zeros(affine[1].shape)
-    for t in range(at.shape[0]):
-        a0 = at[t, I0, :]
-        #a1 = at[t, I1, :]
-        c = ct[t, :, :]
-        x = np.zeros(x0.shape)
-        x[stateSubset, :] = xt[t, :, :]
-        px = pxt[t, stateSubset, :]
-        #print 'testgr', (2*a-px).sum()
-        dat[t, I0, :] = 2 * regweight*KparDiff.applyK(c[I0,:], a0) / pprob
-        dat[t, I0, :] += 2*dprob * a0
-        #dat[t, I0, :] += regweight*KparDiff.applyK(c[I1,:], a1, firstVar=c[I0, :]) / pprob
-        dat[t, :, :] -= KparDiff.applyK(xt[t, :, :], px, firstVar=c)
-        # print(f'px {np.fabs(px).max()} {np.fabs(dat[k,:,:]).max()}')
-        if t > 0:
-            dct[t, I0, :] = 2*regweight*KparDiff.applyDiffKT(c[I0, :], a0, a0) / pprob
-            #dct[t, I1, :] += regweight * KparDiff.applyDiffKT(c[I0, :], a1, a0, firstVar=c[I1, :]) / pprob
-            dct[t, :, :] -= KparDiff.applyDiffKT(xt[t, :, :], at[t, :, :], px,  firstVar=c)
-            dct[t, controlSubset, :] += 2*weightSubset*c[controlSubset, :]/controlProb
-            dct[t, J, :] -= 2 * (weightSubset / (stateProb[J, None]*controlProb)) * x[J, :]
-
-        if not (affine is None):
-            dA[t] = affineBasis.gradExponential(A[t] * timeStep, pxt[t, :, :], xt[t, :, :]) #.reshape([self.dim**2, 1])/timeStep
-            db[t] = pxt[t, :, :].sum(axis=0) #.reshape([self.dim,1])
-
-    if affine is None:
-        if getCovector == False:
-            return dct, dat, xt
-        else:
-            return dct, dat, xt, pxt
-    else:
-        if getCovector == False:
-            return dct, dat, dA, db, xt
-        else:
-            return dct, dat, dA, db, xt, pxt
-
-
 
 
 ################## Time series
@@ -524,7 +332,7 @@ def landmarkEPDiff(T, x0, a0, KparDiff, affine = None, withJacobian=False, withN
         nt[0, :, :] = withNormals
     if withJacobian:
         simpleOutput = False
-        Jt = np.zeros([T+1, N])
+        Jt = np.zeros([T+1, N, 1])
     if not(affine is None):
         A = affine[0]
         b = affine[1]
@@ -555,9 +363,9 @@ def landmarkEPDiff(T, x0, a0, KparDiff, affine = None, withJacobian=False, withN
             if not (affine is None):
                 nt[k+1, :, :] += timeStep * np.dot(zn, A[k])
         if withJacobian:
-            Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(z, a)
+            Jt[k+1, :, 0] = Jt[k, :, 0] + timeStep * KparDiff.applyDivergence(z, a)
             if not (affine is None):
-                Jt[k+1, :] += timeStep * (np.trace(A[k]))
+                Jt[k+1, :, 0] += timeStep * (np.trace(A[k]))
     if simpleOutput:
         return xt, at
     else:
@@ -574,8 +382,21 @@ def landmarkEPDiff(T, x0, a0, KparDiff, affine = None, withJacobian=False, withN
 
 
 
-def secondOrderEvolution(x0, a0, rhot, KparDiff, timeStep, withJacobian=False, withPointSet=None, affine=None):
-    T = rhot.shape[0]
+def secondOrderEvolution(x0, a0, KparDiff, timeStep, withSpline = None, affine=None, options=None):
+    if withSpline is not None:
+        rhot = withSpline
+        T = rhot.shape[0]
+    else:
+        T = int(np.round(1/timeStep))
+
+    _options = {'withJacobian': False, 'withNormals': None, 'withPointSet': None}
+    if options is not None:
+        for k in options.keys():
+            _options[k] = options[k]
+
+    withJacobian = _options['withJacobian']
+    withPointSet = _options['withPointSet']
+
     N = x0.shape[0]
     #print M, N
     dim = x0.shape[1]
@@ -583,7 +404,7 @@ def secondOrderEvolution(x0, a0, rhot, KparDiff, timeStep, withJacobian=False, w
     xt = np.zeros([T+1, N, dim])
     xt[0, :, :] = x0
     at[0, :, :] = a0
-    simpleOutput = True
+
     if not(affine is None):
         aff_ = True
         A = affine[0]
@@ -592,25 +413,32 @@ def secondOrderEvolution(x0, a0, rhot, KparDiff, timeStep, withJacobian=False, w
         aff_=False
         A = None
         b = None
-    if not (withPointSet is None):
-        simpleOutput = False
+
+    if withPointSet is not None:
         K = withPointSet.shape[0]
         zt = np.zeros([T+1,K,dim])
         zt[0, :, :] = withPointSet
-        if withJacobian:
-            simpleOutput = False
-            Jt = np.zeros([T+1, K])
-    elif withJacobian:
-        simpleOutput = False
-        Jt = np.zeros([T+1, N])
+    else:
+        zt = None
+
+    if withJacobian:
+        if withPointSet is not None:
+            Jt = np.zeros([T+1, K, 1])
+        else:
+            Jt = np.zeros([T+1, N, 1])
+    else:
+        Jt = None
+
 
     for k in range(T):
         x = xt[k, :, :]
         a = at[k, :, :]
         #print 'evolution v:', np.sqrt((v**2).sum(axis=1)).sum()/v.shape[0]
-        rho = rhot[k,:,:]
+        #rho = rhot[k,:,:]
         zx = KparDiff.applyK(x, a)
-        za = -KparDiff.applyDiffKT(x, a, a) + rho
+        za = -KparDiff.applyDiffKT(x, a, a)
+        if withSpline:
+            za += rhot[k,:,:]
         if aff_:
             #U = np.eye(dim) + timeStep * A[k]
             U = affineBasis.getExponential(timeStep * A[k])
@@ -620,7 +448,7 @@ def secondOrderEvolution(x0, a0, rhot, KparDiff, timeStep, withJacobian=False, w
         else:
             xt[k+1, :, :] = x + timeStep * zx  
             at[k+1, :, :] = a + timeStep * za
-        if not (withPointSet is None):
+        if withPointSet is not None:
             z = zt[k, :, :]
             zx = KparDiff.applyK(x, a, firstVar=z)
             if aff_:
@@ -628,29 +456,29 @@ def secondOrderEvolution(x0, a0, rhot, KparDiff, timeStep, withJacobian=False, w
             else:
                 zt[k+1, :, :] = z + timeStep * zx  
             if withJacobian:
-                Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(x, a, firstVar=z).ravel()
+                Jt[k+1, :, 0] = Jt[k, :, 0] + timeStep * KparDiff.applyDivergence(x, a, firstVar=z).ravel()
                 if aff_:
-                    Jt[k+1, :] += timeStep * (np.trace(A[k]))
+                    Jt[k+1, :, 0] += timeStep * (np.trace(A[k]))
         elif withJacobian:
-            Jt[k+1, :] = Jt[k, :] + timeStep * KparDiff.applyDivergence(z, a).ravel()
+            Jt[k+1, :, 0] = Jt[k, :, 0] + timeStep * KparDiff.applyDivergence(x, a).ravel()
             if aff_:
-                Jt[k+1, :] += timeStep * (np.trace(A[k]))
-    if simpleOutput:
-        return xt, at
+                Jt[k+1, :, 0] += timeStep * (np.trace(A[k]))
+
+    output = dict()
+    output['xt'] = xt
+    output['at'] = at
+    output['Jt'] = Jt
+    output['yt'] = zt
+    return output
+
+
+def secondOrderHamiltonian(x, a, px, pa, KparDiff, withSpline = None, affine=None):
+    Ht = (px * KparDiff.applyK(x, a)).sum()
+    if withSpline:
+        Ht += (pa*(-KparDiff.applyDiffKT(x, a[np.newaxis,:,:], a[np.newaxis,:,:]) + withSpline)).sum()
+        Ht -= (withSpline ** 2).sum() / 2
     else:
-        output = [xt, at]
-        if not (withPointSet is None):
-            output.append(zt)
-        if withJacobian:
-            output.append(Jt)
-        return output
-
-
-
-def secondOrderHamiltonian(x, a, rho, px, pa, KparDiff, affine=None):
-    Ht = (px * KparDiff.applyK(x, a)).sum() 
-    Ht += (pa*(-KparDiff.applyDiffKT(x, a[np.newaxis,:,:], a[np.newaxis,:,:]) + rho)).sum()
-    Ht -= (rho**2).sum()/2
+        Ht += (pa * (-KparDiff.applyDiffKT(x, a[np.newaxis, :, :], a[np.newaxis, :, :]))).sum()
     if not(affine is None):
         A = affine[0]
         b = affine[1]
@@ -658,8 +486,18 @@ def secondOrderHamiltonian(x, a, rho, px, pa, KparDiff, affine=None):
     return Ht
 
     
-def secondOrderCovector(x0, a0, rhot, px1, pa1, KparDiff, timeStep, affine = None, isjump = None):
-    T = rhot.shape[0]
+def secondOrderCovector(x0, a0, px1, pa1, KparDiff, timeStep, withSpline = None, affine = None, isjump = None,
+                        forwardState = None):
+    if withSpline is not None:
+        #rhot = withSpline
+        T = withSpline.shape[0]
+    else:
+        T = int(np.round(1/timeStep))
+
+    if isinstance(px1, np.ndarray):
+        px1 = [px1]
+        pa1 = [pa1]
+
     nTarg = len(px1)
     if not(affine is None):
         aff_ = True
@@ -669,23 +507,29 @@ def secondOrderCovector(x0, a0, rhot, px1, pa1, KparDiff, timeStep, affine = Non
         
     if isjump is None:
         isjump = np.zeros(T, dtype=bool)
-        for t in range(1,T):
-            if t%nTarg == 0:
-                isjump[t] = True
+        for t in range(1, nTarg):
+            k = np.round(t*T/nTarg)
+            isjump[k] = True
 
     N = x0.shape[0]
     dim = x0.shape[1]
-    [xt, at] = secondOrderEvolution(x0, a0, rhot, KparDiff, timeStep, affine=affine)
+    if forwardState is None:
+        fw = secondOrderEvolution(x0, a0, KparDiff, timeStep, affine=affine, withSpline=withSpline)
+        xt = fw['xt']
+        at = fw['at']
+    else:
+        xt = forwardState[0]
+        at = forwardState[1]
     pxt = np.zeros([T+1, N, dim])
     pxt[T, :, :] = px1[nTarg-1]
     pat = np.zeros([T+1, N, dim])
     pat[T, :, :] = pa1[nTarg-1]
     jIndex = nTarg - 2
     for t in range(T):
-        px = np.squeeze(pxt[T-t, :, :])
-        pa = np.squeeze(pat[T-t, :, :])
-        x = np.squeeze(xt[T-t-1, :, :])
-        a = np.squeeze(at[T-t-1, :, :])
+        px = pxt[T-t, :, :]
+        pa = pat[T-t, :, :]
+        x = xt[T-t-1, :, :]
+        a = at[T-t-1, :, :]
 
         if aff_:
             U = affineBasis.getExponential(timeStep * A[T - t - 1])
@@ -696,9 +540,7 @@ def secondOrderCovector(x0, a0, rhot, px1, pa1, KparDiff, timeStep, affine = Non
             px_ = px
             pa_ = pa
 
-        a1 = np.concatenate((px_[np.newaxis,:,:], a[np.newaxis,:,:]))
-        a2 = np.concatenate((a[np.newaxis,:,:], px_[np.newaxis,:,:]))
-        zpx = KparDiff.applyDiffKT(x, a1, a2) - KparDiff.applyDDiffK11and12(x, a, a, pa_)
+        zpx = KparDiff.applyDiffKT(x, px_, a, sym=True) - KparDiff.applyDDiffK11and12(x, a, a, pa_)
         zpa = KparDiff.applyK(x, px_) - KparDiff.applyDiffK1and2(x, pa_, a)
         pxt[T-t-1, :, :] = px_ + timeStep * zpx
         pat[T-t-1, :, :] = pa_ + timeStep * zpa
@@ -710,23 +552,39 @@ def secondOrderCovector(x0, a0, rhot, px1, pa1, KparDiff, timeStep, affine = Non
     return pxt, pat, xt, at
 
 # Computes gradient after covariant evolution for deformation cost a^TK(x,x) a
-def secondOrderGradient(x0, a0, rhot, px1, pa1, KparDiff, timeStep, isjump = None, getCovector = False, affine=None, controlWeight=1.0):
-    (pxt, pat, xt, at) = secondOrderCovector(x0, a0, rhot, px1, pa1, KparDiff, timeStep, isjump=isjump,affine=affine)
-    if not (affine is None):
+def secondOrderGradient(x0, a0, px1, pa1, KparDiff, timeStep, isjump = None, withSpline = None,
+                        affine=None, controlWeight=1.0):
+    (pxt, pat, xt, at) = secondOrderCovector(x0, a0, px1, pa1, KparDiff, timeStep, withSpline=withSpline,
+                                             isjump=isjump,affine=affine)
+
+    if withSpline is not None:
+        rhot = withSpline
+        Tsize = rhot.shape[0]
+        drhot = np.zeros(rhot.shape)
+    else:
+        Tsize = int(np.round(1/timeStep))
+        rhot = None
+        drhot = None
+
+
+    if affine is not None:
         dA = np.zeros(affine[0].shape)
         db = np.zeros(affine[1].shape)
-    Tsize = rhot.shape[0]
+    else:
+        dA = None
+        db = None
+
     timeStep = 1.0/Tsize
-    drhot = np.zeros(rhot.shape)
-    if not (affine is None):
+    if affine is not None:
         for k in range(Tsize):
-            x = np.squeeze(xt[k, :, :])
-            a = np.squeeze(at[k, :, :])
-            rho = np.squeeze(rhot[k, :, :])
-            px = np.squeeze(pxt[k+1, :, :])
-            pa = np.squeeze(pat[k+1, :, :])
+            x = xt[k, :, :]
+            a = at[k, :, :]
+            px = pxt[k+1, :, :]
+            pa = pat[k+1, :, :]
             zx = x + timeStep * KparDiff.applyK(x, a)
-            za = a + timeStep * (-KparDiff.applyDiffKT(x, a[np.newaxis,:,:], a[np.newaxis,:,:]) + rho)
+            za = a - timeStep * KparDiff.applyDiffKT(x, a, a)
+            if withSpline is not None:
+                za += timeStep * rhot[k,:,:]
             U = affineBasis.getExponential(timeStep * affine[0][k])
             #U = np.eye(dim) + timeStep * affine[0][k]
             Ui = LA.inv(U)
@@ -736,7 +594,8 @@ def secondOrderGradient(x0, a0, rhot, px1, pa1, KparDiff, timeStep, isjump = Non
 #                            - (za[:,:,np.newaxis]*pa[:,np.newaxis,:]).sum(axis=0))
             dA[k,...] =  (affineBasis.gradExponential(timeStep * affine[0][k], px, zx)
                           - affineBasis.gradExponential(timeStep * affine[0][k], za, pa))
-            drhot[k,...] = rho*controlWeight - pa
+            if withSpline is not None:
+                drhot[k,...] = rhot[k, :, :]*controlWeight - pa
         db = pxt[1:Tsize+1,...].sum(axis=1)
         # for k in range(rhot.shape[0]):
         #     #np.dot(pxt[k+1].T, xt[k]) - np.dot(at[k].T, pat[k+1])
@@ -746,17 +605,17 @@ def secondOrderGradient(x0, a0, rhot, px1, pa1, KparDiff, timeStep, isjump = Non
     #drhot = rhot*controlWeight - pat[1:pat.shape[0],...]
     da0 = KparDiff.applyK(x0, a0) - pat[0,...]
 
-    if affine is None:
-        if getCovector == False:
-            return da0, drhot, xt, at
-        else:
-            return da0, drhot, xt, at, pxt, pat
-    else:
-        if getCovector == False:
-            return da0, drhot, dA, db, xt, at
-        else:
-            return da0, drhot, dA, db, xt, at, pxt, pat
+    res = dict()
+    res['da0'] = da0
+    res['drhot'] = drhot
+    res['xt'] = xt
+    res['at'] = at
+    res['dA'] = dA
+    res['db'] = db
+    res['pxt'] = pxt
+    res['pat'] = pat
 
+    return res
         
 
 def secondOrderFiberEvolution(x0, a0, y0, v0, rhot, KparDiff, withJacobian=False, withPointSet=None):
@@ -907,3 +766,21 @@ def secondOrderFiberGradient(x0, a0, y0, v0, rhot, px1, pa1, py1, pv1, KparDiff,
         return drhot, xt, at, yt, vt, pxt, pat, pyt, pvt
 
 
+
+def landmarkParallelTransport(T, x0, b0, a0, KparDiff):
+    timeStep = np.floor(1/T)
+    xt, at = landmarkEPDiff(T, x0, a0, KparDiff)
+    bt = np.zeros(at.shape)
+    bt[0, :, :] = b0
+    for t in range(at.shape[0]-1):
+        x = xt[t, :, :]
+        a = at[t, :, :]
+        b = bt[t, :, :]
+        xi = KparDiff.applyK(a)
+        eta = KparDiff.applyK(b)
+        z = KparDiff.applyDiffKT(x, a, b)
+        z0 = KparDiff.applyDiffK(x, b, xi) - KparDiff.applyDiffK(x, a, eta)
+        z += KparDiff.solve(x, z0)
+        bt[t+1, :, :] = b - timeStep * z/2
+
+    return bt

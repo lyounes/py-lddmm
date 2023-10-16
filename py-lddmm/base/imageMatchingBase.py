@@ -2,6 +2,7 @@ import os
 import numpy as np
 import logging
 import glob
+from copy import deepcopy
 from .basicMatching import BasicMatching 
 from .gridscalars import GridScalars, saveImage
 from .diffeo import DiffeoParam, Diffeomorphism, Kernel
@@ -68,6 +69,7 @@ class ImageMatchingBase(BasicMatching, Diffeomorphism):
             options['dim'] = 2
         self.dim = options['dim']
         super().__init__(Template, Target, options)
+        # super(Diffeomorphism, self).__init__(self.im0.data.shape, options)
         # super().__init__()
         #          regWeight = 1.0, verb=True,
         #          testGradient=True, saveFile = 'evolution',
@@ -84,12 +86,20 @@ class ImageMatchingBase(BasicMatching, Diffeomorphism):
         if self.pplot:
             self.initial_plot()
 
+        self.initial_save()
+
+        # self.rescaleFactor = rescaleFactor
+        # self.padWidth = padWidth
+        # self.metaDirection = metaDirection
+        # self.affineAlign = affineAlign
 
     def getDefaultOptions(self):
         options = super().getDefaultOptions()
         options['dim'] = 3
         options['order'] = -1,
         options['kernelSize'] = 50
+        options['sigmaKernel'] = 1.
+        options['orderKernel'] = 10
         options['typeKernel'] = 'gauss'
         options['resol'] = 1.
         options['rescaleFactor'] = 1.
@@ -99,6 +109,7 @@ class ImageMatchingBase(BasicMatching, Diffeomorphism):
         options['affineAlign'] = None
         options['saveMovie'] = True
         options['epsMax'] = 100
+        options['normalize'] = None
         return options
 
 
@@ -116,11 +127,28 @@ class ImageMatchingBase(BasicMatching, Diffeomorphism):
         # self.gradEps = -1
         # self.randomInit = False
         # self.iter = 0
-        self.resol = self.options['resol']
+        # self.kernelNormalization = 1.
+        # self.maskMargin = 2
+        # self.epsMax = 100
+        # if self.options['KparDiff'] is None:
+        #     self.KparDiff = Kernel(name = self.options['typeKernel'],
+        #                            sigma = self.options['sigmaKernel'],
+        #                            order=self.options['orderKernel'],
+        #                            size=self.options['kernelSize'],
+        #                            dim=self.dim)
+        # else:
+        #     self.KparDiff = self.options['KparDiff']
+        #     # self.diffeoPar = DiffeoParam(dim, timeStep, KparDiff, sigmaKernel, order, kernelSize, typeKernel, resol)
+        #
+        # self.resol = self.options['resol']
 
+        self.originalTemplate = deepcopy(self.im0)
+        self.originalTarget = deepcopy(self.im1)
         if self.options['sigmaSmooth'] > 0:
             self.smoothKernel = Kernel(name = 'gauss', sigma = self.options['sigmaSmooth'], size=25, dim=self.options['dim'])
             self.smoothKernel.K /= self.smoothKernel.K.sum()
+            self.im0.data = self.smoothKernel.ApplyToImage(self.im0.data)
+            self.im1.data = self.smoothKernel.ApplyToImage(self.im1.data)
         else:
             self.smoothKernel = None
 
@@ -177,7 +205,7 @@ class ImageMatchingBase(BasicMatching, Diffeomorphism):
     def set_template_and_target(self, Template, Target, misc = None): #subsampleTargetSize=-1, affineAlign=None):
         affineAlign = self.options['affineAlign']
 
-        if Template==None:
+        if Template is None:
             logging.error('Please provide a template surface')
             return
         else:
@@ -187,7 +215,7 @@ class ImageMatchingBase(BasicMatching, Diffeomorphism):
             self.im0.data = imresize(self.im0.data,
                                      np.floor(np.array(self.im0.data.shape)*self.options['rescaleFactor']).astype(int))
 
-        if Target==None:
+        if Target is None:
             logging.error('Please provide a target surface')
             return
         else:
@@ -195,8 +223,15 @@ class ImageMatchingBase(BasicMatching, Diffeomorphism):
             if self.options['padWidth'] > 0:
                 self.im1.data = np.pad(self.im1.data, self.options['padWidth'], mode='edge')
             self.im1.data = imresize(self.im1.data, self.im0.data.shape)
-            if affineAlign:
+            if affineAlign is not None:
                 self.AffineRegister(affineAlign=affineAlign)
+
+
+        if self.options['normalize'] is not None:
+            m = min(self.im0.data.min(), self.im1.data.min())
+            M = max(max(self.im0.data.max(), self.im1.data.max())-m, 1e-10)
+            self.im0.data = self.options['normalize'] * (self.im0.data -m) /(M)
+            self.im1.data = self.options['normalize'] * (self.im1.data -m) /(M)
 
                 # tform3 = AffineTransform()
                 # hog0 = hogFeature(self.im0.data)
@@ -223,10 +258,7 @@ class ImageMatchingBase(BasicMatching, Diffeomorphism):
         # self.im1.saveVTK(self.outputDir+'/Target.vtk')
 
 
-    def initialize_variables(self):
-        if self.smoothKernel:
-            self.im0.data = self.smoothKernel.ApplyToImage(self.im0.data)
-            self.im1.data = self.smoothKernel.ApplyToImage(self.im1.data)
+#    def initialize_variables(self):
 
 
     def initial_plot(self):
@@ -243,11 +275,13 @@ class ImageMatchingBase(BasicMatching, Diffeomorphism):
         # ax.set_zlim(min(lim0[2][0], lim1[2][0]), max(lim0[2][1], lim1[2][1]))
         # fig.canvas.flush_events()
 
-    def initialSave(self):
+    def initial_save(self):
         if len(self.im0.data.shape) == 3:
             ext = '.vtk'
         else:
             ext = ''
+        saveImage(self.originalTemplate.data, self.outputDir + '/OriginalTemplate'+ ext)
+        saveImage(self.originalTarget.data, self.outputDir + '/OriginalTarget'+ ext)
         saveImage(self.im0.data, self.outputDir + '/Template'+ ext)
         saveImage(self.im1.data, self.outputDir + '/Target' + ext)
         saveImage(self.KparDiff.K, self.outputDir + '/Kernel' + ext, normalize=True)

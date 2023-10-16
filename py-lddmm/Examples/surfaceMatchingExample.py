@@ -17,12 +17,25 @@ from base.surfaces import Surface
 from base.kernelFunctions import Kernel
 from base.affineRegistration import rigidRegistration
 from base.surfaceMatching import SurfaceMatching
+from base.secondOrderSurfaceMatching import SecondOrderSurfaceMatching
+from base.surfaceExamples import HalfSphere
 import pykeops
 pykeops.clean_pykeops()
 plt.ion()
 
-model = 'Balls'
-typeCost = 'elastic'
+#model = 'HalfSphere'
+model = 'Hearts'
+
+
+secondOrder = False
+
+if secondOrder:
+    typeCost = 'LDDMM'
+    order = '_SO_'
+else:
+    typeCost = 'elastic'
+    order = ''
+
 
 def compute(model):
     loggingUtils.setup_default_logging('../Output', stdOutput = True)
@@ -32,10 +45,11 @@ def compute(model):
         internalWeight = 0.
         regweight = 1.
     else:
-        sigmaKernel = 0.5
-        internalWeight = 100.
+        sigmaKernel = .5
+        internalWeight = 1.
         regweight = 0.1
-        internalCost = 'elastic'
+        internalCost = [['elastic', 50]]
+        #internalCost = [['elastic', 100.], ['displacement', 10.]]
 
     sigmaDist = 10.
     sigmaError = 1.
@@ -102,11 +116,18 @@ def compute(model):
         I1 = np.minimum(c1**p/s1 - ((ax**p + 0.5*ay**p + az**p)), np.minimum((s2*ax**p + s2*0.5*ay**p + s2*az**p)-c2**p/s1, 1+c3/s1-y))  
         fv3 = Surface()
         fv3.Isosurface(I1, value = 0, target=1000, scales=[1, 1, 1], smooth=0.01)
-        
-        fv3.vertices[:,1] += 15 - 15/s1
+
+        vrt = fv3.vertices
+        vrt[:, 1] += 15 - 15 / s1
+        fv3.updateVertices(vrt)
 
         ftemp = fv1
         ftarg = fv3
+    elif model=='HalfSphere':
+        ftemp = HalfSphere(radius=5)
+        ftarg = HalfSphere(radius=10)
+        sigmaDist = 2.5
+        sigmaError = 0.1
     elif model=='KCrane':
         ftemp = surfaces.Surface(surf='../testData/Surfaces/KCrane/blub_triangulated_reduced.obj')
         ftarg = surfaces.Surface(surf='../testData/Surfaces/KCrane/spot_triangulated_reduced.obj')
@@ -169,28 +190,34 @@ def compute(model):
     # sm.KparDiff.pk_dtype = 'float64'
     # sm.KparDist.pk_dtype = 'float64'
     options = {
-        'outputDir': '../Output/surfaceMatchingExample/' + model,
+        'outputDir': '../Output/surfaceMatchingExample/' + model + order,
         'mode': 'normal',
         'maxIter': 2000,
-        'affine': 'euclidean',
+        'affine': 'none',
+        'affineKernel': False,
         'regWeight': regweight,
         'Landmarks': landmarks,
-        'rotWeight': 0.1,
-        'transWeight': 0.1,
+        'rotWeight': 10.,
+        'transWeight': 10.,
         'scaleWeight': 10.,
-        'affineWeight': 100.,
+        'affineWeight': 10.,
         'KparDiff': K1,
         'KparDist': ('gauss', sigmaDist),
         'sigmaError': sigmaError,
         'errorType': 'varifold',
+        'pk_dtype': 'float64',
         'algorithm': 'bfgs',
         'unreduced': False,
         'internalWeight': internalWeight,
         'internalCost': internalCost,
+        'saveTrajectories': True,
         'unreducedResetRate': 10000,
         'unreducedWeight': 0.1
     }
-    f = SurfaceMatching(Template=ftemp, Target=ftarg, options=options)
+    if secondOrder:
+        f = SecondOrderSurfaceMatching(Template=ftemp, Target=ftarg, options=options)
+    else:
+        f = SurfaceMatching(Template=ftemp, Target=ftarg, options=options)
     f.optimizeMatching()
     # for k in range(20):
     #     f.options['unreducedWeight'] += 0.1 * f.ds

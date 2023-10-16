@@ -1,38 +1,70 @@
 import numpy as np
 import pygalmesh
-from .curveExamples import Circle
-from .surfaceExamples import Sphere
-import loggingUtils
+from .curves import Curve
+from .surfaces import Surface
+from .curveExamples import Circle, Ellipse
+from .surfaceExamples import Sphere, Sphere_pygal
 from .meshes import Mesh, select_faces__
 
 
 class TwoDiscs(Mesh):
     def __init__(self, largeRadius = 10., smallRadius = 4.5, targetSize=250):
-        f = Circle(radius=largeRadius, targetSize=targetSize)
+        f0 = Circle(radius=largeRadius, targetSize=targetSize)
+        f1 = Circle(center= f0.center, radius=smallRadius, targetSize=targetSize)
+        f = Curve(curve=(f0,f1))
         super(TwoDiscs, self).__init__(f,volumeRatio=5000)
-        imagev = np.array(((self.vertices - np.array(f.center)[None, :]) ** 2).sum(axis=1) < smallRadius**2, dtype=float)
+        imagef = np.array(((self.centers - np.array(f0.center)[None, :]) ** 2).sum(axis=1) < smallRadius**2, dtype=float)
         image = np.zeros((self.faces.shape[0], 2))
-        image[:, 0] = (imagev[self.faces[:, 0]] + imagev[self.faces[:, 1]] + imagev[self.faces[:, 2]]) / 3
+        image[:, 0] = imagef #(imagev[self.faces[:, 0]] + imagev[self.faces[:, 1]] + imagev[self.faces[:, 2]]) / 3
+        image[:, 1] = 1 - image[:, 0]
+        self.updateImage(image)
+
+class TwoEllipses(Mesh):
+    def __init__(self, Boundary_a = 10., Boundary_b = 10, smallRadius = 0.5, translation = (0,0), targetSize=250,
+                 volumeRatio = 5000):
+        f0 = Ellipse(a=Boundary_a, b=Boundary_b, targetSize=targetSize)
+        f1 = Ellipse(center= np.array([f0.center[0] + translation[0]*Boundary_a, f0.center[1] + translation[1]*Boundary_b]),
+                     a=Boundary_b*smallRadius, b=Boundary_a*smallRadius, targetSize=targetSize)
+        f = Curve(curve=(f0,f1))
+        super(TwoEllipses, self).__init__(f,volumeRatio=volumeRatio)
+        # A = (((self.vertices[:,0] - f.center[0] - translation[0]*Boundary_a)/Boundary_b)**2
+        #      + ((self.vertices[:,1] - f.center[1] - translation[1]*Boundary_b)/Boundary_a)**2) < smallRadius
+        A = (((self.centers[:,0] - f0.center[0] - translation[0]*Boundary_a)/Boundary_b)**2
+             + ((self.centers[:,1] - f0.center[1] - translation[1]*Boundary_b)/Boundary_a)**2) < smallRadius**2
+        imagev = np.array(A, dtype=float)
+        image = np.zeros((self.faces.shape[0], 2))
+        image[:, 0] = imagev #(imagev[self.faces[:, 0]] + imagev[self.faces[:, 1]] + imagev[self.faces[:, 2]]) / 3
         image[:, 1] = 1 - image[:, 0]
         self.updateImage(image)
 
 class TwoBalls(Mesh):
-    def __init__(self, largeRadius = 10., smallRadius = 4.5):
-        mesh = pygalmesh.generate_mesh(
-            pygalmesh.Ball([0.0, 0.0, 0.0], largeRadius),
+    def __init__(self, largeRadius = 10., smallRadius = 4.5, circumradius = 0.5, facet_distance = 0.025, radius_ball = 0.5, edge_ratio=2.0):
+        # f0 = Sphere_pygal(radius=largeRadius,targetSize=targetSize)
+        # f1 = Sphere_pygal(radius=smallRadius, targetSize=targetSize)
+        # f = Surface(surf=(f0,f1))
+        # super(TwoBalls, self).__init__(f,volumeRatio=volumeRatio)
+        f0 = pygalmesh.Ball([0.0, 0.0, 0.0], largeRadius)
+        f1 = pygalmesh.Ball([0.0, 0.0, 0.0], smallRadius)
+        f00 = pygalmesh.Difference(f0, f1)
+        fu = pygalmesh.Union((f00, f1))
+
+        f = pygalmesh.generate_mesh(
+            fu, #pygalmesh.Ball([0.0, 0.0, 0.0], largeRadius),
             min_facet_angle=30.0,
-            max_radius_surface_delaunay_ball=.75,
-            max_facet_distance=0.025,
-            max_circumradius_edge_ratio=2.0,
-            max_cell_circumradius=.75,  # lambda x: abs(np.sqrt(np.dot(x, x)) - 0.5) / 5 + 0.025,
+            max_radius_surface_delaunay_ball=radius_ball,
+            max_facet_distance=facet_distance,
+            max_circumradius_edge_ratio=edge_ratio,
+            max_cell_circumradius= circumradius,  # lambda x: abs(np.sqrt(np.dot(x, x)) - 0.5) / 5 + 0.025,
             verbose=False
         )
-        super(TwoBalls, self).__init__([np.array(mesh.cells[1].data, dtype=int), np.array(mesh.points, dtype=float)])
+        super(TwoBalls, self).__init__([np.array(f.cells[1].data, dtype=int), np.array(f.points, dtype=float)])
         c0 = np.array([0,0,0])
-        imagev = np.array(((self.vertices - c0[None, :]) ** 2).sum(axis=1) < smallRadius**2, dtype=float)
+        A = ((self.centers - c0[None, :]) ** 2).sum(axis=1) < smallRadius**2
+        # imagev = np.array(A, dtype=float)
         image = np.zeros((self.faces.shape[0], 2))
-        image[:, 0] = (imagev[self.faces[:, 0]] + imagev[self.faces[:, 1]] + imagev[self.faces[:, 2]]
-                           + imagev[self.faces[:, 3]]) / 4
+        image[:, 0] = np.array(A, dtype=float)
+            # (imagev[self.faces[:, 0]] + imagev[self.faces[:, 1]] + imagev[self.faces[:, 2]]
+            #                + imagev[self.faces[:, 3]]) / 4
         image[:, 1] = 1 - image[:, 0]
         self.updateImage(image)
 

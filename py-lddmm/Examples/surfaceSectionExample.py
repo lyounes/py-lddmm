@@ -19,8 +19,8 @@ from base.kernelFunctions import Kernel
 
 
 loggingUtils.setup_default_logging('', stdOutput=True)
-sigmaKernel = 1.
-sigmaDist = 5.
+sigmaKernel = 5.
+sigmaDist = 1.
 sigmaError = .1
 internalWeight = .5
 regweight = 1.
@@ -63,7 +63,7 @@ for c in ss2:
 K1 = Kernel(name='laplacian', sigma=sigmaKernel)
 
 options = {
-    'mode': 'normal',
+    'mode': 'debug',
     'maxIter': 2000,
     'affine': 'none',
     'regWeight': regweight,
@@ -76,7 +76,7 @@ options = {
     'sigmaError': sigmaError,
     'errorType': 'measure',
     'algorithm': 'bfgs',
-    'pk_dtype': 'float64',
+    'pk_dtype': 'float32',
     'internalWeight': internalWeight,
     'internalCost': internalCost,
 }

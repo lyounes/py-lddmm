@@ -45,7 +45,7 @@ except ImportError:
 # from scipy.sparse import coo_matrix
 # import glob
 import logging
-from pointSets_util import det2D, det3D
+from .pointSets_util import det2D, det3D
 
 # @jit(nopython=True)
 # def det2D(x1, x2):
@@ -82,7 +82,7 @@ def twelve_vertexes(dimension=3):
 
     return ico
 
-@jit(nopython=True)
+#@jit(nopython=True)
 def computeCentersVolumesNormals__(faces, vertices, weights, checkOrientation= False):
     dim = vertices.shape[1]
     if dim == 2:
@@ -418,6 +418,17 @@ class Mesh:
             if face_per_vertex[k] > 1e-10*mv:
                 self.vertex_weights[k] /= face_per_vertex[k]
 
+    def shrinkTriangles(self, ratio=0.5):
+        newv = np.zeros((self.faces.shape[0]*self.faces.shape[1], self.vertices.shape[1]))
+        newf = np.zeros(self.faces.shape)
+        for k in range(self.faces.shape[0]):
+            for j in range(self.faces.shape[1]):
+                newf[k,j] = self.faces.shape[1]*k + j
+                newv[3*k+j, :] = self.centers[k,:] + ratio*(self.vertices[self.faces[k,j], :] - self.centers[k,:])
+        neww = self.weights/(ratio** self.dim)
+        newm = Mesh(mesh=(newf, newv), weights=neww, image=self.image, imNames=self.imNames)
+        return newm
+
     def rescaleUnits(self, scale):
         self.weights /= scale**self.dim
         self.updateVertices(self.vertices*scale)
@@ -666,6 +677,56 @@ class Mesh:
     def meshVolume(self):
         return self.volumes.sum()
 
+    def toImage(self, resolution=1, background = 0, margin = 10, index = None, bounds=None):
+        interp = LinearNDInterpolator(self.centers, self.weights[:, None]*self.image, fill_value=background)
+
+        if bounds is None:
+            imin = self.vertices.min(axis=0) - margin
+            imax = self.vertices.max(axis=0) + margin
+        else:
+            imin = bounds[0]
+            imax = bounds[1]
+
+        imDim = np.ceil((imax - imin)/resolution).astype(int)
+
+        if np.prod(imDim) * self.image.shape[1] > 1e7:
+            print('Image to big to create', imDim, self.image.shape[1])
+            return
+
+        if self.dim > 3:
+            print('Image cannot be created: dimensions too large', self.dim)
+            return
+
+        X = np.linspace(imin[0] , imax[0], imDim[0])
+        if self.dim == 2:
+            Y = np.linspace(imin[1], imax[1], imDim[1])
+            X, Y = np.meshgrid(X, Y)
+            outIm = interp(X,Y)
+            outIm = np.flip(outIm, axis=0)
+        elif self.dim == 3:
+            Y = np.linspace(imin[1] - margin, imax[1] + margin, imDim[1])
+            Z = np.linspace(imin[2] - margin, imax[2] + margin, imDim[2])
+            X, Y, Z = np.meshgrid(X, Y, Z)
+            outIm = interp(X,Y,Z)
+        else:
+            outIm = interp(X)
+
+        # outIm = np.full(s, background, dtype=float)
+        # I = np.ceil((self.centers - imin[None, :])/resolution).astype(int) + margin
+        # for j in range(self.faces.shape[0]):
+        #     if self.dim == 2:
+        #         outIm[I[j, 0], I[j, 1], :] += self.volumes[j] * self.image[j,:]
+        #     elif self.dim == 3:
+        #         outIm[I[j, 0], I[j, 1], I[j,2], :] += self.volumes[j] * self.image[j,:]
+        # outIm /= resolution**self.dim
+
+        if index is None:
+            return outIm
+        else:
+            return outIm[...,index]
+
+
+
 
     def saveVTK_OLD(self, fileName, scalars = None, normals = None, tensors=None, scal_name='scalars',
                 vectors=None, vect_name='vectors', fields=None, field_name='fields'):
@@ -827,8 +888,8 @@ class Mesh:
             #     fvtkout.write('\n')
             #
 
-    def save(self, fileName, vtkFields = None):
-        self.saveVTK(fileName)
+    def save(self, fileName, vtkFields = ()):
+        self.saveVTK(fileName, vtk_fields=vtkFields)
 
     # Reads .vtk file
     def readVTK(self, fileName):

@@ -128,6 +128,18 @@ class Sphere(Surface):
         v = self.center + (self.vertices -M) * self.radius * s2/M
         self.updateVertices(v)
 
+class HalfSphere(Surface):
+    def __init__(self, center=(0,0,0), radius=1, resolution = 100, targetSize = 1000, ax=(0,0,1,0)):
+        super().__init__()
+        self.center = center
+        self.radius = radius
+        S = Sphere(center=center, radius=radius, resolution=resolution, targetSize=targetSize).truncate(ineq=(ax,))
+        self.vertices = S.vertices
+        self.faces = S.faces
+        self.component = S.component
+        self.weights = S.weights
+        self.computeCentersAreas()
+
 class Ellipse(Surface):
     def __init__(self, center=(0,0,0), radius=(1,1,1), rotation=None, resolution = 100, targetSize = 1000):
         super().__init__()

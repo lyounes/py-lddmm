@@ -264,7 +264,7 @@ def saveImage(img, filename, normalize=False, origin = (0,0,0), resol = (1.,1.,1
             src = 255 * (img - img.min()) / (img.max()-img.min())
         else:
             src = img
-        imwrite(filename+'.png', src.astype(np.uint8))
+        imwrite(filename+'.png', np.round(np.fabs(src)).astype(np.uint8))
     else:
         [u, v] = os.path.splitext(filename)
         if v=='.vtk':

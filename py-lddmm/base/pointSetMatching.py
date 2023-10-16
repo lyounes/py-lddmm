@@ -67,10 +67,33 @@ class PointSetMatching(BasicMatching):
 
         self.Kdiff_dtype = self.options['pk_dtype']
         self.Kdist_dtype = self.options['pk_dtype']
+        self.gradCoeff = 1 #self.x0.shape[0] ** 2
+
+    def createObject(self, data, other=None):
+        if other is None:
+            return PointSet(data=data)
+        else:
+            return PointSet(data=data, weights=other)
+
+    def updateObject(self, object, data, other=None):
+        return object.updateVertices(data)
+
+    def solveStateEquation(self, control= None, init_state = None, kernel = None, options=None):
+        if control is None:
+            control = self.control
+        if init_state is None:
+            init_state = self.x0
+        if kernel is None:
+            kernel = self.options['KparDiff']
+
+        A = self.affB.getTransforms(control['Afft'])
+
+        return evol.landmarkDirectEvolutionEuler(init_state, control['at'], kernel,
+                                                 affine=A, options=options)
 
 
     def initialize_variables(self):
-        self.x0 = np.copy(self.fv0.points)
+        self.x0 = np.copy(self.fv0.vertices)
         self.fvDef = deepcopy(self.fv0)
         self.npt = self.x0.shape[0]
         # self.u = np.zeros((self.dim, 1))
@@ -79,8 +102,9 @@ class PointSetMatching(BasicMatching):
         self.Tsize = int(round(1.0/self.options['timeStep']))
         self.control['at'] = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
         self.controlTry['at'] = np.zeros([self.Tsize, self.x0.shape[0], self.x0.shape[1]])
-        self.control['Afft'] = np.zeros([self.Tsize, self.affineDim])
-        self.controlTry['Afft'] = np.zeros([self.Tsize, self.affineDim])
+        if self.affineDim > 0:
+            self.control['Afft'] = np.zeros([self.Tsize, self.affineDim])
+            self.controlTry['Afft'] = np.zeros([self.Tsize, self.affineDim])
         self.state['xt'] = np.tile(self.x0, [self.Tsize+1, 1, 1])
         self.v = np.zeros([self.Tsize+1, self.npt, self.dim])
 
@@ -114,7 +138,7 @@ class PointSetMatching(BasicMatching):
 
         self.fv0.save(self.outputDir + '/Template.vtk')
         self.fv1.save(self.outputDir + '/Target.vtk')
-        self.dim = self.fv0.points.shape[1]
+        self.dim = self.fv0.vertices.shape[1]
 
     def set_fun(self, errorType, vfun=None):
         self.options['errorType'] = errorType
@@ -163,24 +187,46 @@ class PointSetMatching(BasicMatching):
         self.options['KparDiff'].pk_dtype = self.options['pk_dtype']
         self.options['KparDist'].pk_dtype = self.options['pk_dtype']
 
-
+        self.gradEps = self.options['gradTol']
         self.affineOnly = self.options['affineOnly']
-        self.affB = AffineBasis(self.dim, self.options['affine'])
-        self.affineDim = self.affB.affineDim
-        self.affineBasis = self.affB.basis
-        self.affineWeight = self.options['affineWeight'] * np.ones([self.affineDim, 1])
-        if (len(self.affB.rotComp) > 0) and (self.options['rotWeight'] is not None):
-            self.affineWeight[self.affB.rotComp] = self.options['rotWeight']
-        if (len(self.affB.simComp) > 0) and (self.options['scaleWeight'] is not None):
-            self.affineWeight[self.affB.simComp] = self.options['scaleWeight']
-        if (len(self.affB.transComp) > 0) and (self.options['transWeight'] is not None):
-            self.affineWeight[self.affB.transComp] = self.options['transWeight']
+
+        if self.options['affineKernel']:
+            if self.options['affine'] in ('euclidean', 'affine'):
+                if self.options['affine'] == 'euclidean' and self.options['rotWeight'] is not None:
+                    w1 = self.options['rotWeight']
+                else:
+                    w1 = self.options['affineWeight']
+                if self.options['transWeight'] is not None:
+                    w2 = self.options['transWeight']
+                else:
+                    w2 = self.options['affineWeight']
+                self.options['KparDiff'].setAffine(self.options['affine'], w1=1/w1, w2=1/w2,
+                                                   center=self.fv0.vertices.mean(axis=0))
+                self.options['affine'] = 'none'
+                self.affB = AffineBasis(self.dim, 'none')
+                self.affineDim = self.affB.affineDim
+            else:
+                logging.info('Affine kernels only Euclidean or full affine')
+                self.options['affineKernel'] = False
+
+        if not self.options['affineKernel']:
+            self.affB = AffineBasis(self.dim, self.options['affine'])
+            self.affineDim = self.affB.affineDim
+            self.affineBasis = self.affB.basis
+            self.affineWeight = self.options['affineWeight'] * np.ones([self.affineDim, 1])
+            if (len(self.affB.rotComp) > 0) and (self.options['rotWeight'] is not None):
+                self.affineWeight[self.affB.rotComp] = self.options['rotWeight']
+            if (len(self.affB.simComp) > 0) and (self.options['scaleWeight'] is not None):
+                self.affineWeight[self.affB.simComp] = self.options['scaleWeight']
+            if (len(self.affB.transComp) > 0) and (self.options['transWeight'] is not None):
+                self.affineWeight[self.affB.transComp] = self.options['transWeight']
 
         self.coeffInitx = .1
         self.forceLineSearch = False
         self.saveEPDiffTrajectories = False
         self.varCounter = 0
         self.trajCounter = 0
+        self.pkBuffer = 0
 
 
 
@@ -226,17 +272,17 @@ class PointSetMatching(BasicMatching):
         # else:
         #     A = None
         if withJacobian:
-            (xt,Jt)  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A, withJacobian=True)
-            st['xt'] = xt
-            st['Jt'] = Jt
+            st  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A, options={'withJacobian':True})
+            # st['xt'] = xt
+            # st['Jt'] = Jt
         else:
-            xt  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A)
-            st['xt'] = xt
+            st  = evol.landmarkDirectEvolutionEuler(x0, at, kernel, affine=A)
+            # st['xt'] = xt
 
         obj=0
         obj1 = 0 
         for t in range(self.Tsize):
-            z = xt[t, :, :]
+            z = st['xt'][t, :, :]
             a = at[t, :, :]
             ra = kernel.applyK(z, a)
             if hasattr(self, 'v'):  
@@ -256,7 +302,7 @@ class PointSetMatching(BasicMatching):
             return obj
 
     def makeTryInstance(self, state):
-        ff = PointSet(data=state['xt'][-1,:,:], weights=self.fv0.weights)
+        ff = self.createObject(state['xt'][-1,:,:], other=self.fv0.weights)
         return ff
 
     def objectiveFun(self):
@@ -266,16 +312,18 @@ class PointSetMatching(BasicMatching):
             else:
                 self.obj0 = self.fun_obj0(self.fv1) / (self.options['sigmaError']**2)
             self.objDef, self.state = self.objectiveFunDef(self.control, withTrajectory=True)
-            self.fvDef.points = np.copy(np.squeeze(self.state['xt'][-1, :, :]))
+            self.fvDef.vertices = np.copy(np.squeeze(self.state['xt'][-1, :, :]))
             self.objData = self.dataTerm(self.fvDef)
             self.obj = self.obj0 + self.objData + self.objDef
         return self.obj
 
     def getVariable(self):
         return self.control
+    def initVariable(self):
+        return Control()
 
     def updateTry(self, dr, eps, objRef=None):
-        controlTry = Control()
+        controlTry = self.initVariable()
         for k in dr.keys():
             if dr[k] is not None:
                 controlTry[k] = self.control[k] - eps * dr[k]
@@ -286,7 +334,7 @@ class PointSetMatching(BasicMatching):
         objTry = self.obj0 + objTryData + objTryDef
 
         if np.isnan(objTry):
-            logging.info('Warning: nan in updateTry')
+            # logging.info('Warning: nan in updateTry')
             return 1e500
 
         if (objRef is None) or (objTry < objRef):
@@ -301,9 +349,9 @@ class PointSetMatching(BasicMatching):
     def testEndpointGradient(self):
         c0 = self.dataTerm(self.fvDef)
         ff = deepcopy(self.fvDef)
-        dff = np.random.normal(size=ff.points.shape)
+        dff = np.random.normal(size=ff.vertices.shape)
         eps = 1e-6
-        ff.points += eps*dff
+        ff.vertices += eps*dff
         c1 = self.dataTerm(ff)
         grd = self.endPointGradient()
         logging.info("test endpoint gradient: {0:.5f} {1:.5f}".format((c1-c0)/eps, (grd*dff).sum()) )
@@ -338,9 +386,10 @@ class PointSetMatching(BasicMatching):
             if update[0][k] is not None:
                 control[k] = self.control[k] - update[1] * update[0][k]
         A = self.affB.getTransforms(control['Afft'])
-        xt = evol.landmarkDirectEvolutionEuler(self.x0, control['at'], self.options['KparDiff'], affine=A)
-        endPoint = PointSet(data=self.fv0)
-        endPoint.updatePoints(xt[-1, :, :])
+        st = evol.landmarkDirectEvolutionEuler(self.x0, control['at'], self.options['KparDiff'], affine=A)
+        xt = st['xt']
+        endPoint = self.createObject(self.fv0)
+        endPoint.updateVertices(xt[-1, :, :])
         st = State()
         st['xt'] = xt
 
@@ -378,11 +427,23 @@ class PointSetMatching(BasicMatching):
             grd['Afft'] /= (self.coeffAff*coeff*self.Tsize)
         return grd
 
+
+
+    def resetPK(self, newType = None):
+        if newType is None:
+            self.options['KparDiff'].pk_dtype = self.Kdiff_dtype
+            self.options['KparDist'].pk_dtype = self.Kdist_dtype
+        else:
+            self.options['KparDiff'].pk_dtype = newType
+            self.options['KparDist'].pk_dtype = newType
+        self.pkBuffer = 0
+
     def startOfIteration(self):
         if self.reset:
             logging.info('Switching to 64 bits')
-            self.options['KparDiff'].pk_dtype = 'float64'
-            self.options['KparDist'].pk_dtype = 'float64'
+            self.resetPK('float64')
+            self.pkBuffer = 0
+
 
 
 
@@ -449,11 +510,13 @@ class PointSetMatching(BasicMatching):
             logging.info('Saving Points...')
             obj1, self.state = self.objectiveFunDef(self.control, withTrajectory=True)
 
-            self.fvDef.points = np.copy(np.squeeze(self.state['xt'][-1, :, :]))
+            self.fvDef.vertices = np.copy(np.squeeze(self.state['xt'][-1, :, :]))
             dim2 = self.dim**2
             A = self.affB.getTransforms(self.control['Afft'])
-            xt, Jt  = evol.landmarkDirectEvolutionEuler(self.x0, self.control['at'], self.options['KparDiff'], affine=A,
-                                                              withJacobian=True)
+            st  = evol.landmarkDirectEvolutionEuler(self.x0, self.control['at'], self.options['KparDiff'], affine=A,
+                                                    options={'withJacobian':True})
+            xt = st['xt']
+            Jt = st['Jt']
             if self.options['affine']=='euclidean' or self.options['affine']=='translation':
                 X = self.affB.integrateFlow(self.control['Afft'])
                 displ = np.zeros(self.x0.shape[0])
@@ -464,16 +527,17 @@ class PointSetMatching(BasicMatching):
                     f = np.copy(yyt)
                     pointSets.savelmk(f, self.outputDir + '/' + self.options['saveFile'] + 'Corrected' + str(t) + '.lmk')
                 f = deepcopy(self.fv1)
-                yyt = np.dot(f.points - X[1][-1, ...], U.T)
+                yyt = np.dot(f.vertices - X[1][-1, ...], U.T)
                 f = np.copy(yyt)
                 pointSets.savePoints(self.outputDir + '/TargetCorrected.vtk', f)
             for kk in range(self.Tsize+1):
-                fvDef = PointSet(data=np.squeeze(xt[kk, :, :]), weights=self.fv0.weights)
+                fvDef = self.createObject(np.squeeze(xt[kk, :, :]), other=self.fv0.weights)
                 fvDef.save(self.outputDir + '/' + self.options['saveFile'] + str(kk) + '.vtk')
         obj1, self.state = self.objectiveFunDef(self.control, withTrajectory=True)
-        self.fvDef.points = np.copy(np.squeeze(self.state['xt'][-1, :, :]))
-        self.options['KparDiff'].pk_dtype = self.Kdiff_dtype
-        self.options['KparDist'].pk_dtype = self.Kdist_dtype
+        self.fvDef.vertices = np.copy(np.squeeze(self.state['xt'][-1, :, :]))
+
+        if self.pkBuffer > 10:
+            self.resetPK()
 
 
     def optimizeMatching(self):
@@ -481,7 +545,8 @@ class PointSetMatching(BasicMatching):
         grd = self.getGradient(self.gradCoeff)
         [grd2] = self.dotProduct(grd, [grd])
 
-        self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
+        if self.gradEps < 0:
+            self.gradEps = max(0.001, np.sqrt(grd2) / 10000)
         logging.info('Gradient lower bound: %f' %(self.gradEps))
         self.coeffAff = self.coeffAff1
 

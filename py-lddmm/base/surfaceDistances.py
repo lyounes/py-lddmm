@@ -2,8 +2,13 @@ import numpy as np
 from numba import jit
 from . import diffeo
 import logging
-from pykeops.numpy import LazyTensor
-import pykeops
+import keopscore
+if keopscore.config.config.use_cuda:
+    from pykeops.numpy import Genred, LazyTensor
+    import pykeops
+
+# from pykeops.numpy import LazyTensor
+# import pykeops
 from . import kernelFunctions_util as ku
 
 def haussdorffDist(fv1, fv2):
@@ -279,7 +284,7 @@ def df0_(u):
     return 2*u
 
 def varifoldNorm0(fv1, KparDist, fun = None, cpu=False, dtype='float64'):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and keopscore.config.config.use_cuda:
         return varifoldNorm0_pykeops(fv1, KparDist, dtype = dtype)
     else:
         return varifoldNorm0_numpy(fv1, KparDist, fun = fun)
@@ -321,7 +326,7 @@ def varifoldNorm0_pykeops(fv1, KparDist, dtype = 'float64'):
 
 # Computes |fvDef|^2 - 2 fvDef * fv1 with current dot produuct
 def varifoldNormDef(fvDef, fv1, KparDist, fun = None, cpu=False, dtype='float64'):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and keopscore.config.config.use_cuda:
         return varifoldNormDef_pykeops(fvDef, fv1, KparDist, dtype = KparDist.pk_dtype)
     else:
         return varifoldNormDef_numpy(fvDef, fv1, KparDist, fun = fun)
@@ -387,7 +392,7 @@ def varifoldNorm(fvDef, fv1, KparDist, fun=None):
 
 # Returns gradient of |fvDef - fv1|^2 with respect to vertices in fvDef (current norm)
 def varifoldNormGradient(fvDef, fv1, KparDist, with_weights=False, fun = None, cpu=False, dtype='float64'):
-    if not cpu and pykeops.config.gpu_available:
+    if not cpu and keopscore.config.config.use_cuda:
 #        varifoldNormGradient_numpy(fvDef, fv1, KparDist, with_weights=with_weights, fun = fun)
         return varifoldNormGradient_pykeops(fvDef, fv1, KparDist, with_weights=with_weights, dtype = KparDist.pk_dtype)
     else:
@@ -679,6 +684,7 @@ def diffNormGrad(fv, phi, variables='both'):
     # a = ((fv.surfel**2).sum(axis=1))
     a = 2 * np.sqrt((fv.surfel ** 2).sum(axis=1))
     a2 = 2 * a[..., np.newaxis]
+    grad = dict()
     if variables == 'both' or variables == 'phi':
         r1 = (l1[:, np.newaxis] * (phi2 + phi3 - 2 * phi1) + (l2 - l3)[:, np.newaxis] * (phi2 - phi3)) / a2
         r2 = (l2[:, np.newaxis] * (phi1 + phi3 - 2 * phi2) + (l1 - l3)[:, np.newaxis] * (phi1 - phi3)) / a2
@@ -688,6 +694,7 @@ def diffNormGrad(fv, phi, variables='both'):
             gradphi[f[0], :] -= r1[k, :]
             gradphi[f[1], :] -= r2[k, :]
             gradphi[f[2], :] -= r3[k, :]
+        grad['phi'] = gradphi
 
     if variables == 'both' or variables == 'x':
         gradx = np.zeros(fv.vertices.shape)
@@ -709,14 +716,67 @@ def diffNormGrad(fv, phi, variables='both'):
             gradx[f[1], :] += r2[k, :]
             gradx[f[2], :] += r3[k, :]
 
-    if variables == 'both':
-        return (gradphi, gradx)
-    elif variables == 'phi':
-        return gradphi
-    elif variables == 'x':
-        return gradx
-    else:
-        logging.info('Incorrect option in diffNormGrad')
+        grad['x'] = gradx
+
+    return grad
+    #
+    # if variables == 'both':
+    #     return (gradphi, gradx)
+    # elif variables == 'phi':
+    #     return gradphi
+    # elif variables == 'x':
+    #     return gradx
+    # else:
+    #     logging.info('Incorrect option in diffNormGrad')
+
+def normDisplacement(fv, phi):
+    phic = (phi[fv.faces[:, 0], :] + phi[fv.faces[:, 1], :] + phi[fv.faces[:, 2], :])/3
+    a = np.sqrt((fv.surfel ** 2).sum(axis=1))
+    res = (phic**2 * a[:, None]).sum()
+    return res
+
+def diffNormDisplacement(fv, phi, variables='both'):
+    v0 = fv.vertices[fv.faces[:, 0], :]
+    v1 = fv.vertices[fv.faces[:, 1], :]
+    v2 = fv.vertices[fv.faces[:, 2], :]
+    phi0 = phi[fv.faces[:, 0], :]
+    phi1 = phi[fv.faces[:, 1], :]
+    phi2 = phi[fv.faces[:, 2], :]
+    phic = (phi0 + phi1 + phi2)/3
+
+    # a = ((fv.surfel**2).sum(axis=1))
+    a = np.sqrt((fv.surfel ** 2).sum(axis=1))
+    grad = dict()
+    if variables == 'both' or variables == 'phi':
+        gradphi = np.zeros(phi.shape)
+        for k, f in enumerate(fv.faces):
+            for j in range(3):
+                gradphi[f[j], :] += phic[k, :] * a[k]
+        gradphi *= 2/3
+        grad['phi'] = gradphi
+
+    if variables == 'both' or variables == 'x':
+        gradx = np.zeros(fv.vertices.shape)
+        nphic = ((phic**2).sum(axis=1)/a)[:, None]
+        r0 = np.cross(v1 - v2, fv.surfel)*nphic
+        r1 = np.cross(v2 - v0, fv.surfel)*nphic
+        r2 = np.cross(v0 - v1, fv.surfel)*nphic
+        for k, f in enumerate(fv.faces):
+            gradx[f[0], :] += r0[k, :]
+            gradx[f[1], :] += r1[k, :]
+            gradx[f[2], :] += r2[k, :]
+        gradx /= 2
+        grad['x'] = gradx
+
+    return grad
+    # if variables == 'both':
+    #     return (gradphi, gradx)
+    # elif variables == 'phi':
+    #     return gradphi
+    # elif variables == 'x':
+    #     return gradx
+    # else:
+    #     logging.info('Incorrect option in normDisplacementGrad')
 
 @jit(nopython=True)
 def elasticNorm_nb(fc, ver, phi, surfel):
@@ -758,6 +818,8 @@ def diffElasticNorm_nb(fc, ver, phi, surfel, variables='both'):
     correct =  np.expand_dims(((v1-v3)*(phi1-phi2)).sum(axis=1) - ((v1-v2)*(phi1-phi3)).sum(axis=1),1)
     gradx = np.zeros(ver.shape)
     gradphi = np.zeros(phi.shape)
+
+    grad = dict()
     if variables == 'both' or variables == 'phi':
         r1 = (l1* (phi2 + phi3 - 2 * phi1) + (l2 - l3) * (phi2 - phi3)) / a2 \
         + .5 * (v2-v3) * correct / a
@@ -769,6 +831,7 @@ def diffElasticNorm_nb(fc, ver, phi, surfel, variables='both'):
             gradphi[f[0], :] -= r1[k, :]
             gradphi[f[1], :] -= r2[k, :]
             gradphi[f[2], :] -= r3[k, :]
+        grad['phi'] = gradphi
 
     if variables == 'both' or variables == 'x':
         u = (l1[:,0] * ((phi2 - phi1) * (phi3 - phi1)).sum(axis=1) + l2[:,0] * ((phi3 - phi2) * (phi1 - phi2)).sum(axis=1)
@@ -793,17 +856,20 @@ def diffElasticNorm_nb(fc, ver, phi, surfel, variables='both'):
             gradx[fc[k,1], :] = gradx[fc[k,1], :] + r2[k, :]
             gradx[fc[k,2], :] = gradx[fc[k,2], :] + r3[k, :]
 
-    return gradphi, gradx
+        grad['x'] = gradx
+
+    return grad
 def diffElasticNorm(fv, phi, variables='both'):
     grad = diffElasticNorm_nb(fv.faces, fv.vertices, phi, fv.surfel, variables=variables)
-    if variables == 'both':
-        return grad
-    elif variables == 'phi':
-        return grad[0]
-    elif variables == 'x':
-        return grad[1]
-    else:
-        logging.info('Incorrect option in diffElasticNorm')
+    return grad
+    # if variables == 'both':
+    #     return grad
+    # elif variables == 'phi':
+    #     return grad[0]
+    # elif variables == 'x':
+    #     return grad[1]
+    # else:
+    #     logging.info('Incorrect option in diffElasticNorm')
 
 def diffElasticNorm_old(fv, phi, variables='both'):
     v1 = fv.vertices[fv.faces[:, 0], :]

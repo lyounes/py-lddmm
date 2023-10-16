@@ -10,28 +10,28 @@ class PointSet:
         if type(data) is str:
             self.read(data, maxPoints=maxPoints)
         elif issubclass(type(data), PointSet):
-            self.points = np.copy(data.points)
+            self.vertices = np.copy(data.vertices)
             if weights is None:
                 self.weights = np.copy(data.weights)
             else:
                 self.weights = weights
         elif isinstance(data, np.ndarray):
-            self.points = data.copy()
+            self.vertices = data.copy()
             if weights is None:
                 self.weights = np.ones(data.shape[0])
             else:
                 self.weights = weights
         else:
-            self.points = np.empty(0)
+            self.vertices = np.empty(0)
             self.weights = np.empty(0)
 
-    def updatePoints(self, pts):
-        self.points = np.copy(pts)
+    def updateVertices(self, pts):
+        self.vertices = np.copy(pts)
 
     def addToPlot(self, ax, ec = 'b', fc = 'r', al=.5, lw=1):
-        x = self.points[:, 0]
-        y = self.points[:, 1]
-        z = self.points[:, 2]
+        x = self.vertices[:, 0]
+        y = self.vertices[:, 1]
+        z = self.vertices[:, 2]
         ax.scatter(x,y,z, alpha=al)
         xlim = [x.min(),x.max()]
         ylim = [y.min(),y.max()]
@@ -39,7 +39,7 @@ class PointSet:
         return [xlim, ylim, zlim]
 
     def set_weights(self, knn=5):
-        d = squareform(pdist(self.points))
+        d = squareform(pdist(self.vertices))
         d = np.sort(d, axis=1)
         eps = d[:, knn].mean() + 1e-10
         self.weights = np.pi * eps ** 2 / (d < eps).sum(axis=1)
@@ -50,7 +50,7 @@ class PointSet:
         if tail in ('.obj', '.OBJ'):
             self.readOBJ(filename, maxPoints=maxPoints)
         else:
-            self.points, self.weights = readVector(filename)
+            self.vertices, self.weights = readVector(filename)
 
     def readOBJ(self, fileName, maxPoints=None):
         u = vtkOBJReader()
@@ -68,14 +68,14 @@ class PointSet:
             select = rng.choice(npoints, maxPoints, replace=False)
             V = V[select, :]
 
-        self.points = V
+        self.vertices = V
         self.set_weights(5)
 
 
     def saveVTK(self, filename):
         self.save(filename)
     def save(self, filename):
-        savePoints(filename, self.points, scalars=self.weights)
+        savePoints(filename, self.vertices, scalars={'weights':self.weights})
 
 def readVector(filename):
     try:
@@ -182,7 +182,7 @@ def  savelmk(x, filename):
 
         
 # Saves in .vtk format
-def savePoints(fileName, x, vector=None, scalars=None):
+def savePoints(fileName, x, vectors=None, scalars=None):
     if x.shape[1] <3:
         x = np.concatenate((x, np.zeros((x.shape[0],3-x.shape[1]))), axis=1)
     with open(fileName, 'w') as fvtkout:
@@ -190,18 +190,21 @@ def savePoints(fileName, x, vector=None, scalars=None):
         fvtkout.write('\nPOINTS {0: d} float'.format(x.shape[0]))
         for ll in range(x.shape[0]):
             fvtkout.write('\n{0: f} {1: f} {2: f}'.format(x[ll,0], x[ll,1], x[ll,2]))
-        if vector is None and scalars is None:
+        if vectors is None and scalars is None:
             return
         fvtkout.write(('\nPOINT_DATA {0: d}').format(x.shape[0]))
         if scalars is not None:
-            fvtkout.write('\nSCALARS scalars float 1\nLOOKUP_TABLE default')
-            for ll in range(x.shape[0]):
-                fvtkout.write('\n {0: .5f} '.format(scalars[ll]))
+            for k in scalars.keys():
+                fvtkout.write(f'\nSCALARS {k} float 1\nLOOKUP_TABLE default')
+                for ll in range(x.shape[0]):
+                    fvtkout.write('\n {0: .5f} '.format(scalars[k][ll]))
 
-        if vector is not None:
-            fvtkout.write('\nVECTORS vector float')
-            for ll in range(x.shape[0]):
-                fvtkout.write('\n {0: .5f} {1: .5f} {2: .5f}'.format(vector[ll, 0], vector[ll, 1], vector[ll, 2]))
+        if vectors is not None:
+            for k in vectors.keys():
+                fvtkout.write(f'\nVECTORS {k} float')
+                for ll in range(x.shape[0]):
+                    fvtkout.write('\n {0: .5f} {1: .5f} {2: .5f}'.format(vectors[k][ll, 0], vectors[k][ll, 1],
+                                                                         vectors[k][ll, 2]))
 
         fvtkout.write('\n')
 

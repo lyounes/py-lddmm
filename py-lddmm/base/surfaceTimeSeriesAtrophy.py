@@ -1,10 +1,10 @@
 import numpy.linalg as la
 import logging
 import pointSets
-from . import surfaces, surface_distances as sd
+from . import surfaces, surfaceDistancess as sd
 #import pointEvolution_fort as evol_omp
 from . import conjugateGradient as cg, pointEvolution as evol
-from .surfaceTimeSeries import SurfaceTimeMatching, Direction
+from .surfaceTimeSeries import SurfaceTimeMatching, Control
 from .affineBasis import *
 
 
@@ -309,7 +309,10 @@ class SurfaceMatching(SurfaceTimeMatching):
                 AB = np.dot(self.affineBasis, Afft[t]) 
                 A[0][t] = AB[0:dim2].reshape([self.dim, self.dim])
                 A[1][t] = AB[dim2:dim2+self.dim]
-        xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.options['KparDiff'], affine=A)
+
+        st = self.solveStateEquation(control=control)
+        xt = st['xt']
+        # xt = evol.landmarkDirectEvolutionEuler(self.x0, at, self.options['KparDiff'], affine=A)
         pxt = np.zeros([M+1, self.npt, self.dim])
         pxt[M, :, :] = px1[self.nTarg-1]
         kj = self.nTarg - 2

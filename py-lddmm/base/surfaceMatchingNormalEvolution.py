@@ -329,7 +329,9 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                     A[1][t] = AB[dim2:dim2 + self.dim]
         else:
             A = None
-        xt = evol.landmarkDirectEvolutionEuler(x0, at*self.ds, self.options['KparDiff'], affine=A)
+        st = self.solveStateEquation(control=control, init_state=x0)
+        xt = st['xt']
+        # xt = evol.landmarkDirectEvolutionEuler(x0, at*self.ds, self.options['KparDiff'], affine=A)
         # xt = xJ
         pxt = np.zeros([M + 1, self.npt, self.dim])
         pxt[M, :, :] = px1
@@ -352,8 +354,8 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             v = self.options['KparDiff'].applyK(z, a)*self.ds
             if self.internalCost:
                 grd = self.internalCostGrad(foo, v)
-                Lv = grd[0]
-                DLv = self.options['internalWeight'] * self.options['regWeight'] * grd[1]
+                Lv = grd['phi']
+                DLv = self.options['internalWeight'] * self.options['regWeight'] * grd['x']
                 zpx += self.options['KparDiff'].applyDiffKT(z, px, a*self.ds, regweight=self.options['regWeight'],
                             lddmm=True, extra_term=-self.options['internalWeight'] * self.options['regWeight']*Lv) - DLv
             else:
@@ -381,7 +383,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 v = self.options['KparDiff'].applyK(z, a)*self.ds
                 dat[t, :, :] += 2 * self.options['regWeight'] * a *self.ds**2 - px * self.ds
                 if self.internalCost:
-                    Lv = self.internalCostGrad(foo, v, variables='phi')
+                    Lv = self.internalCostGrad(foo, v, variables='phi')['phi']
                     dat[t, :, :] += self.options['regWeight'] * self.options['internalWeight'] * Lv * self.ds
         else:
             dat = -dacval
@@ -392,7 +394,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
                 px = np.squeeze(pxt[t + 1, :, :])
                 v = self.options['KparDiff'].applyK(z, a)
                 if self.internalCost:
-                    Lv = self.internalCostGrad(foo, v, variables='phi')
+                    Lv = self.internalCostGrad(foo, v, variables='phi')['phi']
                     dat[t, :, :] += self.options['KparDiff'].applyK(z, 2 * self.options['regWeight'] * a - px +
                                                             self.options['regWeight'] * self.options['internalWeight'] * Lv)
                 else:
@@ -427,8 +429,10 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
             for k in update[0]:
                 if update[0][k] is not None:
                     control[k] = self.control[k] - update[1] * update[0][k]
-            A = self.affB.getTransforms(control['Afft'])
-            xt = evol.landmarkDirectEvolutionEuler(control['x0'], control['at']*self.ds, self.options['KparDiff'], affine=A)
+            # A = self.affB.getTransforms(control['Afft'])
+            st = self.solveStateEquation(control=control, init_state=control['x0'])
+            xt = st['xt']
+            # xt = evol.landmarkDirectEvolutionEuler(control['x0'], control['at']*self.ds, self.options['KparDiff'], affine=A)
             endPoint = surfaces.Surface(surf=self.fv0)
             endPoint.updateVertices(xt[-1, :, :])
 
@@ -448,7 +452,7 @@ class SurfaceMatching(surfaceMatching.SurfaceMatching):
     def saveEvolution(self, fv0, state, fileName='evolution', velocity = None, orientation= None,
                       constraint = None, normals=None):
         xt = state['xt']
-        Jacobian = state['xt']
+        Jacobian = state['Jt']
         if velocity is None:
             velocity = self.v
         if orientation is None:

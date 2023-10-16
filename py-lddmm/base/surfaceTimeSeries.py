@@ -1,6 +1,6 @@
 import logging
 import numpy.linalg as la
-from . import surfaces, surface_distances as sd
+from . import surfaces, surfaceDistances as sd
 from . import pointSets
 from . import pointEvolution as evol
 from .affineBasis import *
@@ -34,10 +34,14 @@ class SurfaceTimeMatching(SurfaceMatching):
         options['rescaleTemplate'] = False
         options['volumeWeight'] = None
         options['times'] = None
+        options['timeStep0'] = None
         return options
 
     def initialize_variables(self):
         self.Tsize = int(round(1.0 / self.options['timeStep']))
+        if self.options['timeStep0'] is None:
+            self.options['timeStep0'] = self.options['timeStep']
+        self.Tsize0 = int(round(1.0 / self.options['timeStep0']))
         self.nvert = self.fvInit.vertices.shape[0]
         if self.match_landmarks:
             self.control['x0'] = np.concatenate((self.fvInit.vertices, self.tmpl_lmk.points), axis=0)
@@ -350,7 +354,7 @@ class SurfaceTimeMatching(SurfaceMatching):
             if self.options['volumeWeight']:
                 targGradient -= (2./3) * self.options['volumeWeight']*(endPoint[k].surfVolume() - self.fv1[k].surfVolume()) * self.fvDef[k].computeAreaWeightedVertexNormals()
             if self.match_landmarks:
-                pxl = self.wlmk * self.lmk_objGrad(endPoint_lmk[k].points, self.targ_lmk[k].points)
+                pxl = self.wlmk * self.lmk_objGrad(endPoint_lmk[k].vertices, self.targ_lmk[k].points)
                 targGradient = np.concatenate((targGradient, pxl), axis=0)
             px.append(targGradient)
         #print "px", (px[0]**2).sum()
@@ -384,7 +388,9 @@ class SurfaceTimeMatching(SurfaceMatching):
         nTarg = len(px1)
         timeStep = 1.0 / T
         if computeTraj:
-            xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
+            st = self.solveStateEquation(control=control, init_state=x0)
+            xt = st['xt']
+            # xt = evol.landmarkDirectEvolutionEuler(x0, at, KparDiff, affine=affine)
             if current_at:
                 self.trajCounter = self.varCounter
                 self.state['xt'] = xt
@@ -456,7 +462,9 @@ class SurfaceTimeMatching(SurfaceMatching):
             #     A = self.affB.getTransforms(self.Afft - update[1]*update[0]['aff'])
             # else:
             #     A = None
-            xt = evol.landmarkDirectEvolutionEuler(self.control['x0'], control['at'], self.options['KparDiff'], affine=A)
+            st = self.solveStateEquation(control=control, init_state=self.control['x0'])
+            xt = st['xt']
+            # xt = evol.landmarkDirectEvolutionEuler(self.control['x0'], control['at'], self.options['KparDiff'], affine=A)
             endPoint = []
             for k in range(self.nTarg):
                 if self.match_landmarks:
@@ -486,7 +494,7 @@ class SurfaceTimeMatching(SurfaceMatching):
         # grd['Afft'] = np.zeros(self.control['Afft'].shape)
         # if self.affineBurnIn:
         #     grd.diff *= 0
-        if self.affineDim > 0 and self.iter < self.affBurnIn:
+        if self.affineDim > 0:
             dA = foo['dA']
             db = foo['db']
             grd['Afft'] = 2*self.affineWeight.reshape([1, self.affineDim]) * self.control['Afft']
@@ -494,7 +502,7 @@ class SurfaceTimeMatching(SurfaceMatching):
             for t in range(self.Tsize):
                dAff = self.affineBasis.T @ np.vstack([dA[t].reshape([dim2,1]), db[t].reshape([self.dim, 1])])
                #grd.aff[t] -=  np.divide(dAff.reshape(grd.aff[t].shape), self.affineWeight.reshape(grd.aff[t].shape))
-               grd['Afft'][t] -=  dAff.reshape(grd['aff'][t].shape)
+               grd['Afft'][t] -=  dAff.reshape(grd['Afft'][t].shape)
             grd['Afft'] /= (self.coeffAff*coeff*self.Tsize)
         return grd
 
